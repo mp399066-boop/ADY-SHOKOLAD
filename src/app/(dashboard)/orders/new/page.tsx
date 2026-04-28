@@ -1,0 +1,715 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { Input, Select, Textarea } from '@/components/ui/Input';
+import { PageLoading } from '@/components/ui/LoadingSpinner';
+import { StatusBadge } from '@/components/ui/StatusBadge';
+import toast from 'react-hot-toast';
+import type { Customer, Product, PetitFourType } from '@/types/database';
+
+interface OrderItem {
+  מוצר_id: string;
+  שם_מוצר: string;
+  כמות: number;
+  מחיר_ליחידה: number;
+  סהכ: number;
+  הערות_לשורה: string;
+}
+
+interface PackageItem {
+  מוצר_id: string | null;
+  שם_מארז: string;
+  גודל_מארז: number;
+  כמות: number;
+  מחיר_ליחידה: number;
+  סהכ: number;
+  הערות_לשורה: string;
+  פטיפורים: { פטיפור_id: string; שם: string; כמות: number }[];
+}
+
+function SectionHeader({ number, title }: { number: number; title: string }) {
+  return (
+    <div className="flex items-center gap-3 mb-4">
+      <div
+        className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
+        style={{ backgroundColor: '#8B5E34', color: '#FFFFFF' }}
+      >
+        {number}
+      </div>
+      <h3 className="text-sm font-semibold" style={{ color: '#2B1A10' }}>{title}</h3>
+    </div>
+  );
+}
+
+export default function NewOrderPage() {
+  const router = useRouter();
+  const [loading, setLoading] = useState(false);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [petitFourTypes, setPetitFourTypes] = useState<PetitFourType[]>([]);
+
+  const [selectedCustomer, setSelectedCustomer] = useState('');
+  const [isUrgent, setIsUrgent] = useState(false);
+  const [deliveryDate, setDeliveryDate] = useState('');
+  const [deliveryTime, setDeliveryTime] = useState('');
+  const [deliveryType, setDeliveryType] = useState<'משלוח' | 'איסוף עצמי'>('משלוח');
+  const [recipientName, setRecipientName] = useState('');
+  const [recipientPhone, setRecipientPhone] = useState('');
+  const [recipientAddress, setRecipientAddress] = useState('');
+  const [recipientCity, setRecipientCity] = useState('');
+  const [deliveryInstructions, setDeliveryInstructions] = useState('');
+  const [deliveryFee, setDeliveryFee] = useState(0);
+  const [paymentMethod, setPaymentMethod] = useState('מזומן');
+  const [paymentStatus, setPaymentStatus] = useState<'ממתין' | 'שולם' | 'חלקי'>('ממתין');
+  const [greetingText, setGreetingText] = useState('');
+  const [notes, setNotes] = useState('');
+  const [discount, setDiscount] = useState(0);
+  const [orderSource, setOrderSource] = useState('');
+  const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
+  const [packageItems, setPackageItems] = useState<PackageItem[]>([]);
+
+  useEffect(() => {
+    Promise.all([
+      fetch('/api/customers?limit=200').then(r => r.json()),
+      fetch('/api/products?active=true').then(r => r.json()),
+      fetch('/api/petit-four-types').then(r => r.json()),
+    ]).then(([c, p, pf]) => {
+      setCustomers(c.data || []);
+      setProducts(p.data || []);
+      setPetitFourTypes(pf.data || []);
+    });
+  }, []);
+
+  // Auto-apply customer discount when customer is selected
+  useEffect(() => {
+    const cust = customers.find(c => c.id === selectedCustomer);
+    if (cust && (cust.אחוז_הנחה ?? 0) > 0) {
+      setDiscount(+(subtotal * (cust.אחוז_הנחה ?? 0) / 100).toFixed(2));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCustomer]);
+
+  const subtotal = [...orderItems, ...packageItems].reduce((sum, item) => sum + item.סהכ, 0);
+  const total = subtotal - discount + deliveryFee;
+  const selectedCustomerData = customers.find(c => c.id === selectedCustomer);
+
+  const addProductItem = () => {
+    setOrderItems(prev => [...prev, {
+      מוצר_id: '', שם_מוצר: '', כמות: 1, מחיר_ליחידה: 0, סהכ: 0, הערות_לשורה: '',
+    }]);
+  };
+
+  const updateProductItem = (idx: number, field: string, value: string | number) => {
+    setOrderItems(prev => {
+      const items = [...prev];
+      const item = { ...items[idx], [field]: value };
+      if (field === 'מוצר_id') {
+        const prod = products.find(p => p.id === value);
+        if (prod) { item.שם_מוצר = prod.שם_מוצר; item.מחיר_ליחידה = prod.מחיר; }
+      }
+      item.סהכ = item.כמות * item.מחיר_ליחידה;
+      items[idx] = item;
+      return items;
+    });
+  };
+
+  const removeProductItem = (idx: number) => setOrderItems(prev => prev.filter((_, i) => i !== idx));
+
+  const addPackageItem = () => {
+    setPackageItems(prev => [...prev, {
+      מוצר_id: null, שם_מארז: '', גודל_מארז: 0, כמות: 1,
+      מחיר_ליחידה: 0, סהכ: 0, הערות_לשורה: '', פטיפורים: [],
+    }]);
+  };
+
+  const updatePackageItem = (idx: number, field: string, value: string | number) => {
+    setPackageItems(prev => {
+      const items = [...prev];
+      const item = { ...items[idx], [field]: value };
+      item.סהכ = item.כמות * item.מחיר_ליחידה;
+      items[idx] = item;
+      return items;
+    });
+  };
+
+  const addPetitFour = (pkgIdx: number, pfId: string) => {
+    const pf = petitFourTypes.find(p => p.id === pfId);
+    if (!pf) return;
+    setPackageItems(prev => {
+      const items = [...prev];
+      const pkg = { ...items[pkgIdx] };
+      if (!pkg.פטיפורים.find(p => p.פטיפור_id === pfId)) {
+        pkg.פטיפורים = [...pkg.פטיפורים, { פטיפור_id: pfId, שם: pf.שם_פטיפור, כמות: 1 }];
+      }
+      items[pkgIdx] = pkg;
+      return items;
+    });
+  };
+
+  const updatePetitFourQty = (pkgIdx: number, pfIdx: number, qty: number) => {
+    setPackageItems(prev => {
+      const items = [...prev];
+      const pkg = { ...items[pkgIdx] };
+      pkg.פטיפורים = pkg.פטיפורים.map((pf, i) => i === pfIdx ? { ...pf, כמות: qty } : pf);
+      items[pkgIdx] = pkg;
+      return items;
+    });
+  };
+
+  const removePetitFour = (pkgIdx: number, pfIdx: number) => {
+    setPackageItems(prev => {
+      const items = [...prev];
+      const pkg = { ...items[pkgIdx] };
+      pkg.פטיפורים = pkg.פטיפורים.filter((_, i) => i !== pfIdx);
+      items[pkgIdx] = pkg;
+      return items;
+    });
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCustomer) { toast.error('יש לבחור לקוח'); return; }
+
+    setLoading(true);
+    try {
+      const payload = {
+        לקוח: { id: selectedCustomer },
+        הזמנה: {
+          הזמנה_דחופה: isUrgent,
+          תאריך_אספקה: deliveryDate || null,
+          שעת_אספקה: deliveryTime || null,
+          סוג_אספקה: deliveryType,
+          שם_מקבל: recipientName || null,
+          טלפון_מקבל: recipientPhone || null,
+          כתובת_מקבל_ההזמנה: recipientAddress || null,
+          עיר: recipientCity || null,
+          הוראות_משלוח: deliveryInstructions || null,
+          דמי_משלוח: deliveryFee,
+          אופן_תשלום: paymentMethod,
+          סטטוס_תשלום: paymentStatus,
+          סכום_הנחה: discount,
+          ברכה_טקסט: greetingText || null,
+          הערות_להזמנה: notes || null,
+          מקור_ההזמנה: orderSource || null,
+        },
+        מוצרים: orderItems.filter(i => i.מוצר_id).map(i => ({
+          מוצר_id: i.מוצר_id,
+          כמות: i.כמות,
+          מחיר_ליחידה: i.מחיר_ליחידה,
+          הערות_לשורה: i.הערות_לשורה || null,
+        })),
+        מארזי_פטיפורים: packageItems.map(p => ({
+          מוצר_id: p.מוצר_id,
+          גודל_מארז: p.גודל_מארז,
+          כמות: p.כמות,
+          מחיר_ליחידה: p.מחיר_ליחידה,
+          הערות_לשורה: p.הערות_לשורה || null,
+          פטיפורים: p.פטיפורים.map(pf => ({ פטיפור_id: pf.פטיפור_id, כמות: pf.כמות })),
+        })),
+        משלוח: deliveryType === 'משלוח'
+          ? { כתובת: recipientAddress, עיר: recipientCity, הוראות_משלוח: deliveryInstructions }
+          : null,
+      };
+
+      const res = await fetch('/api/orders/create-full', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'שגיאה ביצירת הזמנה');
+
+      toast.success('ההזמנה נוצרה בהצלחה');
+      router.push(`/orders/${json.data.id}`);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'שגיאה ביצירת הזמנה');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="max-w-6xl">
+      <div className="flex gap-6">
+        {/* Main form */}
+        <div className="flex-1 space-y-4 min-w-0">
+
+          {/* 1. Customer */}
+          <Card>
+            <SectionHeader number={1} title="פרטי לקוח" />
+            <div className="space-y-3">
+              <Select
+                label="לקוח"
+                required
+                value={selectedCustomer}
+                onChange={e => setSelectedCustomer(e.target.value)}
+              >
+                <option value="">בחר לקוח...</option>
+                {customers.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.שם_פרטי} {c.שם_משפחה}{c.טלפון ? ` — ${c.טלפון}` : ''}
+                  </option>
+                ))}
+              </Select>
+              <Link href="/customers/new" className="text-xs hover:underline" style={{ color: '#8B5E34' }}>
+                + צור לקוח חדש
+              </Link>
+            </div>
+          </Card>
+
+          {/* 2. Order details */}
+          <Card>
+            <SectionHeader number={2} title="פרטי הזמנה" />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="col-span-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isUrgent}
+                    onChange={e => setIsUrgent(e.target.checked)}
+                    className="w-4 h-4 rounded"
+                    style={{ accentColor: '#C0392B' }}
+                  />
+                  <span className="text-sm font-medium text-red-600">הזמנה דחופה</span>
+                </label>
+              </div>
+              <Input
+                label="תאריך אספקה"
+                type="date"
+                value={deliveryDate}
+                onChange={e => setDeliveryDate(e.target.value)}
+              />
+              <Input
+                label="שעת אספקה"
+                type="time"
+                value={deliveryTime}
+                onChange={e => setDeliveryTime(e.target.value)}
+              />
+              <Select
+                label="סוג אספקה"
+                value={deliveryType}
+                onChange={e => setDeliveryType(e.target.value as 'משלוח' | 'איסוף עצמי')}
+              >
+                <option value="משלוח">משלוח</option>
+                <option value="איסוף עצמי">איסוף עצמי</option>
+              </Select>
+              <Select
+                label="מקור הזמנה"
+                value={orderSource}
+                onChange={e => setOrderSource(e.target.value)}
+              >
+                <option value="">—</option>
+                {['טלפון', 'WhatsApp', 'אינסטגרם', 'פייסבוק', 'אתר', 'הפניה', 'אחר'].map(s => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </Select>
+            </div>
+          </Card>
+
+          {/* 3. Delivery */}
+          {deliveryType === 'משלוח' && (
+            <Card>
+              <SectionHeader number={3} title="פרטי משלוח" />
+              <div className="grid grid-cols-2 gap-4">
+                <Input label="שם מקבל" value={recipientName} onChange={e => setRecipientName(e.target.value)} />
+                <Input label="טלפון מקבל" value={recipientPhone} onChange={e => setRecipientPhone(e.target.value)} />
+                <Input label="כתובת" value={recipientAddress} onChange={e => setRecipientAddress(e.target.value)} />
+                <Input label="עיר" value={recipientCity} onChange={e => setRecipientCity(e.target.value)} />
+                <div className="col-span-2">
+                  <Textarea
+                    label="הוראות משלוח"
+                    value={deliveryInstructions}
+                    onChange={e => setDeliveryInstructions(e.target.value)}
+                    rows={2}
+                  />
+                </div>
+                <Input
+                  label="דמי משלוח (₪)"
+                  type="number"
+                  value={deliveryFee}
+                  onChange={e => setDeliveryFee(Number(e.target.value))}
+                  min={0}
+                  step={0.01}
+                />
+              </div>
+            </Card>
+          )}
+
+          {/* 4. Products */}
+          <Card>
+            <CardHeader>
+              <SectionHeader number={deliveryType === 'משלוח' ? 4 : 3} title="מוצרים" />
+              <Button type="button" variant="outline" size="sm" onClick={addProductItem}>
+                + הוסף מוצר
+              </Button>
+            </CardHeader>
+            {orderItems.length === 0 ? (
+              <p className="text-xs text-center py-4" style={{ color: '#9B7A5A' }}>
+                לחץ &quot;+ הוסף מוצר&quot; להוספת פריט
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {orderItems.map((item, idx) => (
+                  <div
+                    key={idx}
+                    className="grid grid-cols-12 gap-2 items-end p-3 rounded-xl"
+                    style={{ backgroundColor: '#FAF7F0' }}
+                  >
+                    <div className="col-span-4">
+                      <Select
+                        label="מוצר"
+                        value={item.מוצר_id}
+                        onChange={e => updateProductItem(idx, 'מוצר_id', e.target.value)}
+                      >
+                        <option value="">בחר...</option>
+                        {products.filter(p => p.סוג_מוצר === 'מוצר רגיל').map(p => (
+                          <option key={p.id} value={p.id}>{p.שם_מוצר}</option>
+                        ))}
+                      </Select>
+                    </div>
+                    <div className="col-span-2">
+                      <Input
+                        label="כמות"
+                        type="number"
+                        value={item.כמות}
+                        onChange={e => updateProductItem(idx, 'כמות', Number(e.target.value))}
+                        min={1}
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <Input
+                        label="מחיר"
+                        type="number"
+                        value={item.מחיר_ליחידה}
+                        onChange={e => updateProductItem(idx, 'מחיר_ליחידה', Number(e.target.value))}
+                        min={0}
+                        step={0.01}
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <Input label="סה״כ" value={`₪${item.סהכ.toFixed(2)}`} readOnly />
+                    </div>
+                    <div className="col-span-1">
+                      <Input
+                        label="הערות"
+                        value={item.הערות_לשורה}
+                        onChange={e => updateProductItem(idx, 'הערות_לשורה', e.target.value)}
+                      />
+                    </div>
+                    <div className="col-span-1 flex items-end justify-center pb-1">
+                      <button
+                        type="button"
+                        onClick={() => removeProductItem(idx)}
+                        className="w-6 h-6 rounded-full flex items-center justify-center text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors text-lg leading-none"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+
+          {/* 5. Packages */}
+          <Card>
+            <CardHeader>
+              <SectionHeader number={deliveryType === 'משלוח' ? 5 : 4} title="מארזי פטיפורים" />
+              <Button type="button" variant="outline" size="sm" onClick={addPackageItem}>
+                + הוסף מארז
+              </Button>
+            </CardHeader>
+            {packageItems.length === 0 ? (
+              <p className="text-xs text-center py-4" style={{ color: '#9B7A5A' }}>
+                לחץ &quot;+ הוסף מארז&quot; להוספת מארז פטיפורים
+              </p>
+            ) : (
+              <div className="space-y-4">
+                {packageItems.map((pkg, pkgIdx) => (
+                  <div
+                    key={pkgIdx}
+                    className="p-4 rounded-xl border"
+                    style={{ borderColor: '#DDD0BC', backgroundColor: '#FAF7F0' }}
+                  >
+                    <div className="grid grid-cols-4 gap-3 mb-3">
+                      <Input
+                        label="שם מארז"
+                        value={pkg.שם_מארז}
+                        onChange={e => updatePackageItem(pkgIdx, 'שם_מארז', e.target.value)}
+                      />
+                      <Select
+                        label="גודל מארז"
+                        value={String(pkg.גודל_מארז || '')}
+                        onChange={e => updatePackageItem(pkgIdx, 'גודל_מארז', Number(e.target.value))}
+                      >
+                        <option value="">בחר...</option>
+                        {[4, 6, 12, 20, 22, 24, 30, 36].map(s => (
+                          <option key={s} value={s}>{s} יח׳</option>
+                        ))}
+                      </Select>
+                      <Input
+                        label="כמות"
+                        type="number"
+                        value={pkg.כמות}
+                        onChange={e => updatePackageItem(pkgIdx, 'כמות', Number(e.target.value))}
+                        min={1}
+                      />
+                      <Input
+                        label="מחיר ליחידה"
+                        type="number"
+                        value={pkg.מחיר_ליחידה}
+                        onChange={e => updatePackageItem(pkgIdx, 'מחיר_ליחידה', Number(e.target.value))}
+                        min={0}
+                        step={0.01}
+                      />
+                    </div>
+
+                    {/* Petit four selector */}
+                    <div className="border-t pt-3" style={{ borderColor: '#DDD0BC' }}>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-medium" style={{ color: '#4A2F1B' }}>
+                          בחירת פטיפורים
+                        </span>
+                        <Select
+                          className="w-44 text-xs"
+                          value=""
+                          onChange={e => { if (e.target.value) addPetitFour(pkgIdx, e.target.value); }}
+                        >
+                          <option value="">+ הוסף סוג פטיפור</option>
+                          {petitFourTypes.filter(pf => pf.פעיל).map(pf => (
+                            <option key={pf.id} value={pf.id}>{pf.שם_פטיפור}</option>
+                          ))}
+                        </Select>
+                      </div>
+                      {pkg.פטיפורים.length > 0 ? (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2">
+                          {pkg.פטיפורים.map((pf, pfIdx) => (
+                            <div
+                              key={pfIdx}
+                              className="flex items-center gap-2 p-2 bg-white rounded-lg border"
+                              style={{ borderColor: '#DDD0BC' }}
+                            >
+                              <span className="flex-1 text-xs font-medium truncate" style={{ color: '#2B1A10' }}>
+                                {pf.שם}
+                              </span>
+                              <input
+                                type="number"
+                                value={pf.כמות}
+                                onChange={e => updatePetitFourQty(pkgIdx, pfIdx, Number(e.target.value))}
+                                className="w-12 px-1.5 py-1 text-xs border rounded text-center focus:outline-none"
+                                style={{ borderColor: '#DDD0BC', color: '#2B1A10' }}
+                                min={1}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => removePetitFour(pkgIdx, pfIdx)}
+                                className="text-red-400 hover:text-red-600 text-base leading-none flex-shrink-0"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs" style={{ color: '#9B7A5A' }}>בחר סוגי פטיפורים למארז</p>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between mt-3">
+                      <span className="text-xs font-semibold" style={{ color: '#2B1A10' }}>
+                        סה״כ מארז: ₪{pkg.סהכ.toFixed(2)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setPackageItems(prev => prev.filter((_, i) => i !== pkgIdx))}
+                        className="text-xs text-red-500 hover:underline"
+                      >
+                        הסר מארז
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+
+          {/* 6. Greeting + notes */}
+          <Card>
+            <SectionHeader number={deliveryType === 'משלוח' ? 6 : 5} title="ברכה והערות" />
+            <div className="space-y-3">
+              <Textarea
+                label="טקסט ברכה"
+                value={greetingText}
+                onChange={e => setGreetingText(e.target.value)}
+                rows={2}
+                placeholder="כתוב את הברכה כאן..."
+              />
+              <Textarea
+                label="הערות להזמנה"
+                value={notes}
+                onChange={e => setNotes(e.target.value)}
+                rows={2}
+              />
+            </div>
+          </Card>
+
+          {/* 7. Payment */}
+          <Card>
+            <SectionHeader number={deliveryType === 'משלוח' ? 7 : 6} title="תשלום" />
+            <div className="grid grid-cols-3 gap-4">
+              <Select
+                label="אמצעי תשלום"
+                value={paymentMethod}
+                onChange={e => setPaymentMethod(e.target.value)}
+              >
+                {['מזומן', 'כרטיס אשראי', 'העברה בנקאית', 'bit', 'PayBox', 'PayPal', 'אחר'].map(m => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </Select>
+              <Select
+                label="סטטוס תשלום"
+                value={paymentStatus}
+                onChange={e => setPaymentStatus(e.target.value as 'ממתין' | 'שולם' | 'חלקי')}
+              >
+                <option value="ממתין">ממתין</option>
+                <option value="שולם">שולם</option>
+                <option value="חלקי">חלקי</option>
+              </Select>
+              <Input
+                label="הנחה (₪)"
+                type="number"
+                value={discount}
+                onChange={e => setDiscount(Number(e.target.value))}
+                min={0}
+                step={0.01}
+              />
+            </div>
+          </Card>
+        </div>
+
+        {/* Sticky summary sidebar */}
+        <div className="w-72 flex-shrink-0 hidden lg:block">
+          <div className="sticky top-6 space-y-4">
+            <div
+              className="rounded-2xl border overflow-hidden"
+              style={{ borderColor: '#EDE0CE', backgroundColor: '#FFFFFF' }}
+            >
+              <div
+                className="px-5 py-4 border-b"
+                style={{ backgroundColor: '#FAF7F0', borderColor: '#EDE0CE' }}
+              >
+                <h3 className="text-sm font-bold" style={{ color: '#2B1A10' }}>סיכום הזמנה</h3>
+              </div>
+              <div className="p-5 space-y-4">
+                {/* Customer */}
+                <div>
+                  <p className="text-xs mb-1" style={{ color: '#9B7A5A' }}>לקוח</p>
+                  <p className="text-sm font-medium" style={{ color: '#2B1A10' }}>
+                    {selectedCustomerData
+                      ? `${selectedCustomerData.שם_פרטי} ${selectedCustomerData.שם_משפחה}`
+                      : '—'
+                    }
+                  </p>
+                </div>
+
+                {/* Delivery */}
+                <div>
+                  <p className="text-xs mb-1" style={{ color: '#9B7A5A' }}>אספקה</p>
+                  <p className="text-sm font-medium" style={{ color: '#2B1A10' }}>
+                    {deliveryDate || '—'} {deliveryTime ? `· ${deliveryTime}` : ''}
+                  </p>
+                  <p className="text-xs mt-0.5" style={{ color: '#6B4A2D' }}>{deliveryType}</p>
+                </div>
+
+                {/* Items */}
+                <div>
+                  <p className="text-xs mb-1" style={{ color: '#9B7A5A' }}>פריטים</p>
+                  {orderItems.length === 0 && packageItems.length === 0 ? (
+                    <p className="text-xs" style={{ color: '#9B7A5A' }}>אין פריטים עדיין</p>
+                  ) : (
+                    <div className="space-y-1 text-xs" style={{ color: '#6B4A2D' }}>
+                      {orderItems.filter(i => i.שם_מוצר).map((i, idx) => (
+                        <div key={idx} className="flex justify-between">
+                          <span className="truncate">{i.שם_מוצר} ×{i.כמות}</span>
+                          <span className="mr-2 flex-shrink-0">₪{i.סהכ.toFixed(2)}</span>
+                        </div>
+                      ))}
+                      {packageItems.filter(p => p.שם_מארז).map((p, idx) => (
+                        <div key={idx} className="flex justify-between">
+                          <span className="truncate">{p.שם_מארז} ×{p.כמות}</span>
+                          <span className="mr-2 flex-shrink-0">₪{p.סהכ.toFixed(2)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Payment status */}
+                <div>
+                  <p className="text-xs mb-1" style={{ color: '#9B7A5A' }}>סטטוס תשלום</p>
+                  <StatusBadge status={paymentStatus} type="payment" />
+                </div>
+
+                <div className="border-t pt-4" style={{ borderColor: '#EDE0CE' }}>
+                  {discount > 0 && (
+                    <div className="flex justify-between text-xs mb-1" style={{ color: '#6B4A2D' }}>
+                      <span>הנחה</span>
+                      <span className="text-red-600">−₪{discount.toFixed(2)}</span>
+                    </div>
+                  )}
+                  {deliveryFee > 0 && (
+                    <div className="flex justify-between text-xs mb-1" style={{ color: '#6B4A2D' }}>
+                      <span>דמי משלוח</span>
+                      <span>₪{deliveryFee.toFixed(2)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm font-semibold" style={{ color: '#2B1A10' }}>סך הכל</span>
+                    <span className="text-xl font-bold" style={{ color: '#8B5E34' }}>
+                      ₪{total.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Action buttons */}
+            <div className="space-y-2">
+              <Button type="submit" loading={loading} className="w-full" size="lg">
+                צור הזמנה
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={() => router.back()}
+              >
+                ביטול
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Mobile bottom bar */}
+      <div
+        className="lg:hidden fixed bottom-0 left-0 right-0 border-t px-4 py-3 flex items-center justify-between z-20"
+        style={{ backgroundColor: '#FFFFFF', borderColor: '#EDE0CE' }}
+      >
+        <div>
+          <span className="text-xs" style={{ color: '#9B7A5A' }}>סך הכל</span>
+          <div className="text-lg font-bold" style={{ color: '#8B5E34' }}>₪{total.toFixed(2)}</div>
+        </div>
+        <div className="flex gap-2">
+          <Button type="button" variant="outline" onClick={() => router.back()}>ביטול</Button>
+          <Button type="submit" loading={loading}>צור הזמנה</Button>
+        </div>
+      </div>
+    </form>
+  );
+}

@@ -1,0 +1,97 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --brand-primary: #8B5E34;
+  --brand-secondary: #C7A46B;
+  --brand-light-gold: #E7D2A6;
+  --brand-dark-brown: #4A2F1B;
+  --brand-cream: #FAF7F0;
+  --brand-card: #FFFFFF;
+  --brand-text-primary: #2B1A10;
+  --brand-text-secondary: #6B4A2D;
+  --brand-success: #2E7D32;
+  --brand-warning: #F2A900;
+  --brand-danger: #C0392B;
+  --brand-info: #2563EB;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Ensure sidebar is always visible on desktop */
+@media (min-width: 768px) {
+  aside {
+    position: relative !important;
+    transform: none !important;
+  }
+}
+
+.hover\:bg-white\/8:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+html {
+  direction: rtl;
+}
+
+body {
+  background-color: var(--brand-cream);
+  color: var(--brand-text-primary);
+  font-family: 'Segoe UI', 'Arial Hebrew', 'Arial', sans-serif;
+  direction: rtl;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+::-webkit-scrollbar-thumb {
+  background: #C7A46B;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #8B5E34;
+}
+
+/* Table styles */
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+/* Input focus */
+input:focus, textarea:focus, select:focus {
+  outline: 2px solid var(--brand-secondary);
+  outline-offset: 0;
+}
+
+/* RTL helpers */
+.rtl-flip {
+  transform: scaleX(-1);
+}
+
+/* Loading shimmer */
+@keyframes shimmer {
+  0% { background-position: -1000px 0; }
+  100% { background-position: 1000px 0; }
+}
+
+.shimmer {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 1000px 100%;
+  animation: shimmer 2s infinite linear;
+}

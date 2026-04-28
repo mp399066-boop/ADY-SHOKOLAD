@@ -1,0 +1,15 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { createAdminClient } from '@/lib/supabase/server';
+
+export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+  const supabase = createAdminClient();
+  const body = await req.json();
+  const { data, error } = await supabase
+    .from('מלאי_חומרי_גלם')
+    .update(body)
+    .eq('id', params.id)
+    .select()
+    .single();
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ data });
+}
