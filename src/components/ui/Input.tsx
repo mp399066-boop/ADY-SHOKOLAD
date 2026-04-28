@@ -12,7 +12,7 @@ export function Input({ label, error, hint, className, id, required, ...props }:
   return (
     <div className="space-y-1">
       {label && (
-        <label htmlFor={inputId} className="block text-xs font-medium" style={{ color: '#4A2F1B' }}>
+        <label htmlFor={inputId} className="block text-xs font-medium" style={{ color: '#3A2010' }}>
           {label}
           {required && <span className="mr-0.5 text-red-500">*</span>}
         </label>
@@ -22,17 +22,17 @@ export function Input({ label, error, hint, className, id, required, ...props }:
         required={required}
         className={cn(
           'w-full px-3 py-2 text-sm rounded-xl border bg-white transition-all duration-200',
-          error ? 'border-red-300 focus:border-red-400' : 'border-[#E0D4C4] focus:border-[#C7A46B]',
+          error ? 'border-red-300 focus:border-red-400' : 'border-[#C8B89E] focus:border-[#B8955A]',
           'focus:outline-none focus:ring-2',
           error ? 'focus:ring-red-200' : 'focus:ring-amber-100',
-          'placeholder:text-[#BFB09A]',
+          'placeholder:text-[#B0A090]',
           className,
         )}
-        style={{ color: '#2B1A10' }}
+        style={{ color: '#1E120A' }}
         {...props}
       />
       {error && <p className="text-xs text-red-600">{error}</p>}
-      {hint && !error && <p className="text-xs" style={{ color: '#9B7A5A' }}>{hint}</p>}
+      {hint && !error && <p className="text-xs" style={{ color: '#7A5840' }}>{hint}</p>}
     </div>
   );
 }
@@ -47,7 +47,7 @@ export function Textarea({ label, error, className, id, required, ...props }: Te
   return (
     <div className="space-y-1">
       {label && (
-        <label htmlFor={inputId} className="block text-xs font-medium" style={{ color: '#4A2F1B' }}>
+        <label htmlFor={inputId} className="block text-xs font-medium" style={{ color: '#3A2010' }}>
           {label}
           {required && <span className="mr-0.5 text-red-500">*</span>}
         </label>
@@ -57,13 +57,13 @@ export function Textarea({ label, error, className, id, required, ...props }: Te
         required={required}
         className={cn(
           'w-full px-3 py-2 text-sm rounded-xl border bg-white transition-all duration-200 resize-y',
-          error ? 'border-red-400 focus:border-red-400' : 'border-[#DDD0BC] focus:border-[#C7A46B]',
+          error ? 'border-red-400 focus:border-red-400' : 'border-[#C8B89E] focus:border-[#B8955A]',
           'focus:outline-none focus:ring-2',
           error ? 'focus:ring-red-200' : 'focus:ring-amber-100',
           'placeholder:text-[#BFB09A]',
           className,
         )}
-        style={{ color: '#2B1A10' }}
+        style={{ color: '#1E120A' }}
         {...props}
       />
       {error && <p className="text-xs text-red-600">{error}</p>}
@@ -81,7 +81,7 @@ export function Select({ label, error, className, id, required, children, ...pro
   return (
     <div className="space-y-1">
       {label && (
-        <label htmlFor={inputId} className="block text-xs font-medium" style={{ color: '#4A2F1B' }}>
+        <label htmlFor={inputId} className="block text-xs font-medium" style={{ color: '#3A2010' }}>
           {label}
           {required && <span className="mr-0.5 text-red-500">*</span>}
         </label>
@@ -91,12 +91,12 @@ export function Select({ label, error, className, id, required, children, ...pro
         required={required}
         className={cn(
           'w-full px-3 py-2 text-sm rounded-xl border bg-white transition-all duration-200',
-          error ? 'border-red-300 focus:border-red-400' : 'border-[#E0D4C4] focus:border-[#C7A46B]',
+          error ? 'border-red-300 focus:border-red-400' : 'border-[#C8B89E] focus:border-[#B8955A]',
           'focus:outline-none focus:ring-2',
           error ? 'focus:ring-red-200' : 'focus:ring-amber-100',
           className,
         )}
-        style={{ color: '#2B1A10' }}
+        style={{ color: '#1E120A' }}
         {...props}
       >
         {children}

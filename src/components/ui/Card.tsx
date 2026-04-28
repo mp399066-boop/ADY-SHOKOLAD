@@ -11,8 +11,8 @@ export function Card({ children, className, style }: CardProps) {
     <div
       className={cn('bg-white rounded-2xl p-5 premium-card', className)}
       style={{
-        border: '1px solid rgba(0,0,0,0.05)',
-        boxShadow: '0 2px 16px rgba(0,0,0,0.04), 0 0 0 1px rgba(0,0,0,0.02)',
+        border: '1px solid rgba(0,0,0,0.09)',
+        boxShadow: '0 2px 12px rgba(0,0,0,0.07), 0 0 0 1px rgba(0,0,0,0.04)',
         ...style,
       }}
     >
@@ -45,7 +45,7 @@ export function CardTitle({
   return (
     <h2
       className={cn('text-sm font-semibold', className)}
-      style={{ color: '#2B1A10', letterSpacing: '0.3px' }}
+      style={{ color: '#1E120A', letterSpacing: '0.3px' }}
     >
       {children}
     </h2>
