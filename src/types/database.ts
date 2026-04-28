@@ -266,7 +266,7 @@ export interface Production {
 export interface Delivery {
   id: string;
   הזמנה_id: string;
-  סטטוס_משלוח: 'ממתין' | 'מוכן למשלוח' | 'יצא למשלוח' | 'נמסר';
+  סטטוס_משלוח: 'ממתין' | 'בהכנה' | 'מוכן למשלוח' | 'יצא למשלוח' | 'בדרך' | 'נמסר' | 'נכשל';
   שם_שליח: string | null;
   טלפון_שליח: string | null;
   כתובת: string | null;

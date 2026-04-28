@@ -214,10 +214,21 @@ export default function CustomerDetailPage() {
   const handleSave = async () => {
     setSaving(true);
     try {
+      const payload: Partial<Customer> = {
+        שם_פרטי: editForm.שם_פרטי,
+        שם_משפחה: editForm.שם_משפחה,
+        טלפון: editForm.טלפון,
+        אימייל: editForm.אימייל,
+        סוג_לקוח: editForm.סוג_לקוח,
+        סטטוס_לקוח: editForm.סטטוס_לקוח,
+        מקור_הגעה: editForm.מקור_הגעה,
+        אחוז_הנחה: editForm.אחוז_הנחה,
+        הערות: editForm.הערות,
+      };
       const res = await fetch(`/api/customers/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editForm),
+        body: JSON.stringify(payload),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);

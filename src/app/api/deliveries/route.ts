@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
 
   let query = supabase
     .from('משלוחים')
-    .select('*, הזמנות(מספר_הזמנה, שם_מקבל, תאריך_אספקה, לקוחות(שם_פרטי, שם_משפחה))')
+    .select('*, הזמנות(מספר_הזמנה, שם_מקבל, לקוח_id, תאריך_אספקה, לקוחות(שם_פרטי, שם_משפחה))')
     .order('תאריך_משלוח');
 
   if (date) query = query.eq('תאריך_משלוח', date);

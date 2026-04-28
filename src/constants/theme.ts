@@ -15,38 +15,41 @@ export const BRAND_COLORS = {
 } as const;
 
 export const STATUS_COLORS: Record<string, string> = {
-  חדשה: 'bg-sky-100 text-sky-800',
-  בהכנה: 'bg-amber-100 text-amber-800',
-  'מוכנה למשלוח': 'bg-violet-100 text-violet-800',
-  נשלחה: 'bg-indigo-100 text-indigo-800',
-  'הושלמה בהצלחה': 'bg-emerald-100 text-emerald-800',
-  בוטלה: 'bg-rose-100 text-rose-700',
+  חדשה:               'bg-sky-100 text-sky-800 ring-1 ring-sky-200',
+  בהכנה:              'bg-amber-100 text-amber-800 ring-1 ring-amber-200',
+  'מוכנה למשלוח':     'bg-violet-100 text-violet-800 ring-1 ring-violet-200',
+  נשלחה:              'bg-indigo-100 text-indigo-800 ring-1 ring-indigo-200',
+  'הושלמה בהצלחה':    'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200',
+  בוטלה:              'bg-rose-100 text-rose-700 ring-1 ring-rose-200',
 };
 
 export const PAYMENT_STATUS_COLORS: Record<string, string> = {
-  ממתין: 'bg-amber-100 text-amber-800',
-  שולם: 'bg-emerald-100 text-emerald-800',
-  חלקי: 'bg-orange-100 text-orange-800',
-  בוטל: 'bg-rose-100 text-rose-700',
+  ממתין: 'bg-amber-100 text-amber-800 ring-1 ring-amber-200',
+  שולם:  'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200',
+  חלקי:  'bg-orange-100 text-orange-800 ring-1 ring-orange-200',
+  בוטל:  'bg-rose-100 text-rose-700 ring-1 ring-rose-200',
 };
 
 export const INVENTORY_STATUS_COLORS: Record<string, string> = {
-  תקין: 'bg-emerald-100 text-emerald-800',
-  'מלאי נמוך': 'bg-amber-100 text-amber-800',
-  קריטי: 'bg-orange-100 text-orange-800',
-  'אזל מהמלאי': 'bg-rose-100 text-rose-700',
+  תקין:          'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200',
+  'מלאי נמוך':   'bg-amber-100 text-amber-800 ring-1 ring-amber-200',
+  קריטי:         'bg-orange-100 text-orange-800 ring-1 ring-orange-200',
+  'אזל מהמלאי':  'bg-rose-100 text-rose-700 ring-1 ring-rose-200',
 };
 
 export const DELIVERY_STATUS_COLORS: Record<string, string> = {
-  ממתין: 'bg-stone-200 text-stone-700',
-  'מוכן למשלוח': 'bg-violet-100 text-violet-800',
-  'יצא למשלוח': 'bg-sky-100 text-sky-800',
-  נמסר: 'bg-emerald-100 text-emerald-800',
+  ממתין:           'bg-stone-100 text-stone-700 ring-1 ring-stone-200',
+  בהכנה:           'bg-amber-100 text-amber-800 ring-1 ring-amber-200',
+  'מוכן למשלוח':   'bg-violet-100 text-violet-800 ring-1 ring-violet-200',
+  'יצא למשלוח':    'bg-sky-100 text-sky-800 ring-1 ring-sky-200',
+  בדרך:            'bg-blue-100 text-blue-800 ring-1 ring-blue-200',
+  נמסר:            'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200',
+  נכשל:            'bg-rose-100 text-rose-700 ring-1 ring-rose-200',
 };
 
 export const CUSTOMER_TYPE_COLORS: Record<string, string> = {
-  פרטי: 'bg-stone-200 text-stone-700',
-  חוזר: 'bg-sky-100 text-sky-800',
-  VIP: 'bg-amber-100 text-amber-800',
-  'מעצב אירועים': 'bg-violet-100 text-violet-800',
+  פרטי:            'bg-stone-100 text-stone-700 ring-1 ring-stone-200',
+  חוזר:            'bg-sky-100 text-sky-800 ring-1 ring-sky-200',
+  VIP:             'bg-amber-100 text-amber-800 ring-1 ring-amber-200',
+  'מעצב אירועים':  'bg-violet-100 text-violet-800 ring-1 ring-violet-200',
 };

@@ -46,7 +46,7 @@ function DeliveriesContent() {
     exportToCsv('משלוחים.csv',
       ['מספר הזמנה', 'לקוח', 'כתובת', 'עיר', 'תאריך משלוח', 'סטטוס'],
       deliveries.map(d => {
-        const order = (d as Delivery & { הזמנות?: { מספר_הזמנה: string; שם_מקבל?: string; לקוחות?: { שם_פרטי: string; שם_משפחה: string } } }).הזמנות;
+        const order = (d as Delivery & { הזמנות?: { מספר_הזמנה: string; שם_מקבל?: string; לקוח_id?: string; לקוחות?: { שם_פרטי: string; שם_משפחה: string } } }).הזמנות;
         const customerName = order?.לקוחות
           ? `${order.לקוחות.שם_פרטי} ${order.לקוחות.שם_משפחה}`
           : order?.שם_מקבל || '';
@@ -61,7 +61,7 @@ function DeliveriesContent() {
         <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-44" label="" />
         <Select value={status} onChange={e => setStatus(e.target.value)} className="w-44">
           <option value="">כל הסטטוסים</option>
-          {['ממתין', 'מוכן למשלוח', 'יצא למשלוח', 'נמסר'].map(s => <option key={s} value={s}>{s}</option>)}
+          {['ממתין', 'בהכנה', 'מוכן למשלוח', 'יצא למשלוח', 'בדרך', 'נמסר', 'נכשל'].map(s => <option key={s} value={s}>{s}</option>)}
         </Select>
         <span className="text-sm mr-auto" style={{ color: '#6B4A2D' }}>{deliveries.length} משלוחים</span>
         <button
@@ -79,50 +79,95 @@ function DeliveriesContent() {
       ) : (
         <div className="space-y-3">
           {deliveries.map(d => {
-            const order = (d as Delivery & { הזמנות?: { מספר_הזמנה: string; שם_מקבל: string; טלפון_מקבל: string; לקוחות?: { שם_פרטי: string; שם_משפחה: string } } }).הזמנות;
+            type OrderJoin = { מספר_הזמנה: string; שם_מקבל: string; לקוח_id?: string; לקוחות?: { שם_פרטי: string; שם_משפחה: string } };
+            const order = (d as Delivery & { הזמנות?: OrderJoin }).הזמנות;
+            const customerName = order?.לקוחות
+              ? `${order.לקוחות.שם_פרטי} ${order.לקוחות.שם_משפחה}`
+              : order?.שם_מקבל || null;
             return (
               <Card key={d.id}>
-                <div className="flex items-start justify-between">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-3">
-                      <span className="font-mono text-xs font-semibold" style={{ color: '#8B5E34' }}>
-                        {order?.מספר_הזמנה || '-'}
-                      </span>
+                <div className="flex items-start justify-between gap-4">
+                  {/* main info */}
+                  <div className="flex-1 min-w-0 space-y-1.5">
+                    {/* order + status */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Link
+                        href={`/orders/${d.הזמנה_id}`}
+                        className="font-mono text-xs font-semibold hover:underline"
+                        style={{ color: '#7C5230' }}
+                      >
+                        {order?.מספר_הזמנה || `#${d.הזמנה_id?.slice(0, 8)}`}
+                      </Link>
                       <StatusBadge status={d.סטטוס_משלוח} type="delivery" />
+                      {d.תאריך_משלוח && (
+                        <span className="text-xs" style={{ color: '#7A5840' }}>
+                          {d.תאריך_משלוח}{d.שעת_משלוח && ` · ${d.שעת_משלוח}`}
+                        </span>
+                      )}
                     </div>
-                    <div className="text-sm font-medium" style={{ color: '#2B1A10' }}>
-                      {order?.לקוחות ? `${order.לקוחות.שם_פרטי} ${order.לקוחות.שם_משפחה}` : order?.שם_מקבל || '-'}
+
+                    {/* customer */}
+                    <div className="text-sm font-medium">
+                      {customerName ? (
+                        order?.לקוח_id ? (
+                          <Link href={`/customers/${order.לקוח_id}`} className="hover:underline" style={{ color: '#1E120A' }}>
+                            {customerName}
+                          </Link>
+                        ) : (
+                          <span style={{ color: '#1E120A' }}>{customerName}</span>
+                        )
+                      ) : (
+                        <span style={{ color: '#9B7A5A' }}>לא משויך</span>
+                      )}
                     </div>
-                    <div className="text-xs" style={{ color: '#6B4A2D' }}>
-                      {d.כתובת && <span>{d.כתובת}, </span>}
-                      {d.עיר && <span>{d.עיר}</span>}
-                      {d.שעת_משלוח && <span> · {d.שעת_משלוח}</span>}
+
+                    {/* address */}
+                    {(d.כתובת || d.עיר) && (
+                      <div className="text-xs" style={{ color: '#6B4A2D' }}>
+                        {[d.כתובת, d.עיר].filter(Boolean).join(', ')}
+                      </div>
+                    )}
+
+                    {/* courier */}
+                    <div className="text-xs">
+                      {d.שם_שליח ? (
+                        <span style={{ color: '#6B4A2D' }}>
+                          שליח: <span className="font-medium" style={{ color: '#1E120A' }}>{d.שם_שליח}</span>
+                          {d.טלפון_שליח && (
+                            <a href={`tel:${d.טלפון_שליח}`} className="mr-2 hover:underline" dir="ltr" style={{ color: '#7C5230' }}>
+                              {d.טלפון_שליח}
+                            </a>
+                          )}
+                        </span>
+                      ) : (
+                        <span style={{ color: '#B0A090' }}>שליח: לא משויך</span>
+                      )}
                     </div>
+
                     {d.הוראות_משלוח && (
-                      <div className="text-xs p-2 rounded mt-1" style={{ backgroundColor: '#FAF7F0', color: '#6B4A2D' }}>
+                      <div className="text-xs p-2 rounded" style={{ backgroundColor: '#FAF7F0', color: '#6B4A2D' }}>
                         {d.הוראות_משלוח}
                       </div>
                     )}
                   </div>
-                  <div className="flex flex-col gap-1 mr-4">
-                    {(['ממתין', 'מוכן למשלוח', 'יצא למשלוח', 'נמסר'] as const).map(s => (
+
+                  {/* status buttons */}
+                  <div className="flex flex-col gap-1 flex-shrink-0">
+                    {(['ממתין', 'בהכנה', 'יצא למשלוח', 'בדרך', 'נמסר', 'נכשל'] as Delivery['סטטוס_משלוח'][]).map(s => (
                       <button
                         key={s}
                         onClick={() => updateDeliveryStatus(d.id, s)}
                         disabled={d.סטטוס_משלוח === s}
-                        className="text-xs px-2 py-1 rounded border transition-all"
+                        className="text-xs px-2.5 py-1 rounded-lg border transition-all whitespace-nowrap"
                         style={
                           d.סטטוס_משלוח === s
-                            ? { backgroundColor: '#8B5E34', color: '#FFFFFF', borderColor: '#8B5E34' }
-                            : { backgroundColor: '#FFFFFF', color: '#6B4A2D', borderColor: '#E7D2A6' }
+                            ? { backgroundColor: '#7C5230', color: '#FFFFFF', borderColor: '#7C5230' }
+                            : { backgroundColor: '#FFFFFF', color: '#5C3D22', borderColor: '#D4C4AE' }
                         }
                       >
                         {s}
                       </button>
                     ))}
-                    <Link href={`/orders/${d.הזמנה_id}`} className="text-xs text-center mt-1 hover:underline" style={{ color: '#8B5E34' }}>
-                      הזמנה ↗
-                    </Link>
                   </div>
                 </div>
               </Card>

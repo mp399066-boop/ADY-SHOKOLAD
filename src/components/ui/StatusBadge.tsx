@@ -26,7 +26,7 @@ export function StatusBadge({ status, type = 'order' }: StatusBadgeProps) {
   return (
     <span
       className={cn(
-        'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
+        'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap',
         colors
       )}
     >
@@ -37,7 +37,7 @@ export function StatusBadge({ status, type = 'order' }: StatusBadgeProps) {
 
 export function UrgentBadge() {
   return (
-    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-100 text-rose-700">
+    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-100 text-rose-700 ring-1 ring-rose-200">
       דחוף
     </span>
   );
