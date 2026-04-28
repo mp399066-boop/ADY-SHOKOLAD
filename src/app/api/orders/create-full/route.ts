@@ -181,7 +181,22 @@ export async function POST(req: NextRequest) {
   const emailCustomer = (fullOrder as Record<string, unknown>)?.['לקוחות'] as Record<string, string> | null;
   const emailTo = emailCustomer?.['אימייל'];
   const emailName = emailCustomer ? `${emailCustomer['שם_פרטי'] || ''} ${emailCustomer['שם_משפחה'] || ''}`.trim() : '';
-  if (emailTo) void sendOrderEmail(emailTo, emailName).catch(() => undefined);
+
+  console.log('[create-full] email — to:', emailTo || 'NO EMAIL', '| name:', emailName);
+
+  if (emailTo) {
+    void (async () => {
+      try {
+        console.log('[create-full] calling sendOrderEmail...');
+        await sendOrderEmail(emailTo, emailName);
+        console.log('[create-full] sendOrderEmail completed successfully');
+      } catch (err) {
+        console.error('[create-full] sendOrderEmail failed:', err);
+      }
+    })();
+  } else {
+    console.log('[create-full] skipping email — customer has no email address');
+  }
 
   return NextResponse.json({ data: { ...fullOrder, מוצרים_בהזמנה: fullItems || [] } }, { status: 201 });
 }
