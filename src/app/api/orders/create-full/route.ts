@@ -74,25 +74,54 @@ export async function POST(req: NextRequest) {
 
   if (orderError) return NextResponse.json({ error: `יצירת הזמנה נכשלה: ${orderError.message}` }, { status: 500 });
 
-  // 4. Create regular product lines
-  for (const item of מוצרים) {
+  // 4. Validate product IDs against מוצרים_למכירה before inserting lines
+  const incomingProductIds = (מוצרים as Record<string, unknown>[])
+    .map(i => i.מוצר_id as string)
+    .filter(Boolean);
+
+  console.log('[create-full] product_ids received:', incomingProductIds);
+
+  let validProductIds = new Set<string>();
+  if (incomingProductIds.length > 0) {
+    const { data: existingProds } = await supabase
+      .from('מוצרים_למכירה')
+      .select('id')
+      .in('id', incomingProductIds);
+    validProductIds = new Set((existingProds || []).map((p: { id: string }) => p.id));
+    console.log('[create-full] valid product_ids:', Array.from(validProductIds));
+    for (const id of incomingProductIds.filter(id => !validProductIds.has(id))) {
+      console.error('[create-full] product_id not found in מוצרים_למכירה, skipping:', id);
+    }
+  }
+
+  const validProducts = (מוצרים as Record<string, unknown>[]).filter(
+    i => !i.מוצר_id || validProductIds.has(i.מוצר_id as string),
+  );
+
+  if (מוצרים.length > 0 && validProducts.length === 0) {
+    return NextResponse.json({ error: 'לא נמצאו מוצרים תקינים להזמנה' }, { status: 400 });
+  }
+
+  // 5. Create regular product lines (validated only)
+  for (const item of validProducts) {
     const { error: itemError } = await supabase.from('מוצרים_בהזמנה').insert({
       הזמנה_id: order!.id,
-      מוצר_id: item.מוצר_id || null,
+      מוצר_id: (item.מוצר_id as string) || null,
       סוג_שורה: 'מוצר',
-      כמות: item.כמות || 1,
-      מחיר_ליחידה: item.מחיר_ליחידה || 0,
-      סהכ: (item.כמות || 1) * (item.מחיר_ליחידה || 0),
-      הערות_לשורה: item.הערות_לשורה || null,
+      כמות: (item.כמות as number) || 1,
+      מחיר_ליחידה: (item.מחיר_ליחידה as number) || 0,
+      סהכ: ((item.כמות as number) || 1) * ((item.מחיר_ליחידה as number) || 0),
+      הערות_לשורה: (item.הערות_לשורה as string) || null,
     });
     if (itemError) return NextResponse.json({ error: `יצירת פריט נכשלה: ${itemError.message}` }, { status: 500 });
   }
 
-  // 5. Create package lines + petit-four selections
+  // 6. Create package lines + petit-four selections
   for (const pkg of מארזי_פטיפורים) {
+    // מוצר_id for package rows references מארזים, not מוצרים_למכירה — keep null to avoid FK violation
     const { data: pkgRow, error: pkgError } = await supabase.from('מוצרים_בהזמנה').insert({
       הזמנה_id: order!.id,
-      מוצר_id: pkg.מוצר_id || null,
+      מוצר_id: null,
       סוג_שורה: 'מארז',
       גודל_מארז: pkg.גודל_מארז || null,
       כמות: pkg.כמות || 1,
@@ -115,7 +144,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 6. Create delivery record
+  // 7. Create delivery record
   if (משלוח) {
     await supabase.from('משלוחים').insert({
       הזמנה_id: order!.id,
@@ -126,7 +155,7 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // 7. Create payment record
+  // 8. Create payment record
   if (תשלום) {
     await supabase.from('תשלומים').insert({
       הזמנה_id: order!.id,
