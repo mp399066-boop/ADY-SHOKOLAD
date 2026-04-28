@@ -211,6 +211,19 @@ export default function CustomerDetailPage() {
       .finally(() => setLoading(false));
   }, [id]);
 
+  const handleDelete = async () => {
+    if (!window.confirm('האם למחוק את הלקוח לצמיתות?')) return;
+    try {
+      const res = await fetch(`/api/customers/${id}`, { method: 'DELETE' });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error);
+      toast.success('הלקוח נמחק');
+      router.push('/customers');
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'שגיאה במחיקה');
+    }
+  };
+
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -392,6 +405,15 @@ export default function CustomerDetailPage() {
                   הזמנה חדשה
                 </button>
               </Link>
+              {customer.הזמנות.length === 0 && (
+                <button
+                  onClick={handleDelete}
+                  className="h-9 px-3 rounded-xl flex items-center gap-1.5 text-xs font-medium border transition-all hover:bg-red-50"
+                  style={{ borderColor: '#FECACA', color: '#DC2626' }}
+                >
+                  מחק לקוח
+                </button>
+              )}
             </div>
           </div>
 

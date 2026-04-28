@@ -58,9 +58,19 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const supabase = createAdminClient();
   const body = await req.json();
 
+  // Fetch current status BEFORE update for idempotency check
+  let prevStatus: string | null = null;
+  if (body.סטטוס_הזמנה === 'בהכנה') {
+    const { data: cur } = await supabase
+      .from('הזמנות')
+      .select('סטטוס_הזמנה')
+      .eq('id', params.id)
+      .single();
+    prevStatus = cur?.סטטוס_הזמנה ?? null;
+  }
+
   const updateData: Record<string, unknown> = { ...body, תאריך_עדכון: new Date().toISOString() };
 
-  // Auto-archive on completion
   if (body.סטטוס_הזמנה === 'הושלמה בהצלחה') {
     updateData.ארכיון = true;
   }
@@ -74,8 +84,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // Deduct product inventory when moving to "בהכנה"
-  if (body.סטטוס_הזמנה === 'בהכנה') {
+  // Deduct product inventory only on FIRST transition from "חדשה" → "בהכנה"
+  if (body.סטטוס_הזמנה === 'בהכנה' && prevStatus === 'חדשה') {
     const { data: items } = await supabase
       .from('מוצרים_בהזמנה')
       .select('מוצר_id, כמות')

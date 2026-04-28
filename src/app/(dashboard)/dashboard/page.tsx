@@ -96,17 +96,9 @@ export default function DashboardPage() {
       const s: DashboardStats = dashData.data;
       const orders: Order[] = ordersData.data || [];
 
-      console.log('[Dashboard] הזמנות שנטענו (היום):', orders.length);
-      console.log('[Dashboard] הזמנות להיום (stats):', s.ordersToday);
-      console.log('[Dashboard] הזמנות למחר:', s.ordersTomorrow);
-      console.log('[Dashboard] הזמנות דחופות:', s.urgentOrders);
-      console.log('[Dashboard] משלוחים היום:', s.deliveriesToday);
-      console.log('[Dashboard] מלאי נמוך:', s.lowInventory);
-
       setStats(s);
       setTodayOrders(orders);
     }).catch(err => {
-      console.error('[Dashboard] שגיאה בטעינת נתוני הדשבורד:', err);
       setError('שגיאה בטעינת נתוני הדשבורד');
     }).finally(() => setLoading(false));
   }, []);

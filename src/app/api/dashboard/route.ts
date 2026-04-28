@@ -13,8 +13,6 @@ export async function GET() {
       ? (() => { try { return new URL(process.env.NEXT_PUBLIC_SUPABASE_URL!).hostname; } catch { return 'invalid-url'; } })()
       : 'MISSING';
 
-    console.log('[dashboard] env check:', { hasUrl, hasAnonKey, hasServiceKey, urlHostname });
-
     if (!hasUrl || !hasServiceKey) {
       return NextResponse.json(
         {
@@ -57,13 +55,7 @@ export async function GET() {
 
     const firstError = e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || e10;
     if (firstError) {
-      const msg =
-        firstError.message ||
-        firstError.details ||
-        firstError.hint ||
-        JSON.stringify(firstError) ||
-        'Unknown dashboard error';
-      console.error('[dashboard] supabase error:', firstError);
+      const msg = firstError.message || firstError.details || firstError.hint || 'שגיאה בטעינת הנתונים';
       return NextResponse.json({ error: msg }, { status: 500 });
     }
 
@@ -87,7 +79,6 @@ export async function GET() {
       },
     });
   } catch (err: any) {
-    console.error('[dashboard] unexpected error:', err?.message ?? err);
     return NextResponse.json({ error: err?.message ?? 'שגיאת שרת' }, { status: 500 });
   }
 }

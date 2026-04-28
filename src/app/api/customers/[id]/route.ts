@@ -48,3 +48,23 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ data });
 }
+
+export async function DELETE(_: NextRequest, { params }: { params: { id: string } }) {
+  const supabase = createAdminClient();
+
+  const { count } = await supabase
+    .from('הזמנות')
+    .select('*', { count: 'exact', head: true })
+    .eq('לקוח_id', params.id);
+
+  if ((count ?? 0) > 0) {
+    return NextResponse.json(
+      { error: 'לא ניתן למחוק לקוח שיש לו הזמנות מקושרות' },
+      { status: 409 },
+    );
+  }
+
+  const { error } = await supabase.from('לקוחות').delete().eq('id', params.id);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ success: true });
+}

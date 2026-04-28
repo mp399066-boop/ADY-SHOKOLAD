@@ -6,10 +6,9 @@ import { createAdminClient } from '@/lib/supabase/server';
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const supabase = createAdminClient();
   const body = await req.json();
-  const { תאריך_תפוגה: _ignored, ...safeBody } = body;
   const { data, error } = await supabase
     .from('מלאי_חומרי_גלם')
-    .update(safeBody)
+    .update(body)
     .eq('id', params.id)
     .select()
     .single();

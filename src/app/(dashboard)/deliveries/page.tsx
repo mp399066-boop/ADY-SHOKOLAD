@@ -3,15 +3,27 @@
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Card } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { PageLoading } from '@/components/ui/LoadingSpinner';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { Input, Select } from '@/components/ui/Input';
+import { Input, Select, Textarea } from '@/components/ui/Input';
+import { Button } from '@/components/ui/Button';
+import { Modal } from '@/components/ui/Modal';
 import type { Delivery } from '@/types/database';
 import Link from 'next/link';
 import { exportToCsv } from '@/lib/exportCsv';
 import { IconExport } from '@/components/icons';
+import toast from 'react-hot-toast';
+
+const VALID_STATUSES: Delivery['סטטוס_משלוח'][] = [
+  'ממתין', 'בהכנה', 'מוכן למשלוח', 'יצא למשלוח', 'בדרך', 'נמסר', 'נכשל',
+];
+
+interface PlacedForm {
+  שעת_הנחה: string;
+  מקום_הנחה: string;
+  הערה: string;
+}
 
 function DeliveriesContent() {
   const searchParams = useSearchParams();
@@ -21,6 +33,10 @@ function DeliveriesContent() {
   const [loading, setLoading] = useState(true);
   const [date, setDate] = useState(defaultDate);
   const [status, setStatus] = useState('');
+
+  const [placedDelivery, setPlacedDelivery] = useState<Delivery | null>(null);
+  const [placedForm, setPlacedForm] = useState<PlacedForm>({ שעת_הנחה: '', מקום_הנחה: '', הערה: '' });
+  const [savingPlaced, setSavingPlaced] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -34,12 +50,62 @@ function DeliveriesContent() {
   }, [date, status]);
 
   const updateDeliveryStatus = async (id: string, newStatus: string) => {
-    await fetch(`/api/deliveries/${id}`, {
+    const res = await fetch(`/api/deliveries/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ סטטוס_משלוח: newStatus }),
     });
-    setDeliveries(prev => prev.map(d => d.id === id ? { ...d, סטטוס_משלוח: newStatus as Delivery['סטטוס_משלוח'] } : d));
+    if (!res.ok) {
+      const json = await res.json();
+      toast.error(json.error || 'שגיאה בעדכון סטטוס');
+      return;
+    }
+    setDeliveries(prev => prev.map(d =>
+      d.id === id ? { ...d, סטטוס_משלוח: newStatus as Delivery['סטטוס_משלוח'] } : d,
+    ));
+  };
+
+  const openPlacedModal = (delivery: Delivery) => {
+    setPlacedDelivery(delivery);
+    setPlacedForm({ שעת_הנחה: '', מקום_הנחה: '', הערה: '' });
+  };
+
+  const confirmPlaced = async () => {
+    if (!placedDelivery) return;
+    setSavingPlaced(true);
+    try {
+      const parts = [
+        placedForm.מקום_הנחה && `הונח ב: ${placedForm.מקום_הנחה}`,
+        placedForm.שעת_הנחה && `שעה: ${placedForm.שעת_הנחה}`,
+        placedForm.הערה && placedForm.הערה,
+      ].filter(Boolean);
+      const note = parts.join(' | ');
+
+      const res = await fetch(`/api/deliveries/${placedDelivery.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          סטטוס_משלוח: 'נמסר',
+          שעת_משלוח: placedForm.שעת_הנחה || null,
+          הערות: note || null,
+        }),
+      });
+      if (!res.ok) {
+        const json = await res.json();
+        throw new Error(json.error || 'שגיאה');
+      }
+      setDeliveries(prev => prev.map(d =>
+        d.id === placedDelivery.id
+          ? { ...d, סטטוס_משלוח: 'נמסר', שעת_משלוח: placedForm.שעת_הנחה || d.שעת_משלוח, הערות: note || d.הערות }
+          : d,
+      ));
+      toast.success('המשלוח סומן כנמסר');
+      setPlacedDelivery(null);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'שגיאה');
+    } finally {
+      setSavingPlaced(false);
+    }
   };
 
   const handleExport = () => {
@@ -61,12 +127,12 @@ function DeliveriesContent() {
         <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-44" label="" />
         <Select value={status} onChange={e => setStatus(e.target.value)} className="w-44">
           <option value="">כל הסטטוסים</option>
-          {['ממתין', 'בהכנה', 'מוכן למשלוח', 'יצא למשלוח', 'בדרך', 'נמסר', 'נכשל'].map(s => <option key={s} value={s}>{s}</option>)}
+          {VALID_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
         </Select>
         <span className="text-sm mr-auto" style={{ color: '#6B4A2D' }}>{deliveries.length} משלוחים</span>
         <button
           onClick={handleExport}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-xl border bg-white hover:bg-[#FAF7F2] transition-all duration-200"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-xl border bg-white hover:bg-[#FAF7F2] transition-all"
           style={{ borderColor: '#D8CCBA', color: '#8B5E34' }}
         >
           <IconExport className="w-3.5 h-3.5" />
@@ -84,12 +150,11 @@ function DeliveriesContent() {
             const customerName = order?.לקוחות
               ? `${order.לקוחות.שם_פרטי} ${order.לקוחות.שם_משפחה}`
               : order?.שם_מקבל || null;
+            const isDelivered = d.סטטוס_משלוח === 'נמסר';
             return (
               <Card key={d.id}>
                 <div className="flex items-start justify-between gap-4">
-                  {/* main info */}
                   <div className="flex-1 min-w-0 space-y-1.5">
-                    {/* order + status */}
                     <div className="flex items-center gap-2 flex-wrap">
                       <Link
                         href={`/orders/${d.הזמנה_id}`}
@@ -106,7 +171,6 @@ function DeliveriesContent() {
                       )}
                     </div>
 
-                    {/* customer */}
                     <div className="text-sm font-medium">
                       {customerName ? (
                         order?.לקוח_id ? (
@@ -121,14 +185,12 @@ function DeliveriesContent() {
                       )}
                     </div>
 
-                    {/* address */}
                     {(d.כתובת || d.עיר) && (
                       <div className="text-xs" style={{ color: '#6B4A2D' }}>
                         {[d.כתובת, d.עיר].filter(Boolean).join(', ')}
                       </div>
                     )}
 
-                    {/* courier */}
                     <div className="text-xs">
                       {d.שם_שליח ? (
                         <span style={{ color: '#6B4A2D' }}>
@@ -149,11 +211,25 @@ function DeliveriesContent() {
                         {d.הוראות_משלוח}
                       </div>
                     )}
+
+                    {d.הערות && (
+                      <div className="text-xs p-2 rounded" style={{ backgroundColor: '#F0F9FF', color: '#1E3A5F' }}>
+                        {d.הערות}
+                      </div>
+                    )}
                   </div>
 
-                  {/* status buttons */}
                   <div className="flex flex-col gap-1 flex-shrink-0">
-                    {(['ממתין', 'בהכנה', 'יצא למשלוח', 'בדרך', 'נמסר', 'נכשל'] as Delivery['סטטוס_משלוח'][]).map(s => (
+                    {!isDelivered && (
+                      <button
+                        onClick={() => openPlacedModal(d)}
+                        className="text-xs px-2.5 py-1.5 rounded-lg font-medium transition-all whitespace-nowrap ring-1"
+                        style={{ backgroundColor: '#ECFDF5', color: '#065F46', outline: '1px solid #6EE7B7' }}
+                      >
+                        ✓ סמן שנמסר
+                      </button>
+                    )}
+                    {VALID_STATUSES.filter(s => s !== 'נמסר').map(s => (
                       <button
                         key={s}
                         onClick={() => updateDeliveryStatus(d.id, s)}
@@ -175,6 +251,46 @@ function DeliveriesContent() {
           })}
         </div>
       )}
+
+      {/* "הונח" confirmation modal */}
+      <Modal
+        open={!!placedDelivery}
+        onClose={() => setPlacedDelivery(null)}
+        title="סמן משלוח כנמסר"
+      >
+        <div className="space-y-4">
+          <p className="text-sm" style={{ color: '#6B4A2D' }}>
+            הזמנה: <span className="font-semibold" style={{ color: '#1E120A' }}>
+              {(placedDelivery as Delivery & { הזמנות?: { מספר_הזמנה: string } } | null)?.הזמנות?.מספר_הזמנה || '—'}
+            </span>
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="שעת מסירה"
+              type="time"
+              value={placedForm.שעת_הנחה}
+              onChange={e => setPlacedForm(p => ({ ...p, שעת_הנחה: e.target.value }))}
+            />
+            <Input
+              label="מקום מסירה"
+              placeholder="לדוגמה: דלת כניסה"
+              value={placedForm.מקום_הנחה}
+              onChange={e => setPlacedForm(p => ({ ...p, מקום_הנחה: e.target.value }))}
+            />
+          </div>
+          <Textarea
+            label="הערה"
+            rows={2}
+            placeholder="הערה נוספת (לא חובה)"
+            value={placedForm.הערה}
+            onChange={e => setPlacedForm(p => ({ ...p, הערה: e.target.value }))}
+          />
+          <div className="flex gap-3 justify-end">
+            <Button variant="outline" onClick={() => setPlacedDelivery(null)}>ביטול</Button>
+            <Button onClick={confirmPlaced} loading={savingPlaced}>אשר מסירה</Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

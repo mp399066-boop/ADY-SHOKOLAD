@@ -75,7 +75,6 @@ export default function InventoryPage() {
       setEditStockId(null);
       toast.success('מלאי עודכן');
     } catch (err: unknown) {
-      console.error('saveProductStock error:', err);
       toast.error(err instanceof Error ? err.message : 'שגיאה בשמירה');
     } finally { setSavingStock(false); }
   };
@@ -94,7 +93,6 @@ export default function InventoryPage() {
       setEditStockId(null);
       toast.success('מלאי עודכן');
     } catch (err: unknown) {
-      console.error('savePetitFourStock error:', err);
       toast.error(err instanceof Error ? err.message : 'שגיאה בשמירה');
     } finally { setSavingStock(false); }
   };
