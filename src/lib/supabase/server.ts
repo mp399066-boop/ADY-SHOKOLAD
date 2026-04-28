@@ -1,4 +1,5 @@
 import { createServerClient } from '@supabase/ssr';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 
 export function createClient() {
@@ -26,15 +27,11 @@ export function createClient() {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function createAdminClient(): any {
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    {
-      cookies: {
-        getAll() { return []; },
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        setAll(_: any[]) {},
-      },
-    }
-  );
+  // Use supabase-js directly (no cookie handling needed for admin routes).
+  // Trim trailing slash to prevent "requested path is invalid" errors.
+  const url = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').replace(/\/+$/, '');
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
+  return createSupabaseClient(url, key, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
 }
