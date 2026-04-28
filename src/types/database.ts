@@ -322,6 +322,14 @@ export interface CommunicationLog {
   תוכן: string;
   תאריך: string;
   תאריך_יצירה: string;
+  הזמנה_id?: string | null;
+  כיוון?: string | null;
+  נושא?: string | null;
+  אל?: string | null;
+  מ?: string | null;
+  סטטוס?: string | null;
+  מזהה_הודעה?: string | null;
+  הודעת_שגיאה?: string | null;
 }
 
 export interface PriceListItem {

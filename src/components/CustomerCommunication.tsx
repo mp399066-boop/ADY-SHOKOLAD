@@ -220,22 +220,27 @@ export function CustomerCommunication({
                   >
                     {item.סוג === 'וואטסאפ' ? 'WhatsApp' : 'מייל'}
                   </span>
-                  {item._status && (
+                  {(item._status || item.סטטוס) && (
                     <span
                       className="text-xs px-1.5 py-0.5 rounded-full"
-                      style={item._status === 'sent'
+                      style={(item._status === 'sent' || item.סטטוס === 'נשלח')
                         ? { backgroundColor: '#DCFCE7', color: '#166534' }
-                        : item._status === 'failed'
+                        : (item._status === 'failed' || item.סטטוס === 'נכשל')
                         ? { backgroundColor: '#FEE2E2', color: '#991B1B' }
                         : { backgroundColor: '#FEF9C3', color: '#854D0E' }}
                     >
-                      {item._status === 'sent' ? 'נשלח' : item._status === 'failed' ? 'נכשל' : 'בהמתנה'}
+                      {item._status === 'pending' ? 'בהמתנה'
+                        : (item._status === 'failed' || item.סטטוס === 'נכשל') ? 'נכשל'
+                        : 'נשלח'}
                     </span>
                   )}
                   <span className="text-xs mr-auto" style={{ color: '#9B7A5A' }}>
                     {new Date(item.תאריך).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' })}
                   </span>
                 </div>
+                {item.נושא && (
+                  <p className="text-xs font-medium mb-0.5 truncate" style={{ color: '#5C3D22' }}>{item.נושא}</p>
+                )}
                 <p className="text-sm line-clamp-2" style={{ color: '#2B1A10' }}>{item.תוכן}</p>
               </div>
             ))

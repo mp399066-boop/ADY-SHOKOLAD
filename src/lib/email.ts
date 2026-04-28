@@ -1,4 +1,5 @@
 import sgMail from '@sendgrid/mail';
+import { createAdminClient } from '@/lib/supabase/server';
 
 export interface OrderEmailItem {
   name: string;
@@ -217,10 +218,16 @@ function buildText(customerName: string, d: OrderEmailData): string {
   ].filter(l => l !== '').join('\n');
 }
 
+export interface EmailContext {
+  customerId: string;
+  orderId?: string;
+}
+
 export async function sendOrderEmail(
   to: string,
   customerName: string,
   orderData?: OrderEmailData,
+  context?: EmailContext,
 ): Promise<void> {
   const apiKey = process.env.SENDGRID_API_KEY;
   const from = process.env.FROM_EMAIL;
@@ -240,5 +247,36 @@ export async function sendOrderEmail(
     ? buildText(customerName, orderData)
     : `שלום ${customerName}, קיבלנו את הזמנתך.`;
 
-  await sgMail.send({ to, from, subject, html, text });
+  let messageId: string | undefined;
+  let sendError: string | undefined;
+
+  try {
+    const [response] = await sgMail.send({ to, from, subject, html, text });
+    messageId = response?.headers?.['x-message-id'] as string | undefined;
+  } catch (err) {
+    sendError = err instanceof Error ? err.message : String(err);
+    throw err;
+  } finally {
+    if (context?.customerId) {
+      try {
+        const supabase = createAdminClient();
+        await supabase.from('תיעוד_תקשורת').insert({
+          לקוח_id: context.customerId,
+          הזמנה_id: context.orderId || null,
+          סוג: 'מייל',
+          כיוון: 'יוצא',
+          נושא: subject,
+          תוכן: text.slice(0, 500),
+          אל: to,
+          מ: from,
+          סטטוס: sendError ? 'נכשל' : 'נשלח',
+          מזהה_הודעה: messageId || null,
+          הודעת_שגיאה: sendError || null,
+          תאריך: new Date().toISOString(),
+        });
+      } catch (logErr) {
+        console.error('[email] failed to log communication:', logErr);
+      }
+    }
+  }
 }

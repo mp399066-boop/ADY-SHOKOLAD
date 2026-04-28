@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { generateOrderNumber } from '@/lib/utils';
-import { sendOrderEmail, type OrderEmailData } from '@/lib/email';
+import { sendOrderEmail, type OrderEmailData, type EmailContext } from '@/lib/email';
 
 export async function POST(req: NextRequest) {
   const supabase = createAdminClient();
@@ -212,10 +212,14 @@ export async function POST(req: NextRequest) {
       }),
     };
 
+    const emailContext: EmailContext = {
+      customerId: customerId,
+      orderId: order!.id,
+    };
     void (async () => {
       try {
         console.log('[create-full] calling sendOrderEmail...');
-        await sendOrderEmail(emailTo, emailName, emailOrderData);
+        await sendOrderEmail(emailTo, emailName, emailOrderData, emailContext);
         console.log('[create-full] sendOrderEmail completed successfully');
       } catch (err) {
         console.error('[create-full] sendOrderEmail failed:', err);
