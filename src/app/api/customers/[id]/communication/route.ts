@@ -28,6 +28,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       סוג: body.סוג,
       תוכן: body.תוכן,
       תאריך: body.תאריך || new Date().toISOString(),
+      כיוון: body.כיוון || 'יוצא',
+      נושא: body.נושא || null,
+      אל: body.אל || null,
+      מ: body.מ || null,
+      סטטוס: body.סטטוס || 'נשלח',
+      הודעת_שגיאה: body.הודעת_שגיאה || null,
     })
     .select()
     .single();

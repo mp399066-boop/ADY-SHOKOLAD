@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { generateOrderNumber } from '@/lib/utils';
-import { sendOrderEmail, type OrderEmailData, type EmailContext } from '@/lib/email';
+import { sendOrderEmail, isInternalEmail, type OrderEmailData, type EmailContext } from '@/lib/email';
 
 export async function POST(req: NextRequest) {
   const supabase = createAdminClient();
@@ -184,7 +184,7 @@ export async function POST(req: NextRequest) {
 
   console.log('[create-full] email — to:', emailTo || 'NO EMAIL', '| name:', emailName);
 
-  if (emailTo) {
+  if (emailTo && !isInternalEmail(emailTo)) {
     const o = fullOrder as Record<string, unknown>;
     const emailOrderData: OrderEmailData = {
       orderNumber: (o['מספר_הזמנה'] as string) || '',
@@ -226,7 +226,7 @@ export async function POST(req: NextRequest) {
       }
     })();
   } else {
-    console.log('[create-full] skipping email — customer has no email address');
+    console.log('[create-full] skipping email —', emailTo ? 'internal address' : 'no email');
   }
 
   return NextResponse.json({ data: { ...fullOrder, מוצרים_בהזמנה: fullItems || [] } }, { status: 201 });

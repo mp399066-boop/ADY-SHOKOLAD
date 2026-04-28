@@ -218,6 +218,10 @@ function buildText(customerName: string, d: OrderEmailData): string {
   ].filter(l => l !== '').join('\n');
 }
 
+export function isInternalEmail(email: string): boolean {
+  return email.trim().toLowerCase() === EMAIL_ADDR.toLowerCase();
+}
+
 export interface EmailContext {
   customerId: string;
   orderId?: string;

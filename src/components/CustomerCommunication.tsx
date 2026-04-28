@@ -1,49 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Card } from '@/components/ui/Card';
-import { IconWhatsApp } from '@/components/icons';
+import { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import type { CommunicationLog } from '@/types/database';
 
-/* ─── tiny inline dialog ─────────────────────────────────────────────────── */
-function Dialog({
-  open,
-  onClose,
-  title,
-  children,
-}: {
-  open: boolean;
-  onClose: () => void;
-  title: string;
-  children: React.ReactNode;
-}) {
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-6 z-10">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-semibold text-sm" style={{ color: '#2B1A10' }}>{title}</h3>
-          <button
-            onClick={onClose}
-            className="rounded-lg p-1 hover:bg-gray-100 transition-colors"
-            style={{ color: '#9B7A5A' }}
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.6}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
-}
-
 /* ─── types ──────────────────────────────────────────────────────────────── */
-type CommStatus = 'pending' | 'sent' | 'failed';
-interface CommItem extends CommunicationLog { _status?: CommStatus }
+type CommItem = CommunicationLog & { _status?: 'pending' | 'sent' | 'failed' };
 
 export interface CustomerCommunicationProps {
   customerId: string;
@@ -51,6 +13,15 @@ export interface CustomerCommunicationProps {
   email?: string | null;
   history?: CommunicationLog[];
   onSend?: (log: CommunicationLog) => void;
+}
+
+/* ─── send arrow icon ────────────────────────────────────────────────────── */
+function ArrowSend({ className }: { className?: string }) {
+  return (
+    <svg className={className ?? 'w-4 h-4'} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+    </svg>
+  );
 }
 
 /* ─── main component ─────────────────────────────────────────────────────── */
@@ -61,276 +32,333 @@ export function CustomerCommunication({
   history = [],
   onSend,
 }: CustomerCommunicationProps) {
-  const [waOpen, setWaOpen] = useState(false);
-  const [emailOpen, setEmailOpen] = useState(false);
-  const [waPhone, setWaPhone] = useState(phone || '');
-  const [waMessage, setWaMessage] = useState('');
-  const [emailAddr, setEmailAddr] = useState(email || '');
+  const [items, setItems] = useState<CommItem[]>(history);
   const [emailSubject, setEmailSubject] = useState('');
   const [emailBody, setEmailBody] = useState('');
-  const [sending, setSending] = useState(false);
-  const [items, setItems] = useState<CommItem[]>(history);
+  const [waMsg, setWaMsg] = useState('');
+  const [emailSending, setEmailSending] = useState(false);
+  const [waSending, setWaSending] = useState(false);
+  const waEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { setItems(history); }, [history]);
 
+  const emailItems = items.filter(i => i.סוג === 'מייל');
+  const waItems = items.filter(i => i.סוג === 'וואטסאפ');
+
+  useEffect(() => {
+    waEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [waItems.length]);
+
   /* optimistic helpers */
-  const addOptimistic = (type: 'מייל' | 'וואטסאפ', content: string) => {
-    const tempId = `tmp-${Date.now()}`;
-    setItems(prev => [{
-      id: tempId, לקוח_id: customerId, סוג: type,
-      תוכן: content, תאריך: new Date().toISOString(),
-      תאריך_יצירה: new Date().toISOString(), _status: 'pending',
-    }, ...prev]);
-    return tempId;
-  };
+  function addOpt(partial: Omit<CommItem, 'id' | 'תאריך_יצירה'>): string {
+    const id = `tmp-${Date.now()}`;
+    setItems(prev => [{ id, תאריך_יצירה: new Date().toISOString(), _status: 'pending', ...partial }, ...prev]);
+    return id;
+  }
 
-  const resolveItem = (tempId: string, status: CommStatus, real?: CommunicationLog) =>
+  function resolveOpt(id: string, status: 'sent' | 'failed', real?: CommunicationLog) {
     setItems(prev => prev.map(i =>
-      i.id === tempId ? (real ? { ...real, _status: status } : { ...i, _status: status }) : i
+      i.id === id ? (real ? { ...real, _status: status } : { ...i, _status: status }) : i
     ));
+  }
 
-  /* send whatsapp */
-  const handleSendWhatsApp = async () => {
-    if (!waMessage.trim()) { toast.error('יש להזין הודעה'); return; }
-    setSending(true);
-    const content = waMessage;
-    const tempId = addOptimistic('וואטסאפ', content);
-    setWaOpen(false); setWaMessage('');
+  /* send email */
+  async function handleSendEmail() {
+    if (!emailBody.trim()) { toast.error('יש להזין תוכן'); return; }
+    if (!email) { toast.error('ללקוח אין כתובת מייל'); return; }
+    setEmailSending(true);
+    const subject = emailSubject.trim();
+    const content = emailBody.trim();
+    const tmpId = addOpt({
+      לקוח_id: customerId, סוג: 'מייל', תוכן: content,
+      תאריך: new Date().toISOString(), נושא: subject || null,
+      אל: email, כיוון: 'יוצא', סטטוס: 'בהמתנה',
+    });
+    setEmailSubject(''); setEmailBody('');
     try {
-      const res = await fetch(`/api/customers/${customerId}/communication`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ סוג: 'וואטסאפ', תוכן: content }),
+      const res = await fetch(`/api/customers/${customerId}/send-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subject, content, to: email }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error);
-      resolveItem(tempId, 'sent', json.data);
+      if (!res.ok) throw new Error(json.error || 'שגיאה');
+      resolveOpt(tmpId, 'sent', json.data);
       onSend?.(json.data);
-      toast.success('תועד בהצלחה');
-      if (waPhone) {
-        const n = waPhone.replace(/^0/, '').replace(/-/g, '');
+      toast.success('מייל נשלח');
+    } catch (err: unknown) {
+      resolveOpt(tmpId, 'failed');
+      toast.error(err instanceof Error ? err.message : 'שגיאה בשליחה');
+    } finally { setEmailSending(false); }
+  }
+
+  /* send whatsapp */
+  async function handleSendWA() {
+    if (!waMsg.trim()) { toast.error('יש להזין הודעה'); return; }
+    setWaSending(true);
+    const content = waMsg.trim();
+    const tmpId = addOpt({
+      לקוח_id: customerId, סוג: 'וואטסאפ', תוכן: content,
+      תאריך: new Date().toISOString(), כיוון: 'יוצא',
+      אל: phone || null, סטטוס: 'בהמתנה',
+    });
+    setWaMsg('');
+    try {
+      const res = await fetch(`/api/customers/${customerId}/communication`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ סוג: 'וואטסאפ', תוכן: content, כיוון: 'יוצא', אל: phone || null, סטטוס: 'נשלח' }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'שגיאה');
+      resolveOpt(tmpId, 'sent', json.data);
+      onSend?.(json.data);
+      if (phone) {
+        const n = phone.replace(/^0/, '').replace(/-/g, '');
         window.open(`https://wa.me/972${n}?text=${encodeURIComponent(content)}`, '_blank');
       }
     } catch (err: unknown) {
-      resolveItem(tempId, 'failed');
+      resolveOpt(tmpId, 'failed');
       toast.error(err instanceof Error ? err.message : 'שגיאה');
-    } finally { setSending(false); }
-  };
+    } finally { setWaSending(false); }
+  }
 
-  /* send email */
-  const handleSendEmail = async () => {
-    if (!emailBody.trim()) { toast.error('יש להזין תוכן'); return; }
-    setSending(true);
-    const content = emailSubject ? `${emailSubject}\n\n${emailBody}` : emailBody;
-    const tempId = addOptimistic('מייל', content);
-    setEmailOpen(false); setEmailSubject(''); setEmailBody('');
-    try {
-      const res = await fetch(`/api/customers/${customerId}/communication`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ סוג: 'מייל', תוכן: content }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error);
-      resolveItem(tempId, 'sent', json.data);
-      onSend?.(json.data);
-      toast.success('תועד בהצלחה');
-      if (emailAddr)
-        window.open(`mailto:${emailAddr}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`, '_blank');
-    } catch (err: unknown) {
-      resolveItem(tempId, 'failed');
-      toast.error(err instanceof Error ? err.message : 'שגיאה');
-    } finally { setSending(false); }
-  };
+  function onEmailKey(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleSendEmail(); }
+  }
+  function onWAKey(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleSendWA(); }
+  }
+
+  const fmtDate = (iso: string) =>
+    new Date(iso).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' });
+  const fmtTime = (iso: string) =>
+    new Date(iso).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+
+  /* ── status chip helper ── */
+  function statusChip(item: CommItem) {
+    const s = item.סטטוס
+      || (item._status === 'pending' ? 'בהמתנה' : item._status === 'failed' ? 'נכשל' : 'נשלח');
+    const style =
+      s === 'נשלח'   ? { backgroundColor: '#DCFCE7', color: '#166534' } :
+      s === 'נכשל'   ? { backgroundColor: '#FEE2E2', color: '#991B1B' } :
+                        { backgroundColor: '#FEF9C3', color: '#854D0E' };
+    return (
+      <span className="text-xs px-1.5 py-0.5 rounded-full font-medium" style={style}>{s}</span>
+    );
+  }
 
   return (
-    <>
-      <Card className="p-0 overflow-hidden">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+      {/* ═══════════════════════════ EMAIL PANEL ═══════════════════════════ */}
+      <div
+        className="flex flex-col rounded-xl overflow-hidden"
+        style={{ height: 480, border: '1px solid #EDE0CE' }}
+      >
         {/* header */}
-        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid #EDE0CE' }}>
-          <div className="flex items-center gap-2.5">
-            <div className="h-8 w-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#F0E6D6' }}>
-              <svg className="w-4 h-4" fill="none" stroke="#8B5E34" viewBox="0 0 24 24" strokeWidth={1.6}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
-              </svg>
-            </div>
-            <span className="font-semibold text-sm" style={{ color: '#2B1A10' }}>תקשורת עם הלקוח</span>
+        <div
+          className="flex items-center justify-between px-4 py-3 flex-shrink-0"
+          style={{ backgroundColor: '#FAF7F0', borderBottom: '1px solid #EDE0CE' }}
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="font-semibold text-sm" style={{ color: '#2B1A10' }}>מיילים</span>
+            {email && (
+              <span className="text-xs truncate" style={{ color: '#9B7A5A' }}>{email}</span>
+            )}
           </div>
-          <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ backgroundColor: '#F0E6D6', color: '#8B5E34' }}>
-            {items.length}
+          <span
+            className="text-xs px-2 py-0.5 rounded-full flex-shrink-0"
+            style={{ backgroundColor: '#F0E6D6', color: '#8B5E34' }}
+          >
+            {emailItems.length}
           </span>
         </div>
 
-        {/* action buttons */}
-        <div className="grid grid-cols-2 gap-2 px-5 py-4">
-          <button
-            onClick={() => setWaOpen(true)}
-            className="h-11 rounded-xl flex items-center justify-center gap-2 text-sm font-medium transition-all hover:brightness-105"
-            style={{ backgroundColor: '#25D366', color: '#fff' }}
-          >
-            <IconWhatsApp className="w-4 h-4" />
-            WhatsApp
-          </button>
-          <button
-            onClick={() => setEmailOpen(true)}
-            className="h-11 rounded-xl flex items-center justify-center gap-2 text-sm font-medium border transition-all hover:bg-amber-50"
-            style={{ borderColor: '#C7A46B', color: '#8B5E34', backgroundColor: '#fff' }}
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.6}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
-            </svg>
-            מייל
-          </button>
-        </div>
-
-        {/* history */}
-        <div className="px-5 pb-5 space-y-2 max-h-72 overflow-y-auto">
-          {items.length === 0 ? (
-            <div className="py-8 text-center">
-              <div className="h-12 w-12 rounded-xl mx-auto mb-3 flex items-center justify-center" style={{ backgroundColor: '#F5ECD8' }}>
+        {/* message list */}
+        <div className="flex-1 overflow-y-auto divide-y divide-amber-100" style={{ backgroundColor: '#fff' }}>
+          {emailItems.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center gap-2 py-10">
+              <div
+                className="h-10 w-10 rounded-xl flex items-center justify-center"
+                style={{ backgroundColor: '#F5ECD8' }}
+              >
                 <svg className="w-5 h-5" fill="none" stroke="#8B5E34" viewBox="0 0 24 24" strokeWidth={1.6}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
                 </svg>
               </div>
-              <p className="text-sm" style={{ color: '#6B4A2D' }}>אין תיעוד תקשורת עדיין</p>
-              <div className="flex justify-center gap-2 mt-3">
-                <button onClick={() => setWaOpen(true)} className="text-xs px-3 py-1.5 rounded-lg" style={{ backgroundColor: '#F0E6D6', color: '#8B5E34' }}>
-                  שלח WhatsApp
-                </button>
-                <button onClick={() => setEmailOpen(true)} className="text-xs px-3 py-1.5 rounded-lg" style={{ backgroundColor: '#F0E6D6', color: '#8B5E34' }}>
-                  שלח מייל
-                </button>
-              </div>
+              <p className="text-xs" style={{ color: '#9B7A5A' }}>
+                {email ? 'אין מיילים עדיין' : 'ללקוח אין כתובת מייל'}
+              </p>
             </div>
           ) : (
-            items.map(item => (
+            emailItems.map(item => (
               <div
                 key={item.id}
-                className="rounded-xl p-3 border"
-                style={{
-                  borderColor: item._status === 'failed' ? '#FCA5A5' : '#EDE0CE',
-                  backgroundColor: item._status === 'pending' ? '#FAF7F0' : '#fff',
-                  opacity: item._status === 'pending' ? 0.75 : 1,
-                }}
+                className="px-4 py-3 hover:bg-amber-50 transition-colors"
+                style={{ opacity: item._status === 'pending' ? 0.65 : 1 }}
               >
-                <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                <div className="flex items-start justify-between gap-2">
                   <span
-                    className="text-xs px-2 py-0.5 rounded-full font-medium"
-                    style={item.סוג === 'וואטסאפ'
-                      ? { backgroundColor: '#DCFCE7', color: '#166534' }
-                      : { backgroundColor: '#EFF6FF', color: '#1D4ED8' }}
+                    className="font-medium text-sm truncate flex-1"
+                    style={{ color: '#2B1A10' }}
                   >
-                    {item.סוג === 'וואטסאפ' ? 'WhatsApp' : 'מייל'}
+                    {item.נושא || 'ללא נושא'}
                   </span>
-                  {(item._status || item.סטטוס) && (
-                    <span
-                      className="text-xs px-1.5 py-0.5 rounded-full"
-                      style={(item._status === 'sent' || item.סטטוס === 'נשלח')
-                        ? { backgroundColor: '#DCFCE7', color: '#166534' }
-                        : (item._status === 'failed' || item.סטטוס === 'נכשל')
-                        ? { backgroundColor: '#FEE2E2', color: '#991B1B' }
-                        : { backgroundColor: '#FEF9C3', color: '#854D0E' }}
-                    >
-                      {item._status === 'pending' ? 'בהמתנה'
-                        : (item._status === 'failed' || item.סטטוס === 'נכשל') ? 'נכשל'
-                        : 'נשלח'}
-                    </span>
-                  )}
-                  <span className="text-xs mr-auto" style={{ color: '#9B7A5A' }}>
-                    {new Date(item.תאריך).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' })}
+                  <span className="text-xs flex-shrink-0" style={{ color: '#9B7A5A' }}>
+                    {fmtDate(item.תאריך)}
                   </span>
                 </div>
-                {item.נושא && (
-                  <p className="text-xs font-medium mb-0.5 truncate" style={{ color: '#5C3D22' }}>{item.נושא}</p>
-                )}
-                <p className="text-sm line-clamp-2" style={{ color: '#2B1A10' }}>{item.תוכן}</p>
+                <p className="text-xs mt-0.5 line-clamp-1" style={{ color: '#6B4A2D' }}>
+                  {item.תוכן}
+                </p>
+                <div className="flex items-center gap-2 mt-1.5">
+                  {statusChip(item)}
+                  {item.אל && (
+                    <span className="text-xs" style={{ color: '#BFB09A' }}>→ {item.אל}</span>
+                  )}
+                </div>
               </div>
             ))
           )}
         </div>
-      </Card>
 
-      {/* WhatsApp dialog */}
-      <Dialog open={waOpen} onClose={() => setWaOpen(false)} title="שליחת WhatsApp">
-        <div className="space-y-3">
-          <div className="space-y-1">
-            <label className="block text-xs font-medium" style={{ color: '#4A2F1B' }}>טלפון</label>
-            <input
-              dir="ltr"
-              value={waPhone}
-              onChange={e => setWaPhone(e.target.value)}
-              placeholder="05X-XXXXXXX"
-              className="w-full px-3 py-2 text-sm rounded-lg border focus:outline-none"
-              style={{ borderColor: '#DDD0BC', color: '#2B1A10' }}
-            />
-          </div>
-          <div className="space-y-1">
-            <label className="block text-xs font-medium" style={{ color: '#4A2F1B' }}>הודעה</label>
-            <textarea
-              value={waMessage}
-              onChange={e => setWaMessage(e.target.value)}
-              placeholder="תוכן ההודעה..."
-              rows={4}
-              className="w-full px-3 py-2 text-sm rounded-lg border resize-none focus:outline-none"
-              style={{ borderColor: '#DDD0BC', color: '#2B1A10' }}
-            />
-          </div>
-          <button
-            onClick={handleSendWhatsApp}
-            disabled={sending}
-            className="w-full h-10 rounded-xl text-sm font-medium flex items-center justify-center gap-2 transition-all hover:brightness-105 disabled:opacity-50"
-            style={{ backgroundColor: '#25D366', color: '#fff' }}
-          >
-            <IconWhatsApp className="w-4 h-4" />
-            שלח
-          </button>
-        </div>
-      </Dialog>
-
-      {/* Email dialog */}
-      <Dialog open={emailOpen} onClose={() => setEmailOpen(false)} title="שליחת מייל">
-        <div className="space-y-3">
-          <div className="space-y-1">
-            <label className="block text-xs font-medium" style={{ color: '#4A2F1B' }}>כתובת מייל</label>
-            <input
-              dir="ltr"
-              type="email"
-              value={emailAddr}
-              onChange={e => setEmailAddr(e.target.value)}
-              placeholder="example@email.com"
-              className="w-full px-3 py-2 text-sm rounded-lg border text-left focus:outline-none"
-              style={{ borderColor: '#DDD0BC', color: '#2B1A10' }}
-            />
-          </div>
-          <div className="space-y-1">
-            <label className="block text-xs font-medium" style={{ color: '#4A2F1B' }}>נושא</label>
-            <input
-              value={emailSubject}
-              onChange={e => setEmailSubject(e.target.value)}
-              placeholder="נושא המייל..."
-              className="w-full px-3 py-2 text-sm rounded-lg border focus:outline-none"
-              style={{ borderColor: '#DDD0BC', color: '#2B1A10' }}
-            />
-          </div>
-          <div className="space-y-1">
-            <label className="block text-xs font-medium" style={{ color: '#4A2F1B' }}>תוכן</label>
+        {/* compose */}
+        <div
+          className="flex-shrink-0 p-3 space-y-2"
+          style={{ borderTop: '1px solid #EDE0CE', backgroundColor: '#FAF7F0' }}
+        >
+          <input
+            type="text"
+            value={emailSubject}
+            onChange={e => setEmailSubject(e.target.value)}
+            placeholder="נושא..."
+            className="w-full text-sm px-3 py-1.5 rounded-lg border bg-white focus:outline-none"
+            style={{ borderColor: '#DDD0BC', color: '#2B1A10' }}
+          />
+          <div className="flex items-end gap-2">
             <textarea
               value={emailBody}
               onChange={e => setEmailBody(e.target.value)}
-              placeholder="תוכן ההודעה..."
-              rows={4}
-              className="w-full px-3 py-2 text-sm rounded-lg border resize-none focus:outline-none"
+              onKeyDown={onEmailKey}
+              placeholder={email ? 'כתוב הודעה... (Enter לשליחה, Shift+Enter לשורה)' : 'ללקוח אין כתובת מייל'}
+              rows={2}
+              disabled={!email}
+              className="flex-1 text-sm px-3 py-2 rounded-lg border bg-white resize-none focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
               style={{ borderColor: '#DDD0BC', color: '#2B1A10' }}
             />
+            <button
+              onClick={() => void handleSendEmail()}
+              disabled={emailSending || !emailBody.trim() || !email}
+              className="h-10 w-10 rounded-lg flex-shrink-0 flex items-center justify-center transition-all hover:brightness-110 disabled:opacity-35"
+              style={{ backgroundColor: '#8B5E34', color: '#fff' }}
+            >
+              <ArrowSend />
+            </button>
           </div>
-          <button
-            onClick={handleSendEmail}
-            disabled={sending}
-            className="w-full h-10 rounded-xl text-sm font-medium flex items-center justify-center gap-2 transition-all hover:brightness-110 disabled:opacity-50"
-            style={{ backgroundColor: '#8B5E34', color: '#fff' }}
+        </div>
+      </div>
+
+      {/* ══════════════════════════ WHATSAPP PANEL ══════════════════════════ */}
+      <div
+        className="flex flex-col rounded-xl overflow-hidden"
+        style={{ height: 480, border: '1px solid #A8D5A8' }}
+      >
+        {/* header */}
+        <div
+          className="flex items-center justify-between px-4 py-3 flex-shrink-0"
+          style={{ backgroundColor: '#075E54', borderBottom: '1px solid #064d44' }}
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="font-semibold text-sm text-white">WhatsApp</span>
+            {phone && (
+              <span className="text-xs text-white opacity-75 truncate">{phone}</span>
+            )}
+          </div>
+          <span
+            className="text-xs px-2 py-0.5 rounded-full flex-shrink-0"
+            style={{ backgroundColor: 'rgba(255,255,255,0.2)', color: '#fff' }}
           >
-            שלח מייל
+            {waItems.length}
+          </span>
+        </div>
+
+        {/* chat bubbles */}
+        <div
+          className="flex-1 overflow-y-auto flex flex-col gap-2 p-3"
+          dir="rtl"
+          style={{ backgroundColor: '#ECE5DD' }}
+        >
+          {waItems.length === 0 ? (
+            <div className="flex-1 flex flex-col items-center justify-center gap-2 py-10">
+              <div
+                className="h-10 w-10 rounded-xl flex items-center justify-center"
+                style={{ backgroundColor: '#D1EDD4' }}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="#166534" viewBox="0 0 24 24" strokeWidth={1.6}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
+                </svg>
+              </div>
+              <p className="text-xs" style={{ color: '#5F6B5F' }}>
+                {phone ? 'אין הודעות עדיין' : 'ללקוח אין מספר טלפון'}
+              </p>
+            </div>
+          ) : (
+            [...waItems].reverse().map(item => {
+              const isOut = item.כיוון !== 'נכנס';
+              const failed = item._status === 'failed' || item.סטטוס === 'נכשל';
+              return (
+                <div key={item.id} className={`flex ${isOut ? 'justify-start' : 'justify-end'}`}>
+                  <div
+                    className="max-w-[78%] px-3 py-2"
+                    style={{
+                      backgroundColor: isOut ? '#DCF8C6' : '#ffffff',
+                      borderRadius: isOut ? '4px 16px 16px 16px' : '16px 4px 16px 16px',
+                      opacity: item._status === 'pending' ? 0.65 : 1,
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+                    }}
+                  >
+                    <p className="text-sm whitespace-pre-wrap" style={{ color: '#1A1A1A' }}>
+                      {item.תוכן}
+                    </p>
+                    <div className="flex items-center justify-between gap-3 mt-1">
+                      <span className="text-xs" style={{ color: failed ? '#DC2626' : '#8DAF8D' }}>
+                        {failed ? 'נכשל' : fmtTime(item.תאריך)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+          <div ref={waEndRef} />
+        </div>
+
+        {/* compose */}
+        <div
+          className="flex-shrink-0 flex items-end gap-2 p-3"
+          style={{ borderTop: '1px solid #A8D5A8', backgroundColor: '#F0F4F0' }}
+        >
+          <textarea
+            value={waMsg}
+            onChange={e => setWaMsg(e.target.value)}
+            onKeyDown={onWAKey}
+            placeholder="הודעה... (Enter לשליחה)"
+            rows={1}
+            className="flex-1 text-sm px-3 py-2 rounded-2xl border bg-white resize-none focus:outline-none"
+            style={{ borderColor: '#B8D4B8', color: '#1A1A1A', maxHeight: 80, overflowY: 'auto' }}
+          />
+          <button
+            onClick={() => void handleSendWA()}
+            disabled={waSending || !waMsg.trim()}
+            className="h-10 w-10 rounded-full flex-shrink-0 flex items-center justify-center transition-all hover:brightness-110 disabled:opacity-35"
+            style={{ backgroundColor: '#25D366', color: '#fff' }}
+          >
+            <ArrowSend />
           </button>
         </div>
-      </Dialog>
-    </>
+      </div>
+
+    </div>
   );
 }
