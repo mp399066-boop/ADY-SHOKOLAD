@@ -51,7 +51,6 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
 
   const order = {
-    מזהה_לובהבל: crypto.randomUUID(),
     מספר_הזמנה: body.מספר_הזמנה || generateOrderNumber(),
     לקוח_id: body.לקוח_id,
     סטטוס_הזמנה: body.סטטוס_הזמנה || 'חדשה',

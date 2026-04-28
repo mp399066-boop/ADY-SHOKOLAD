@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
   if (!body.שם_פטיפור) return NextResponse.json({ error: 'שם הפטיפור הוא שדה חובה' }, { status: 400 });
   const { data, error } = await supabase
     .from('סוגי_פטיפורים')
-    .insert({ ...body, מזהה_לובהבל: crypto.randomUUID() })
+    .insert(body)
     .select()
     .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

@@ -45,7 +45,6 @@ export async function POST(req: NextRequest) {
   const { data: order, error: orderError } = await supabase
     .from('הזמנות')
     .insert({
-      מזהה_לובהבל: crypto.randomUUID(),
       מספר_הזמנה: generateOrderNumber(),
       לקוח_id: customerId,
       סטטוס_הזמנה: הזמנה?.סטטוס_הזמנה || 'חדשה',
@@ -77,7 +76,6 @@ export async function POST(req: NextRequest) {
   // 4. Create regular product lines
   for (const item of מוצרים) {
     const { error: itemError } = await supabase.from('מוצרים_בהזמנה').insert({
-      מזהה_לובהבל: crypto.randomUUID(),
       הזמנה_id: order!.id,
       מוצר_id: item.מוצר_id || null,
       סוג_שורה: 'מוצר',
@@ -92,7 +90,6 @@ export async function POST(req: NextRequest) {
   // 5. Create package lines + petit-four selections
   for (const pkg of מארזי_פטיפורים) {
     const { data: pkgRow, error: pkgError } = await supabase.from('מוצרים_בהזמנה').insert({
-      מזהה_לובהבל: crypto.randomUUID(),
       הזמנה_id: order!.id,
       מוצר_id: pkg.מוצר_id || null,
       סוג_שורה: 'מארז',

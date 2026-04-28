@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
   const { תאריך_תפוגה: _ignored, ...safeBody } = body;
   const { data, error } = await supabase
     .from('מלאי_חומרי_גלם')
-    .insert({ ...safeBody, מזהה_לובהבל: crypto.randomUUID() })
+    .insert(safeBody)
     .select()
     .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

@@ -151,9 +151,9 @@ export default function ImportPage() {
           </div>
         </div>
         <div className="flex items-center gap-3 p-3 rounded-lg text-xs" style={{ backgroundColor: '#FAF7F0', color: '#6B4A2D' }}>
-          <span>שדות חובה: מזהה_לובהבל יווצר אוטומטית אם חסר</span>
+          <span>שגיאות בשורות בודדות לא יבטלו את שאר הייבוא</span>
           <span>·</span>
-          <span>ייבוא מבצע upsert לפי מזהה_לובהבל</span>
+          <span>ייבוא מוסיף רשומות חדשות לטבלה</span>
         </div>
       </Card>
 
@@ -250,8 +250,7 @@ export default function ImportPage() {
             <div className="space-y-2">
               <div className="font-medium" style={{ color: '#2B1A10' }}>חשוב לדעת</div>
               <ul className="space-y-1 text-xs">
-                <li>• מזהה_לובהבל מזהה רשומה ייחודית</li>
-                <li>• רשומה קיימת תתעדכן</li>
+                <li>• שגיאות לא יבטלו שורות אחרות</li>
                 <li>• רשומה חדשה תתווסף</li>
                 <li>• שגיאות לא יבטלו שאר השורות</li>
               </ul>

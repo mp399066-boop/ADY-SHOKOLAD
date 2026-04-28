@@ -20,6 +20,22 @@ type FullOrder = Order & {
 
 const ORDER_STATUSES = ['חדשה', 'בהכנה', 'מוכנה למשלוח', 'נשלחה', 'הושלמה בהצלחה', 'בוטלה'];
 
+const STATUS_PILL: Record<string, string> = {
+  'חדשה':             'bg-sky-100 text-sky-800 ring-1 ring-sky-300',
+  'בהכנה':            'bg-amber-100 text-amber-800 ring-1 ring-amber-300',
+  'מוכנה למשלוח':     'bg-violet-100 text-violet-800 ring-1 ring-violet-300',
+  'נשלחה':            'bg-indigo-100 text-indigo-800 ring-1 ring-indigo-300',
+  'הושלמה בהצלחה':    'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-300',
+  'בוטלה':            'bg-rose-100 text-rose-700 ring-1 ring-rose-300',
+};
+
+const PAYMENT_PILL: Record<string, string> = {
+  'ממתין': 'bg-amber-100 text-amber-800 ring-1 ring-amber-300',
+  'שולם':  'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-300',
+  'חלקי':  'bg-orange-100 text-orange-800 ring-1 ring-orange-300',
+  'בוטל':  'bg-rose-100 text-rose-700 ring-1 ring-rose-300',
+};
+
 export default function OrderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -198,21 +214,23 @@ export default function OrderDetailPage() {
         <Card>
           <CardHeader><CardTitle>עדכון סטטוס</CardTitle></CardHeader>
           <div className="space-y-2">
-            {ORDER_STATUSES.map(status => (
-              <button
-                key={status}
-                onClick={() => updateStatus(status)}
-                disabled={updatingStatus || order.סטטוס_הזמנה === status}
-                className="w-full text-right px-3 py-2 rounded-lg text-sm transition-all border"
-                style={
-                  order.סטטוס_הזמנה === status
-                    ? { backgroundColor: '#8B5E34', color: '#FFFFFF', borderColor: '#8B5E34' }
-                    : { backgroundColor: '#FFFFFF', color: '#6B4A2D', borderColor: '#E7D2A6' }
-                }
-              >
-                {status}
-              </button>
-            ))}
+            {ORDER_STATUSES.map(status => {
+              const isActive = order.סטטוס_הזמנה === status;
+              return (
+                <button
+                  key={status}
+                  onClick={() => updateStatus(status)}
+                  disabled={updatingStatus || isActive}
+                  className={`w-full text-right px-3 py-2 rounded-full text-sm font-medium transition-all ${
+                    isActive
+                      ? STATUS_PILL[status] || 'bg-stone-200 text-stone-800 ring-1 ring-stone-300'
+                      : 'bg-white text-stone-500 ring-1 ring-stone-200 hover:bg-stone-50'
+                  }`}
+                >
+                  {status}
+                </button>
+              );
+            })}
           </div>
         </Card>
 
@@ -221,21 +239,23 @@ export default function OrderDetailPage() {
           <CardHeader><CardTitle>סטטוס תשלום</CardTitle></CardHeader>
           <div className="mb-3"><StatusBadge status={order.סטטוס_תשלום} type="payment" /></div>
           <div className="space-y-2">
-            {(['ממתין', 'שולם', 'חלקי', 'בוטל'] as const).map(s => (
-              <button
-                key={s}
-                onClick={() => updatePaymentStatus(s)}
-                disabled={order.סטטוס_תשלום === s}
-                className="w-full text-right px-3 py-1.5 rounded-lg text-xs transition-all border"
-                style={
-                  order.סטטוס_תשלום === s
-                    ? { backgroundColor: '#C7A46B', color: '#FFFFFF', borderColor: '#C7A46B' }
-                    : { backgroundColor: '#FFFFFF', color: '#6B4A2D', borderColor: '#E7D2A6' }
-                }
-              >
-                {s}
-              </button>
-            ))}
+            {(['ממתין', 'שולם', 'חלקי', 'בוטל'] as const).map(s => {
+              const isActive = order.סטטוס_תשלום === s;
+              return (
+                <button
+                  key={s}
+                  onClick={() => updatePaymentStatus(s)}
+                  disabled={isActive}
+                  className={`w-full text-right px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                    isActive
+                      ? PAYMENT_PILL[s] || 'bg-stone-200 text-stone-800 ring-1 ring-stone-300'
+                      : 'bg-white text-stone-500 ring-1 ring-stone-200 hover:bg-stone-50'
+                  }`}
+                >
+                  {s}
+                </button>
+              );
+            })}
           </div>
         </Card>
 

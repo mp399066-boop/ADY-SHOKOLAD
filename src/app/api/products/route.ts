@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
 
   const { data, error } = await supabase
     .from('מוצרים_למכירה')
-    .insert({ ...body, מזהה_לובהבל: crypto.randomUUID() })
+    .insert(body)
     .select()
     .single();
 

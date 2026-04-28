@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
 
   const { data: recipe, error: recipeError } = await supabase
     .from('מתכונים')
-    .insert({ ...recipeData, מזהה_לובהבל: crypto.randomUUID() })
+    .insert(recipeData)
     .select()
     .single();
 

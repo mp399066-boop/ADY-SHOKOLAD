@@ -19,39 +19,39 @@ const TABLE_MAP: Record<string, string> = {
 // NOTE: מוצרים_למכירה does NOT have כמות_במלאי (only כמות_במארז)
 const TABLE_SCHEMA: Record<string, Set<string>> = {
   לקוחות: new Set([
-    'מזהה_לובהבל', 'שם_פרטי', 'שם_משפחה', 'טלפון', 'אימייל',
+    'שם_פרטי', 'שם_משפחה', 'טלפון', 'אימייל',
     'סוג_לקוח', 'סטטוס_לקוח', 'מקור_הגעה', 'אחוז_הנחה', 'הערות',
   ]),
   הזמנות: new Set([
-    'מזהה_לובהבל', 'מספר_הזמנה', 'לקוח_id', 'ארכיון', 'סטטוס_הזמנה',
+    'מספר_הזמנה', 'לקוח_id', 'ארכיון', 'סטטוס_הזמנה',
     'הזמנה_דחופה', 'תאריך_הזמנה', 'תאריך_אספקה', 'שעת_אספקה', 'סוג_אספקה',
     'שם_מקבל', 'טלפון_מקבל', 'כתובת_מקבל_ההזמנה', 'עיר', 'הוראות_משלוח',
     'דמי_משלוח', 'אופן_תשלום', 'סטטוס_תשלום', 'סכום_לפני_הנחה', 'סכום_הנחה',
     'סך_הכל_לתשלום', 'מקור_ההזמנה', 'ברכה_טקסט', 'הערות_להזמנה',
   ]),
   מוצרים_למכירה: new Set([
-    'מזהה_לובהבל', 'שם_מוצר', 'סוג_מוצר', 'מחיר', 'פעיל',
+    'שם_מוצר', 'סוג_מוצר', 'מחיר', 'פעיל',
     'האם_צריך_בחירת_פטיפורים', 'כמות_במארז', 'תיאור', 'תמונה_url',
   ]),
   מארזים: new Set([
-    'מזהה_לובהבל', 'שם_מארז', 'גודל_מארז', 'כמה_סוגים_מותר_לבחור', 'מחיר_מארז', 'פעיל', 'הערות',
+    'שם_מארז', 'גודל_מארז', 'כמה_סוגים_מותר_לבחור', 'מחיר_מארז', 'פעיל', 'הערות',
   ]),
   סוגי_פטיפורים: new Set([
-    'מזהה_לובהבל', 'שם_פטיפור', 'פעיל', 'כמות_במלאי', 'הערות',
+    'שם_פטיפור', 'פעיל', 'כמות_במלאי', 'הערות',
   ]),
   מלאי_חומרי_גלם: new Set([
-    'מזהה_לובהבל', 'שם_חומר_גלם', 'כמות_במלאי', 'יחידת_מידה',
+    'שם_חומר_גלם', 'כמות_במלאי', 'יחידת_מידה',
     'סף_מלאי_נמוך', 'סף_מלאי_קריטי', 'סטטוס_מלאי', 'מחיר_ליחידה', 'תאריך_תפוגה', 'הערות',
   ]),
   מתכונים: new Set([
-    'מזהה_לובהבל', 'שם_מתכון', 'מוצר_id', 'כמות_תוצר', 'הערות',
+    'שם_מתכון', 'מוצר_id', 'כמות_תוצר', 'הערות',
   ]),
   משלוחים: new Set([
-    'מזהה_לובהבל', 'הזמנה_id', 'סטטוס_משלוח', 'שם_שליח', 'טלפון_שליח',
+    'הזמנה_id', 'סטטוס_משלוח', 'שם_שליח', 'טלפון_שליח',
     'כתובת', 'עיר', 'הוראות_משלוח', 'תאריך_משלוח', 'שעת_משלוח', 'הערות',
   ]),
   חשבוניות: new Set([
-    'מזהה_לובהבל', 'הזמנה_id', 'לקוח_id', 'מספר_חשבונית', 'קישור_חשבונית', 'סכום', 'סטטוס',
+    'הזמנה_id', 'לקוח_id', 'מספר_חשבונית', 'קישור_חשבונית', 'סכום', 'סטטוס',
   ]),
 };
 
@@ -204,7 +204,6 @@ export async function POST(req: NextRequest) {
   const requiredFields = REQUIRED_FIELDS[tableName] ?? [];
 
   let added = 0;
-  let updated = 0;
   const failed: { row: number; error: string }[] = [];
 
   console.log(`[Import] ══ התחלת ייבוא ══ טבלה: ${tableName} | שורות: ${rows.length}`);
@@ -248,16 +247,10 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
-    // 5. Auto-generate מזהה_לובהבל if absent
-    const hadExistingId = !!payload['מזהה_לובהבל'];
-    if (!hadExistingId) {
-      payload['מזהה_לובהבל'] = crypto.randomUUID();
-    }
-
-    // 6. Upsert — conflict on מזהה_לובהבל
+    // 5. Insert
     const { error } = await (supabase as any)
       .from(tableName)
-      .upsert(payload, { onConflict: 'מזהה_לובהבל', ignoreDuplicates: false });
+      .insert(payload);
 
     if (error) {
       const detail = [
@@ -270,17 +263,13 @@ export async function POST(req: NextRequest) {
       console.error(`[Import] ✗ שורה ${rowNum} נכשלה — ${detail}`, '\npayload:', JSON.stringify(payload));
       failed.push({ row: rowNum, error: detail });
     } else {
-      if (hadExistingId) {
-        updated++;
-      } else {
-        added++;
-      }
+      added++;
     }
   }
 
-  console.log(`[Import] ══ סיום ══ נוספו: ${added} | עודכנו: ${updated} | נכשלו: ${failed.length}`);
+  console.log(`[Import] ══ סיום ══ נוספו: ${added} | נכשלו: ${failed.length}`);
 
   return NextResponse.json({
-    data: { added, updated, failed: failed.length, errors: failed },
+    data: { added, updated: 0, failed: failed.length, errors: failed },
   });
 }

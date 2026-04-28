@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'שם פרטי הוא שדה חובה' }, { status: 400 });
   }
 
-  const { data, error } = await supabase.from('לקוחות').insert({ ...customer, מזהה_לובהבל: crypto.randomUUID() }).select().single();
+  const { data, error } = await supabase.from('לקוחות').insert(customer).select().single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   return NextResponse.json({ data }, { status: 201 });
