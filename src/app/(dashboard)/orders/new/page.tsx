@@ -9,7 +9,7 @@ import { Input, Select, Textarea } from '@/components/ui/Input';
 import { PageLoading } from '@/components/ui/LoadingSpinner';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import toast from 'react-hot-toast';
-import type { Customer, Product, PetitFourType } from '@/types/database';
+import type { Customer, Product, PetitFourType, Package } from '@/types/database';
 
 interface OrderItem {
   מוצר_id: string;
@@ -51,6 +51,7 @@ export default function NewOrderPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [petitFourTypes, setPetitFourTypes] = useState<PetitFourType[]>([]);
+  const [packages, setPackages] = useState<Package[]>([]);
 
   const [selectedCustomer, setSelectedCustomer] = useState('');
   const [isUrgent, setIsUrgent] = useState(false);
@@ -77,10 +78,12 @@ export default function NewOrderPage() {
       fetch('/api/customers?limit=200').then(r => r.json()),
       fetch('/api/products?active=true').then(r => r.json()),
       fetch('/api/petit-four-types').then(r => r.json()),
-    ]).then(([c, p, pf]) => {
+      fetch('/api/packages').then(r => r.json()),
+    ]).then(([c, p, pf, pkg]) => {
       setCustomers(c.data || []);
       setProducts(p.data || []);
       setPetitFourTypes(pf.data || []);
+      setPackages(pkg.data || []);
     });
   }, []);
 
@@ -129,7 +132,15 @@ export default function NewOrderPage() {
   const updatePackageItem = (idx: number, field: string, value: string | number) => {
     setPackageItems(prev => {
       const items = [...prev];
-      const item = { ...items[idx], [field]: value };
+      let item = { ...items[idx], [field]: value };
+      if (field === 'מוצר_id') {
+        const pkg = packages.find(p => p.id === value);
+        if (pkg) {
+          item.שם_מארז = pkg.שם_מארז;
+          item.גודל_מארז = pkg.גודל_מארז;
+          item.מחיר_ליחידה = pkg.מחיר_מארז;
+        }
+      }
       item.סהכ = item.כמות * item.מחיר_ליחידה;
       items[idx] = item;
       return items;
@@ -430,21 +441,23 @@ export default function NewOrderPage() {
                     style={{ borderColor: '#DDD0BC', backgroundColor: '#FAF7F0' }}
                   >
                     <div className="grid grid-cols-4 gap-3 mb-3">
-                      <Input
-                        label="שם מארז"
-                        value={pkg.שם_מארז}
-                        onChange={e => updatePackageItem(pkgIdx, 'שם_מארז', e.target.value)}
-                      />
-                      <Select
-                        label="גודל מארז"
-                        value={String(pkg.גודל_מארז || '')}
-                        onChange={e => updatePackageItem(pkgIdx, 'גודל_מארז', Number(e.target.value))}
-                      >
-                        <option value="">בחר...</option>
-                        {[4, 6, 12, 20, 22, 24, 30, 36].map(s => (
-                          <option key={s} value={s}>{s} יח׳</option>
-                        ))}
-                      </Select>
+                      <div className="col-span-2">
+                        <Select
+                          label="בחר מארז"
+                          value={pkg.מוצר_id || ''}
+                          onChange={e => updatePackageItem(pkgIdx, 'מוצר_id', e.target.value)}
+                        >
+                          <option value="">בחר מארז...</option>
+                          {packages.filter(p => p.פעיל).map(p => (
+                            <option key={p.id} value={p.id}>
+                              {p.שם_מארז} — {p.גודל_מארז} יח׳{p.מחיר_מארז ? ` · ₪${p.מחיר_מארז}` : ''}
+                            </option>
+                          ))}
+                        </Select>
+                        {pkg.מוצר_id && !packages.find(p => p.id === pkg.מוצר_id)?.מחיר_מארז && (
+                          <p className="text-xs mt-1 text-amber-600">⚠ למארז זה אין מחיר מוגדר</p>
+                        )}
+                      </div>
                       <Input
                         label="כמות"
                         type="number"
@@ -453,7 +466,7 @@ export default function NewOrderPage() {
                         min={1}
                       />
                       <Input
-                        label="מחיר ליחידה"
+                        label="מחיר ליחידה (₪)"
                         type="number"
                         value={pkg.מחיר_ליחידה}
                         onChange={e => updatePackageItem(pkgIdx, 'מחיר_ליחידה', Number(e.target.value))}

@@ -12,7 +12,12 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     .eq('id', params.id)
     .select()
     .single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    const msg = error.message?.includes('column') && error.message?.includes('not found')
+      ? 'עמודת המלאי לא קיימת — הרץ את migration 002 בסופרבייס SQL Editor'
+      : error.message;
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
   return NextResponse.json({ data });
 }
 

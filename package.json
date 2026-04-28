@@ -24,6 +24,7 @@
     "react-dom": "^18",
     "react-hook-form": "^7.52.0",
     "react-hot-toast": "^2.4.1",
+    "resend": "^6.12.2",
     "tailwind-merge": "^2.3.0",
     "uuid": "^10.0.0",
     "xlsx": "^0.18.5",
