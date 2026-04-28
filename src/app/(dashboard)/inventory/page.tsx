@@ -98,6 +98,21 @@ export default function InventoryPage() {
     } finally { setSavingStock(false); }
   };
 
+  const handleDeleteMaterial = async (id: string) => {
+    if (!window.confirm('האם אתה בטוח שברצונך למחוק את חומר הגלם?')) return;
+    try {
+      const res = await fetch(`/api/inventory/${id}`, { method: 'DELETE' });
+      const json = await res.json();
+      if (!res.ok) {
+        const isFK = (json.error || '').includes('foreign key') || (json.error || '').includes('violates');
+        toast.error(isFK ? 'לא ניתן למחוק כי קיימות רשומות מקושרות' : (json.error || 'שגיאה במחיקה'));
+        return;
+      }
+      toast.success('נמחק בהצלחה');
+      fetchInventory();
+    } catch { toast.error('שגיאה במחיקה'); }
+  };
+
   const openAdd = () => {
     setEditItem({
       שם_חומר_גלם: '', כמות_במלאי: 0, יחידת_מידה: 'ק"ג',
@@ -275,13 +290,22 @@ export default function InventoryPage() {
                             {m.מחיר_ליחידה ? formatCurrency(m.מחיר_ליחידה) : '—'}
                           </td>
                           <td className="px-4 py-3">
-                            <button
-                              onClick={() => openEdit(m)}
-                              className="text-xs hover:underline"
-                              style={{ color: '#8B5E34' }}
-                            >
-                              עריכה
-                            </button>
+                            <div className="flex items-center gap-3">
+                              <button
+                                onClick={() => openEdit(m)}
+                                className="text-xs hover:underline"
+                                style={{ color: '#8B5E34' }}
+                              >
+                                עריכה
+                              </button>
+                              <button
+                                onClick={() => handleDeleteMaterial(m.id)}
+                                className="text-xs hover:underline"
+                                style={{ color: '#C0392B' }}
+                              >
+                                מחק
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}

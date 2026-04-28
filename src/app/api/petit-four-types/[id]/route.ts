@@ -15,3 +15,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ data });
 }
+
+export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+  const supabase = createAdminClient();
+  const { error } = await supabase.from('סוגי_פטיפורים').delete().eq('id', params.id);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ success: true });
+}

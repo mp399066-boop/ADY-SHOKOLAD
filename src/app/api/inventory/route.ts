@@ -20,9 +20,10 @@ export async function POST(req: NextRequest) {
   const supabase = createAdminClient();
   const body = await req.json();
   if (!body.שם_חומר_גלם) return NextResponse.json({ error: 'שם חומר הגלם הוא שדה חובה' }, { status: 400 });
+  const { תאריך_תפוגה: _ignored, ...safeBody } = body;
   const { data, error } = await supabase
     .from('מלאי_חומרי_גלם')
-    .insert({ ...body, מזהה_לובהבל: crypto.randomUUID() })
+    .insert({ ...safeBody, מזהה_לובהבל: crypto.randomUUID() })
     .select()
     .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

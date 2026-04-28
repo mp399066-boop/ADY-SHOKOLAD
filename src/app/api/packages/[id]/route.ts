@@ -6,10 +6,9 @@ import { createAdminClient } from '@/lib/supabase/server';
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const supabase = createAdminClient();
   const body = await req.json();
-  const { תאריך_תפוגה: _ignored, ...safeBody } = body;
   const { data, error } = await supabase
-    .from('מלאי_חומרי_גלם')
-    .update(safeBody)
+    .from('מארזים')
+    .update({ ...body, תאריך_עדכון: new Date().toISOString() })
     .eq('id', params.id)
     .select()
     .single();
@@ -19,7 +18,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
   const supabase = createAdminClient();
-  const { error } = await supabase.from('מלאי_חומרי_גלם').delete().eq('id', params.id);
+  const { error } = await supabase.from('מארזים').delete().eq('id', params.id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ success: true });
 }

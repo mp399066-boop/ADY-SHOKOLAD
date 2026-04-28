@@ -20,6 +20,8 @@ export async function POST(req: NextRequest) {
 
   if (!recipeData.שם_מתכון) return NextResponse.json({ error: 'שם המתכון הוא שדה חובה' }, { status: 400 });
 
+  if (!recipeData.מוצר_id) recipeData.מוצר_id = null;
+
   const { data: recipe, error: recipeError } = await supabase
     .from('מתכונים')
     .insert({ ...recipeData, מזהה_לובהבל: crypto.randomUUID() })
@@ -28,8 +30,11 @@ export async function POST(req: NextRequest) {
 
   if (recipeError) return NextResponse.json({ error: recipeError.message }, { status: 500 });
 
-  if (רכיבים?.length) {
-    const ingredients = רכיבים.map((r: { חומר_גלם_id: string; כמות_נדרשת: number; יחידת_מידה: string }) => ({
+  const validIngredients = (רכיבים || []).filter(
+    (r: { חומר_גלם_id: string }) => r.חומר_גלם_id && r.חומר_גלם_id !== '',
+  );
+  if (validIngredients.length) {
+    const ingredients = validIngredients.map((r: { חומר_גלם_id: string; כמות_נדרשת: number; יחידת_מידה: string }) => ({
       מתכון_id: recipe!.id,
       חומר_גלם_id: r.חומר_גלם_id,
       כמות_נדרשת: r.כמות_נדרשת,

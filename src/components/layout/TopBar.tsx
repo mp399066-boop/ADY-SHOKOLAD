@@ -1,10 +1,9 @@
 'use client';
 
-import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { IconMenu, IconPlus } from '@/components/icons';
+import { IconMenu } from '@/components/icons';
 import type { BusinessSettings } from '@/types/database';
 
 const PAGE_TITLES: Record<string, string> = {
@@ -91,18 +90,6 @@ export default function TopBar({ onMenuToggle }: TopBarProps) {
         {dateStr}
       </span>
 
-      {/* Quick new order */}
-      <Link href="/orders/new">
-        <button
-          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-medium transition-all"
-          style={{ backgroundColor: '#8B5E34', color: '#FFFFFF' }}
-          onMouseEnter={e => (e.currentTarget.style.opacity = '0.88')}
-          onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
-        >
-          <IconPlus className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">הזמנה חדשה</span>
-        </button>
-      </Link>
     </header>
   );
 }

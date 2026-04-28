@@ -87,6 +87,21 @@ export default function RecipesPage() {
     }
   };
 
+  const handleDeleteRecipe = async (id: string) => {
+    if (!window.confirm('האם אתה בטוח שברצונך למחוק את המתכון?')) return;
+    try {
+      const res = await fetch(`/api/recipes/${id}`, { method: 'DELETE' });
+      const json = await res.json();
+      if (!res.ok) {
+        const isFK = (json.error || '').includes('foreign key') || (json.error || '').includes('violates');
+        toast.error(isFK ? 'לא ניתן למחוק כי קיימות רשומות מקושרות' : (json.error || 'שגיאה במחיקה'));
+        return;
+      }
+      toast.success('מתכון נמחק');
+      fetchAll();
+    } catch { toast.error('שגיאה במחיקה'); }
+  };
+
   const handleProduction = async () => {
     if (!productionForm.מוצר_id || !productionForm.כמות_שיוצרה) { toast.error('בחר מוצר וכמות'); return; }
     setSaving(true);
@@ -143,6 +158,13 @@ export default function RecipesPage() {
                           {(r as Recipe & { מוצרים_למכירה?: { שם_מוצר: string } }).מוצרים_למכירה?.שם_מוצר || 'לא משויך'} · תוצר: {r.כמות_תוצר}
                         </p>
                       </div>
+                      <button
+                        onClick={() => handleDeleteRecipe(r.id)}
+                        className="text-xs hover:underline self-start"
+                        style={{ color: '#C0392B' }}
+                      >
+                        מחק
+                      </button>
                     </div>
                     {(r as Recipe & { רכיבי_מתכון?: { id: string; כמות_נדרשת: number; יחידת_מידה: string; מלאי_חומרי_גלם?: { שם_חומר_גלם: string } }[] }).רכיבי_מתכון?.length ? (
                       <div className="space-y-1">

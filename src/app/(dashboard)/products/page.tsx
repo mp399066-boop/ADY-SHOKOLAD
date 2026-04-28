@@ -91,6 +91,25 @@ export default function ProductsPage() {
     fetchAll();
   };
 
+  const handleDelete = async (id: string, entityType: Tab) => {
+    if (!window.confirm('האם אתה בטוח שברצונך למחוק?')) return;
+    try {
+      const url =
+        entityType === 'packages' ? `/api/packages/${id}` :
+        entityType === 'petitfours' ? `/api/petit-four-types/${id}` :
+        `/api/products/${id}`;
+      const res = await fetch(url, { method: 'DELETE' });
+      const json = await res.json();
+      if (!res.ok) {
+        const isFK = (json.error || '').includes('foreign key') || (json.error || '').includes('violates');
+        toast.error(isFK ? 'לא ניתן למחוק כי קיימות רשומות מקושרות' : (json.error || 'שגיאה במחיקה'));
+        return;
+      }
+      toast.success('נמחק בהצלחה');
+      fetchAll();
+    } catch { toast.error('שגיאה במחיקה'); }
+  };
+
   const tabList = [
     { key: 'products',   label: 'מוצרים למכירה',  count: products.length },
     { key: 'packages',   label: 'מארזים',          count: packages.length },
@@ -206,6 +225,13 @@ export default function ProductsPage() {
                               >
                                 {p.פעיל ? 'השבת' : 'הפעל'}
                               </button>
+                              <button
+                                onClick={() => handleDelete(p.id, 'products')}
+                                className="text-xs hover:underline"
+                                style={{ color: '#C0392B' }}
+                              >
+                                מחק
+                              </button>
                             </div>
                           </div>
                         </div>
@@ -267,13 +293,22 @@ export default function ProductsPage() {
                               </span>
                             </td>
                             <td className="px-4 py-3">
-                              <button
-                                onClick={() => openEdit(pkg)}
-                                className="text-xs hover:underline"
-                                style={{ color: '#8B5E34' }}
-                              >
-                                עריכה
-                              </button>
+                              <div className="flex items-center gap-3">
+                                <button
+                                  onClick={() => openEdit(pkg)}
+                                  className="text-xs hover:underline"
+                                  style={{ color: '#8B5E34' }}
+                                >
+                                  עריכה
+                                </button>
+                                <button
+                                  onClick={() => handleDelete(pkg.id, 'packages')}
+                                  className="text-xs hover:underline"
+                                  style={{ color: '#C0392B' }}
+                                >
+                                  מחק
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -315,6 +350,13 @@ export default function ProductsPage() {
                             style={{ color: '#8B5E34' }}
                           >
                             עריכה
+                          </button>
+                          <button
+                            onClick={() => handleDelete(pf.id, 'petitfours')}
+                            className="text-xs hover:underline"
+                            style={{ color: '#C0392B' }}
+                          >
+                            מחק
                           </button>
                         </div>
                       </div>
