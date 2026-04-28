@@ -21,12 +21,12 @@ export function StatusBadge({ status, type = 'order' }: StatusBadgeProps) {
     customer: CUSTOMER_TYPE_COLORS,
   };
 
-  const colors = colorMaps[type][status] || 'bg-gray-100 text-gray-700 border-gray-200';
+  const colors = colorMaps[type][status] || 'bg-stone-100 text-stone-600';
 
   return (
     <span
       className={cn(
-        'inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border',
+        'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
         colors
       )}
     >
@@ -37,7 +37,7 @@ export function StatusBadge({ status, type = 'order' }: StatusBadgeProps) {
 
 export function UrgentBadge() {
   return (
-    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-red-100 text-red-700 border border-red-200">
+    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-rose-600">
       דחוף
     </span>
   );

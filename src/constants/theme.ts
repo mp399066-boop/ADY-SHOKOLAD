@@ -15,38 +15,38 @@ export const BRAND_COLORS = {
 } as const;
 
 export const STATUS_COLORS: Record<string, string> = {
-  חדשה: 'bg-blue-50 text-blue-700 border-blue-100',
-  בהכנה: 'bg-amber-50 text-amber-700 border-amber-100',
-  'מוכנה למשלוח': 'bg-purple-50 text-purple-700 border-purple-100',
-  נשלחה: 'bg-indigo-50 text-indigo-700 border-indigo-100',
-  'הושלמה בהצלחה': 'bg-green-50 text-green-700 border-green-100',
-  בוטלה: 'bg-red-50 text-red-600 border-red-100',
+  חדשה: 'bg-sky-50 text-sky-700',
+  בהכנה: 'bg-amber-50 text-amber-700',
+  'מוכנה למשלוח': 'bg-violet-50 text-violet-700',
+  נשלחה: 'bg-indigo-50 text-indigo-700',
+  'הושלמה בהצלחה': 'bg-emerald-50 text-emerald-700',
+  בוטלה: 'bg-rose-50 text-rose-600',
 };
 
 export const PAYMENT_STATUS_COLORS: Record<string, string> = {
-  ממתין: 'bg-yellow-50 text-yellow-700 border-yellow-100',
-  שולם: 'bg-green-50 text-green-700 border-green-100',
-  חלקי: 'bg-orange-50 text-orange-700 border-orange-100',
-  בוטל: 'bg-red-50 text-red-600 border-red-100',
+  ממתין: 'bg-amber-50 text-amber-700',
+  שולם: 'bg-emerald-50 text-emerald-700',
+  חלקי: 'bg-orange-50 text-orange-700',
+  בוטל: 'bg-rose-50 text-rose-600',
 };
 
 export const INVENTORY_STATUS_COLORS: Record<string, string> = {
-  תקין: 'bg-green-50 text-green-700 border-green-100',
-  'מלאי נמוך': 'bg-yellow-50 text-yellow-700 border-yellow-100',
-  קריטי: 'bg-orange-50 text-orange-700 border-orange-100',
-  'אזל מהמלאי': 'bg-red-50 text-red-600 border-red-100',
+  תקין: 'bg-emerald-50 text-emerald-700',
+  'מלאי נמוך': 'bg-amber-50 text-amber-700',
+  קריטי: 'bg-orange-50 text-orange-700',
+  'אזל מהמלאי': 'bg-rose-50 text-rose-600',
 };
 
 export const DELIVERY_STATUS_COLORS: Record<string, string> = {
-  ממתין: 'bg-gray-50 text-gray-600 border-gray-100',
-  'מוכן למשלוח': 'bg-purple-50 text-purple-700 border-purple-100',
-  'יצא למשלוח': 'bg-blue-50 text-blue-700 border-blue-100',
-  נמסר: 'bg-green-50 text-green-700 border-green-100',
+  ממתין: 'bg-stone-100 text-stone-600',
+  'מוכן למשלוח': 'bg-violet-50 text-violet-700',
+  'יצא למשלוח': 'bg-sky-50 text-sky-700',
+  נמסר: 'bg-emerald-50 text-emerald-700',
 };
 
 export const CUSTOMER_TYPE_COLORS: Record<string, string> = {
-  פרטי: 'bg-gray-50 text-gray-600',
-  חוזר: 'bg-blue-50 text-blue-700',
+  פרטי: 'bg-stone-100 text-stone-600',
+  חוזר: 'bg-sky-50 text-sky-700',
   VIP: 'bg-amber-50 text-amber-700',
-  'מעצב אירועים': 'bg-purple-50 text-purple-700',
+  'מעצב אירועים': 'bg-violet-50 text-violet-700',
 };

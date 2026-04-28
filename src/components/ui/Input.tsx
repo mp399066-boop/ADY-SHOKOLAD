@@ -21,8 +21,8 @@ export function Input({ label, error, hint, className, id, required, ...props }:
         id={inputId}
         required={required}
         className={cn(
-          'w-full px-3 py-2 text-sm rounded-lg border bg-white transition-colors',
-          error ? 'border-red-400 focus:border-red-400' : 'border-[#DDD0BC] focus:border-[#C7A46B]',
+          'w-full px-3 py-2 text-sm rounded-xl border bg-white transition-all duration-200',
+          error ? 'border-red-300 focus:border-red-400' : 'border-[#E0D4C4] focus:border-[#C7A46B]',
           'focus:outline-none focus:ring-2',
           error ? 'focus:ring-red-200' : 'focus:ring-amber-100',
           'placeholder:text-[#BFB09A]',
@@ -56,7 +56,7 @@ export function Textarea({ label, error, className, id, required, ...props }: Te
         id={inputId}
         required={required}
         className={cn(
-          'w-full px-3 py-2 text-sm rounded-lg border bg-white transition-colors resize-y',
+          'w-full px-3 py-2 text-sm rounded-xl border bg-white transition-all duration-200 resize-y',
           error ? 'border-red-400 focus:border-red-400' : 'border-[#DDD0BC] focus:border-[#C7A46B]',
           'focus:outline-none focus:ring-2',
           error ? 'focus:ring-red-200' : 'focus:ring-amber-100',
@@ -90,8 +90,8 @@ export function Select({ label, error, className, id, required, children, ...pro
         id={inputId}
         required={required}
         className={cn(
-          'w-full px-3 py-2 text-sm rounded-lg border bg-white transition-colors',
-          error ? 'border-red-400 focus:border-red-400' : 'border-[#DDD0BC] focus:border-[#C7A46B]',
+          'w-full px-3 py-2 text-sm rounded-xl border bg-white transition-all duration-200',
+          error ? 'border-red-300 focus:border-red-400' : 'border-[#E0D4C4] focus:border-[#C7A46B]',
           'focus:outline-none focus:ring-2',
           error ? 'focus:ring-red-200' : 'focus:ring-amber-100',
           className,

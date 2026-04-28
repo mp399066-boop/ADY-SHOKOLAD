@@ -15,28 +15,28 @@ interface TabsProps {
 
 export function Tabs({ tabs, activeTab, onChange, className = '' }: TabsProps) {
   return (
-    <div className={`flex border-b ${className}`} style={{ borderColor: '#E2D4C0' }}>
+    <div className={`flex border-b ${className}`} style={{ borderColor: 'rgba(0,0,0,0.07)' }}>
       {tabs.map(tab => {
         const isActive = activeTab === tab.key;
         return (
           <button
             key={tab.key}
             onClick={() => onChange(tab.key)}
-            className="relative px-5 py-2.5 text-sm font-medium transition-colors whitespace-nowrap"
+            className="relative px-5 py-3 text-sm transition-all duration-200 whitespace-nowrap"
             style={
               isActive
-                ? { color: '#8B5E34', borderBottom: '2px solid #8B5E34', marginBottom: '-1px' }
-                : { color: '#6B4A2D' }
+                ? { color: '#8B5E34', fontWeight: 500, borderBottom: '2px solid #C7A46B', marginBottom: '-1px' }
+                : { color: '#9B8472', fontWeight: 400 }
             }
           >
             {tab.label}
             {tab.count !== undefined && (
               <span
-                className="mr-2 px-1.5 py-0.5 rounded-full text-xs font-semibold"
+                className="mr-2 px-1.5 py-0.5 rounded-full text-xs"
                 style={
                   isActive
-                    ? { backgroundColor: '#8B5E34', color: '#FFFFFF' }
-                    : { backgroundColor: '#EDE0CE', color: '#6B4A2D' }
+                    ? { backgroundColor: '#F0E6D6', color: '#8B5E34', fontWeight: 600 }
+                    : { backgroundColor: 'rgba(0,0,0,0.05)', color: '#9B8472' }
                 }
               >
                 {tab.count}

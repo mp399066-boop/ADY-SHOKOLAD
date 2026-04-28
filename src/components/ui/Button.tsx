@@ -17,7 +17,8 @@ export function Button({
   ...props
 }: ButtonProps) {
   const base =
-    'inline-flex items-center justify-center gap-2 font-medium rounded-xl transition-all ' +
+    'inline-flex items-center justify-center gap-2 font-medium rounded-xl ' +
+    'transition-all duration-200 ' +
     'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 ' +
     'disabled:opacity-40 disabled:cursor-not-allowed select-none';
 
@@ -29,24 +30,24 @@ export function Button({
 
   const variants: Record<string, { className: string; style?: React.CSSProperties }> = {
     primary: {
-      className: 'text-white hover:opacity-90 active:opacity-80 focus-visible:ring-amber-400',
-      style: { backgroundColor: '#8B5E34', boxShadow: '0 1px 3px rgba(139,94,52,0.25)' },
+      className: 'text-white hover:opacity-88 active:opacity-80 focus-visible:ring-amber-400',
+      style: { backgroundColor: '#8B5E34', boxShadow: '0 1px 6px rgba(139,94,52,0.18)' },
     },
     secondary: {
       className: 'hover:opacity-90 focus-visible:ring-amber-300',
-      style: { backgroundColor: '#C7A46B', color: '#FFFFFF', boxShadow: '0 1px 2px rgba(199,164,107,0.2)' },
+      style: { backgroundColor: '#C7A46B', color: '#FFFFFF', boxShadow: '0 1px 4px rgba(199,164,107,0.18)' },
     },
     outline: {
-      className: 'bg-white hover:bg-stone-50 active:bg-stone-100 focus-visible:ring-amber-300',
-      style: { border: '1.5px solid #D4C4AC', color: '#8B5E34' },
+      className: 'bg-white hover:bg-[#FAF7F2] active:bg-stone-100 focus-visible:ring-amber-300',
+      style: { border: '1.5px solid #D8CCBA', color: '#8B5E34' },
     },
     ghost: {
-      className: 'hover:bg-amber-50 active:bg-amber-100 focus-visible:ring-amber-300',
+      className: 'hover:bg-[#F5EFE6] active:bg-amber-100 focus-visible:ring-amber-300',
       style: { color: '#8B5E34' },
     },
     danger: {
       className: 'text-white hover:opacity-90 active:opacity-80 focus-visible:ring-red-400',
-      style: { backgroundColor: '#C0392B', boxShadow: '0 1px 3px rgba(192,57,43,0.2)' },
+      style: { backgroundColor: '#BE3A2A', boxShadow: '0 1px 4px rgba(190,58,42,0.18)' },
     },
   };
 

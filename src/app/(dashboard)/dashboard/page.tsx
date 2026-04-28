@@ -24,25 +24,28 @@ function StatCard({ label, value, href, filterParam, accent = '#8B5E34', urgent,
   return (
     <Link href={url}>
       <div
-        className="bg-white rounded-2xl border p-4 hover:shadow-md transition-all cursor-pointer group relative overflow-hidden"
-        style={{ borderColor: '#EDE0CE' }}
+        className="bg-white rounded-2xl p-5 premium-card transition-all cursor-pointer group relative overflow-hidden"
+        style={{
+          border: '1px solid rgba(0,0,0,0.05)',
+          boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
+        }}
       >
-        <div className="flex items-start justify-between mb-3">
+        <div className="flex items-start justify-between mb-4">
           <div
-            className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-            style={{ backgroundColor: `${accent}18`, color: accent }}
+            className="w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0"
+            style={{ backgroundColor: `${accent}14`, color: accent }}
           >
             {icon}
           </div>
           {urgent && value > 0 && (
-            <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
+            <span className="w-2 h-2 rounded-full bg-rose-400 animate-pulse flex-shrink-0 mt-1" />
           )}
         </div>
-        <div className="text-2xl font-bold tabular-nums" style={{ color: '#2B1A10' }}>{value}</div>
-        <div className="text-xs mt-0.5 font-medium" style={{ color: '#6B4A2D' }}>{label}</div>
+        <div className="text-2xl font-semibold tabular-nums" style={{ color: '#2B1A10', letterSpacing: '-0.5px' }}>{value}</div>
+        <div className="text-xs mt-1 font-normal" style={{ color: '#9B8472', letterSpacing: '0.2px' }}>{label}</div>
         <div
-          className="absolute bottom-0 right-0 left-0 h-0.5 w-0 group-hover:w-full transition-all duration-300 origin-right"
-          style={{ backgroundColor: accent }}
+          className="absolute bottom-0 right-0 left-0 h-px w-0 group-hover:w-full transition-all duration-300 origin-right"
+          style={{ backgroundColor: `${accent}60` }}
         />
       </div>
     </Link>
@@ -54,16 +57,16 @@ function QuickAction({ label, href, icon }: { label: string; href: string; icon:
   return (
     <Link href={href}>
       <div
-        className="flex flex-col items-center justify-center gap-3 p-4 rounded-2xl border bg-white hover:shadow-sm hover:border-amber-300 transition-all cursor-pointer aspect-square"
-        style={{ borderColor: '#EDE0CE' }}
+        className="flex flex-col items-center justify-center gap-3 p-4 rounded-2xl bg-white premium-card transition-all cursor-pointer aspect-square"
+        style={{ border: '1px solid rgba(0,0,0,0.05)', boxShadow: '0 2px 10px rgba(0,0,0,0.04)' }}
       >
         <div
-          className="w-12 h-12 rounded-2xl flex items-center justify-center"
-          style={{ backgroundColor: '#F0E6D6', color: '#8B5E34' }}
+          className="w-11 h-11 rounded-2xl flex items-center justify-center"
+          style={{ backgroundColor: '#F5EDE3', color: '#8B5E34' }}
         >
           {icon}
         </div>
-        <span className="text-xs font-medium text-center" style={{ color: '#2B1A10' }}>{label}</span>
+        <span className="text-xs font-normal text-center" style={{ color: '#4A3525', letterSpacing: '0.2px' }}>{label}</span>
       </div>
     </Link>
   );

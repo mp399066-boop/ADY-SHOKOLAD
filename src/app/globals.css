@@ -5,16 +5,16 @@
 :root {
   --brand-primary: #8B5E34;
   --brand-secondary: #C7A46B;
-  --brand-light-gold: #E7D2A6;
+  --brand-light-gold: #E8D5B0;
   --brand-dark-brown: #4A2F1B;
-  --brand-cream: #F6F3EE;
+  --brand-cream: #F8F5F0;
   --brand-card: #FFFFFF;
-  --brand-text-primary: #1C1008;
+  --brand-text-primary: #2B1A10;
   --brand-text-secondary: #7A6050;
-  --brand-border: #E8E0D4;
-  --brand-success: #2E7D32;
-  --brand-warning: #E6A800;
-  --brand-danger: #C0392B;
+  --brand-border: #EAE2D6;
+  --brand-success: #276749;
+  --brand-warning: #B45309;
+  --brand-danger: #BE3A2A;
   --brand-info: #2563EB;
 }
 
@@ -52,23 +52,25 @@ body {
   font-family: 'Segoe UI', 'Arial Hebrew', 'Arial', sans-serif;
   direction: rtl;
   -webkit-font-smoothing: antialiased;
-  line-height: 1.6;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.65;
+  letter-spacing: 0.01em;
 }
 
 /* ── Scrollbar ─────────────────────────────────────── */
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 4px;
+  height: 4px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #D4C4B0;
+  background: #D8CCBC;
   border-radius: 10px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #B49A78;
+  background: #B8A48A;
 }
 
 /* ── Tables — lighter, more breathable ─────────────── */
@@ -79,11 +81,11 @@ table {
 
 table thead th {
   font-weight: 500;
-  letter-spacing: 0.01em;
+  letter-spacing: 0.03em;
 }
 
 table tbody tr {
-  transition: background-color 0.15s ease;
+  transition: background-color 0.18s ease;
 }
 
 table tbody tr:last-child td {
@@ -94,7 +96,7 @@ table tbody tr:last-child td {
 input:focus,
 textarea:focus,
 select:focus {
-  outline: 2px solid #C7A46B;
+  outline: 2px solid rgba(199,164,107,0.55);
   outline-offset: 0;
 }
 
@@ -110,14 +112,23 @@ select:focus {
 }
 
 .shimmer {
-  background: linear-gradient(90deg, #f0ece6 25%, #e8e2da 50%, #f0ece6 75%);
+  background: linear-gradient(90deg, #f2ede8 25%, #ebe4dc 50%, #f2ede8 75%);
   background-size: 800px 100%;
-  animation: shimmer 1.6s infinite linear;
+  animation: shimmer 1.8s infinite linear;
+}
+
+/* ── Premium card lift on hover ─────────────────────── */
+.premium-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.premium-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.07), 0 0 0 1px rgba(0,0,0,0.03) !important;
 }
 
 /* ── Smooth transitions for interactive elements ─────── */
 a, button {
   transition-property: background-color, color, border-color, box-shadow, opacity, transform;
-  transition-duration: 150ms;
+  transition-duration: 200ms;
   transition-timing-function: ease;
 }
