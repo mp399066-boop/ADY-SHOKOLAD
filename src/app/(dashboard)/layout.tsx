@@ -13,12 +13,12 @@ export default function DashboardLayout({
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{ backgroundColor: '#F6F0E8' }}>
+    <div className="flex h-screen overflow-hidden" style={{ backgroundColor: '#F6F3EE' }}>
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       <div className="flex flex-1 flex-col overflow-hidden md:mr-0">
         <TopBar onMenuToggle={() => setSidebarOpen(o => !o)} />
-        <main className="flex-1 overflow-y-auto p-5 md:p-6">
+        <main className="flex-1 overflow-y-auto p-6 md:p-8">
           {children}
         </main>
       </div>
@@ -29,8 +29,10 @@ export default function DashboardLayout({
           style: {
             direction: 'rtl',
             fontFamily: 'inherit',
-            borderRadius: '10px',
-            fontSize: '14px',
+            borderRadius: '12px',
+            fontSize: '13px',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
+            border: '1px solid #EDE8E0',
           },
         }}
       />

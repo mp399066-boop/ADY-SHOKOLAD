@@ -3,49 +3,50 @@ export const BRAND_COLORS = {
   secondary: '#C7A46B',
   lightGold: '#E7D2A6',
   darkBrown: '#4A2F1B',
-  cream: '#FAF7F0',
+  cream: '#F6F3EE',
   card: '#FFFFFF',
-  textPrimary: '#2B1A10',
-  textSecondary: '#6B4A2D',
+  textPrimary: '#1C1008',
+  textSecondary: '#7A6050',
+  border: '#E8E0D4',
   success: '#2E7D32',
-  warning: '#F2A900',
+  warning: '#E6A800',
   danger: '#C0392B',
   info: '#2563EB',
 } as const;
 
 export const STATUS_COLORS: Record<string, string> = {
-  חדשה: 'bg-blue-100 text-blue-800 border-blue-200',
-  בהכנה: 'bg-amber-100 text-amber-800 border-amber-200',
-  'מוכנה למשלוח': 'bg-purple-100 text-purple-800 border-purple-200',
-  נשלחה: 'bg-indigo-100 text-indigo-800 border-indigo-200',
-  'הושלמה בהצלחה': 'bg-green-100 text-green-800 border-green-200',
-  בוטלה: 'bg-red-100 text-red-800 border-red-200',
+  חדשה: 'bg-blue-50 text-blue-700 border-blue-100',
+  בהכנה: 'bg-amber-50 text-amber-700 border-amber-100',
+  'מוכנה למשלוח': 'bg-purple-50 text-purple-700 border-purple-100',
+  נשלחה: 'bg-indigo-50 text-indigo-700 border-indigo-100',
+  'הושלמה בהצלחה': 'bg-green-50 text-green-700 border-green-100',
+  בוטלה: 'bg-red-50 text-red-600 border-red-100',
 };
 
 export const PAYMENT_STATUS_COLORS: Record<string, string> = {
-  ממתין: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-  שולם: 'bg-green-100 text-green-800 border-green-200',
-  חלקי: 'bg-orange-100 text-orange-800 border-orange-200',
-  בוטל: 'bg-red-100 text-red-800 border-red-200',
+  ממתין: 'bg-yellow-50 text-yellow-700 border-yellow-100',
+  שולם: 'bg-green-50 text-green-700 border-green-100',
+  חלקי: 'bg-orange-50 text-orange-700 border-orange-100',
+  בוטל: 'bg-red-50 text-red-600 border-red-100',
 };
 
 export const INVENTORY_STATUS_COLORS: Record<string, string> = {
-  תקין: 'bg-green-100 text-green-800 border-green-200',
-  'מלאי נמוך': 'bg-yellow-100 text-yellow-800 border-yellow-200',
-  קריטי: 'bg-orange-100 text-orange-800 border-orange-200',
-  'אזל מהמלאי': 'bg-red-100 text-red-800 border-red-200',
+  תקין: 'bg-green-50 text-green-700 border-green-100',
+  'מלאי נמוך': 'bg-yellow-50 text-yellow-700 border-yellow-100',
+  קריטי: 'bg-orange-50 text-orange-700 border-orange-100',
+  'אזל מהמלאי': 'bg-red-50 text-red-600 border-red-100',
 };
 
 export const DELIVERY_STATUS_COLORS: Record<string, string> = {
-  ממתין: 'bg-gray-100 text-gray-800 border-gray-200',
-  'מוכן למשלוח': 'bg-purple-100 text-purple-800 border-purple-200',
-  'יצא למשלוח': 'bg-blue-100 text-blue-800 border-blue-200',
-  נמסר: 'bg-green-100 text-green-800 border-green-200',
+  ממתין: 'bg-gray-50 text-gray-600 border-gray-100',
+  'מוכן למשלוח': 'bg-purple-50 text-purple-700 border-purple-100',
+  'יצא למשלוח': 'bg-blue-50 text-blue-700 border-blue-100',
+  נמסר: 'bg-green-50 text-green-700 border-green-100',
 };
 
 export const CUSTOMER_TYPE_COLORS: Record<string, string> = {
-  פרטי: 'bg-gray-100 text-gray-700',
-  חוזר: 'bg-blue-100 text-blue-700',
-  VIP: 'bg-yellow-100 text-yellow-700',
-  'מעצב אירועים': 'bg-purple-100 text-purple-700',
+  פרטי: 'bg-gray-50 text-gray-600',
+  חוזר: 'bg-blue-50 text-blue-700',
+  VIP: 'bg-amber-50 text-amber-700',
+  'מעצב אירועים': 'bg-purple-50 text-purple-700',
 };

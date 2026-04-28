@@ -9,8 +9,12 @@ interface CardProps {
 export function Card({ children, className, style }: CardProps) {
   return (
     <div
-      className={cn('bg-white rounded-xl shadow-sm border p-5', className)}
-      style={{ borderColor: '#EDE0CE', ...style }}
+      className={cn('bg-white rounded-2xl border p-5', className)}
+      style={{
+        borderColor: '#EAE3D8',
+        boxShadow: '0 1px 4px rgba(0,0,0,0.05), 0 0 0 1px rgba(0,0,0,0.02)',
+        ...style,
+      }}
     >
       {children}
     </div>
@@ -41,7 +45,7 @@ export function CardTitle({
   return (
     <h2
       className={cn('text-sm font-semibold', className)}
-      style={{ color: '#2B1A10' }}
+      style={{ color: '#1C1008' }}
     >
       {children}
     </h2>

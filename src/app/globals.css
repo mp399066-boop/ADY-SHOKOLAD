@@ -7,12 +7,13 @@
   --brand-secondary: #C7A46B;
   --brand-light-gold: #E7D2A6;
   --brand-dark-brown: #4A2F1B;
-  --brand-cream: #FAF7F0;
+  --brand-cream: #F6F3EE;
   --brand-card: #FFFFFF;
-  --brand-text-primary: #2B1A10;
-  --brand-text-secondary: #6B4A2D;
+  --brand-text-primary: #1C1008;
+  --brand-text-secondary: #7A6050;
+  --brand-border: #E8E0D4;
   --brand-success: #2E7D32;
-  --brand-warning: #F2A900;
+  --brand-warning: #E6A800;
   --brand-danger: #C0392B;
   --brand-info: #2563EB;
 }
@@ -21,7 +22,7 @@
   box-sizing: border-box;
 }
 
-/* Ensure sidebar is always visible on desktop */
+/* Sidebar always visible on desktop */
 @media (min-width: 768px) {
   aside {
     position: relative !important;
@@ -29,8 +30,9 @@
   }
 }
 
+/* Hover utility used by sidebar inactive items */
 .hover\:bg-white\/8:hover {
-  background-color: rgba(255, 255, 255, 0.08);
+  background-color: rgba(255, 255, 255, 0.07);
 }
 
 .line-clamp-2 {
@@ -49,49 +51,73 @@ body {
   color: var(--brand-text-primary);
   font-family: 'Segoe UI', 'Arial Hebrew', 'Arial', sans-serif;
   direction: rtl;
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.6;
 }
 
-/* Scrollbar styling */
+/* ── Scrollbar ─────────────────────────────────────── */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 ::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #C7A46B;
-  border-radius: 3px;
+  background: #D4C4B0;
+  border-radius: 10px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #8B5E34;
+  background: #B49A78;
 }
 
-/* Table styles */
+/* ── Tables — lighter, more breathable ─────────────── */
 table {
   border-collapse: collapse;
   width: 100%;
 }
 
-/* Input focus */
-input:focus, textarea:focus, select:focus {
-  outline: 2px solid var(--brand-secondary);
+table thead th {
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+table tbody tr {
+  transition: background-color 0.15s ease;
+}
+
+table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* ── Input focus ────────────────────────────────────── */
+input:focus,
+textarea:focus,
+select:focus {
+  outline: 2px solid #C7A46B;
   outline-offset: 0;
 }
 
-/* RTL helpers */
+/* ── RTL helper ─────────────────────────────────────── */
 .rtl-flip {
   transform: scaleX(-1);
 }
 
-/* Loading shimmer */
+/* ── Shimmer skeleton ───────────────────────────────── */
 @keyframes shimmer {
-  0% { background-position: -1000px 0; }
-  100% { background-position: 1000px 0; }
+  0%   { background-position: -800px 0; }
+  100% { background-position:  800px 0; }
 }
 
 .shimmer {
-  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
-  background-size: 1000px 100%;
-  animation: shimmer 2s infinite linear;
+  background: linear-gradient(90deg, #f0ece6 25%, #e8e2da 50%, #f0ece6 75%);
+  background-size: 800px 100%;
+  animation: shimmer 1.6s infinite linear;
+}
+
+/* ── Smooth transitions for interactive elements ─────── */
+a, button {
+  transition-property: background-color, color, border-color, box-shadow, opacity, transform;
+  transition-duration: 150ms;
+  transition-timing-function: ease;
 }
