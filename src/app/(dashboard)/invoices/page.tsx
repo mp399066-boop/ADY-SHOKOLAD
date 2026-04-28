@@ -7,6 +7,8 @@ import { PageLoading } from '@/components/ui/LoadingSpinner';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { formatDate, formatCurrency } from '@/lib/utils';
 import type { Invoice } from '@/types/database';
+import { exportToCsv } from '@/lib/exportCsv';
+import { IconExport } from '@/components/icons';
 
 export default function InvoicesPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -19,10 +21,35 @@ export default function InvoicesPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  const handleExport = () => {
+    exportToCsv('חשבוניות.csv',
+      ['מספר חשבונית', 'לקוח', 'הזמנה', 'סכום', 'סטטוס', 'תאריך'],
+      invoices.map(inv => [
+        inv.מספר_חשבונית,
+        inv.לקוחות ? `${inv.לקוחות.שם_פרטי} ${inv.לקוחות.שם_משפחה}` : '',
+        inv.הזמנות?.מספר_הזמנה || '',
+        inv.סכום,
+        inv.סטטוס,
+        inv.תאריך_יצירה,
+      ]),
+    );
+  };
+
   if (loading) return <PageLoading />;
   if (invoices.length === 0) return <EmptyState title="אין חשבוניות" description="חשבוניות יופיעו כאן לאחר שיווצרו" />;
 
   return (
+    <>
+      <div className="flex justify-end mb-4">
+        <button
+          onClick={handleExport}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-xl border bg-white hover:bg-[#FAF7F2] transition-all duration-200"
+          style={{ borderColor: '#D8CCBA', color: '#8B5E34' }}
+        >
+          <IconExport className="w-3.5 h-3.5" />
+          ייצוא לאקסל
+        </button>
+      </div>
     <Card className="p-0 overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -67,5 +94,6 @@ export default function InvoicesPage() {
         </table>
       </div>
     </Card>
+    </>
   );
 }

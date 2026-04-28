@@ -9,6 +9,8 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Modal } from '@/components/ui/Modal';
 import { Input, Select, Textarea } from '@/components/ui/Input';
 import { formatCurrency } from '@/lib/utils';
+import { exportToCsv } from '@/lib/exportCsv';
+import { IconExport } from '@/components/icons';
 import toast from 'react-hot-toast';
 import type { Product, Package, PetitFourType } from '@/types/database';
 
@@ -116,6 +118,25 @@ export default function ProductsPage() {
     { key: 'petitfours', label: 'סוגי פטיפורים',   count: petitFours.length },
   ];
 
+  const handleExport = () => {
+    if (tab === 'products') {
+      exportToCsv('מוצרים.csv',
+        ['שם מוצר', 'סוג', 'מחיר', 'פעיל', 'כמות במלאי'],
+        filteredProducts.map(p => [p.שם_מוצר, p.סוג_מוצר, p.מחיר, p.פעיל ? 'כן' : 'לא', p.כמות_במלאי]),
+      );
+    } else if (tab === 'packages') {
+      exportToCsv('מארזים.csv',
+        ['שם מארז', 'גודל', 'מחיר', 'פעיל'],
+        filteredPackages.map(p => [p.שם_מארז, p.גודל_מארז, p.מחיר_מארז, p.פעיל ? 'כן' : 'לא']),
+      );
+    } else {
+      exportToCsv('פטיפורים.csv',
+        ['שם פטיפור', 'פעיל', 'כמות במלאי'],
+        filteredPetitFours.map(p => [p.שם_פטיפור, p.פעיל ? 'כן' : 'לא', p.כמות_במלאי]),
+      );
+    }
+  };
+
   const filteredProducts = products.filter(p =>
     p.סוג_מוצר !== 'מארז פטיפורים' && (!search || p.שם_מוצר.includes(search)),
   );
@@ -144,6 +165,14 @@ export default function ProductsPage() {
               className="px-3 py-2 text-sm rounded-lg border bg-white focus:outline-none focus:ring-2 focus:ring-amber-100"
               style={{ borderColor: '#DDD0BC', color: '#2B1A10', maxWidth: '200px' }}
             />
+            <button
+              onClick={handleExport}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-xl border bg-white hover:bg-[#FAF7F2] transition-all duration-200"
+              style={{ borderColor: '#D8CCBA', color: '#8B5E34' }}
+            >
+              <IconExport className="w-3.5 h-3.5" />
+              ייצוא לאקסל
+            </button>
             <div className="mr-auto">
               <Button size="sm" onClick={openAdd}>+ הוסף</Button>
             </div>

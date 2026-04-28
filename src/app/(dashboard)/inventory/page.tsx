@@ -9,7 +9,8 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Tabs } from '@/components/ui/Tabs';
 import { Modal } from '@/components/ui/Modal';
 import { Input, Select, Textarea } from '@/components/ui/Input';
-import { IconAlert } from '@/components/icons';
+import { IconAlert, IconExport } from '@/components/icons';
+import { exportToCsv } from '@/lib/exportCsv';
 import { formatCurrency } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import type { RawMaterial, Product, PetitFourType } from '@/types/database';
@@ -150,6 +151,25 @@ export default function InventoryPage() {
     }
   };
 
+  const handleExport = () => {
+    if (tab === 'products') {
+      exportToCsv('מלאי_מוצרים.csv',
+        ['שם מוצר', 'כמות במלאי'],
+        stockProducts.map(p => [p.שם_מוצר, p.כמות_במלאי]),
+      );
+    } else if (tab === 'petitfours') {
+      exportToCsv('מלאי_פטיפורים.csv',
+        ['שם פטיפור', 'כמות במלאי'],
+        stockPetitFours.map(p => [p.שם_פטיפור, p.כמות_במלאי]),
+      );
+    } else {
+      exportToCsv('חומרי_גלם.csv',
+        ['שם חומר גלם', 'כמות במלאי', 'יחידה', 'סף נמוך', 'סף קריטי', 'סטטוס', 'עלות ליחידה'],
+        filtered.map(m => [m.שם_חומר_גלם, m.כמות_במלאי, m.יחידת_מידה, m.סף_מלאי_נמוך, m.סף_מלאי_קריטי, m.סטטוס_מלאי, m.מחיר_ליחידה ?? '']),
+      );
+    }
+  };
+
   const alerts = materials.filter(m => m.סטטוס_מלאי !== 'תקין');
   const criticals = materials.filter(m => m.סטטוס_מלאי === 'קריטי' || m.סטטוס_מלאי === 'אזל מהמלאי');
 
@@ -228,6 +248,14 @@ export default function InventoryPage() {
                     <option key={s} value={s}>{s}</option>
                   ))}
                 </Select>
+                <button
+                  onClick={handleExport}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-xl border bg-white hover:bg-[#FAF7F2] transition-all duration-200"
+                  style={{ borderColor: '#D8CCBA', color: '#8B5E34' }}
+                >
+                  <IconExport className="w-3.5 h-3.5" />
+                  ייצוא לאקסל
+                </button>
                 <div className="mr-auto">
                   <Button size="sm" onClick={openAdd}>+ חומר גלם חדש</Button>
                 </div>
@@ -317,6 +345,17 @@ export default function InventoryPage() {
           )}
 
           {tab === 'products' && (
+            <>
+              <div className="flex justify-start mb-3">
+                <button
+                  onClick={handleExport}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-xl border bg-white hover:bg-[#FAF7F2] transition-all duration-200"
+                  style={{ borderColor: '#D8CCBA', color: '#8B5E34' }}
+                >
+                  <IconExport className="w-3.5 h-3.5" />
+                  ייצוא לאקסל
+                </button>
+              </div>
             <div className="overflow-x-auto rounded-lg border" style={{ borderColor: '#EDE0CE' }}>
               <table className="w-full text-sm">
                 <thead>
@@ -381,9 +420,21 @@ export default function InventoryPage() {
                 <div className="py-12 text-center text-sm" style={{ color: '#9B7A5A' }}>אין מוצרים</div>
               )}
             </div>
+            </>
           )}
 
           {tab === 'petitfours' && (
+            <>
+              <div className="flex justify-start mb-3">
+                <button
+                  onClick={handleExport}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-xl border bg-white hover:bg-[#FAF7F2] transition-all duration-200"
+                  style={{ borderColor: '#D8CCBA', color: '#8B5E34' }}
+                >
+                  <IconExport className="w-3.5 h-3.5" />
+                  ייצוא לאקסל
+                </button>
+              </div>
             <div className="overflow-x-auto rounded-lg border" style={{ borderColor: '#EDE0CE' }}>
               <table className="w-full text-sm">
                 <thead>
@@ -454,6 +505,7 @@ export default function InventoryPage() {
                 <div className="py-12 text-center text-sm" style={{ color: '#9B7A5A' }}>אין סוגי פטיפורים</div>
               )}
             </div>
+            </>
           )}
 
           {tab === 'alerts' && (

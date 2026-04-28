@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { exportToCsv } from '@/lib/exportCsv';
+import { IconExport } from '@/components/icons';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -32,6 +34,13 @@ export default function CustomersPage() {
       .finally(() => setLoading(false));
   }, [search, typeFilter]);
 
+  const handleExport = () => {
+    exportToCsv('לקוחות.csv',
+      ['שם פרטי', 'שם משפחה', 'טלפון', 'אימייל', 'סוג לקוח'],
+      customers.map(c => [c.שם_פרטי, c.שם_משפחה, c.טלפון || '', c.אימייל || '', c.סוג_לקוח]),
+    );
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
@@ -51,6 +60,14 @@ export default function CustomersPage() {
         </Select>
         <span className="text-sm mr-auto" style={{ color: '#6B4A2D' }}>{count} לקוחות</span>
         <Link href="/customers/new"><Button size="sm">+ לקוח חדש</Button></Link>
+        <button
+          onClick={handleExport}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-xl border bg-white hover:bg-[#FAF7F2] transition-all duration-200"
+          style={{ borderColor: '#D8CCBA', color: '#8B5E34' }}
+        >
+          <IconExport className="w-3.5 h-3.5" />
+          ייצוא לאקסל
+        </button>
       </div>
 
       {loading ? <PageLoading /> : customers.length === 0 ? (

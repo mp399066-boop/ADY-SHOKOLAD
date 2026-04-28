@@ -1,8 +1,6 @@
 'use client';
 
-import { useState } from 'react';
-import Sidebar from '@/components/layout/Sidebar';
-import TopBar from '@/components/layout/TopBar';
+import NavBar from '@/components/layout/NavBar';
 import { Toaster } from 'react-hot-toast';
 
 export default function DashboardLayout({
@@ -10,18 +8,12 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-
   return (
-    <div className="flex h-screen overflow-hidden" style={{ backgroundColor: '#F8F5F0' }}>
-      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-
-      <div className="flex flex-1 flex-col overflow-hidden md:mr-0">
-        <TopBar onMenuToggle={() => setSidebarOpen(o => !o)} />
-        <main className="flex-1 overflow-y-auto p-6 md:p-8">
-          {children}
-        </main>
-      </div>
+    <div className="flex flex-col h-screen overflow-hidden" style={{ backgroundColor: '#F8F5F0' }}>
+      <NavBar />
+      <main className="flex-1 overflow-y-auto p-6 md:p-8">
+        {children}
+      </main>
 
       <Toaster
         position="bottom-left"

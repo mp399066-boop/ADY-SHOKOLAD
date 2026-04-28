@@ -10,6 +10,8 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Input, Select } from '@/components/ui/Input';
 import type { Delivery } from '@/types/database';
 import Link from 'next/link';
+import { exportToCsv } from '@/lib/exportCsv';
+import { IconExport } from '@/components/icons';
 
 function DeliveriesContent() {
   const searchParams = useSearchParams();
@@ -40,6 +42,19 @@ function DeliveriesContent() {
     setDeliveries(prev => prev.map(d => d.id === id ? { ...d, סטטוס_משלוח: newStatus as Delivery['סטטוס_משלוח'] } : d));
   };
 
+  const handleExport = () => {
+    exportToCsv('משלוחים.csv',
+      ['מספר הזמנה', 'לקוח', 'כתובת', 'עיר', 'תאריך משלוח', 'סטטוס'],
+      deliveries.map(d => {
+        const order = (d as Delivery & { הזמנות?: { מספר_הזמנה: string; שם_מקבל?: string; לקוחות?: { שם_פרטי: string; שם_משפחה: string } } }).הזמנות;
+        const customerName = order?.לקוחות
+          ? `${order.לקוחות.שם_פרטי} ${order.לקוחות.שם_משפחה}`
+          : order?.שם_מקבל || '';
+        return [order?.מספר_הזמנה || '', customerName, d.כתובת || '', d.עיר || '', d.תאריך_משלוח || '', d.סטטוס_משלוח];
+      }),
+    );
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
@@ -49,6 +64,14 @@ function DeliveriesContent() {
           {['ממתין', 'מוכן למשלוח', 'יצא למשלוח', 'נמסר'].map(s => <option key={s} value={s}>{s}</option>)}
         </Select>
         <span className="text-sm mr-auto" style={{ color: '#6B4A2D' }}>{deliveries.length} משלוחים</span>
+        <button
+          onClick={handleExport}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-xl border bg-white hover:bg-[#FAF7F2] transition-all duration-200"
+          style={{ borderColor: '#D8CCBA', color: '#8B5E34' }}
+        >
+          <IconExport className="w-3.5 h-3.5" />
+          ייצוא לאקסל
+        </button>
       </div>
 
       {loading ? <PageLoading /> : deliveries.length === 0 ? (

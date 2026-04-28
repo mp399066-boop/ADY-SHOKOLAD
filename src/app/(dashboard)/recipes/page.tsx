@@ -8,6 +8,8 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Modal } from '@/components/ui/Modal';
 import { Input, Select, Textarea } from '@/components/ui/Input';
 import toast from 'react-hot-toast';
+import { exportToCsv } from '@/lib/exportCsv';
+import { IconExport } from '@/components/icons';
 import type { Recipe, Product, RawMaterial, Production } from '@/types/database';
 
 type Tab = 'recipes' | 'production';
@@ -128,6 +130,18 @@ export default function RecipesPage() {
     { key: 'production' as Tab, label: 'ייצור' },
   ];
 
+  const handleExport = () => {
+    exportToCsv('מתכונים.csv',
+      ['שם מתכון', 'מוצר', 'כמות תוצר', 'הערות'],
+      recipes.map(r => [
+        r.שם_מתכון,
+        (r as Recipe & { מוצרים_למכירה?: { שם_מוצר: string } }).מוצרים_למכירה?.שם_מוצר || '',
+        r.כמות_תוצר,
+        r.הערות || '',
+      ]),
+    );
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
@@ -137,6 +151,16 @@ export default function RecipesPage() {
             {t.label}
           </button>
         ))}
+        {tab === 'recipes' && (
+          <button
+            onClick={handleExport}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-xl border bg-white hover:bg-[#FAF7F2] transition-all duration-200"
+            style={{ borderColor: '#D8CCBA', color: '#8B5E34' }}
+          >
+            <IconExport className="w-3.5 h-3.5" />
+            ייצוא לאקסל
+          </button>
+        )}
         <div className="mr-auto">
           {tab === 'recipes'
             ? <Button size="sm" onClick={() => setShowRecipeModal(true)}>+ מתכון חדש</Button>

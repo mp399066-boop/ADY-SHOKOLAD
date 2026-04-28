@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/Button';
 import { StatusBadge, UrgentBadge } from '@/components/ui/StatusBadge';
 import { PageLoading } from '@/components/ui/LoadingSpinner';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { IconSearch } from '@/components/icons';
+import { IconSearch, IconExport } from '@/components/icons';
+import { exportToCsv } from '@/lib/exportCsv';
 import { formatDate, formatCurrency } from '@/lib/utils';
 import type { Order } from '@/types/database';
 
@@ -33,6 +34,21 @@ function OrdersContent() {
   const [loading, setLoading] = useState(true);
   const [count, setCount] = useState(0);
   const [search, setSearch] = useState('');
+
+  const handleExport = () => {
+    exportToCsv('הזמנות.csv',
+      ['מספר הזמנה', 'לקוח', 'תאריך אספקה', 'סטטוס', 'סוג אספקה', 'סכום', 'סטטוס תשלום'],
+      orders.map(o => [
+        o.מספר_הזמנה,
+        o.לקוחות ? `${o.לקוחות.שם_פרטי} ${o.לקוחות.שם_משפחה}` : o.שם_מקבל || '',
+        o.תאריך_אספקה || '',
+        o.סטטוס_הזמנה,
+        o.סוג_אספקה,
+        o.סך_הכל_לתשלום ?? '',
+        o.סטטוס_תשלום,
+      ]),
+    );
+  };
 
   const fetchOrders = useCallback(() => {
     setLoading(true);
@@ -89,6 +105,14 @@ function OrdersContent() {
         <Link href="/orders/new" className="flex-shrink-0">
           <Button size="sm">+ הזמנה חדשה</Button>
         </Link>
+        <button
+          onClick={handleExport}
+          className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-xl border bg-white hover:bg-[#FAF7F2] transition-all duration-200"
+          style={{ borderColor: '#D8CCBA', color: '#8B5E34' }}
+        >
+          <IconExport className="w-3.5 h-3.5" />
+          ייצוא לאקסל
+        </button>
       </div>
 
       {/* Count */}
