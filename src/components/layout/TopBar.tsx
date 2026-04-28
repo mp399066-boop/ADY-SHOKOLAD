@@ -2,7 +2,10 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { createClient } from '@/lib/supabase/client';
 import { IconMenu, IconPlus } from '@/components/icons';
+import type { BusinessSettings } from '@/types/database';
 
 const PAGE_TITLES: Record<string, string> = {
   '/dashboard':  'לוח בקרה',
@@ -24,6 +27,13 @@ interface TopBarProps {
 
 export default function TopBar({ onMenuToggle }: TopBarProps) {
   const pathname = usePathname();
+  const [settings, setSettings] = useState<BusinessSettings | null>(null);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.from('business_settings').select('*').single()
+      .then(({ data }: { data: any }) => { if (data) setSettings(data as BusinessSettings); });
+  }, []);
   const title =
     PAGE_TITLES[pathname] ||
     PAGE_TITLES[
@@ -61,6 +71,15 @@ export default function TopBar({ onMenuToggle }: TopBarProps) {
       >
         <IconMenu className="w-5 h-5" />
       </button>
+
+      {/* Logo */}
+      {settings?.logo_url ? (
+        <img
+          src={settings.logo_url}
+          alt={settings.business_name || 'לוגו'}
+          className="h-8 w-8 object-contain rounded-lg flex-shrink-0 hidden sm:block"
+        />
+      ) : null}
 
       {/* Title */}
       <h1 className="text-base font-semibold flex-1" style={{ color: '#1C1008' }}>

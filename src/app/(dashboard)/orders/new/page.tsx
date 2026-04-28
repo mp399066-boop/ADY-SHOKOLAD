@@ -391,15 +391,8 @@ export default function NewOrderPage() {
                         step={0.01}
                       />
                     </div>
-                    <div className="col-span-2">
+                    <div className="col-span-3">
                       <Input label="סה״כ" value={`₪${item.סהכ.toFixed(2)}`} readOnly />
-                    </div>
-                    <div className="col-span-1">
-                      <Input
-                        label="הערות"
-                        value={item.הערות_לשורה}
-                        onChange={e => updateProductItem(idx, 'הערות_לשורה', e.target.value)}
-                      />
                     </div>
                     <div className="col-span-1 flex items-end justify-center pb-1">
                       <button

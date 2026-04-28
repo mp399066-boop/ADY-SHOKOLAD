@@ -129,21 +129,6 @@ export default function Sidebar({ open = true, onClose }: SidebarProps) {
           )}
         </div>
 
-        {/* CTA button */}
-        <div className="px-3 pt-3 pb-1 flex-shrink-0">
-          <Link href="/orders/new" onClick={() => onClose?.()}>
-            <div
-              className="flex items-center justify-center gap-2 w-full py-2 rounded-xl text-sm font-medium transition-all hover:brightness-110"
-              style={{ backgroundColor: '#8B5E34', color: '#FAF7F0' }}
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-              </svg>
-              הזמנה חדשה
-            </div>
-          </Link>
-        </div>
-
         {/* Navigation */}
         <nav className="flex-1 px-2 py-3 overflow-y-auto">
           {/* Main */}

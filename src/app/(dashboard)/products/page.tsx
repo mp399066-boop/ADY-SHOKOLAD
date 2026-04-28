@@ -98,7 +98,7 @@ export default function ProductsPage() {
   ];
 
   const filteredProducts = products.filter(p =>
-    !search || p.שם_מוצר.includes(search),
+    p.סוג_מוצר !== 'מארז פטיפורים' && (!search || p.שם_מוצר.includes(search)),
   );
   const filteredPackages = packages.filter(p =>
     !search || p.שם_מארז.includes(search),

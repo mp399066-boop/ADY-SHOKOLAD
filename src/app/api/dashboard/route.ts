@@ -28,8 +28,8 @@ export async function GET() {
 
     const supabase = createAdminClient();
 
-    const today = new Date().toISOString().split('T')[0];
-    const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
+    const tomorrow = new Date(Date.now() + 86400000).toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
 
     const [
       { count: ordersToday, error: e1 },
@@ -51,7 +51,7 @@ export async function GET() {
       supabase.from('הזמנות').select('*', { count: 'exact', head: true }).eq('סטטוס_הזמנה', 'מוכנה למשלוח'),
       supabase.from('הזמנות').select('*', { count: 'exact', head: true }).eq('סטטוס_הזמנה', 'נשלחה'),
       supabase.from('מלאי_חומרי_גלם').select('*', { count: 'exact', head: true }).in('סטטוס_מלאי', ['מלאי נמוך', 'קריטי', 'אזל מהמלאי']),
-      supabase.from('הזמנות').select('*', { count: 'exact', head: true }).eq('תאריך_אספקה', today).eq('סוג_אספקה', 'משלוח').neq('סטטוס_הזמנה', 'בוטלה'),
+      supabase.from('משלוחים').select('*', { count: 'exact', head: true }).eq('תאריך_משלוח', today),
       supabase.from('הזמנות').select('סך_הכל_לתשלום').eq('סטטוס_תשלום', 'ממתין').neq('סטטוס_הזמנה', 'בוטלה'),
     ]);
 

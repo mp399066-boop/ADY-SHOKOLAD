@@ -68,12 +68,15 @@ export default function InventoryPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ כמות_במלאי: qty }),
       });
-      if (!res.ok) throw new Error('שגיאה בשמירה');
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || 'שגיאה בשמירה');
       setStockProducts(prev => prev.map(p => p.id === productId ? { ...p, כמות_במלאי: qty } : p));
       setEditStockId(null);
       toast.success('מלאי עודכן');
-    } catch { toast.error('שגיאה בשמירה'); }
-    finally { setSavingStock(false); }
+    } catch (err: unknown) {
+      console.error('saveProductStock error:', err);
+      toast.error(err instanceof Error ? err.message : 'שגיאה בשמירה');
+    } finally { setSavingStock(false); }
   };
 
   const savePetitFourStock = async (pfId: string, qty: number) => {
@@ -84,12 +87,15 @@ export default function InventoryPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ כמות_במלאי: qty }),
       });
-      if (!res.ok) throw new Error('שגיאה בשמירה');
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || 'שגיאה בשמירה');
       setStockPetitFours(prev => prev.map(p => p.id === pfId ? { ...p, כמות_במלאי: qty } : p));
       setEditStockId(null);
       toast.success('מלאי עודכן');
-    } catch { toast.error('שגיאה בשמירה'); }
-    finally { setSavingStock(false); }
+    } catch (err: unknown) {
+      console.error('savePetitFourStock error:', err);
+      toast.error(err instanceof Error ? err.message : 'שגיאה בשמירה');
+    } finally { setSavingStock(false); }
   };
 
   const openAdd = () => {
@@ -337,7 +343,7 @@ export default function InventoryPage() {
                           <button
                             className="text-xs hover:underline"
                             style={{ color: '#8B5E34' }}
-                            onClick={() => { setEditStockId(p.id); setEditStockQty(p.כמות_במלאי || 0); }}
+                            onClick={() => { setEditStockId(p.id); setEditStockQty(p.כמות_במלאי ?? 0); }}
                           >
                             עדכן מלאי
                           </button>
@@ -410,7 +416,7 @@ export default function InventoryPage() {
                           <button
                             className="text-xs hover:underline"
                             style={{ color: '#8B5E34' }}
-                            onClick={() => { setEditStockId(pf.id); setEditStockQty(pf.כמות_במלאי || 0); }}
+                            onClick={() => { setEditStockId(pf.id); setEditStockQty(pf.כמות_במלאי ?? 0); }}
                           >
                             עדכן מלאי
                           </button>
