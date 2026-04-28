@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { generateOrderNumber } from '@/lib/utils';
-import { sendOrderEmail } from '@/lib/email';
+import { sendOrderEmail, type OrderEmailData } from '@/lib/email';
 
 export async function POST(req: NextRequest) {
   const supabase = createAdminClient();
@@ -185,10 +185,37 @@ export async function POST(req: NextRequest) {
   console.log('[create-full] email — to:', emailTo || 'NO EMAIL', '| name:', emailName);
 
   if (emailTo) {
+    const o = fullOrder as Record<string, unknown>;
+    const emailOrderData: OrderEmailData = {
+      orderNumber: (o['מספר_הזמנה'] as string) || '',
+      orderDate: (o['תאריך_הזמנה'] as string) || new Date().toISOString().split('T')[0],
+      deliveryDate: (o['תאריך_אספקה'] as string) || null,
+      subtotal: Number(o['סכום_לפני_הנחה'] || 0),
+      discount: Number(o['סכום_הנחה'] || 0),
+      total: Number(o['סך_הכל_לתשלום'] || 0),
+      items: (fullItems || []).map((item: Record<string, unknown>) => {
+        const prod = item['מוצרים_למכירה'] as Record<string, unknown> | null;
+        const pfSelections = item['בחירת_פטיפורים_בהזמנה'] as Record<string, unknown>[] | null;
+        const pfNames = pfSelections?.map(s => {
+          const pf = s['סוגי_פטיפורים'] as Record<string, string> | null;
+          return pf ? `${pf['שם_פטיפור']} ×${s['כמות']}` : '';
+        }).filter(Boolean).join(', ');
+        const name = item['סוג_שורה'] === 'מארז'
+          ? `מארז ${item['גודל_מארז'] || ''} יח׳${pfNames ? ` (${pfNames})` : ''}`
+          : (prod?.['שם_מוצר'] as string) || 'פריט';
+        return {
+          name,
+          quantity: Number(item['כמות'] || 1),
+          unitPrice: Number(item['מחיר_ליחידה'] || 0),
+          lineTotal: Number(item['סהכ'] || 0),
+        };
+      }),
+    };
+
     void (async () => {
       try {
         console.log('[create-full] calling sendOrderEmail...');
-        await sendOrderEmail(emailTo, emailName);
+        await sendOrderEmail(emailTo, emailName, emailOrderData);
         console.log('[create-full] sendOrderEmail completed successfully');
       } catch (err) {
         console.error('[create-full] sendOrderEmail failed:', err);
