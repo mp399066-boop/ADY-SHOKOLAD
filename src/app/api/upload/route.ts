@@ -1,4 +1,4 @@
-export const dynamic = 'force-dynamic';
+ï»¿export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
   const entityId = formData.get('entity_id') as string;
   const bucket = formData.get('bucket') as string || 'orders-files';
 
-  if (!file) return NextResponse.json({ error: '÷åáõ ìà ğîöà' }, { status: 400 });
+  if (!file) return NextResponse.json({ error: '×§×•×‘×¥ ×œ× × ××¦×' }, { status: 400 });
 
   const ext = file.name.split('.').pop();
   const fileName = `${entityType}/${entityId}/${uuidv4()}.${ext}`;
@@ -32,7 +32,6 @@ export async function POST(req: NextRequest) {
 
   const { data: { publicUrl } } = supabase.storage.from(bucket).getPublicUrl(fileName);
 
-  // Save file record
   const { data: fileRecord, error: dbError } = await supabase.from('uploaded_files').insert({
     entity_type: entityType,
     entity_id: entityId,
@@ -46,4 +45,3 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ data: fileRecord }, { status: 201 });
 }
-
