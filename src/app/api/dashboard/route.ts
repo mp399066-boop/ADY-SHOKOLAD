@@ -57,8 +57,14 @@ export async function GET() {
 
     const firstError = e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || e10;
     if (firstError) {
-      console.error('[dashboard] supabase error:', firstError.message);
-      return NextResponse.json({ error: firstError.message }, { status: 500 });
+      const msg =
+        firstError.message ||
+        firstError.details ||
+        firstError.hint ||
+        JSON.stringify(firstError) ||
+        'Unknown dashboard error';
+      console.error('[dashboard] supabase error:', firstError);
+      return NextResponse.json({ error: msg }, { status: 500 });
     }
 
     const unpaidAmount = (unpaidRows ?? []).reduce(
