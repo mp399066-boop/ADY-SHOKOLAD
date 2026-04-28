@@ -11,8 +11,10 @@ export default function DashboardLayout({
   return (
     <div className="flex flex-col h-screen overflow-hidden" style={{ backgroundColor: '#F5F1EB' }}>
       <NavBar />
-      <main className="flex-1 overflow-y-auto p-6 md:p-8">
-        {children}
+      <main className="flex-1 overflow-y-auto">
+        <div className="mx-auto w-full py-6 md:py-8" style={{ maxWidth: '1440px', paddingInline: '32px' }}>
+          {children}
+        </div>
       </main>
 
       <Toaster
