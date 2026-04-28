@@ -5,6 +5,27 @@ import { createAdminClient } from '@/lib/supabase/server';
 
 export async function GET() {
   try {
+    const hasUrl        = !!process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const hasAnonKey    = !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    const hasServiceKey = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    const urlHostname = process.env.NEXT_PUBLIC_SUPABASE_URL
+      ? (() => { try { return new URL(process.env.NEXT_PUBLIC_SUPABASE_URL!).hostname; } catch { return 'invalid-url'; } })()
+      : 'MISSING';
+
+    console.log('[dashboard] env check:', { hasUrl, hasAnonKey, hasServiceKey, urlHostname });
+
+    if (!hasUrl || !hasServiceKey) {
+      return NextResponse.json(
+        {
+          error: true,
+          message: 'Missing Supabase environment variables — add them in Vercel Settings → Environment Variables',
+          env: { hasUrl, hasAnonKey, hasServiceKey },
+        },
+        { status: 500 },
+      );
+    }
+
     const supabase = createAdminClient();
 
     const today = new Date().toISOString().split('T')[0];
