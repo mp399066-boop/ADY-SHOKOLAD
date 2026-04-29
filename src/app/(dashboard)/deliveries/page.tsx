@@ -265,12 +265,9 @@ function DeliveriesContent() {
         const json = await res.json();
         throw new Error(json.error || 'שגיאה');
       }
-      setDeliveries(prev => prev.map(d =>
-        d.id === placedDelivery.id
-          ? { ...d, סטטוס_משלוח: 'נמסר', שעת_משלוח: placedForm.שעת_הנחה || d.שעת_משלוח, הערות: note || d.הערות }
-          : d,
-      ));
-      toast.success('המשלוח סומן כנמסר');
+      // Remove from active list — it moves to archive tab
+      setDeliveries(prev => prev.filter(d => d.id !== placedDelivery.id));
+      toast.success('המשלוח סומן כנמסר ועבר לארכיון');
       setPlacedDelivery(null);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'שגיאה');
@@ -451,9 +448,12 @@ function DeliveriesContent() {
         <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-44" label="" />
         <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="w-44">
           <option value="">כל הסטטוסים</option>
-          {VALID_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+          {(['ממתין', 'נאסף'] as const).map(s => <option key={s} value={s}>{s}</option>)}
         </Select>
-        <span className="text-sm mr-auto" style={{ color: '#6B4A2D' }}>{deliveries.length} משלוחים</span>
+        {/* Active deliveries: hide נמסר — those live in ארכיון tab */}
+        <span className="text-sm mr-auto" style={{ color: '#6B4A2D' }}>
+          {deliveries.filter(d => d.סטטוס_משלוח !== 'נמסר').length} משלוחים פעילים
+        </span>
         <button
           onClick={handleExport}
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-xl border bg-white hover:bg-[#FAF7F2] transition-all"
@@ -464,12 +464,12 @@ function DeliveriesContent() {
         </button>
       </div>
 
-      {/* Delivery cards */}
-      {loading ? <PageLoading /> : deliveries.length === 0 ? (
-        <EmptyState title="אין משלוחים" description="לא נמצאו משלוחים לתאריך זה" />
+      {/* Delivery cards — active only (exclude נמסר) */}
+      {loading ? <PageLoading /> : deliveries.filter(d => d.סטטוס_משלוח !== 'נמסר').length === 0 ? (
+        <EmptyState title="אין משלוחים פעילים" description="כל המשלוחים נמסרו או אין משלוחים לתצוגה" />
       ) : (
         <div className="space-y-3">
-          {deliveries.map(d => {
+          {deliveries.filter(d => d.סטטוס_משלוח !== 'נמסר').map(d => {
             const order = (d as DeliveryWithCourier & { הזמנות?: OrderJoin }).הזמנות;
             const customerName = order?.לקוחות
               ? `${order.לקוחות.שם_פרטי} ${order.לקוחות.שם_משפחה}`
@@ -933,6 +933,98 @@ function CouriersContent() {
   );
 }
 
+// ─── Archive tab ──────────────────────────────────────────────────────────────
+
+type ArchiveRow = {
+  id: string;
+  הזמנה_id: string;
+  כתובת: string | null;
+  עיר: string | null;
+  delivered_at: string | null;
+  סטטוס_משלוח: string;
+  הזמנות?: {
+    id: string;
+    מספר_הזמנה: string;
+    שם_מקבל: string | null;
+    לקוח_id: string;
+    לקוחות?: { שם_פרטי: string; שם_משפחה: string } | null;
+  } | null;
+  שליחים?: { שם_שליח: string } | null;
+};
+
+function ArchiveContent() {
+  const [rows, setRows] = useState<ArchiveRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/deliveries?mode=archive')
+      .then(r => r.json())
+      .then(({ data }) => setRows(data || []))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <PageLoading />;
+  if (rows.length === 0) return <EmptyState title="ארכיון ריק" description="אין משלוחים שסומנו כנמסרו עדיין" />;
+
+  return (
+    <div className="space-y-3">
+      <span className="text-sm" style={{ color: '#6B4A2D' }}>{rows.length} משלוחים נמסרו</span>
+      {rows.map(d => {
+        const order = d.הזמנות;
+        const customerName = order?.לקוחות
+          ? `${order.לקוחות.שם_פרטי} ${order.לקוחות.שם_משפחה}`
+          : order?.שם_מקבל || null;
+        const deliveredDate = d.delivered_at
+          ? new Date(d.delivered_at).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' })
+          : null;
+
+        return (
+          <Card key={d.id}>
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1 min-w-0 space-y-1.5">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Link
+                    href={`/orders/${d.הזמנה_id}`}
+                    className="font-mono text-xs font-semibold hover:underline"
+                    style={{ color: '#7C5230' }}
+                  >
+                    {order?.מספר_הזמנה || `#${d.הזמנה_id?.slice(0, 8)}`}
+                  </Link>
+                  <span
+                    className="inline-flex items-center text-xs font-medium rounded-full px-2.5 py-0.5 border"
+                    style={{ backgroundColor: '#ECFDF5', color: '#065F46', borderColor: '#6EE7B7' }}
+                  >
+                    נמסר
+                  </span>
+                  {deliveredDate && (
+                    <span className="text-xs" style={{ color: '#6B7280' }}>{deliveredDate}</span>
+                  )}
+                </div>
+
+                {customerName && (
+                  <div className="text-sm font-medium" style={{ color: '#1E120A' }}>{customerName}</div>
+                )}
+
+                {(d.כתובת || d.עיר) && (
+                  <div className="text-xs" style={{ color: '#6B4A2D' }}>
+                    {[d.כתובת, d.עיר].filter(Boolean).join(', ')}
+                  </div>
+                )}
+
+                {d.שליחים?.שם_שליח && (
+                  <div className="text-xs" style={{ color: '#7A5840' }}>
+                    שליח: {d.שליחים.שם_שליח}
+                  </div>
+                )}
+              </div>
+            </div>
+          </Card>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── Page ──────────────────────────────────────────────────────────────────
 
 export default function DeliveriesPage() {
@@ -941,8 +1033,9 @@ export default function DeliveriesPage() {
     <div className="space-y-4" dir="rtl">
       <Tabs
         tabs={[
-          { key: 'deliveries', label: 'משלוחים' },
-          { key: 'couriers', label: 'שליחים' },
+          { key: 'deliveries', label: 'משלוחים פעילים' },
+          { key: 'couriers',   label: 'שליחים' },
+          { key: 'archive',    label: 'ארכיון' },
         ]}
         activeTab={activeTab}
         onChange={setActiveTab}
@@ -951,8 +1044,10 @@ export default function DeliveriesPage() {
         <Suspense fallback={<PageLoading />}>
           <DeliveriesContent />
         </Suspense>
-      ) : (
+      ) : activeTab === 'couriers' ? (
         <CouriersContent />
+      ) : (
+        <ArchiveContent />
       )}
     </div>
   );

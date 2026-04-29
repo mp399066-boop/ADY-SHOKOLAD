@@ -41,8 +41,25 @@ interface DeliveryRow {
 export async function GET(req: NextRequest) {
   const supabase = createAdminClient();
   const { searchParams } = new URL(req.url);
-  const date = searchParams.get('date');
+  const date   = searchParams.get('date');
   const status = searchParams.get('status');
+  const mode   = searchParams.get('mode');
+
+  // ── Archive mode: query משלוחים directly for נמסר ──────────────────────────
+  if (mode === 'archive') {
+    const { data, error } = await supabase
+      .from('משלוחים')
+      .select(`
+        id, הזמנה_id, סטטוס_משלוח, כתובת, עיר,
+        delivered_at, courier_id, delivery_token,
+        הזמנות(id, מספר_הזמנה, שם_מקבל, לקוח_id, לקוחות(שם_פרטי, שם_משפחה)),
+        שליחים!courier_id(שם_שליח)
+      `)
+      .eq('סטטוס_משלוח', 'נמסר')
+      .order('delivered_at', { ascending: false });
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ data: data || [] });
+  }
 
   // Fetch all orders that are deliveries:
   // either marked סוג_אספקה='משלוח', OR have a delivery address, OR have delivery fee > 0
