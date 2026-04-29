@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS לקוחות (
   שם_משפחה TEXT NOT NULL DEFAULT '',
   טלפון TEXT,
   אימייל TEXT,
-  סוג_לקוח TEXT NOT NULL DEFAULT 'פרטי' CHECK (סוג_לקוח IN ('פרטי', 'חוזר', 'VIP', 'מעצב אירועים')),
+  סוג_לקוח TEXT NOT NULL DEFAULT 'פרטי' CHECK (סוג_לקוח IN ('פרטי', 'חוזר', 'עסקי')),
   סטטוס_לקוח TEXT DEFAULT 'פעיל',
   מקור_הגעה TEXT,
   אחוז_הנחה NUMERIC(5,2) DEFAULT 0,
