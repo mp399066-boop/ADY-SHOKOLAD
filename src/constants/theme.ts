@@ -44,8 +44,6 @@ export const DELIVERY_STATUS_COLORS: Record<string, string> = {
 
 export const CUSTOMER_TYPE_COLORS: Record<string, string> = {
   פרטי:            'bg-stone-100 text-stone-700 ring-1 ring-stone-200',
-  חוזר:            'bg-sky-100 text-sky-800 ring-1 ring-sky-200',
-  VIP:             'bg-amber-100 text-amber-800 ring-1 ring-amber-200',
-  'מעצב אירועים':  'bg-violet-100 text-violet-800 ring-1 ring-violet-200',
-  עסקי:            'bg-blue-100 text-blue-800 ring-1 ring-blue-200',
+  חוזר:  'bg-sky-100 text-sky-800 ring-1 ring-sky-200',
+  עסקי:  'bg-blue-100 text-blue-800 ring-1 ring-blue-200',
 };

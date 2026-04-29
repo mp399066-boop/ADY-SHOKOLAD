@@ -179,11 +179,9 @@ function EmptyState({ icon, title, text, action }: {
 function StatusPill({ label, color }: { label: string; color: string }) {
   const map: Record<string, { bg: string; text: string }> = {
     פעיל:   { bg: '#DCFCE7', text: '#166534' },
-    VIP:    { bg: '#FDF4FF', text: '#7E22CE' },
     חוזר:  { bg: '#EFF6FF', text: '#1D4ED8' },
-    'מעצב אירועים': { bg: '#FEF9C3', text: '#854D0E' },
     פרטי:  { bg: '#F5ECD8', text: '#8B5E34' },
-    עסקי:  { bg: '#EFF6FF', text: '#1D4ED8' },
+    עסקי:  { bg: '#DBEAFE', text: '#1E40AF' },
   };
   const s = map[color] || { bg: '#F5ECD8', text: '#8B5E34' };
   return (
@@ -322,7 +320,7 @@ export default function CustomerDetailPage() {
             <Input label="טלפון" value={editForm.טלפון || ''} onChange={e => setEditForm(p => ({ ...p, טלפון: e.target.value }))} />
             <Input label="אימייל" value={editForm.אימייל || ''} onChange={e => setEditForm(p => ({ ...p, אימייל: e.target.value }))} />
             <Select label="סוג לקוח" value={editForm.סוג_לקוח || 'פרטי'} onChange={e => setEditForm(p => ({ ...p, סוג_לקוח: e.target.value as Customer['סוג_לקוח'] }))}>
-              {(['פרטי', 'חוזר', 'VIP', 'מעצב אירועים', 'עסקי'] as const).map(t => <option key={t} value={t}>{t}</option>)}
+              {(['פרטי', 'חוזר', 'עסקי'] as const).map(t => <option key={t} value={t}>{t}</option>)}
             </Select>
             <Input label="אחוז הנחה (%)" type="number" value={editForm.אחוז_הנחה ?? 0} onChange={e => setEditForm(p => ({ ...p, אחוז_הנחה: Number(e.target.value) }))} />
             <div className="col-span-2">

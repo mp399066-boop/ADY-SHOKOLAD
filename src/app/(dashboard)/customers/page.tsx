@@ -76,7 +76,7 @@ export default function CustomersPage() {
           className="w-40"
         >
           <option value="">כל הסוגים</option>
-          {['פרטי', 'חוזר', 'VIP', 'מעצב אירועים', 'עסקי'].map(t => <option key={t} value={t}>{t}</option>)}
+          {['פרטי', 'חוזר', 'עסקי'].map(t => <option key={t} value={t}>{t}</option>)}
         </Select>
         <span className="text-sm mr-auto" style={{ color: '#6B4A2D' }}>{count} לקוחות</span>
         <Link href="/customers/new"><Button size="sm">+ לקוח חדש</Button></Link>
