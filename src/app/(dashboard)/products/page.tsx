@@ -51,7 +51,7 @@ export default function ProductsPage() {
   const openAdd = () => {
     setEditMode(false);
     setEditId(null);
-    if (tab === 'products') setForm({ שם_מוצר: '', סוג_מוצר: 'מוצר רגיל', מחיר: 0, פעיל: true, תיאור: '' });
+    if (tab === 'products') setForm({ שם_מוצר: '', סוג_מוצר: 'מוצר רגיל', מחיר: 0, פעיל: true, תיאור: '', לקוחות_עסקיים_בלבד: false });
     if (tab === 'packages') setForm({ שם_מארז: '', גודל_מארז: 0, כמה_סוגים_מותר_לבחור: 1, מחיר_מארז: 0, פעיל: true });
     if (tab === 'petitfours') setForm({ שם_פטיפור: '', פעיל: true, הערות: '' });
     setShowModal(true);
@@ -237,7 +237,17 @@ export default function ProductsPage() {
                               {p.פעיל ? 'פעיל' : 'לא פעיל'}
                             </span>
                           </div>
-                          <p className="text-xs mb-2" style={{ color: '#9B7A5A' }}>{p.סוג_מוצר}</p>
+                          <p className="text-xs mb-2" style={{ color: '#9B7A5A' }}>
+                            {p.סוג_מוצר}
+                            {p.לקוחות_עסקיים_בלבד && (
+                              <span
+                                className="mr-2 text-xs px-1.5 py-0.5 rounded-full"
+                                style={{ backgroundColor: '#EFF6FF', color: '#1D4ED8' }}
+                              >
+                                עסקי בלבד
+                              </span>
+                            )}
+                          </p>
                           {p.תיאור && (
                             <p className="text-xs mb-2 line-clamp-2" style={{ color: '#6B4A2D' }}>{p.תיאור}</p>
                           )}
@@ -417,6 +427,16 @@ export default function ProductsPage() {
                 onChange={e => setForm(p => ({ ...p, תיאור: e.target.value }))}
                 rows={2}
               />
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={Boolean(form.לקוחות_עסקיים_בלבד)}
+                  onChange={e => setForm(p => ({ ...p, לקוחות_עסקיים_בלבד: e.target.checked }))}
+                  className="w-4 h-4 rounded"
+                  style={{ accentColor: '#1D4ED8' }}
+                />
+                <span className="text-sm" style={{ color: '#2B1A10' }}>זמין ללקוחות עסקיים בלבד</span>
+              </label>
             </>
           )}
           {tab === 'packages' && (

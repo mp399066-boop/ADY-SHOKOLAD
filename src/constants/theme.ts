@@ -38,13 +38,8 @@ export const INVENTORY_STATUS_COLORS: Record<string, string> = {
 };
 
 export const DELIVERY_STATUS_COLORS: Record<string, string> = {
-  ממתין:           'bg-stone-100 text-stone-700 ring-1 ring-stone-200',
-  בהכנה:           'bg-amber-100 text-amber-800 ring-1 ring-amber-200',
-  'מוכן למשלוח':   'bg-violet-100 text-violet-800 ring-1 ring-violet-200',
-  'יצא למשלוח':    'bg-sky-100 text-sky-800 ring-1 ring-sky-200',
-  בדרך:            'bg-blue-100 text-blue-800 ring-1 ring-blue-200',
-  נמסר:            'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200',
-  נכשל:            'bg-rose-100 text-rose-700 ring-1 ring-rose-200',
+  נאסף: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200',
+  נמסר: 'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200',
 };
 
 export const CUSTOMER_TYPE_COLORS: Record<string, string> = {
@@ -52,4 +47,5 @@ export const CUSTOMER_TYPE_COLORS: Record<string, string> = {
   חוזר:            'bg-sky-100 text-sky-800 ring-1 ring-sky-200',
   VIP:             'bg-amber-100 text-amber-800 ring-1 ring-amber-200',
   'מעצב אירועים':  'bg-violet-100 text-violet-800 ring-1 ring-violet-200',
+  עסקי:            'bg-blue-100 text-blue-800 ring-1 ring-blue-200',
 };
