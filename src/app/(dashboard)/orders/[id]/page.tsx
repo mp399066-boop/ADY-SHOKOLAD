@@ -29,7 +29,8 @@ interface EditForm {
   אופן_תשלום: string;
   סטטוס_תשלום: Order['סטטוס_תשלום'];
   סטטוס_הזמנה: Order['סטטוס_הזמנה'];
-  סכום_הנחה: string;
+  סוג_הנחה: 'ללא' | 'אחוז' | 'סכום';
+  ערך_הנחה: string;
 }
 
 interface EditOrderItem {
@@ -151,7 +152,8 @@ export default function OrderDetailPage() {
     אופן_תשלום: '',
     סטטוס_תשלום: 'ממתין',
     סטטוס_הזמנה: 'חדשה',
-    סכום_הנחה: '',
+    סוג_הנחה: 'ללא',
+    ערך_הנחה: '0',
   });
 
   // Edit state — order items
@@ -239,7 +241,8 @@ export default function OrderDetailPage() {
       אופן_תשלום: order.אופן_תשלום ?? '',
       סטטוס_תשלום: order.סטטוס_תשלום,
       סטטוס_הזמנה: order.סטטוס_הזמנה,
-      סכום_הנחה: order.סכום_הנחה != null ? String(order.סכום_הנחה) : '',
+      סוג_הנחה: (order.סוג_הנחה as 'ללא' | 'אחוז' | 'סכום') ?? 'ללא',
+      ערך_הנחה: order.ערך_הנחה != null ? String(order.ערך_הנחה) : '0',
     });
 
     // Product rows
@@ -327,7 +330,6 @@ export default function OrderDetailPage() {
       // 2. Replace order items + recalculate totals
       const deliveryFee = editForm.סוג_אספקה === 'משלוח' && editForm.דמי_משלוח !== ''
         ? Number(editForm.דמי_משלוח) : 0;
-      const discount = editForm.סכום_הנחה !== '' ? Number(editForm.סכום_הנחה) : 0;
 
       const itemsRes = await fetch(`/api/orders/${id}/items`, {
         method: 'PUT',
@@ -348,7 +350,8 @@ export default function OrderDetailPage() {
             הערות_לשורה: p.הערות_לשורה || null,
             פטיפורים: p.פטיפורים.map(pf => ({ פטיפור_id: pf.פטיפור_id, כמות: pf.כמות })),
           })),
-          סכום_הנחה: discount,
+          סוג_הנחה: editForm.סוג_הנחה,
+          ערך_הנחה: Number(editForm.ערך_הנחה) || 0,
           דמי_משלוח: deliveryFee,
         }),
       });
@@ -455,8 +458,12 @@ export default function OrderDetailPage() {
   // ── Live totals in modal ─────────────────────────────────────────────────────
 
   const editSubtotal = [...editItems, ...editPackages].reduce((s, i) => s + i.סהכ, 0);
-  const editDiscount = editForm.סכום_הנחה !== ''
-    ? Math.min(editSubtotal, Number(editForm.סכום_הנחה)) : 0;
+  const editDiscountVal = Number(editForm.ערך_הנחה) || 0;
+  const editDiscount = editForm.סוג_הנחה === 'אחוז'
+    ? +(editSubtotal * editDiscountVal / 100).toFixed(2)
+    : editForm.סוג_הנחה === 'סכום'
+      ? Math.min(editSubtotal, editDiscountVal)
+      : 0;
   const editDelivery = editForm.סוג_אספקה === 'משלוח' && editForm.דמי_משלוח !== ''
     ? Number(editForm.דמי_משלוח) : 0;
   const editTotal = Math.max(0, editSubtotal - editDiscount + editDelivery);
@@ -656,7 +663,9 @@ export default function OrderDetailPage() {
             </div>
             {(order.סכום_הנחה || 0) > 0 && (
               <div className="flex justify-between text-red-600">
-                <span>הנחה</span>
+                <span>
+                  הנחה{order.סוג_הנחה === 'אחוז' ? ` (${order.ערך_הנחה}%)` : ''}
+                </span>
                 <span>-{formatCurrency(order.סכום_הנחה)}</span>
               </div>
             )}
@@ -1001,12 +1010,42 @@ export default function OrderDetailPage() {
             <section className="rounded-xl border p-4 space-y-3" style={{ borderColor: '#E7D2A6', backgroundColor: '#FDFAF5' }}>
               <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#8B5E34' }}>סיכום כספי</p>
               <div className="grid grid-cols-2 gap-6 items-start">
-                <FieldInput
-                  label="הנחה (₪)"
-                  type="number"
-                  value={editForm.סכום_הנחה}
-                  onChange={v => setEditForm(f => ({ ...f, סכום_הנחה: v }))}
-                />
+                <div>
+                  <label className="block text-xs font-medium mb-2" style={{ color: '#6B4A2D' }}>הנחה</label>
+                  <div className="flex rounded-lg overflow-hidden border mb-2" style={{ borderColor: '#E7D2A6' }}>
+                    {(['ללא', 'אחוז', 'סכום'] as const).map(t => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setEditForm(f => ({ ...f, סוג_הנחה: t, ערך_הנחה: t === 'ללא' ? '0' : f.ערך_הנחה }))}
+                        className="flex-1 py-1.5 text-xs font-medium transition-colors"
+                        style={{
+                          backgroundColor: editForm.סוג_הנחה === t ? '#8B5E34' : '#FFFFFF',
+                          color: editForm.סוג_הנחה === t ? '#FFFFFF' : '#6B4A2D',
+                        }}
+                      >
+                        {t === 'אחוז' ? '%' : t === 'סכום' ? '₪' : 'ללא'}
+                      </button>
+                    ))}
+                  </div>
+                  {editForm.סוג_הנחה !== 'ללא' && (
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        min="0"
+                        max={editForm.סוג_הנחה === 'אחוז' ? 100 : undefined}
+                        step={editForm.סוג_הנחה === 'אחוז' ? 0.1 : 0.01}
+                        value={editForm.ערך_הנחה}
+                        onChange={e => setEditForm(f => ({ ...f, ערך_הנחה: e.target.value }))}
+                        className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
+                        style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
+                      />
+                      <span className="text-xs font-medium flex-shrink-0" style={{ color: '#6B4A2D' }}>
+                        {editForm.סוג_הנחה === 'אחוז' ? '%' : '₪'}
+                      </span>
+                    </div>
+                  )}
+                </div>
                 <div className="space-y-1 text-sm pt-5">
                   <div className="flex justify-between" style={{ color: '#6B4A2D' }}>
                     <span>סכום לפני הנחה:</span>

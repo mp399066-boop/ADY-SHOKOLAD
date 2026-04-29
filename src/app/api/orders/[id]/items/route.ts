@@ -9,12 +9,14 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   const {
     מוצרים = [],
     מארזים = [],
-    סכום_הנחה = 0,
+    סוג_הנחה = 'ללא',
+    ערך_הנחה = 0,
     דמי_משלוח = 0,
   } = body as {
     מוצרים: { מוצר_id: string; כמות: number; מחיר_ליחידה: number; הערות_לשורה?: string }[];
     מארזים: { גודל_מארז: number; כמות: number; מחיר_ליחידה: number; הערות_לשורה?: string; פטיפורים: { פטיפור_id: string; כמות: number }[] }[];
-    סכום_הנחה: number;
+    סוג_הנחה: 'ללא' | 'אחוז' | 'סכום';
+    ערך_הנחה: number;
     דמי_משלוח: number;
   };
 
@@ -101,17 +103,22 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     }
   }
 
-  // 6. Recalculate order totals
-  const discountAmt = Math.min(subtotal, סכום_הנחה || 0);
+  // 6. Recalculate order totals based on discount type
+  let discountAmt = 0;
+  if (סוג_הנחה === 'אחוז') {
+    discountAmt = +(subtotal * (ערך_הנחה || 0) / 100).toFixed(2);
+  } else if (סוג_הנחה === 'סכום') {
+    discountAmt = Math.min(subtotal, ערך_הנחה || 0);
+  }
   const total = Math.max(0, subtotal - discountAmt + (דמי_משלוח || 0));
 
   const { data: updatedOrder, error: updateError } = await supabase
     .from('הזמנות')
     .update({
+      סוג_הנחה,
+      ערך_הנחה: ערך_הנחה || 0,
       סכום_לפני_הנחה: subtotal,
       סכום_הנחה: discountAmt,
-      סוג_הנחה: discountAmt > 0 ? 'סכום' : 'ללא',
-      ערך_הנחה: discountAmt > 0 ? discountAmt : 0,
       סך_הכל_לתשלום: total,
       תאריך_עדכון: new Date().toISOString(),
     })
