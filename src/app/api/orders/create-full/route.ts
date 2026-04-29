@@ -85,24 +85,41 @@ export async function POST(req: NextRequest) {
 
   if (orderError) return NextResponse.json({ error: `יצירת הזמנה נכשלה: ${orderError.message}` }, { status: 500 });
 
-  // 4. Validate product IDs against מוצרים_למכירה before inserting lines
+  // 4. Validate product IDs + business-only check
   const incomingProductIds = (מוצרים as Record<string, unknown>[])
     .map(i => i.מוצר_id as string)
     .filter(Boolean);
 
-  console.log('[create-full] product_ids received:', incomingProductIds);
+  // Resolve customer type for business-only check
+  let customerType: string = לקוח?.סוג_לקוח || '';
+  if (לקוח.id && !customerType) {
+    const { data: custRow } = await supabase
+      .from('לקוחות')
+      .select('סוג_לקוח')
+      .eq('id', customerId)
+      .single();
+    customerType = custRow?.סוג_לקוח || '';
+  }
 
   let validProductIds = new Set<string>();
   if (incomingProductIds.length > 0) {
     const { data: existingProds } = await supabase
       .from('מוצרים_למכירה')
-      .select('id')
+      .select('id, שם_מוצר, לקוחות_עסקיים_בלבד')
       .in('id', incomingProductIds);
-    validProductIds = new Set((existingProds || []).map((p: { id: string }) => p.id));
-    console.log('[create-full] valid product_ids:', Array.from(validProductIds));
-    for (const id of incomingProductIds.filter(id => !validProductIds.has(id))) {
-      console.error('[create-full] product_id not found in מוצרים_למכירה, skipping:', id);
+
+    for (const prod of existingProds || []) {
+      const p = prod as { id: string; שם_מוצר: string; לקוחות_עסקיים_בלבד: boolean };
+      if (p.לקוחות_עסקיים_בלבד && customerType !== 'עסקי') {
+        // Delete the just-created order before returning error
+        await supabase.from('הזמנות').delete().eq('id', order!.id);
+        return NextResponse.json(
+          { error: `מוצר "${p.שם_מוצר}" זמין ללקוחות עסקיים בלבד` },
+          { status: 403 },
+        );
+      }
     }
+    validProductIds = new Set((existingProds || []).map((p: { id: string }) => p.id));
   }
 
   const validProducts = (מוצרים as Record<string, unknown>[]).filter(
@@ -110,6 +127,7 @@ export async function POST(req: NextRequest) {
   );
 
   if (מוצרים.length > 0 && validProducts.length === 0) {
+    await supabase.from('הזמנות').delete().eq('id', order!.id);
     return NextResponse.json({ error: 'לא נמצאו מוצרים תקינים להזמנה' }, { status: 400 });
   }
 

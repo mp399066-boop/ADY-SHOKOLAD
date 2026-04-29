@@ -63,18 +63,40 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   }
   console.log('[items PUT] deleted existing order items');
 
-  // 3. Validate product IDs
+  // 3. Validate product IDs + business-only check
   const incomingProductIds = מוצרים.map(i => i.מוצר_id).filter(Boolean);
-  let validProductIds = new Set<string>(incomingProductIds); // default: trust all IDs
+  let validProductIds = new Set<string>(incomingProductIds);
+
   if (incomingProductIds.length > 0) {
+    // Fetch order → customer type for business-only check
+    const { data: orderRow } = await supabase
+      .from('הזמנות')
+      .select('לקוח_id, לקוחות(סוג_לקוח)')
+      .eq('id', params.id)
+      .single();
+    const customerType: string =
+      (orderRow?.לקוחות as { סוג_לקוח?: string } | null)?.סוג_לקוח || '';
+
     const { data: existingProds, error: prodsError } = await supabase
       .from('מוצרים_למכירה')
-      .select('id')
+      .select('id, שם_מוצר, לקוחות_עסקיים_בלבד')
       .in('id', incomingProductIds);
+
     if (prodsError) {
       console.error('[items PUT] product validation query failed:', prodsError);
       return NextResponse.json({ error: `ולידציית מוצרים נכשלה: ${prodsError.message}` }, { status: 500 });
     }
+
+    for (const prod of existingProds || []) {
+      const p = prod as { id: string; שם_מוצר: string; לקוחות_עסקיים_בלבד: boolean };
+      if (p.לקוחות_עסקיים_בלבד && customerType !== 'עסקי') {
+        return NextResponse.json(
+          { error: `מוצר "${p.שם_מוצר}" זמין ללקוחות עסקיים בלבד` },
+          { status: 403 },
+        );
+      }
+    }
+
     validProductIds = new Set((existingProds || []).map((p: { id: string }) => p.id));
     console.log('[items PUT] valid product ids:', validProductIds.size, '/', incomingProductIds.length);
   }
