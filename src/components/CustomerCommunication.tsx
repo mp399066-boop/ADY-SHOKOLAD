@@ -159,17 +159,17 @@ export function CustomerCommunication({
         {/* header */}
         <div
           className="flex items-center justify-between px-4 py-3 flex-shrink-0"
-          style={{ backgroundColor: '#FAF7F0', borderBottom: '1px solid #EDE0CE' }}
+          style={{ backgroundColor: '#7B1520', borderBottom: '1px solid #621019' }}
         >
           <div className="flex items-center gap-2 min-w-0">
-            <span className="font-semibold text-sm" style={{ color: '#2B1A10' }}>מיילים</span>
+            <span className="font-semibold text-sm text-white">מיילים</span>
             {email && (
-              <span className="text-xs truncate" style={{ color: '#9B7A5A' }}>{email}</span>
+              <span className="text-xs text-white opacity-75 truncate">{email}</span>
             )}
           </div>
           <span
             className="text-xs px-2 py-0.5 rounded-full flex-shrink-0"
-            style={{ backgroundColor: '#F0E6D6', color: '#8B5E34' }}
+            style={{ backgroundColor: 'rgba(255,255,255,0.2)', color: '#fff' }}
           >
             {emailItems.length}
           </span>
