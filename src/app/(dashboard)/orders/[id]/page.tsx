@@ -128,6 +128,7 @@ export default function OrderDetailPage() {
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [showEditItems, setShowEditItems] = useState(false);
 
   // Catalogue data for dropdowns in the edit modal
   const [products, setProducts] = useState<Product[]>([]);
@@ -245,7 +246,14 @@ export default function OrderDetailPage() {
       ערך_הנחה: order.ערך_הנחה != null ? String(order.ערך_הנחה) : '0',
     });
 
-    // Product rows
+    setShowEdit(true);
+  };
+
+  // ── Open items-edit modal ────────────────────────────────────────────────────
+
+  const openEditItems = () => {
+    if (!order) return;
+
     const productRows = (order.מוצרים_בהזמנה || [])
       .filter(item => item.סוג_שורה === 'מוצר')
       .map(item => ({
@@ -258,7 +266,6 @@ export default function OrderDetailPage() {
       }));
     setEditItems(productRows);
 
-    // Package rows — try to match to known package by size + price
     const packageRows = (order.מוצרים_בהזמנה || [])
       .filter(item => item.סוג_שורה === 'מארז')
       .map(item => {
@@ -282,7 +289,7 @@ export default function OrderDetailPage() {
       });
     setEditPackages(packageRows);
 
-    setShowEdit(true);
+    setShowEditItems(true);
   };
 
   // ── Save edit ────────────────────────────────────────────────────────────────
@@ -328,10 +335,23 @@ export default function OrderDetailPage() {
       const patchJson = await patchRes.json();
       if (!patchRes.ok) throw new Error(patchJson.error || `PATCH failed ${patchRes.status}`);
 
-      // 2. Replace order items + recalculate totals
-      const deliveryFee = editForm.סוג_אספקה === 'משלוח' && editForm.דמי_משלוח !== ''
-        ? Number(editForm.דמי_משלוח) : 0;
+      setShowEdit(false);
+      toast.success('פרטי הזמנה עודכנו בהצלחה');
+      loadOrder();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'שגיאה בשמירה';
+      console.error('[saveEdit] error:', msg, err);
+      toast.error(msg);
+    } finally {
+      setSaving(false);
+    }
+  };
 
+  // ── Save items only ──────────────────────────────────────────────────────────
+
+  const saveItems = async () => {
+    setSaving(true);
+    try {
       const itemsPayload = {
         מוצרים: editItems
           .filter(i => i.מוצר_id)
@@ -348,29 +368,27 @@ export default function OrderDetailPage() {
           הערות_לשורה: p.הערות_לשורה || null,
           פטיפורים: p.פטיפורים.map(pf => ({ פטיפור_id: pf.פטיפור_id, כמות: pf.כמות })),
         })),
-        סוג_הנחה: editForm.סוג_הנחה,
-        ערך_הנחה: Number(editForm.ערך_הנחה) || 0,
-        דמי_משלוח: deliveryFee,
+        סוג_הנחה: (order?.סוג_הנחה as 'ללא' | 'אחוז' | 'סכום') ?? 'ללא',
+        ערך_הנחה: order?.ערך_הנחה ?? 0,
+        דמי_משלוח: order?.דמי_משלוח ?? 0,
       };
-      console.log('[saveEdit] items payload:', JSON.stringify(itemsPayload, null, 2));
 
-      const itemsRes = await fetch(`/api/orders/${id}/items`, {
+      console.log('[saveItems] payload:', JSON.stringify(itemsPayload, null, 2));
+
+      const res = await fetch(`/api/orders/${id}/items`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(itemsPayload),
       });
-      const itemsJson = await itemsRes.json();
-      if (!itemsRes.ok) throw new Error(itemsJson.error || `items PUT failed ${itemsRes.status}`);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `שגיאה ${res.status}`);
 
-      console.log('[saveEdit] success, reloading order');
-
-      // 3. Close modal first, then reload (avoids loading spinner interrupting toast)
-      setShowEdit(false);
-      toast.success('הזמנה עודכנה בהצלחה');
+      setShowEditItems(false);
+      toast.success('מוצרי ההזמנה עודכנו בהצלחה');
       loadOrder();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'שגיאה בשמירה';
-      console.error('[saveEdit] error:', msg, err);
+      console.error('[saveItems] error:', msg, err);
       toast.error(msg);
     } finally {
       setSaving(false);
@@ -463,17 +481,17 @@ export default function OrderDetailPage() {
     });
   };
 
-  // ── Live totals in modal ─────────────────────────────────────────────────────
+  // ── Live totals for items-edit modal ────────────────────────────────────────
 
   const editSubtotal = [...editItems, ...editPackages].reduce((s, i) => s + i.סהכ, 0);
-  const editDiscountVal = Number(editForm.ערך_הנחה) || 0;
-  const editDiscount = editForm.סוג_הנחה === 'אחוז'
-    ? +(editSubtotal * editDiscountVal / 100).toFixed(2)
-    : editForm.סוג_הנחה === 'סכום'
-      ? Math.min(editSubtotal, editDiscountVal)
+  const orderDiscountType = (order?.סוג_הנחה as 'ללא' | 'אחוז' | 'סכום') ?? 'ללא';
+  const orderDiscountVal = order?.ערך_הנחה ?? 0;
+  const editDiscount = orderDiscountType === 'אחוז'
+    ? +(editSubtotal * orderDiscountVal / 100).toFixed(2)
+    : orderDiscountType === 'סכום'
+      ? Math.min(editSubtotal, orderDiscountVal)
       : 0;
-  const editDelivery = editForm.סוג_אספקה === 'משלוח' && editForm.דמי_משלוח !== ''
-    ? Number(editForm.דמי_משלוח) : 0;
+  const editDelivery = order?.דמי_משלוח ?? 0;
   const editTotal = Math.max(0, editSubtotal - editDiscount + editDelivery);
 
   // ── Render ───────────────────────────────────────────────────────────────────
@@ -558,7 +576,19 @@ export default function OrderDetailPage() {
 
         {/* Order items */}
         <Card>
-          <CardHeader><CardTitle>פריטי הזמנה</CardTitle></CardHeader>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle>פריטי הזמנה</CardTitle>
+              <button
+                onClick={openEditItems}
+                title="עריכת מוצרים"
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border font-medium hover:bg-stone-50 transition-colors"
+                style={{ borderColor: '#8B5E34', color: '#8B5E34' }}
+              >
+                ✏️ עריכת מוצרים
+              </button>
+            </div>
+          </CardHeader>
           {(!order.מוצרים_בהזמנה || order.מוצרים_בהזמנה.length === 0) ? (
             <p className="text-sm" style={{ color: '#6B4A2D' }}>אין פריטים</p>
           ) : (
@@ -838,6 +868,39 @@ export default function OrderDetailPage() {
               </div>
             </section>
 
+            {/* ── Actions ── */}
+            <div className="flex gap-3 justify-end pt-2 border-t" style={{ borderColor: '#E7D2A6' }}>
+              <button
+                onClick={() => setShowEdit(false)}
+                className="px-4 py-2 text-sm rounded-lg border hover:bg-stone-50 transition-colors"
+                style={{ borderColor: '#E7D2A6', color: '#6B4A2D' }}
+              >
+                ביטול
+              </button>
+              <Button onClick={saveEdit} disabled={saving}>
+                {saving ? 'שומר...' : 'שמור שינויים'}
+              </Button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          Items Edit Modal
+          ══════════════════════════════════════════════════════════════════════ */}
+      {showEditItems && (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 overflow-y-auto py-6 px-4"
+          onClick={() => setShowEditItems(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl w-full max-w-3xl space-y-5 p-6 mb-6"
+            style={{ direction: 'rtl' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold" style={{ color: '#2B1A10' }}>עריכת מוצרים — {order.מספר_הזמנה}</h3>
+
             {/* ── מוצרים ── */}
             <section className="rounded-xl border p-4 space-y-3" style={{ borderColor: '#E7D2A6', backgroundColor: '#FDFAF5' }}>
               <div className="flex items-center justify-between">
@@ -1015,81 +1078,43 @@ export default function OrderDetailPage() {
             </section>
 
             {/* ── סיכום כספי ── */}
-            <section className="rounded-xl border p-4 space-y-3" style={{ borderColor: '#E7D2A6', backgroundColor: '#FDFAF5' }}>
-              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#8B5E34' }}>סיכום כספי</p>
-              <div className="grid grid-cols-2 gap-6 items-start">
-                <div>
-                  <label className="block text-xs font-medium mb-2" style={{ color: '#6B4A2D' }}>הנחה</label>
-                  <div className="flex rounded-lg overflow-hidden border mb-2" style={{ borderColor: '#E7D2A6' }}>
-                    {(['ללא', 'אחוז', 'סכום'] as const).map(t => (
-                      <button
-                        key={t}
-                        type="button"
-                        onClick={() => setEditForm(f => ({ ...f, סוג_הנחה: t, ערך_הנחה: t === 'ללא' ? '0' : f.ערך_הנחה }))}
-                        className="flex-1 py-1.5 text-xs font-medium transition-colors"
-                        style={{
-                          backgroundColor: editForm.סוג_הנחה === t ? '#8B5E34' : '#FFFFFF',
-                          color: editForm.סוג_הנחה === t ? '#FFFFFF' : '#6B4A2D',
-                        }}
-                      >
-                        {t === 'אחוז' ? '%' : t === 'סכום' ? '₪' : 'ללא'}
-                      </button>
-                    ))}
-                  </div>
-                  {editForm.סוג_הנחה !== 'ללא' && (
-                    <div className="flex items-center gap-1">
-                      <input
-                        type="number"
-                        min="0"
-                        max={editForm.סוג_הנחה === 'אחוז' ? 100 : undefined}
-                        step={editForm.סוג_הנחה === 'אחוז' ? 0.1 : 0.01}
-                        value={editForm.ערך_הנחה}
-                        onChange={e => setEditForm(f => ({ ...f, ערך_הנחה: e.target.value }))}
-                        className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                        style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
-                      />
-                      <span className="text-xs font-medium flex-shrink-0" style={{ color: '#6B4A2D' }}>
-                        {editForm.סוג_הנחה === 'אחוז' ? '%' : '₪'}
-                      </span>
-                    </div>
-                  )}
+            <section className="rounded-xl border p-4 space-y-2 text-sm" style={{ borderColor: '#E7D2A6', backgroundColor: '#FDFAF5' }}>
+              <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#8B5E34' }}>סיכום כספי</p>
+              <div className="flex justify-between" style={{ color: '#6B4A2D' }}>
+                <span>סכום לפני הנחה:</span>
+                <span>₪{editSubtotal.toFixed(2)}</span>
+              </div>
+              {editDiscount > 0 && (
+                <div className="flex justify-between text-red-600">
+                  <span>
+                    הנחה{orderDiscountType === 'אחוז' ? ` (${orderDiscountVal}%)` : ''}:
+                  </span>
+                  <span>−₪{editDiscount.toFixed(2)}</span>
                 </div>
-                <div className="space-y-1 text-sm pt-5">
-                  <div className="flex justify-between" style={{ color: '#6B4A2D' }}>
-                    <span>סכום לפני הנחה:</span>
-                    <span>₪{editSubtotal.toFixed(2)}</span>
-                  </div>
-                  {editDiscount > 0 && (
-                    <div className="flex justify-between text-red-600">
-                      <span>הנחה:</span>
-                      <span>−₪{editDiscount.toFixed(2)}</span>
-                    </div>
-                  )}
-                  {editDelivery > 0 && (
-                    <div className="flex justify-between" style={{ color: '#6B4A2D' }}>
-                      <span>דמי משלוח:</span>
-                      <span>₪{editDelivery.toFixed(2)}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between font-bold pt-1 border-t text-base" style={{ borderColor: '#E7D2A6' }}>
-                    <span style={{ color: '#2B1A10' }}>סה״כ לתשלום:</span>
-                    <span style={{ color: '#8B5E34' }}>₪{editTotal.toFixed(2)}</span>
-                  </div>
+              )}
+              {editDelivery > 0 && (
+                <div className="flex justify-between" style={{ color: '#6B4A2D' }}>
+                  <span>דמי משלוח:</span>
+                  <span>₪{editDelivery.toFixed(2)}</span>
                 </div>
+              )}
+              <div className="flex justify-between font-bold pt-2 border-t text-base" style={{ borderColor: '#E7D2A6' }}>
+                <span style={{ color: '#2B1A10' }}>סה״כ לתשלום:</span>
+                <span style={{ color: '#8B5E34' }}>₪{editTotal.toFixed(2)}</span>
               </div>
             </section>
 
             {/* ── Actions ── */}
             <div className="flex gap-3 justify-end pt-2 border-t" style={{ borderColor: '#E7D2A6' }}>
               <button
-                onClick={() => setShowEdit(false)}
+                onClick={() => setShowEditItems(false)}
                 className="px-4 py-2 text-sm rounded-lg border hover:bg-stone-50 transition-colors"
                 style={{ borderColor: '#E7D2A6', color: '#6B4A2D' }}
               >
                 ביטול
               </button>
-              <Button onClick={saveEdit} disabled={saving}>
-                {saving ? 'שומר...' : 'שמור שינויים'}
+              <Button onClick={saveItems} disabled={saving}>
+                {saving ? 'שומר...' : 'שמור מוצרים'}
               </Button>
             </div>
 
