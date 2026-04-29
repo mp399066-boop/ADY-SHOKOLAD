@@ -4,7 +4,10 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { exportToCsv } from '@/lib/exportCsv';
-import { IconExport } from '@/components/icons';
+import { IconExport, IconEye, IconEdit, IconTrash } from '@/components/icons';
+import { ActionBtn } from '@/components/ui/RowActions';
+import { ConfirmModal } from '@/components/ui/ConfirmModal';
+import toast from 'react-hot-toast';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -20,6 +23,8 @@ export default function CustomersPage() {
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [count, setCount] = useState(0);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -33,6 +38,21 @@ export default function CustomersPage() {
       .then(({ data, count }) => { setCustomers(data || []); setCount(count || 0); })
       .finally(() => setLoading(false));
   }, [search, typeFilter]);
+
+  const handleDelete = async () => {
+    if (!confirmId) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/customers/${confirmId}`, { method: 'DELETE' });
+      const json = await res.json();
+      if (!res.ok) { toast.error(json.error || 'שגיאה במחיקה'); return; }
+      setCustomers(prev => prev.filter(c => c.id !== confirmId));
+      setCount(prev => prev - 1);
+      toast.success('לקוח נמחק');
+      setConfirmId(null);
+    } catch { toast.error('שגיאה במחיקה'); }
+    finally { setDeleting(false); }
+  };
 
   const handleExport = () => {
     exportToCsv('לקוחות.csv',
@@ -99,14 +119,11 @@ export default function CustomersPage() {
                     <td className="px-4 py-3"><StatusBadge status={c.סוג_לקוח} type="customer" /></td>
                     <td className="px-4 py-3">{c.אחוז_הנחה ? `${c.אחוז_הנחה}%` : '-'}</td>
                     <td className="px-4 py-3">
-                      <Link
-                        href={`/customers/${c.id}`}
-                        onClick={e => e.stopPropagation()}
-                        className="text-xs hover:underline ml-3"
-                        style={{ color: '#8B5E34' }}
-                      >
-                        פרופיל
-                      </Link>
+                      <div className="flex items-center gap-0.5">
+                        <ActionBtn title="צפייה" href={`/customers/${c.id}`} icon={<IconEye className="w-4 h-4" />} />
+                        <ActionBtn title="עריכה" href={`/customers/${c.id}`} icon={<IconEdit className="w-4 h-4" />} />
+                        <ActionBtn title="מחיקה" variant="danger" onClick={() => setConfirmId(c.id)} icon={<IconTrash className="w-4 h-4" />} />
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -115,6 +132,12 @@ export default function CustomersPage() {
           </div>
         </Card>
       )}
+      <ConfirmModal
+        open={!!confirmId}
+        onClose={() => setConfirmId(null)}
+        onConfirm={handleDelete}
+        loading={deleting}
+      />
     </div>
   );
 }

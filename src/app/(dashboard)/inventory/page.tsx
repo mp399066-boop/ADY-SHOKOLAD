@@ -9,7 +9,9 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Tabs } from '@/components/ui/Tabs';
 import { Modal } from '@/components/ui/Modal';
 import { Input, Select, Textarea } from '@/components/ui/Input';
-import { IconAlert, IconExport } from '@/components/icons';
+import { IconAlert, IconExport, IconEdit, IconTrash } from '@/components/icons';
+import { ActionBtn } from '@/components/ui/RowActions';
+import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { exportToCsv } from '@/lib/exportCsv';
 import { formatCurrency } from '@/lib/utils';
 import toast from 'react-hot-toast';
@@ -97,8 +99,11 @@ export default function InventoryPage() {
     } finally { setSavingStock(false); }
   };
 
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
   const handleDeleteMaterial = async (id: string) => {
-    if (!window.confirm('האם אתה בטוח שברצונך למחוק את חומר הגלם?')) return;
+    setDeleting(true);
     try {
       const res = await fetch(`/api/inventory/${id}`, { method: 'DELETE' });
       const json = await res.json();
@@ -108,8 +113,10 @@ export default function InventoryPage() {
         return;
       }
       toast.success('נמחק בהצלחה');
+      setConfirmId(null);
       fetchInventory();
     } catch { toast.error('שגיאה במחיקה'); }
+    finally { setDeleting(false); }
   };
 
   const openAdd = () => {
@@ -316,21 +323,9 @@ export default function InventoryPage() {
                             {m.מחיר_ליחידה ? formatCurrency(m.מחיר_ליחידה) : '—'}
                           </td>
                           <td className="px-4 py-3">
-                            <div className="flex items-center gap-3">
-                              <button
-                                onClick={() => openEdit(m)}
-                                className="text-xs hover:underline"
-                                style={{ color: '#8B5E34' }}
-                              >
-                                עריכה
-                              </button>
-                              <button
-                                onClick={() => handleDeleteMaterial(m.id)}
-                                className="text-xs hover:underline"
-                                style={{ color: '#C0392B' }}
-                              >
-                                מחק
-                              </button>
+                            <div className="flex items-center gap-0.5">
+                              <ActionBtn title="עריכה" onClick={() => openEdit(m)} icon={<IconEdit className="w-4 h-4" />} />
+                              <ActionBtn title="מחיקה" variant="danger" onClick={() => setConfirmId(m.id)} icon={<IconTrash className="w-4 h-4" />} />
                             </div>
                           </td>
                         </tr>
@@ -599,6 +594,13 @@ export default function InventoryPage() {
           )}
         </div>
       </Card>
+
+      <ConfirmModal
+        open={!!confirmId}
+        onClose={() => setConfirmId(null)}
+        onConfirm={() => handleDeleteMaterial(confirmId!)}
+        loading={deleting}
+      />
 
       {/* Add / Edit Modal */}
       <Modal

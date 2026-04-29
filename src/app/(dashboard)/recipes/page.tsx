@@ -9,7 +9,9 @@ import { Modal } from '@/components/ui/Modal';
 import { Input, Select, Textarea } from '@/components/ui/Input';
 import toast from 'react-hot-toast';
 import { exportToCsv } from '@/lib/exportCsv';
-import { IconExport } from '@/components/icons';
+import { IconExport, IconTrash } from '@/components/icons';
+import { ActionBtn } from '@/components/ui/RowActions';
+import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import type { Recipe, Product, RawMaterial, Production } from '@/types/database';
 
 type Tab = 'recipes' | 'production';
@@ -89,8 +91,11 @@ export default function RecipesPage() {
     }
   };
 
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
   const handleDeleteRecipe = async (id: string) => {
-    if (!window.confirm('האם אתה בטוח שברצונך למחוק את המתכון?')) return;
+    setDeleting(true);
     try {
       const res = await fetch(`/api/recipes/${id}`, { method: 'DELETE' });
       const json = await res.json();
@@ -100,8 +105,10 @@ export default function RecipesPage() {
         return;
       }
       toast.success('מתכון נמחק');
+      setConfirmId(null);
       fetchAll();
     } catch { toast.error('שגיאה במחיקה'); }
+    finally { setDeleting(false); }
   };
 
   const handleProduction = async () => {
@@ -182,13 +189,7 @@ export default function RecipesPage() {
                           {(r as Recipe & { מוצרים_למכירה?: { שם_מוצר: string } }).מוצרים_למכירה?.שם_מוצר || 'לא משויך'} · תוצר: {r.כמות_תוצר}
                         </p>
                       </div>
-                      <button
-                        onClick={() => handleDeleteRecipe(r.id)}
-                        className="text-xs hover:underline self-start"
-                        style={{ color: '#C0392B' }}
-                      >
-                        מחק
-                      </button>
+                      <ActionBtn title="מחיקה" variant="danger" onClick={() => setConfirmId(r.id)} icon={<IconTrash className="w-4 h-4" />} />
                     </div>
                     {(r as Recipe & { רכיבי_מתכון?: { id: string; כמות_נדרשת: number; יחידת_מידה: string; מלאי_חומרי_גלם?: { שם_חומר_גלם: string } }[] }).רכיבי_מתכון?.length ? (
                       <div className="space-y-1">
@@ -275,6 +276,13 @@ export default function RecipesPage() {
           </div>
         </div>
       </Modal>
+
+      <ConfirmModal
+        open={!!confirmId}
+        onClose={() => setConfirmId(null)}
+        onConfirm={() => handleDeleteRecipe(confirmId!)}
+        loading={deleting}
+      />
 
       {/* Production Modal */}
       <Modal open={showProductionModal} onClose={() => setShowProductionModal(false)} title="רישום ייצור">

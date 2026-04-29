@@ -1,13 +1,14 @@
 'use client';
 
-import { useEffect, useState, Suspense } from 'react';
+import { useEffect, useState, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Card } from '@/components/ui/Card';
-import { StatusBadge } from '@/components/ui/StatusBadge';
 import { PageLoading } from '@/components/ui/LoadingSpinner';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Input, Select, Textarea } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
+import { ActionBtn } from '@/components/ui/RowActions';
+import { IconEye } from '@/components/icons';
 import { Modal } from '@/components/ui/Modal';
 import type { Delivery } from '@/types/database';
 import Link from 'next/link';
@@ -18,6 +19,104 @@ import toast from 'react-hot-toast';
 const VALID_STATUSES: Delivery['סטטוס_משלוח'][] = [
   'ממתין', 'בהכנה', 'מוכן למשלוח', 'יצא למשלוח', 'בדרך', 'נמסר', 'נכשל',
 ];
+
+const DROPDOWN_STATUSES: Delivery['סטטוס_משלוח'][] = [
+  'ממתין', 'בהכנה', 'מוכן למשלוח', 'יצא למשלוח', 'בדרך', 'נכשל',
+];
+
+const STATUS_STYLE: Record<string, { bg: string; color: string; border: string }> = {
+  'ממתין':          { bg: '#F3F4F6', color: '#6B7280', border: '#D1D5DB' },
+  'בהכנה':          { bg: '#FFF7ED', color: '#C2610F', border: '#FED7AA' },
+  'מוכן למשלוח':   { bg: '#EFF6FF', color: '#1D4ED8', border: '#BFDBFE' },
+  'יצא למשלוח':    { bg: '#F5F3FF', color: '#6D28D9', border: '#DDD6FE' },
+  'בדרך':           { bg: '#F0FDFA', color: '#0F766E', border: '#99F6E4' },
+  'נכשל':           { bg: '#FEF2F2', color: '#DC2626', border: '#FECACA' },
+  'נמסר':           { bg: '#ECFDF5', color: '#065F46', border: '#6EE7B7' },
+};
+
+function DeliveryStatusBadge({
+  status,
+  deliveryId,
+  noRecord,
+  onUpdate,
+}: {
+  status: Delivery['סטטוס_משלוח'];
+  deliveryId: string;
+  noRecord?: boolean;
+  onUpdate: (id: string, s: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const style = STATUS_STYLE[status] ?? STATUS_STYLE['ממתין'];
+
+  return (
+    <div ref={ref} className="relative inline-block" dir="rtl">
+      <button
+        onClick={() => { if (!noRecord) setOpen(v => !v); }}
+        disabled={noRecord}
+        className="inline-flex items-center gap-1 text-xs font-medium rounded-full px-2.5 py-0.5 border transition-all"
+        style={{
+          backgroundColor: style.bg,
+          color: style.color,
+          borderColor: style.border,
+          cursor: noRecord ? 'default' : 'pointer',
+          opacity: noRecord ? 0.7 : 1,
+        }}
+        title={noRecord ? '' : 'לחץ לשינוי סטטוס'}
+      >
+        {status}
+        {!noRecord && (
+          <svg className="w-3 h-3 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        )}
+      </button>
+
+      {open && (
+        <div
+          className="absolute top-full mt-1 right-0 z-50 rounded-xl shadow-lg border py-1 min-w-[130px]"
+          style={{ backgroundColor: '#FFFFFF', borderColor: '#E5DDD3' }}
+        >
+          {DROPDOWN_STATUSES.map(s => {
+            const st = STATUS_STYLE[s];
+            const isCurrent = s === status;
+            return (
+              <button
+                key={s}
+                onClick={() => { onUpdate(deliveryId, s); setOpen(false); }}
+                className="w-full text-right px-3 py-1.5 text-xs flex items-center gap-2 transition-colors"
+                style={{
+                  backgroundColor: isCurrent ? st.bg : 'transparent',
+                  color: isCurrent ? st.color : '#3D2A1A',
+                  fontWeight: isCurrent ? 600 : 400,
+                }}
+                onMouseEnter={e => { if (!isCurrent) (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#FAF7F2'; }}
+                onMouseLeave={e => { if (!isCurrent) (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent'; }}
+              >
+                <span
+                  className="inline-block w-2 h-2 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: st.color }}
+                />
+                {s}
+                {isCurrent && <span className="mr-auto text-xs opacity-60">✓</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface PlacedForm {
   שעת_הנחה: string;
@@ -195,7 +294,12 @@ function DeliveriesContent() {
                       >
                         {order?.מספר_הזמנה || `#${d.הזמנה_id?.slice(0, 8)}`}
                       </Link>
-                      <StatusBadge status={d.סטטוס_משלוח} type="delivery" />
+                      <DeliveryStatusBadge
+                        status={d.סטטוס_משלוח}
+                        deliveryId={d.id}
+                        noRecord={!!d._noRecord}
+                        onUpdate={updateDeliveryStatus}
+                      />
                       {d.תאריך_משלוח && (
                         <span className="text-xs" style={{ color: '#7A5840' }}>
                           {d.תאריך_משלוח}{d.שעת_משלוח && ` · ${d.שעת_משלוח}`}
@@ -251,7 +355,8 @@ function DeliveriesContent() {
                     )}
                   </div>
 
-                  <div className="flex flex-col gap-1 flex-shrink-0">
+                  <div className="flex flex-col gap-1.5 flex-shrink-0 items-end">
+                    <ActionBtn title="צפייה בהזמנה" href={`/orders/${d.הזמנה_id}`} icon={<IconEye className="w-4 h-4" />} />
                     {d._noRecord ? (
                       <button
                         onClick={() => createDeliveryRecord(d)}
@@ -262,32 +367,15 @@ function DeliveriesContent() {
                         {creatingRecord === d.הזמנה_id ? 'יוצר...' : '+ צור משלוח'}
                       </button>
                     ) : (
-                      <>
-                        {!isDelivered && (
-                          <button
-                            onClick={() => openPlacedModal(d)}
-                            className="text-xs px-2.5 py-1.5 rounded-lg font-medium transition-all whitespace-nowrap ring-1"
-                            style={{ backgroundColor: '#ECFDF5', color: '#065F46', outline: '1px solid #6EE7B7' }}
-                          >
-                            ✓ סמן שנמסר
-                          </button>
-                        )}
-                        {VALID_STATUSES.filter(s => s !== 'נמסר').map(s => (
-                          <button
-                            key={s}
-                            onClick={() => updateDeliveryStatus(d.id, s)}
-                            disabled={d.סטטוס_משלוח === s}
-                            className="text-xs px-2.5 py-1 rounded-lg border transition-all whitespace-nowrap"
-                            style={
-                              d.סטטוס_משלוח === s
-                                ? { backgroundColor: '#7C5230', color: '#FFFFFF', borderColor: '#7C5230' }
-                                : { backgroundColor: '#FFFFFF', color: '#5C3D22', borderColor: '#D4C4AE' }
-                            }
-                          >
-                            {s}
-                          </button>
-                        ))}
-                      </>
+                      !isDelivered && (
+                        <button
+                          onClick={() => openPlacedModal(d)}
+                          className="text-xs px-2.5 py-1.5 rounded-lg font-medium transition-all whitespace-nowrap ring-1"
+                          style={{ backgroundColor: '#ECFDF5', color: '#065F46', outline: '1px solid #6EE7B7' }}
+                        >
+                          ✓ סמן שנמסר
+                        </button>
+                      )
                     )}
                   </div>
                 </div>

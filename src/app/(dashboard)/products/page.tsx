@@ -10,7 +10,9 @@ import { Modal } from '@/components/ui/Modal';
 import { Input, Select, Textarea } from '@/components/ui/Input';
 import { formatCurrency } from '@/lib/utils';
 import { exportToCsv } from '@/lib/exportCsv';
-import { IconExport } from '@/components/icons';
+import { IconExport, IconEdit, IconTrash } from '@/components/icons';
+import { ActionBtn } from '@/components/ui/RowActions';
+import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import toast from 'react-hot-toast';
 import type { Product, Package, PetitFourType } from '@/types/database';
 
@@ -28,6 +30,8 @@ export default function ProductsPage() {
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<Record<string, string | number | boolean>>({});
   const [saving, setSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<{ id: string; type: Tab } | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchAll = () => {
     setLoading(true);
@@ -94,7 +98,7 @@ export default function ProductsPage() {
   };
 
   const handleDelete = async (id: string, entityType: Tab) => {
-    if (!window.confirm('האם אתה בטוח שברצונך למחוק?')) return;
+    setDeleting(true);
     try {
       const url =
         entityType === 'packages' ? `/api/packages/${id}` :
@@ -108,8 +112,10 @@ export default function ProductsPage() {
         return;
       }
       toast.success('נמחק בהצלחה');
+      setConfirmDelete(null);
       fetchAll();
     } catch { toast.error('שגיאה במחיקה'); }
+    finally { setDeleting(false); }
   };
 
   const tabList = [
@@ -239,28 +245,16 @@ export default function ProductsPage() {
                             <span className="font-bold text-sm" style={{ color: '#8B5E34' }}>
                               {formatCurrency(p.מחיר)}
                             </span>
-                            <div className="flex gap-2">
-                              <button
-                                onClick={() => openEdit(p)}
-                                className="text-xs hover:underline"
-                                style={{ color: '#8B5E34' }}
-                              >
-                                עריכה
-                              </button>
+                            <div className="flex items-center gap-0.5">
+                              <ActionBtn title="עריכה" onClick={() => openEdit(p)} icon={<IconEdit className="w-4 h-4" />} />
                               <button
                                 onClick={() => toggleActive(p.id, p.פעיל)}
-                                className="text-xs hover:underline"
+                                className="px-1.5 py-0.5 text-xs rounded transition-colors hover:bg-amber-50"
                                 style={{ color: '#9B7A5A' }}
                               >
                                 {p.פעיל ? 'השבת' : 'הפעל'}
                               </button>
-                              <button
-                                onClick={() => handleDelete(p.id, 'products')}
-                                className="text-xs hover:underline"
-                                style={{ color: '#C0392B' }}
-                              >
-                                מחק
-                              </button>
+                              <ActionBtn title="מחיקה" variant="danger" onClick={() => setConfirmDelete({ id: p.id, type: 'products' })} icon={<IconTrash className="w-4 h-4" />} />
                             </div>
                           </div>
                         </div>
@@ -322,21 +316,9 @@ export default function ProductsPage() {
                               </span>
                             </td>
                             <td className="px-4 py-3">
-                              <div className="flex items-center gap-3">
-                                <button
-                                  onClick={() => openEdit(pkg)}
-                                  className="text-xs hover:underline"
-                                  style={{ color: '#8B5E34' }}
-                                >
-                                  עריכה
-                                </button>
-                                <button
-                                  onClick={() => handleDelete(pkg.id, 'packages')}
-                                  className="text-xs hover:underline"
-                                  style={{ color: '#C0392B' }}
-                                >
-                                  מחק
-                                </button>
+                              <div className="flex items-center gap-0.5">
+                                <ActionBtn title="עריכה" onClick={() => openEdit(pkg)} icon={<IconEdit className="w-4 h-4" />} />
+                                <ActionBtn title="מחיקה" variant="danger" onClick={() => setConfirmDelete({ id: pkg.id, type: 'packages' })} icon={<IconTrash className="w-4 h-4" />} />
                               </div>
                             </td>
                           </tr>
@@ -373,20 +355,8 @@ export default function ProductsPage() {
                           >
                             {pf.פעיל ? '✓' : '—'}
                           </span>
-                          <button
-                            onClick={() => openEdit(pf)}
-                            className="text-xs hover:underline"
-                            style={{ color: '#8B5E34' }}
-                          >
-                            עריכה
-                          </button>
-                          <button
-                            onClick={() => handleDelete(pf.id, 'petitfours')}
-                            className="text-xs hover:underline"
-                            style={{ color: '#C0392B' }}
-                          >
-                            מחק
-                          </button>
+                          <ActionBtn title="עריכה" onClick={() => openEdit(pf)} icon={<IconEdit className="w-4 h-4" />} />
+                          <ActionBtn title="מחיקה" variant="danger" onClick={() => setConfirmDelete({ id: pf.id, type: 'petitfours' })} icon={<IconTrash className="w-4 h-4" />} />
                         </div>
                       </div>
                     ))}
@@ -397,6 +367,13 @@ export default function ProductsPage() {
           )}
         </div>
       </Card>
+
+      <ConfirmModal
+        open={!!confirmDelete}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={() => handleDelete(confirmDelete!.id, confirmDelete!.type)}
+        loading={deleting}
+      />
 
       {/* Add / Edit Modal */}
       <Modal

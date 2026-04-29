@@ -8,7 +8,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { formatDate, formatCurrency } from '@/lib/utils';
 import type { Invoice } from '@/types/database';
 import { exportToCsv } from '@/lib/exportCsv';
-import { IconExport } from '@/components/icons';
+import { IconExport, IconExternalLink } from '@/components/icons';
 
 export default function InvoicesPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -82,10 +82,10 @@ export default function InvoicesPage() {
                   <td className="px-4 py-3" style={{ color: '#6B4A2D' }}>{formatDate(inv.תאריך_יצירה)}</td>
                   <td className="px-4 py-3">
                     {inv.קישור_חשבונית ? (
-                      <a href={inv.קישור_חשבונית} target="_blank" rel="noopener noreferrer" className="text-xs hover:underline" style={{ color: '#8B5E34' }}>
-                        פתח PDF ↗
+                      <a href={inv.קישור_חשבונית} target="_blank" rel="noopener noreferrer" title="פתח PDF" className="w-7 h-7 inline-flex items-center justify-center rounded-md text-[#B08060] hover:bg-amber-50 hover:text-[#8B5E34] transition-colors">
+                        <IconExternalLink className="w-4 h-4" />
                       </a>
-                    ) : '-'}
+                    ) : <span style={{ color: '#B0A090' }}>—</span>}
                   </td>
                 </tr>
               );

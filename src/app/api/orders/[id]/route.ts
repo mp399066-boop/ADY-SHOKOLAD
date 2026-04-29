@@ -112,3 +112,16 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   return NextResponse.json({ data });
 }
+
+export async function DELETE(_: NextRequest, { params }: { params: { id: string } }) {
+  const supabase = createAdminClient();
+  const { error } = await supabase.from('הזמנות').delete().eq('id', params.id);
+  if (error) {
+    const isFK = error.message.includes('foreign key') || error.message.includes('violates');
+    return NextResponse.json(
+      { error: isFK ? 'לא ניתן למחוק כי קיימות רשומות מקושרות' : error.message },
+      { status: isFK ? 409 : 500 },
+    );
+  }
+  return NextResponse.json({ success: true });
+}

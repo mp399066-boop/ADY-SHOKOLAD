@@ -8,7 +8,10 @@ import { Button } from '@/components/ui/Button';
 import { StatusBadge, UrgentBadge } from '@/components/ui/StatusBadge';
 import { PageLoading } from '@/components/ui/LoadingSpinner';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { IconSearch, IconExport } from '@/components/icons';
+import { IconSearch, IconExport, IconEye, IconEdit, IconTrash } from '@/components/icons';
+import { ActionBtn } from '@/components/ui/RowActions';
+import { ConfirmModal } from '@/components/ui/ConfirmModal';
+import toast from 'react-hot-toast';
 import { exportToCsv } from '@/lib/exportCsv';
 import { formatDate, formatCurrency } from '@/lib/utils';
 import type { Order } from '@/types/database';
@@ -34,6 +37,23 @@ function OrdersContent() {
   const [loading, setLoading] = useState(true);
   const [count, setCount] = useState(0);
   const [search, setSearch] = useState('');
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    if (!confirmId) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/orders/${confirmId}`, { method: 'DELETE' });
+      const json = await res.json();
+      if (!res.ok) { toast.error(json.error || 'שגיאה במחיקה'); return; }
+      setOrders(prev => prev.filter(o => o.id !== confirmId));
+      setCount(prev => prev - 1);
+      toast.success('הזמנה נמחקה');
+      setConfirmId(null);
+    } catch { toast.error('שגיאה במחיקה'); }
+    finally { setDeleting(false); }
+  };
 
   const handleExport = () => {
     exportToCsv('הזמנות.csv',
@@ -202,14 +222,11 @@ function OrdersContent() {
                         {formatCurrency(order.סך_הכל_לתשלום)}
                       </td>
                       <td className="px-4 py-3">
-                        <Link
-                          href={`/orders/${order.id}`}
-                          onClick={e => e.stopPropagation()}
-                          className="text-xs hover:underline"
-                          style={{ color: '#8B5E34' }}
-                        >
-                          פרטים
-                        </Link>
+                        <div className="flex items-center gap-0.5">
+                          <ActionBtn title="צפייה" href={`/orders/${order.id}`} icon={<IconEye className="w-4 h-4" />} />
+                          <ActionBtn title="עריכה" href={`/orders/${order.id}`} icon={<IconEdit className="w-4 h-4" />} />
+                          <ActionBtn title="מחיקה" variant="danger" onClick={() => setConfirmId(order.id)} icon={<IconTrash className="w-4 h-4" />} />
+                        </div>
                       </td>
                     </tr>
                   );
@@ -219,6 +236,12 @@ function OrdersContent() {
           </div>
         </Card>
       )}
+      <ConfirmModal
+        open={!!confirmId}
+        onClose={() => setConfirmId(null)}
+        onConfirm={handleDelete}
+        loading={deleting}
+      />
     </div>
   );
 }
