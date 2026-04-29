@@ -32,19 +32,34 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const supabase = createAdminClient();
   const body = await req.json();
-  if (!body.שם_שליח?.trim() || !body.טלפון_שליח?.trim()) {
-    return NextResponse.json({ error: 'שם וטלפון שדות חובה' }, { status: 400 });
+
+  if (!body.שם_שליח?.trim()) {
+    return NextResponse.json({ error: 'שם שליח הוא שדה חובה' }, { status: 400 });
   }
+  if (!body.טלפון_שליח?.trim() && !body.אימייל_שליח?.trim()) {
+    return NextResponse.json({ error: 'חובה להזין טלפון או אימייל לשליח' }, { status: 400 });
+  }
+
+  const insertPayload: Record<string, unknown> = {
+    שם_שליח:    body.שם_שליח.trim(),
+    טלפון_שליח: body.טלפון_שליח?.trim() || '',
+    הערות:       body.הערות || null,
+    פעיל:        body.פעיל !== false,
+  };
+  // אימייל_שליח added by migration 008 — include only when provided to avoid schema error if column missing
+  if (body.אימייל_שליח?.trim()) {
+    insertPayload.אימייל_שליח = body.אימייל_שליח.trim();
+  }
+
+  console.log('[couriers POST] inserting:', JSON.stringify(insertPayload));
   const { data, error } = await supabase
     .from('שליחים')
-    .insert({
-      שם_שליח:    body.שם_שליח.trim(),
-      טלפון_שליח: body.טלפון_שליח.trim(),
-      הערות:       body.הערות || null,
-      פעיל:        body.פעיל !== false,
-    })
+    .insert(insertPayload)
     .select()
     .single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    console.error('[couriers POST] error:', error.message);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
   return NextResponse.json({ data }, { status: 201 });
 }

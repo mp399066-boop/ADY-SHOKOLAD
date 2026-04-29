@@ -84,18 +84,24 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   console.log('[delivery PATCH] status → נאסף, delivery id:', params.id);
 
   // 1. Fetch current delivery + courier + order
+  // Use * on courier join so missing columns (e.g. אימייל_שליח before migration 008) don't break the query
   const { data: existing, error: fetchErr } = await supabase
     .from('משלוחים')
     .select(`
       id, סטטוס_משלוח, delivery_token,
       courier_id, whatsapp_sent_at, email_sent_at,
       הזמנות(שם_מקבל, לקוחות(שם_פרטי, שם_משפחה)),
-      שליחים!courier_id(שם_שליח, טלפון_שליח, אימייל_שליח)
+      שליחים!courier_id(*)
     `)
     .eq('id', params.id)
     .single();
 
-  if (fetchErr || !existing) {
+  if (fetchErr) {
+    console.error('[delivery PATCH] fetch error:', fetchErr.message, '| delivery id:', params.id);
+    return NextResponse.json({ error: fetchErr.message }, { status: 500 });
+  }
+  if (!existing) {
+    console.error('[delivery PATCH] delivery not found for id:', params.id);
     return NextResponse.json({ error: 'משלוח לא נמצא' }, { status: 404 });
   }
 
@@ -127,7 +133,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   };
 
   // 5. Determine send channel
-  type CourierRow = { שם_שליח: string; טלפון_שליח: string | null; אימייל_שליח: string | null } | null;
+  type CourierRow = { שם_שליח: string; טלפון_שליח?: string | null; אימייל_שליח?: string | null } | null;
   const courier = existing.שליחים as CourierRow;
 
   let whatsappUrl: string | null = null;
