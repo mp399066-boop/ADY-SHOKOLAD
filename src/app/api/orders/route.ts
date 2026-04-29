@@ -23,14 +23,20 @@ export async function GET(req: NextRequest) {
       .order('תאריך_יצירה', { ascending: false })
       .range(offset, offset + limit - 1);
 
-    if (filter === 'today') query = query.eq('תאריך_אספקה', today);
-    else if (filter === 'tomorrow') query = query.eq('תאריך_אספקה', tomorrow);
-    else if (filter === 'urgent') query = query.eq('הזמנה_דחופה', true).neq('סטטוס_הזמנה', 'הושלמה בהצלחה').neq('סטטוס_הזמנה', 'בוטלה');
-    else if (filter === 'unpaid') query = query.eq('סטטוס_תשלום', 'ממתין').neq('סטטוס_הזמנה', 'בוטלה');
-    else if (filter === 'preparation') query = query.eq('סטטוס_הזמנה', 'בהכנה');
-    else if (filter === 'ready') query = query.eq('סטטוס_הזמנה', 'מוכנה למשלוח');
-    else if (filter === 'shipped') query = query.eq('סטטוס_הזמנה', 'נשלחה');
-    else if (filter === 'completed') query = query.eq('סטטוס_הזמנה', 'הושלמה בהצלחה');
+    if (filter === 'archive') {
+      // Archive: only completed / archived orders
+      query = query.eq('סטטוס_הזמנה', 'הושלמה בהצלחה');
+    } else {
+      // All other views: exclude completed/archived orders
+      query = query.neq('סטטוס_הזמנה', 'הושלמה בהצלחה');
+      if (filter === 'today') query = query.eq('תאריך_אספקה', today);
+      else if (filter === 'tomorrow') query = query.eq('תאריך_אספקה', tomorrow);
+      else if (filter === 'urgent') query = query.eq('הזמנה_דחופה', true).neq('סטטוס_הזמנה', 'בוטלה');
+      else if (filter === 'unpaid') query = query.eq('סטטוס_תשלום', 'ממתין').neq('סטטוס_הזמנה', 'בוטלה');
+      else if (filter === 'preparation') query = query.eq('סטטוס_הזמנה', 'בהכנה');
+      else if (filter === 'ready') query = query.eq('סטטוס_הזמנה', 'מוכנה למשלוח');
+      else if (filter === 'shipped') query = query.eq('סטטוס_הזמנה', 'נשלחה');
+    }
 
     if (search) {
       query = query.or(`מספר_הזמנה.ilike.%${search}%`);

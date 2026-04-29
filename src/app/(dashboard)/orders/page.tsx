@@ -14,15 +14,15 @@ import { formatDate, formatCurrency } from '@/lib/utils';
 import type { Order } from '@/types/database';
 
 const FILTERS = [
-  { key: '',            label: 'הכל'           },
-  { key: 'today',       label: 'היום'          },
-  { key: 'tomorrow',    label: 'מחר'           },
-  { key: 'urgent',      label: 'דחופות'        },
-  { key: 'unpaid',      label: 'לא שולמו'      },
-  { key: 'preparation', label: 'בהכנה'         },
-  { key: 'ready',       label: 'מוכנות למשלוח' },
-  { key: 'shipped',     label: 'נשלחו'         },
-  { key: 'completed',   label: 'הושלמו'        },
+  { key: '',            label: 'הכל'             },
+  { key: 'today',       label: 'היום'            },
+  { key: 'tomorrow',    label: 'מחר'             },
+  { key: 'urgent',      label: 'דחופות'          },
+  { key: 'unpaid',      label: 'לא שולמו'        },
+  { key: 'preparation', label: 'בהכנה'           },
+  { key: 'ready',       label: 'מוכנות למשלוח'   },
+  { key: 'shipped',     label: 'נשלחו'           },
+  { key: 'archive',     label: 'הזמנות בארכיון'  },
 ];
 
 function OrdersContent() {
@@ -86,20 +86,28 @@ function OrdersContent() {
 
         {/* Filter tabs */}
         <div className="flex flex-wrap gap-1.5 flex-1">
-          {FILTERS.map(f => (
-            <button
-              key={f.key}
-              onClick={() => router.push(f.key ? `/orders?filter=${f.key}` : '/orders')}
-              className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all border"
-              style={
-                currentFilter === f.key
-                  ? { backgroundColor: '#8B5E34', color: '#FFFFFF', borderColor: '#8B5E34' }
-                  : { backgroundColor: '#FFFFFF', color: '#6B4A2D', borderColor: '#DDD0BC' }
-              }
-            >
-              {f.label}
-            </button>
-          ))}
+          {FILTERS.map((f, i) => {
+            const isArchive = f.key === 'archive';
+            const isActive  = currentFilter === f.key;
+            return (
+              <button
+                key={f.key}
+                onClick={() => router.push(f.key ? `/orders?filter=${f.key}` : '/orders')}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all border"
+                style={
+                  isActive && isArchive
+                    ? { backgroundColor: '#065F46', color: '#fff',     borderColor: '#065F46' }
+                    : isArchive
+                    ? { backgroundColor: '#F0FDF4', color: '#065F46',  borderColor: '#A7F3D0' }
+                    : isActive
+                    ? { backgroundColor: '#8B5E34', color: '#FFFFFF',  borderColor: '#8B5E34' }
+                    : { backgroundColor: '#FFFFFF',  color: '#6B4A2D', borderColor: '#DDD0BC' }
+                }
+              >
+                {f.label}
+              </button>
+            );
+          })}
         </div>
 
         <Link href="/orders/new" className="flex-shrink-0">
