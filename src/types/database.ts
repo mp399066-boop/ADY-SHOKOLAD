@@ -287,6 +287,7 @@ export interface Delivery {
   delivery_token: string | null;
   delivered_at: string | null;
   whatsapp_sent_at: string | null;
+  email_sent_at: string | null;
   הזמנות?: Order;
   שליחים?: { id: string; שם_שליח: string; טלפון_שליח: string } | null;
   _noRecord?: boolean;
@@ -296,6 +297,7 @@ export interface Courier {
   id: string;
   שם_שליח: string;
   טלפון_שליח: string;
+  אימייל_שליח: string | null;
   הערות: string | null;
   פעיל: boolean;
   created_at: string;

@@ -3,15 +3,15 @@
 @tailwind utilities;
 
 :root {
-  --brand-primary: #7C5230;
-  --brand-secondary: #B8955A;
-  --brand-light-gold: #E0CAA0;
-  --brand-dark-brown: #3E2510;
-  --brand-cream: #F5F1EB;
+  --brand-primary: #8B5E3C;
+  --brand-secondary: #C6A77D;
+  --brand-light-gold: #E7D5B8;
+  --brand-dark-brown: #5C3A1E;
+  --brand-cream: #F8F6F3;
   --brand-card: #FFFFFF;
-  --brand-text-primary: #1E120A;
-  --brand-text-secondary: #6A4A38;
-  --brand-border: #D4C4AE;
+  --brand-text-primary: #2B2B2B;
+  --brand-text-secondary: #7A7A7A;
+  --brand-border: #E7E1D8;
   --brand-success: #276749;
   --brand-warning: #B45309;
   --brand-danger: #BE3A2A;
@@ -44,6 +44,7 @@
 
 html {
   direction: rtl;
+  background-color: #F8F6F3;
 }
 
 body {
@@ -57,11 +58,6 @@ body {
   letter-spacing: 0.01em;
 }
 
-/* Stronger, still cream background */
-html {
-  background-color: #F5F1EB;
-}
-
 /* ── Scrollbar ─────────────────────────────────────── */
 ::-webkit-scrollbar {
   width: 4px;
@@ -71,14 +67,14 @@ html {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #D8CCBC;
+  background: #DDD7CE;
   border-radius: 10px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #B8A48A;
+  background: #C6BEB2;
 }
 
-/* ── Tables — lighter, more breathable ─────────────── */
+/* ── Tables — breathable, clean ─────────────────────── */
 table {
   border-collapse: collapse;
   width: 100%;
@@ -87,10 +83,14 @@ table {
 table thead th {
   font-weight: 500;
   letter-spacing: 0.03em;
+  color: #5C5C5C;
+  font-size: 0.75rem;
+  padding-top: 12px;
+  padding-bottom: 12px;
 }
 
 table tbody tr {
-  transition: background-color 0.18s ease;
+  transition: background-color 0.15s ease;
 }
 
 table tbody tr:last-child td {
@@ -101,7 +101,7 @@ table tbody tr:last-child td {
 input:focus,
 textarea:focus,
 select:focus {
-  outline: 2px solid rgba(184,149,90,0.65);
+  outline: 2px solid rgba(198,167,125,0.50);
   outline-offset: 0;
 }
 
@@ -117,7 +117,7 @@ select:focus {
 }
 
 .shimmer {
-  background: linear-gradient(90deg, #f2ede8 25%, #ebe4dc 50%, #f2ede8 75%);
+  background: linear-gradient(90deg, #F4F1EC 25%, #EAE6DF 50%, #F4F1EC 75%);
   background-size: 800px 100%;
   animation: shimmer 1.8s infinite linear;
 }
@@ -128,7 +128,7 @@ select:focus {
 }
 .premium-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 28px rgba(0,0,0,0.10), 0 0 0 1px rgba(0,0,0,0.05) !important;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.04) !important;
 }
 
 /* ── Smooth transitions for interactive elements ─────── */

@@ -28,6 +28,11 @@ interface DeliveryRow {
   שם_שליח: string | null;
   טלפון_שליח: string | null;
   הערות: string | null;
+  courier_id: string | null;
+  delivery_token: string | null;
+  delivered_at: string | null;
+  whatsapp_sent_at: string | null;
+  שליחים?: { id: string; שם_שליח: string; טלפון_שליח: string } | null;
   [key: string]: unknown;
 }
 
@@ -56,10 +61,10 @@ export async function GET(req: NextRequest) {
 
   const orderIds = orders.map(o => o.id);
 
-  // Fetch existing delivery records for these orders
+  // Fetch existing delivery records for these orders (with courier join)
   const { data: deliveriesRaw, error: deliveriesError } = await supabase
     .from('משלוחים')
-    .select('*')
+    .select('*, שליחים!courier_id(id, שם_שליח, טלפון_שליח)')
     .in('הזמנה_id', orderIds);
 
   if (deliveriesError) return NextResponse.json({ error: deliveriesError.message }, { status: 500 });
@@ -89,6 +94,11 @@ export async function GET(req: NextRequest) {
         שם_שליח: null,
         טלפון_שליח: null,
         הערות: null,
+        courier_id: null,
+        delivery_token: null,
+        delivered_at: null,
+        whatsapp_sent_at: null,
+        שליחים: null,
         הזמנות: order,
       };
     })

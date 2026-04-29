@@ -49,14 +49,14 @@ export default function NavBar() {
         className="flex-shrink-0 flex items-center px-4 gap-3 z-40"
         style={{
           backgroundColor: '#FFFFFF',
-          borderBottom: '1px solid #D8CEBE',
-          boxShadow: '0 1px 4px rgba(0,0,0,0.07)',
+          borderBottom: '1px solid #E7E1D8',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
           direction: 'rtl',
           minHeight: '54px',
         }}
       >
         {/* Brand */}
-        <div className="flex items-center gap-2.5 flex-shrink-0" style={{ marginLeft: '8px' }}>
+        <div className="flex items-center gap-2.5 flex-shrink-0" style={{ marginLeft: '12px' }}>
           {settings?.logo_url ? (
             <img
               src={settings.logo_url}
@@ -66,12 +66,12 @@ export default function NavBar() {
           ) : (
             <div
               className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold"
-              style={{ backgroundColor: '#7C5230', color: '#FEFAF5' }}
+              style={{ backgroundColor: '#8B5E3C', color: '#FEFAF5' }}
             >
               {(settings?.business_name || 'פ').charAt(0)}
             </div>
           )}
-          <span className="text-sm font-semibold hidden sm:block" style={{ color: '#1E120A' }}>
+          <span className="text-sm font-semibold hidden sm:block" style={{ color: '#2B2B2B' }}>
             {settings?.business_name || 'עדי תכשיט שוקולד'}
           </span>
         </div>
@@ -84,23 +84,23 @@ export default function NavBar() {
               href={href}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-all duration-200 whitespace-nowrap"
               style={isActive(href)
-                ? { backgroundColor: '#EDD9BE', color: '#6E3C14', fontWeight: 600 }
-                : { color: '#5C3D22' }
+                ? { backgroundColor: '#F2EBE1', color: '#8B5E3C', fontWeight: 600 }
+                : { color: '#5C5C5C' }
               }
             >
               <Icon className="w-4 h-4 flex-shrink-0" />
               <span>{label}</span>
             </Link>
           ))}
-          <span className="w-px h-5 mx-1 flex-shrink-0" style={{ backgroundColor: '#D4C0A0' }} />
+          <span className="w-px h-5 mx-1 flex-shrink-0" style={{ backgroundColor: '#E7E1D8' }} />
           {NAV_SYSTEM.map(({ href, label, Icon }) => (
             <Link
               key={href}
               href={href}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-all duration-200 whitespace-nowrap"
               style={isActive(href)
-                ? { backgroundColor: '#EDD9BE', color: '#6E3C14', fontWeight: 600 }
-                : { color: '#5C3D22' }
+                ? { backgroundColor: '#F2EBE1', color: '#8B5E3C', fontWeight: 600 }
+                : { color: '#5C5C5C' }
               }
             >
               <Icon className="w-4 h-4 flex-shrink-0" />
@@ -109,10 +109,10 @@ export default function NavBar() {
           ))}
         </nav>
 
-        {/* Mobile hamburger — ml-auto pushes to far left in RTL */}
+        {/* Mobile hamburger */}
         <button
           className="md:hidden p-1.5 rounded-lg transition-colors ml-auto"
-          style={{ color: '#6B4830' }}
+          style={{ color: '#5C3A1E' }}
           onClick={() => setMobileOpen(o => !o)}
         >
           {mobileOpen ? <IconX className="w-5 h-5" /> : <IconMenu className="w-5 h-5" />}
@@ -123,12 +123,12 @@ export default function NavBar() {
       {mobileOpen && (
         <div
           className="md:hidden fixed inset-0 z-30"
-          style={{ paddingTop: '52px', backgroundColor: 'rgba(0,0,0,0.3)' }}
+          style={{ paddingTop: '52px', backgroundColor: 'rgba(0,0,0,0.25)' }}
           onClick={() => setMobileOpen(false)}
         >
           <div
             className="bg-white p-4 shadow-xl"
-            style={{ borderBottom: '1px solid #D8CEBE', direction: 'rtl' }}
+            style={{ borderBottom: '1px solid #E7E1D8', direction: 'rtl' }}
             onClick={e => e.stopPropagation()}
           >
             <div className="grid grid-cols-4 gap-2">
@@ -139,8 +139,8 @@ export default function NavBar() {
                   onClick={() => setMobileOpen(false)}
                   className="flex flex-col items-center gap-1.5 px-2 py-3 rounded-xl text-xs transition-colors"
                   style={isActive(href)
-                    ? { backgroundColor: '#F5EDE3', color: '#8B5E34', fontWeight: 500 }
-                    : { color: '#6B4A2D' }
+                    ? { backgroundColor: '#F2EBE1', color: '#8B5E3C', fontWeight: 500 }
+                    : { color: '#5C5C5C' }
                   }
                 >
                   <Icon className="w-5 h-5" />

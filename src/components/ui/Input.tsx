@@ -10,9 +10,9 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
 export function Input({ label, error, hint, className, id, required, ...props }: InputProps) {
   const inputId = id || label;
   return (
-    <div className="space-y-1">
+    <div className="space-y-1.5">
       {label && (
-        <label htmlFor={inputId} className="block text-xs font-medium" style={{ color: '#3A2010' }}>
+        <label htmlFor={inputId} className="block text-xs font-medium" style={{ color: '#4A4A4A' }}>
           {label}
           {required && <span className="mr-0.5 text-red-500">*</span>}
         </label>
@@ -21,18 +21,18 @@ export function Input({ label, error, hint, className, id, required, ...props }:
         id={inputId}
         required={required}
         className={cn(
-          'w-full px-3 py-2 text-sm rounded-xl border bg-white transition-all duration-200',
-          error ? 'border-red-300 focus:border-red-400' : 'border-[#C8B89E] focus:border-[#B8955A]',
+          'w-full px-3 py-2.5 text-sm rounded-xl border bg-white transition-all duration-200',
+          error ? 'border-red-300 focus:border-red-400' : 'border-[#E7E1D8] focus:border-[#C6A77D]',
           'focus:outline-none focus:ring-2',
-          error ? 'focus:ring-red-200' : 'focus:ring-amber-100',
-          'placeholder:text-[#B0A090]',
+          error ? 'focus:ring-red-100' : 'focus:ring-[#C6A77D]/15',
+          'placeholder:text-[#BCBCBC]',
           className,
         )}
-        style={{ color: '#1E120A' }}
+        style={{ color: '#2B2B2B' }}
         {...props}
       />
       {error && <p className="text-xs text-red-600">{error}</p>}
-      {hint && !error && <p className="text-xs" style={{ color: '#7A5840' }}>{hint}</p>}
+      {hint && !error && <p className="text-xs" style={{ color: '#7A7A7A' }}>{hint}</p>}
     </div>
   );
 }
@@ -45,9 +45,9 @@ interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
 export function Textarea({ label, error, className, id, required, ...props }: TextareaProps) {
   const inputId = id || label;
   return (
-    <div className="space-y-1">
+    <div className="space-y-1.5">
       {label && (
-        <label htmlFor={inputId} className="block text-xs font-medium" style={{ color: '#3A2010' }}>
+        <label htmlFor={inputId} className="block text-xs font-medium" style={{ color: '#4A4A4A' }}>
           {label}
           {required && <span className="mr-0.5 text-red-500">*</span>}
         </label>
@@ -56,14 +56,14 @@ export function Textarea({ label, error, className, id, required, ...props }: Te
         id={inputId}
         required={required}
         className={cn(
-          'w-full px-3 py-2 text-sm rounded-xl border bg-white transition-all duration-200 resize-y',
-          error ? 'border-red-400 focus:border-red-400' : 'border-[#C8B89E] focus:border-[#B8955A]',
+          'w-full px-3 py-2.5 text-sm rounded-xl border bg-white transition-all duration-200 resize-y',
+          error ? 'border-red-400 focus:border-red-400' : 'border-[#E7E1D8] focus:border-[#C6A77D]',
           'focus:outline-none focus:ring-2',
-          error ? 'focus:ring-red-200' : 'focus:ring-amber-100',
-          'placeholder:text-[#BFB09A]',
+          error ? 'focus:ring-red-100' : 'focus:ring-[#C6A77D]/15',
+          'placeholder:text-[#BCBCBC]',
           className,
         )}
-        style={{ color: '#1E120A' }}
+        style={{ color: '#2B2B2B' }}
         {...props}
       />
       {error && <p className="text-xs text-red-600">{error}</p>}
@@ -79,9 +79,9 @@ interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
 export function Select({ label, error, className, id, required, children, ...props }: SelectProps) {
   const inputId = id || label;
   return (
-    <div className="space-y-1">
+    <div className="space-y-1.5">
       {label && (
-        <label htmlFor={inputId} className="block text-xs font-medium" style={{ color: '#3A2010' }}>
+        <label htmlFor={inputId} className="block text-xs font-medium" style={{ color: '#4A4A4A' }}>
           {label}
           {required && <span className="mr-0.5 text-red-500">*</span>}
         </label>
@@ -90,13 +90,13 @@ export function Select({ label, error, className, id, required, children, ...pro
         id={inputId}
         required={required}
         className={cn(
-          'w-full px-3 py-2 text-sm rounded-xl border bg-white transition-all duration-200',
-          error ? 'border-red-300 focus:border-red-400' : 'border-[#C8B89E] focus:border-[#B8955A]',
+          'w-full px-3 py-2.5 text-sm rounded-xl border bg-white transition-all duration-200',
+          error ? 'border-red-300 focus:border-red-400' : 'border-[#E7E1D8] focus:border-[#C6A77D]',
           'focus:outline-none focus:ring-2',
-          error ? 'focus:ring-red-200' : 'focus:ring-amber-100',
+          error ? 'focus:ring-red-100' : 'focus:ring-[#C6A77D]/15',
           className,
         )}
-        style={{ color: '#1E120A' }}
+        style={{ color: '#2B2B2B' }}
         {...props}
       >
         {children}

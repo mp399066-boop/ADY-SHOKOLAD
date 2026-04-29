@@ -92,12 +92,17 @@ export default function NewOrderPage() {
     setSelectedCustomer(customerId);
     const cust = customers.find(c => c.id === customerId);
     const pct = Number(cust?.אחוז_הנחה ?? 0);
+    console.log('[discount debug] selected customer:', cust);
+    console.log('[discount debug] אחוז_הנחה field value:', cust?.אחוז_הנחה);
+    console.log('[discount debug] pct:', pct);
     if (pct > 0) {
       setDiscountType('אחוז');
       setDiscountValue(pct);
+      console.log('[discount debug] → set discountType=אחוז, discountValue=', pct);
     } else {
       setDiscountType('ללא');
       setDiscountValue(0);
+      console.log('[discount debug] → no discount');
     }
   };
 
@@ -391,16 +396,12 @@ export default function NewOrderPage() {
                         <option value="">בחר...</option>
                         {products
                           .filter(p => p.סוג_מוצר === 'מוצר רגיל')
-                          .filter(p => !p.לקוחות_עסקיים_בלבד || selectedCustomer !== '')
-                          .map(p => {
-                            const isBusinessCustomer = selectedCustomerData?.סוג_לקוח === 'עסקי';
-                            const disabled = p.לקוחות_עסקיים_בלבד && !isBusinessCustomer;
-                            return (
-                              <option key={p.id} value={p.id} disabled={disabled}>
-                                {p.שם_מוצר}{disabled ? ' — מוצר זה זמין ללקוחות עסקיים בלבד' : ''}
-                              </option>
-                            );
-                          })}
+                          .filter(p => !p.לקוחות_עסקיים_בלבד || selectedCustomerData?.סוג_לקוח === 'עסקי')
+                          .map(p => (
+                            <option key={p.id} value={p.id}>
+                              {p.שם_מוצר}
+                            </option>
+                          ))}
                       </Select>
                     </div>
                     <div className="col-span-2">

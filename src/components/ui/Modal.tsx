@@ -44,30 +44,30 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
     <div
       ref={overlayRef}
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ backgroundColor: 'rgba(20,10,4,0.32)', backdropFilter: 'blur(2px)' }}
+      style={{ backgroundColor: 'rgba(15,10,5,0.28)', backdropFilter: 'blur(3px)' }}
       onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}
     >
       <div
         className={cn('bg-white rounded-3xl w-full', sizes[size])}
         style={{
-          border: '1px solid rgba(0,0,0,0.06)',
-          boxShadow: '0 20px 60px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.03)',
+          border: '1px solid #E7E1D8',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.10), 0 0 0 1px rgba(0,0,0,0.03)',
           maxHeight: '90vh', display: 'flex', flexDirection: 'column',
         }}
       >
         {title && (
           <div
             className="flex items-center justify-between px-6 py-5 border-b flex-shrink-0"
-            style={{ borderColor: 'rgba(0,0,0,0.05)' }}
+            style={{ borderColor: '#E7E1D8' }}
           >
-            <h2 className="text-base font-semibold" style={{ color: '#2B1A10' }}>
+            <h2 className="text-base font-semibold" style={{ color: '#2B2B2B' }}>
               {title}
             </h2>
             <button
               onClick={onClose}
               className="w-7 h-7 rounded-full flex items-center justify-center transition-colors text-lg leading-none"
-              style={{ color: '#9B8878', backgroundColor: 'transparent' }}
-              onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#F5EDE3')}
+              style={{ color: '#7A7A7A', backgroundColor: 'transparent' }}
+              onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#F2EDE6')}
               onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
             >
               ×

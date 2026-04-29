@@ -12,8 +12,8 @@ interface ActionBtnProps {
 export function ActionBtn({ title, icon, href, onClick, variant = 'default', disabled }: ActionBtnProps) {
   const cls =
     variant === 'danger'
-      ? 'w-7 h-7 rounded-md flex items-center justify-center text-[#B08060] transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-40'
-      : 'w-7 h-7 rounded-md flex items-center justify-center text-[#B08060] transition-colors hover:bg-[#FDF8F2] hover:text-[#8B5E34] disabled:opacity-40';
+      ? 'w-7 h-7 rounded-lg flex items-center justify-center text-[#9A9A9A] transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-40'
+      : 'w-7 h-7 rounded-lg flex items-center justify-center text-[#9A9A9A] transition-colors hover:bg-[#F2EBE1] hover:text-[#8B5E3C] disabled:opacity-40';
 
   if (href) {
     return (

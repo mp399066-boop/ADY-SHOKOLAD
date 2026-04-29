@@ -31,23 +31,23 @@ export function Button({
   const variants: Record<string, { className: string; style?: React.CSSProperties }> = {
     primary: {
       className: 'text-white hover:opacity-88 active:opacity-80 focus-visible:ring-amber-400',
-      style: { backgroundColor: '#7C5230', boxShadow: '0 1px 8px rgba(124,82,48,0.26)' },
+      style: { backgroundColor: '#8B5E3C', boxShadow: '0 1px 6px rgba(139,94,60,0.18)' },
     },
     secondary: {
       className: 'hover:opacity-90 focus-visible:ring-amber-300',
-      style: { backgroundColor: '#B8955A', color: '#FFFFFF', boxShadow: '0 1px 6px rgba(184,149,90,0.26)' },
+      style: { backgroundColor: '#C6A77D', color: '#FFFFFF', boxShadow: '0 1px 4px rgba(198,167,125,0.20)' },
     },
     outline: {
-      className: 'bg-white hover:bg-[#F5EDE0] active:bg-stone-100 focus-visible:ring-amber-300',
-      style: { border: '1.5px solid #C4B09A', color: '#7C5230' },
+      className: 'bg-white hover:bg-[#F8F4EF] active:bg-stone-50 focus-visible:ring-amber-300',
+      style: { border: '1.5px solid #E7E1D8', color: '#8B5E3C' },
     },
     ghost: {
-      className: 'hover:bg-[#EDE5D8] active:bg-amber-100 focus-visible:ring-amber-300',
-      style: { color: '#7C5230' },
+      className: 'hover:bg-[#F2EDE6] active:bg-amber-50 focus-visible:ring-amber-300',
+      style: { color: '#8B5E3C' },
     },
     danger: {
       className: 'text-white hover:opacity-90 active:opacity-80 focus-visible:ring-red-400',
-      style: { backgroundColor: '#BE3A2A', boxShadow: '0 1px 6px rgba(190,58,42,0.24)' },
+      style: { backgroundColor: '#BE3A2A', boxShadow: '0 1px 6px rgba(190,58,42,0.18)' },
     },
   };
 

@@ -6,7 +6,7 @@ export function LoadingSpinner({ size = 'md' }: { size?: 'sm' | 'md' | 'lg' }) {
         className={`animate-spin ${sizes[size]}`}
         fill="none"
         viewBox="0 0 24 24"
-        style={{ color: '#C7A46B' }}
+        style={{ color: '#C6A77D' }}
       >
         <circle
           className="opacity-20"
@@ -29,7 +29,7 @@ export function PageLoading() {
     <div className="flex items-center justify-center min-h-64">
       <div className="text-center" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
         <LoadingSpinner size="lg" />
-        <p className="text-xs" style={{ color: '#A89278', letterSpacing: '0.02em' }}>טוען נתונים...</p>
+        <p className="text-xs" style={{ color: '#7A7A7A', letterSpacing: '0.02em' }}>טוען נתונים...</p>
       </div>
     </div>
   );
