@@ -193,14 +193,47 @@ function DeliveriesContent() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ סטטוס_משלוח: newStatus }),
     });
+    const json = await res.json();
     if (!res.ok) {
-      const json = await res.json();
       toast.error(json.error || 'שגיאה בעדכון סטטוס');
       return;
     }
+
+    // Update local state — include token and sent timestamps from server response
     setDeliveries(prev => prev.map(d =>
-      d.id === id ? { ...d, סטטוס_משלוח: newStatus as Delivery['סטטוס_משלוח'] } : d,
+      d.id === id ? {
+        ...d,
+        סטטוס_משלוח: newStatus as Delivery['סטטוס_משלוח'],
+        delivery_token: json.token || d.delivery_token,
+        whatsapp_sent_at: json.data?.whatsapp_sent_at || d.whatsapp_sent_at,
+        email_sent_at: json.data?.email_sent_at || d.email_sent_at,
+      } : d,
     ));
+
+    if (newStatus === 'נאסף') {
+      console.log('[deliveries] נאסף trigger — auto_sent:', json.auto_sent, '| link:', json.delivery_link);
+
+      // WhatsApp: server built the URL, open it here
+      if (json.whatsapp_url) {
+        window.open(json.whatsapp_url, '_blank');
+        toast.success('סטטוס עודכן ל"נאסף" — נפתח WhatsApp לשליח');
+        return;
+      }
+
+      if (json.auto_sent === 'email') {
+        toast.success('סטטוס עודכן ל"נאסף" — מייל נשלח לשליח');
+        return;
+      }
+
+      if (json.send_error) {
+        toast.success('סטטוס עודכן ל"נאסף"');
+        toast.error(json.send_error);
+        return;
+      }
+
+      // No courier assigned
+      toast.success('סטטוס עודכן ל"נאסף"');
+    }
   };
 
   const openPlacedModal = (delivery: DeliveryWithCourier) => {

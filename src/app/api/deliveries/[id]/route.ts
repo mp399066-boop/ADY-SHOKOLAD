@@ -1,15 +1,195 @@
+export const dynamic = 'force-dynamic';
+
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
+import sgMail from '@sendgrid/mail';
+import { randomBytes } from 'crypto';
+
+// ─── helpers ──────────────────────────────────────────────────────────────────
+
+function buildOrigin(req: NextRequest): string {
+  return req.headers.get('origin') || process.env.NEXT_PUBLIC_APP_URL || '';
+}
+
+function buildWaUrl(phone: string, courierName: string, recipientName: string, link: string): string {
+  let p = phone.replace(/[^0-9]/g, '');
+  if (p.startsWith('0')) p = '972' + p.slice(1);
+  const message =
+    `היי ${courierName},\nיש לך משלוח למסירה עבור ${recipientName}.\nלאחר המסירה, לחץ כאן כדי לעדכן:\n${link}\n\nתודה!`;
+  return `https://wa.me/${p}?text=${encodeURIComponent(message)}`;
+}
+
+async function sendEmailToCourier(
+  courierEmail: string,
+  courierName: string,
+  recipientName: string,
+  link: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const apiKey = process.env.SENDGRID_API_KEY;
+  const from   = process.env.FROM_EMAIL;
+
+  if (!apiKey || !from) {
+    console.warn('[delivery PATCH] email skipped — SENDGRID_API_KEY or FROM_EMAIL not set');
+    return { ok: false, error: 'שירות המייל אינו מוגדר' };
+  }
+
+  const subject = 'עדכון משלוח';
+  const text = `היי ${courierName},\nיש לך משלוח למסירה עבור ${recipientName}.\n\nלאחר המסירה, לחץ כאן:\n${link}\n\nתודה!`;
+  const html = `
+<html dir="rtl"><body style="font-family:Arial,sans-serif;direction:rtl;text-align:right;padding:32px 24px;color:#2B1A10;max-width:520px;margin:0 auto">
+  <p>היי <strong>${courierName}</strong>,</p>
+  <p>יש לך משלוח למסירה עבור <strong>${recipientName}</strong>.</p>
+  <p>לאחר המסירה, לחץ כאן כדי לעדכן:</p>
+  <p style="margin:28px 0">
+    <a href="${link}" style="display:inline-block;padding:14px 28px;background:#065F46;color:white;border-radius:10px;text-decoration:none;font-weight:bold;font-size:16px">
+      ✓ סמן כנמסר
+    </a>
+  </p>
+  <p>תודה!</p>
+</body></html>`;
+
+  try {
+    sgMail.setApiKey(apiKey);
+    await sgMail.send({ to: courierEmail, from, subject, html, text });
+    console.log('[delivery PATCH] email sent to courier:', courierEmail);
+    return { ok: true };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[delivery PATCH] email failed:', msg);
+    return { ok: false, error: msg };
+  }
+}
+
+// ─── PATCH ────────────────────────────────────────────────────────────────────
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const supabase = createAdminClient();
   const body = await req.json();
-  const { data, error } = await supabase
+
+  const newStatus: string | undefined = body.סטטוס_משלוח;
+
+  // ── Plain update (not a status→נאסף transition) ──────────────────────────
+  if (newStatus !== 'נאסף') {
+    const { data, error } = await supabase
+      .from('משלוחים')
+      .update(body)
+      .eq('id', params.id)
+      .select()
+      .single();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ data });
+  }
+
+  // ── Status changing to נאסף — run auto-send trigger ───────────────────────
+  console.log('[delivery PATCH] status → נאסף, delivery id:', params.id);
+
+  // 1. Fetch current delivery + courier + order
+  const { data: existing, error: fetchErr } = await supabase
     .from('משלוחים')
-    .update(body)
+    .select(`
+      id, סטטוס_משלוח, delivery_token,
+      courier_id, whatsapp_sent_at, email_sent_at,
+      הזמנות(שם_מקבל, לקוחות(שם_פרטי, שם_משפחה)),
+      שליחים!courier_id(שם_שליח, טלפון_שליח, אימייל_שליח)
+    `)
+    .eq('id', params.id)
+    .single();
+
+  if (fetchErr || !existing) {
+    return NextResponse.json({ error: 'משלוח לא נמצא' }, { status: 404 });
+  }
+
+  const prevStatus = existing.סטטוס_משלוח;
+  console.log('[delivery PATCH] old status:', prevStatus, '→ נאסף');
+
+  // 2. Generate token if missing
+  let token = existing.delivery_token as string | null;
+  if (!token) {
+    token = randomBytes(32).toString('hex');
+    console.log('[delivery PATCH] generated new token');
+  }
+
+  const origin = buildOrigin(req);
+  const deliveryLink = `${origin}/delivery-update/${token}`;
+
+  // 3. Resolve recipient name
+  type OrderJoin = { שם_מקבל?: string | null; לקוחות?: { שם_פרטי: string; שם_משפחה: string } | null };
+  const order = existing.הזמנות as OrderJoin | null;
+  const recipientName =
+    order?.שם_מקבל ||
+    (order?.לקוחות ? `${order.לקוחות.שם_פרטי} ${order.לקוחות.שם_משפחה}` : '') ||
+    'לקוח';
+
+  // 4. Build update payload
+  const updatePayload: Record<string, unknown> = {
+    ...body,
+    delivery_token: token,
+  };
+
+  // 5. Determine send channel
+  type CourierRow = { שם_שליח: string; טלפון_שליח: string | null; אימייל_שליח: string | null } | null;
+  const courier = existing.שליחים as CourierRow;
+
+  let whatsappUrl: string | null = null;
+  let autoSentChannel: 'whatsapp' | 'email' | 'none' = 'none';
+  let sendError: string | null = null;
+
+  if (!courier) {
+    console.log('[delivery PATCH] no courier assigned — skip auto-send');
+  } else if (courier.טלפון_שליח) {
+    // WhatsApp — build URL, frontend will open it
+    if (!existing.whatsapp_sent_at) {
+      whatsappUrl = buildWaUrl(courier.טלפון_שליח, courier.שם_שליח, recipientName, deliveryLink);
+      updatePayload.whatsapp_sent_at = new Date().toISOString();
+      autoSentChannel = 'whatsapp';
+      console.log('[delivery PATCH] WhatsApp URL built for courier:', courier.שם_שליח);
+    } else {
+      console.log('[delivery PATCH] WhatsApp already sent at', existing.whatsapp_sent_at, '— skip');
+    }
+  } else if (courier.אימייל_שליח) {
+    // Email — send server-side
+    if (!existing.email_sent_at) {
+      const result = await sendEmailToCourier(
+        courier.אימייל_שליח,
+        courier.שם_שליח,
+        recipientName,
+        deliveryLink,
+      );
+      if (result.ok) {
+        updatePayload.email_sent_at = new Date().toISOString();
+        autoSentChannel = 'email';
+      } else {
+        sendError = result.error || 'שגיאה בשליחת מייל';
+      }
+    } else {
+      console.log('[delivery PATCH] email already sent at', existing.email_sent_at, '— skip');
+    }
+  } else {
+    console.warn('[delivery PATCH] courier has no phone or email:', courier.שם_שליח);
+    sendError = `לשליח ${courier.שם_שליח} אין טלפון ואימייל`;
+  }
+
+  // 6. Persist update
+  const { data, error: updateErr } = await supabase
+    .from('משלוחים')
+    .update(updatePayload)
     .eq('id', params.id)
     .select()
     .single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ data });
+
+  if (updateErr) {
+    console.error('[delivery PATCH] update failed:', updateErr.message);
+    return NextResponse.json({ error: updateErr.message }, { status: 500 });
+  }
+
+  console.log('[delivery PATCH] update saved | autoSentChannel:', autoSentChannel);
+
+  return NextResponse.json({
+    data,
+    token,
+    delivery_link: deliveryLink,
+    whatsapp_url: whatsappUrl,
+    auto_sent: autoSentChannel,
+    send_error: sendError,
+  });
 }
