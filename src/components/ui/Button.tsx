@@ -17,37 +17,37 @@ export function Button({
   ...props
 }: ButtonProps) {
   const base =
-    'inline-flex items-center justify-center gap-2 font-medium rounded-xl ' +
+    'inline-flex items-center justify-center gap-2 font-medium rounded-lg ' +
     'transition-all duration-200 ' +
     'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 ' +
     'disabled:opacity-40 disabled:cursor-not-allowed select-none';
 
   const sizes = {
-    sm: 'px-3.5 py-1.5 text-xs',
-    md: 'px-4.5 py-2 text-sm',
-    lg: 'px-6 py-2.5 text-sm',
+    sm: 'px-3 py-1.5 text-xs',
+    md: 'px-4 py-2 text-sm',
+    lg: 'px-5 py-2.5 text-sm',
   };
 
   const variants: Record<string, { className: string; style?: React.CSSProperties }> = {
     primary: {
-      className: 'text-white hover:opacity-88 active:opacity-80 focus-visible:ring-amber-400',
-      style: { backgroundColor: '#8B5E3C', boxShadow: '0 1px 6px rgba(139,94,60,0.18)' },
+      className: 'text-white focus-visible:ring-[#C9A46A]',
+      style: { backgroundColor: '#8B5E34', boxShadow: '0 1px 3px rgba(139,94,52,0.14)' },
     },
     secondary: {
-      className: 'hover:opacity-90 focus-visible:ring-amber-300',
-      style: { backgroundColor: '#C6A77D', color: '#FFFFFF', boxShadow: '0 1px 4px rgba(198,167,125,0.20)' },
+      className: 'focus-visible:ring-[#C9A46A]',
+      style: { backgroundColor: '#C9A46A', color: '#FFFFFF', boxShadow: '0 1px 3px rgba(201,164,106,0.16)' },
     },
     outline: {
-      className: 'bg-white hover:bg-[#F8F4EF] active:bg-stone-50 focus-visible:ring-amber-300',
-      style: { border: '1.5px solid #E7E1D8', color: '#8B5E3C' },
+      className: 'bg-white focus-visible:ring-[#C9A46A]',
+      style: { border: '1px solid #E8DED2', color: '#8B5E34' },
     },
     ghost: {
-      className: 'hover:bg-[#F2EDE6] active:bg-amber-50 focus-visible:ring-amber-300',
-      style: { color: '#8B5E3C' },
+      className: 'focus-visible:ring-[#C9A46A]',
+      style: { color: '#8B5E34' },
     },
     danger: {
-      className: 'text-white hover:opacity-90 active:opacity-80 focus-visible:ring-red-400',
-      style: { backgroundColor: '#BE3A2A', boxShadow: '0 1px 6px rgba(190,58,42,0.18)' },
+      className: 'text-white focus-visible:ring-red-300',
+      style: { backgroundColor: '#A0362C', boxShadow: '0 1px 3px rgba(160,54,44,0.14)' },
     },
   };
 

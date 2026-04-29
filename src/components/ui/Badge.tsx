@@ -14,9 +14,9 @@ export function Badge({ children, className, style }: BadgeProps) {
         className
       )}
       style={{
-        backgroundColor: '#F4F0EA',
-        color: '#5C3A1E',
-        border: '1px solid #E7E1D8',
+        backgroundColor: '#F5EFE8',
+        color: '#6B4B32',
+        border: '1px solid #E8DED2',
         ...style,
       }}
     >

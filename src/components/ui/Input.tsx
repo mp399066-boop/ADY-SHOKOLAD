@@ -10,29 +10,29 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
 export function Input({ label, error, hint, className, id, required, ...props }: InputProps) {
   const inputId = id || label;
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-1">
       {label && (
-        <label htmlFor={inputId} className="block text-xs font-medium" style={{ color: '#4A4A4A' }}>
+        <label htmlFor={inputId} className="block text-xs font-medium" style={{ color: '#8A7664' }}>
           {label}
-          {required && <span className="mr-0.5 text-red-500">*</span>}
+          {required && <span className="mr-0.5" style={{ color: '#A0362C' }}>*</span>}
         </label>
       )}
       <input
         id={inputId}
         required={required}
         className={cn(
-          'w-full px-3 py-2.5 text-sm rounded-xl border bg-white transition-all duration-200',
-          error ? 'border-red-300 focus:border-red-400' : 'border-[#E7E1D8] focus:border-[#C6A77D]',
+          'w-full px-3 py-2 text-sm rounded-lg border bg-white transition-all duration-200',
+          error ? 'border-[#D8BCB6]' : 'border-[#E8DED2]',
           'focus:outline-none focus:ring-2',
-          error ? 'focus:ring-red-100' : 'focus:ring-[#C6A77D]/15',
-          'placeholder:text-[#BCBCBC]',
+          error ? 'focus:border-[#D8BCB6] focus:ring-[#D8BCB6]/15' : 'focus:border-[#C9A46A] focus:ring-[#C9A46A]/12',
+          'placeholder:text-[#C0B4A8]',
           className,
         )}
-        style={{ color: '#2B2B2B' }}
+        style={{ color: '#3A2A1A' }}
         {...props}
       />
-      {error && <p className="text-xs text-red-600">{error}</p>}
-      {hint && !error && <p className="text-xs" style={{ color: '#7A7A7A' }}>{hint}</p>}
+      {error && <p className="text-xs" style={{ color: '#8A3228' }}>{error}</p>}
+      {hint && !error && <p className="text-xs" style={{ color: '#B0A090' }}>{hint}</p>}
     </div>
   );
 }
@@ -45,28 +45,28 @@ interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
 export function Textarea({ label, error, className, id, required, ...props }: TextareaProps) {
   const inputId = id || label;
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-1">
       {label && (
-        <label htmlFor={inputId} className="block text-xs font-medium" style={{ color: '#4A4A4A' }}>
+        <label htmlFor={inputId} className="block text-xs font-medium" style={{ color: '#8A7664' }}>
           {label}
-          {required && <span className="mr-0.5 text-red-500">*</span>}
+          {required && <span className="mr-0.5" style={{ color: '#A0362C' }}>*</span>}
         </label>
       )}
       <textarea
         id={inputId}
         required={required}
         className={cn(
-          'w-full px-3 py-2.5 text-sm rounded-xl border bg-white transition-all duration-200 resize-y',
-          error ? 'border-red-400 focus:border-red-400' : 'border-[#E7E1D8] focus:border-[#C6A77D]',
+          'w-full px-3 py-2 text-sm rounded-lg border bg-white transition-all duration-200 resize-y',
+          error ? 'border-[#D8BCB6]' : 'border-[#E8DED2]',
           'focus:outline-none focus:ring-2',
-          error ? 'focus:ring-red-100' : 'focus:ring-[#C6A77D]/15',
-          'placeholder:text-[#BCBCBC]',
+          error ? 'focus:border-[#D8BCB6] focus:ring-[#D8BCB6]/15' : 'focus:border-[#C9A46A] focus:ring-[#C9A46A]/12',
+          'placeholder:text-[#C0B4A8]',
           className,
         )}
-        style={{ color: '#2B2B2B' }}
+        style={{ color: '#3A2A1A' }}
         {...props}
       />
-      {error && <p className="text-xs text-red-600">{error}</p>}
+      {error && <p className="text-xs" style={{ color: '#8A3228' }}>{error}</p>}
     </div>
   );
 }
@@ -79,29 +79,29 @@ interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
 export function Select({ label, error, className, id, required, children, ...props }: SelectProps) {
   const inputId = id || label;
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-1">
       {label && (
-        <label htmlFor={inputId} className="block text-xs font-medium" style={{ color: '#4A4A4A' }}>
+        <label htmlFor={inputId} className="block text-xs font-medium" style={{ color: '#8A7664' }}>
           {label}
-          {required && <span className="mr-0.5 text-red-500">*</span>}
+          {required && <span className="mr-0.5" style={{ color: '#A0362C' }}>*</span>}
         </label>
       )}
       <select
         id={inputId}
         required={required}
         className={cn(
-          'w-full px-3 py-2.5 text-sm rounded-xl border bg-white transition-all duration-200',
-          error ? 'border-red-300 focus:border-red-400' : 'border-[#E7E1D8] focus:border-[#C6A77D]',
+          'w-full px-3 py-2 text-sm rounded-lg border bg-white transition-all duration-200',
+          error ? 'border-[#D8BCB6]' : 'border-[#E8DED2]',
           'focus:outline-none focus:ring-2',
-          error ? 'focus:ring-red-100' : 'focus:ring-[#C6A77D]/15',
+          error ? 'focus:border-[#D8BCB6] focus:ring-[#D8BCB6]/15' : 'focus:border-[#C9A46A] focus:ring-[#C9A46A]/12',
           className,
         )}
-        style={{ color: '#2B2B2B' }}
+        style={{ color: '#3A2A1A' }}
         {...props}
       >
         {children}
       </select>
-      {error && <p className="text-xs text-red-600">{error}</p>}
+      {error && <p className="text-xs" style={{ color: '#8A3228' }}>{error}</p>}
     </div>
   );
 }

@@ -9,10 +9,10 @@ interface CardProps {
 export function Card({ children, className, style }: CardProps) {
   return (
     <div
-      className={cn('bg-white rounded-2xl p-5 premium-card', className)}
+      className={cn('bg-white rounded-xl p-5 premium-card', className)}
       style={{
-        border: '1px solid #E7E1D8',
-        boxShadow: '0 4px 20px rgba(0,0,0,0.04)',
+        border: '1px solid #EAE0D4',
+        boxShadow: '0 1px 6px rgba(58,42,26,0.05)',
         ...style,
       }}
     >
@@ -44,8 +44,8 @@ export function CardTitle({
 }) {
   return (
     <h2
-      className={cn('text-sm font-semibold', className)}
-      style={{ color: '#2B2B2B', letterSpacing: '0.3px' }}
+      className={cn('text-sm font-medium', className)}
+      style={{ color: '#3A2A1A', letterSpacing: '0.2px' }}
     >
       {children}
     </h2>

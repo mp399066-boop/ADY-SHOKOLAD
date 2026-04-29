@@ -46,104 +46,126 @@ export default function NavBar() {
   return (
     <>
       <header
-        className="flex-shrink-0 flex items-center px-4 gap-3 z-40"
+        className="flex-shrink-0 flex items-center px-5 gap-3 z-40"
         style={{
           backgroundColor: '#FFFFFF',
-          borderBottom: '1px solid #E7E1D8',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+          borderBottom: '1px solid #EAE0D4',
+          boxShadow: '0 1px 0 rgba(0,0,0,0.03)',
           direction: 'rtl',
-          minHeight: '54px',
+          height: '48px',
         }}
       >
         {/* Brand */}
-        <div className="flex items-center gap-2.5 flex-shrink-0" style={{ marginLeft: '12px' }}>
+        <div className="flex items-center gap-2 flex-shrink-0" style={{ marginLeft: '16px' }}>
           {settings?.logo_url ? (
             <img
               src={settings.logo_url}
               alt={settings.business_name || 'לוגו'}
-              className="h-9 w-9 object-contain rounded-xl"
+              className="h-7 w-7 object-contain rounded-lg"
             />
           ) : (
             <div
-              className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold"
-              style={{ backgroundColor: '#8B5E3C', color: '#FEFAF5' }}
+              className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold"
+              style={{ backgroundColor: '#8B5E34', color: '#FEF8F0' }}
             >
               {(settings?.business_name || 'פ').charAt(0)}
             </div>
           )}
-          <span className="text-sm font-semibold hidden sm:block" style={{ color: '#2B2B2B' }}>
+          <span className="text-sm font-medium hidden sm:block" style={{ color: '#3A2A1A', letterSpacing: '0.02em' }}>
             {settings?.business_name || 'עדי תכשיט שוקולד'}
           </span>
         </div>
 
         {/* Desktop nav */}
-        <nav className="hidden md:flex items-center flex-1 gap-0.5 overflow-x-auto">
-          {NAV_MAIN.map(({ href, label, Icon }) => (
-            <Link
-              key={href}
-              href={href}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-all duration-200 whitespace-nowrap"
-              style={isActive(href)
-                ? { backgroundColor: '#F2EBE1', color: '#8B5E3C', fontWeight: 600 }
-                : { color: '#5C5C5C' }
-              }
-            >
-              <Icon className="w-4 h-4 flex-shrink-0" />
-              <span>{label}</span>
-            </Link>
-          ))}
-          <span className="w-px h-5 mx-1 flex-shrink-0" style={{ backgroundColor: '#E7E1D8' }} />
-          {NAV_SYSTEM.map(({ href, label, Icon }) => (
-            <Link
-              key={href}
-              href={href}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-all duration-200 whitespace-nowrap"
-              style={isActive(href)
-                ? { backgroundColor: '#F2EBE1', color: '#8B5E3C', fontWeight: 600 }
-                : { color: '#5C5C5C' }
-              }
-            >
-              <Icon className="w-4 h-4 flex-shrink-0" />
-              <span>{label}</span>
-            </Link>
-          ))}
+        <nav className="hidden md:flex items-stretch flex-1 gap-0 overflow-x-auto h-full">
+          {NAV_MAIN.map(({ href, label, Icon }) => {
+            const active = isActive(href);
+            return (
+              <Link
+                key={href}
+                href={href}
+                className="flex items-center gap-1.5 px-3 text-xs transition-colors duration-150 whitespace-nowrap relative"
+                style={active
+                  ? {
+                      color: '#8B5E34',
+                      fontWeight: 500,
+                      borderBottom: '2px solid #C9A46A',
+                      marginBottom: '-1px',
+                    }
+                  : { color: '#8A7664', fontWeight: 400 }
+                }
+                onMouseEnter={e => { if (!active) (e.currentTarget as HTMLAnchorElement).style.color = '#3A2A1A'; }}
+                onMouseLeave={e => { if (!active) (e.currentTarget as HTMLAnchorElement).style.color = '#8A7664'; }}
+              >
+                <Icon className="w-3.5 h-3.5 flex-shrink-0" />
+                <span>{label}</span>
+              </Link>
+            );
+          })}
+
+          <span className="w-px self-center h-4 mx-1 flex-shrink-0" style={{ backgroundColor: '#E8DED2' }} />
+
+          {NAV_SYSTEM.map(({ href, label, Icon }) => {
+            const active = isActive(href);
+            return (
+              <Link
+                key={href}
+                href={href}
+                className="flex items-center gap-1.5 px-3 text-xs transition-colors duration-150 whitespace-nowrap relative"
+                style={active
+                  ? {
+                      color: '#8B5E34',
+                      fontWeight: 500,
+                      borderBottom: '2px solid #C9A46A',
+                      marginBottom: '-1px',
+                    }
+                  : { color: '#8A7664', fontWeight: 400 }
+                }
+                onMouseEnter={e => { if (!active) (e.currentTarget as HTMLAnchorElement).style.color = '#3A2A1A'; }}
+                onMouseLeave={e => { if (!active) (e.currentTarget as HTMLAnchorElement).style.color = '#8A7664'; }}
+              >
+                <Icon className="w-3.5 h-3.5 flex-shrink-0" />
+                <span>{label}</span>
+              </Link>
+            );
+          })}
         </nav>
 
         {/* Mobile hamburger */}
         <button
           className="md:hidden p-1.5 rounded-lg transition-colors ml-auto"
-          style={{ color: '#5C3A1E' }}
+          style={{ color: '#8A7664' }}
           onClick={() => setMobileOpen(o => !o)}
         >
-          {mobileOpen ? <IconX className="w-5 h-5" /> : <IconMenu className="w-5 h-5" />}
+          {mobileOpen ? <IconX className="w-4 h-4" /> : <IconMenu className="w-4 h-4" />}
         </button>
       </header>
 
-      {/* Mobile dropdown overlay */}
+      {/* Mobile dropdown */}
       {mobileOpen && (
         <div
           className="md:hidden fixed inset-0 z-30"
-          style={{ paddingTop: '52px', backgroundColor: 'rgba(0,0,0,0.25)' }}
+          style={{ paddingTop: '48px', backgroundColor: 'rgba(0,0,0,0.18)' }}
           onClick={() => setMobileOpen(false)}
         >
           <div
-            className="bg-white p-4 shadow-xl"
-            style={{ borderBottom: '1px solid #E7E1D8', direction: 'rtl' }}
+            className="bg-white p-3 shadow-lg"
+            style={{ borderBottom: '1px solid #EAE0D4', direction: 'rtl' }}
             onClick={e => e.stopPropagation()}
           >
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-4 gap-1.5">
               {ALL_NAV.map(({ href, label, Icon }) => (
                 <Link
                   key={href}
                   href={href}
                   onClick={() => setMobileOpen(false)}
-                  className="flex flex-col items-center gap-1.5 px-2 py-3 rounded-xl text-xs transition-colors"
+                  className="flex flex-col items-center gap-1 px-2 py-2.5 rounded-xl text-xs transition-colors"
                   style={isActive(href)
-                    ? { backgroundColor: '#F2EBE1', color: '#8B5E3C', fontWeight: 500 }
-                    : { color: '#5C5C5C' }
+                    ? { backgroundColor: '#FBF5EC', color: '#8B5E34', fontWeight: 500 }
+                    : { color: '#8A7664' }
                   }
                 >
-                  <Icon className="w-5 h-5" />
+                  <Icon className="w-4 h-4" />
                   <span className="text-center leading-tight">{label}</span>
                 </Link>
               ))}

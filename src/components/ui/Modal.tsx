@@ -44,30 +44,30 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
     <div
       ref={overlayRef}
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ backgroundColor: 'rgba(15,10,5,0.28)', backdropFilter: 'blur(3px)' }}
+      style={{ backgroundColor: 'rgba(20,12,4,0.22)', backdropFilter: 'blur(2px)' }}
       onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}
     >
       <div
-        className={cn('bg-white rounded-3xl w-full', sizes[size])}
+        className={cn('bg-white rounded-2xl w-full', sizes[size])}
         style={{
-          border: '1px solid #E7E1D8',
-          boxShadow: '0 20px 60px rgba(0,0,0,0.10), 0 0 0 1px rgba(0,0,0,0.03)',
-          maxHeight: '90vh', display: 'flex', flexDirection: 'column',
+          border: '1px solid #EAE0D4',
+          boxShadow: '0 8px 32px rgba(58,42,26,0.10), 0 1px 0 rgba(255,255,255,0.8)',
+          maxHeight: '92vh', display: 'flex', flexDirection: 'column',
         }}
       >
         {title && (
           <div
-            className="flex items-center justify-between px-6 py-5 border-b flex-shrink-0"
-            style={{ borderColor: '#E7E1D8' }}
+            className="flex items-center justify-between px-6 py-4 border-b flex-shrink-0"
+            style={{ borderColor: '#EAE0D4' }}
           >
-            <h2 className="text-base font-semibold" style={{ color: '#2B2B2B' }}>
+            <h2 className="text-sm font-semibold" style={{ color: '#3A2A1A', letterSpacing: '0.1px' }}>
               {title}
             </h2>
             <button
               onClick={onClose}
-              className="w-7 h-7 rounded-full flex items-center justify-center transition-colors text-lg leading-none"
-              style={{ color: '#7A7A7A', backgroundColor: 'transparent' }}
-              onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#F2EDE6')}
+              className="w-6 h-6 rounded-full flex items-center justify-center transition-colors text-base leading-none"
+              style={{ color: '#B0A090' }}
+              onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#F5F0E8')}
               onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
             >
               ×

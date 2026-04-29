@@ -3,19 +3,31 @@
 @tailwind utilities;
 
 :root {
-  --brand-primary: #8B5E3C;
-  --brand-secondary: #C6A77D;
-  --brand-light-gold: #E7D5B8;
-  --brand-dark-brown: #5C3A1E;
-  --brand-cream: #F8F6F3;
-  --brand-card: #FFFFFF;
-  --brand-text-primary: #2B2B2B;
-  --brand-text-secondary: #7A7A7A;
-  --brand-border: #E7E1D8;
-  --brand-success: #276749;
-  --brand-warning: #B45309;
-  --brand-danger: #BE3A2A;
-  --brand-info: #2563EB;
+  --bg:              #F8F6F2;
+  --card:            #FFFFFF;
+  --border:          #EAE0D4;
+  --border-light:    #F0EAE0;
+  --text-primary:    #3A2A1A;
+  --text-secondary:  #8A7664;
+  --text-muted:      #B0A090;
+  --primary:         #8B5E34;
+  --gold:            #C9A46A;
+  --gold-light:      #EDD9B4;
+
+  /* legacy aliases */
+  --brand-primary:        #8B5E34;
+  --brand-secondary:      #C9A46A;
+  --brand-light-gold:     #EDD9B4;
+  --brand-dark-brown:     #5C3A1E;
+  --brand-cream:          #F8F6F2;
+  --brand-card:           #FFFFFF;
+  --brand-text-primary:   #3A2A1A;
+  --brand-text-secondary: #8A7664;
+  --brand-border:         #EAE0D4;
+  --brand-success:        #2D6648;
+  --brand-warning:        #7A5820;
+  --brand-danger:         #8A3228;
+  --brand-info:           #2A4E6B;
 }
 
 * {
@@ -30,7 +42,6 @@
   }
 }
 
-/* Hover utility used by sidebar inactive items */
 .hover\:bg-white\/8:hover {
   background-color: rgba(255, 255, 255, 0.07);
 }
@@ -44,64 +55,79 @@
 
 html {
   direction: rtl;
-  background-color: #F8F6F3;
+  background-color: var(--bg);
 }
 
 body {
-  background-color: var(--brand-cream);
-  color: var(--brand-text-primary);
+  background-color: var(--bg);
+  color: var(--text-primary);
   font-family: 'Segoe UI', 'Arial Hebrew', 'Arial', sans-serif;
   direction: rtl;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  line-height: 1.65;
+  line-height: 1.6;
   letter-spacing: 0.01em;
+  font-size: 14px;
 }
 
 /* ── Scrollbar ─────────────────────────────────────── */
 ::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
+  width: 3px;
+  height: 3px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #DDD7CE;
+  background: #DDD5C8;
   border-radius: 10px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #C6BEB2;
+  background: #C8BEB0;
 }
 
-/* ── Tables — breathable, clean ─────────────────────── */
+/* ── Tables ─────────────────────────────────────────── */
 table {
   border-collapse: collapse;
   width: 100%;
 }
 
 table thead th {
-  font-weight: 500;
-  letter-spacing: 0.03em;
-  color: #5C5C5C;
-  font-size: 0.75rem;
-  padding-top: 12px;
-  padding-bottom: 12px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  padding-top: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
 }
 
 table tbody tr {
-  transition: background-color 0.15s ease;
+  transition: background-color 0.1s ease;
+  border-bottom: 1px solid var(--border-light);
 }
 
-table tbody tr:last-child td {
+table tbody tr:hover {
+  background-color: #FDFAF6;
+}
+
+table tbody tr:last-child {
   border-bottom: none;
+}
+
+table tbody td {
+  padding-top: 10px;
+  padding-bottom: 10px;
+  font-size: 0.8rem;
+  color: var(--text-primary);
 }
 
 /* ── Input focus ────────────────────────────────────── */
 input:focus,
 textarea:focus,
 select:focus {
-  outline: 2px solid rgba(198,167,125,0.50);
+  outline: 2px solid rgba(201,164,106,0.35);
   outline-offset: 0;
 }
 
@@ -117,23 +143,28 @@ select:focus {
 }
 
 .shimmer {
-  background: linear-gradient(90deg, #F4F1EC 25%, #EAE6DF 50%, #F4F1EC 75%);
+  background: linear-gradient(90deg, #F5F2EC 25%, #ECE8E0 50%, #F5F2EC 75%);
   background-size: 800px 100%;
   animation: shimmer 1.8s infinite linear;
 }
 
-/* ── Premium card lift on hover ─────────────────────── */
+/* ── Card lift on hover ─────────────────────────────── */
 .premium-card {
-  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
 }
 .premium-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 28px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.04) !important;
+  box-shadow: 0 4px 20px rgba(58,42,26,0.08), 0 0 0 1px rgba(58,42,26,0.04) !important;
+  border-color: #DDD0C0 !important;
 }
 
-/* ── Smooth transitions for interactive elements ─────── */
+/* ── Transitions ────────────────────────────────────── */
 a, button {
-  transition-property: background-color, color, border-color, box-shadow, opacity, transform;
-  transition-duration: 200ms;
+  transition-property: background-color, color, border-color, box-shadow, opacity;
+  transition-duration: 150ms;
   transition-timing-function: ease;
 }
+
+/* ── Page headings ──────────────────────────────────── */
+h1 { font-size: 1.125rem; font-weight: 600; color: var(--text-primary); letter-spacing: 0.02em; }
+h2 { font-size: 0.95rem;  font-weight: 500; color: var(--text-primary); }
+h3 { font-size: 0.85rem;  font-weight: 500; color: var(--text-primary); }

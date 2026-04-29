@@ -9,10 +9,10 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col h-screen overflow-hidden" style={{ backgroundColor: '#F8F6F3' }}>
+    <div className="flex flex-col h-screen overflow-hidden" style={{ backgroundColor: '#F8F6F2' }}>
       <NavBar />
       <main className="flex-1 overflow-y-auto">
-        <div className="mx-auto w-full py-6 md:py-8" style={{ maxWidth: '1440px', paddingInline: '32px' }}>
+        <div className="mx-auto w-full py-5 md:py-7" style={{ maxWidth: '1440px', paddingInline: '28px' }}>
           {children}
         </div>
       </main>
@@ -23,11 +23,11 @@ export default function DashboardLayout({
           style: {
             direction: 'rtl',
             fontFamily: 'inherit',
-            borderRadius: '14px',
+            borderRadius: '10px',
             fontSize: '13px',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.04)',
-            border: '1px solid #E7E1D8',
-            color: '#2B2B2B',
+            boxShadow: '0 4px 20px rgba(58,42,26,0.08), 0 0 0 1px rgba(58,42,26,0.04)',
+            border: '1px solid #EAE0D4',
+            color: '#3A2A1A',
           },
         }}
       />
