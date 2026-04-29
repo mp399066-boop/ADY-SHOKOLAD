@@ -88,18 +88,18 @@ export default function NewOrderPage() {
     });
   }, []);
 
-  // Auto-apply customer discount (percentage) when customer changes
-  useEffect(() => {
-    if (!selectedCustomer) return;
-    const cust = customers.find(c => c.id === selectedCustomer);
-    if (cust && (cust.אחוז_הנחה ?? 0) > 0) {
+  const handleCustomerChange = (customerId: string) => {
+    setSelectedCustomer(customerId);
+    const cust = customers.find(c => c.id === customerId);
+    const pct = Number(cust?.אחוז_הנחה ?? 0);
+    if (pct > 0) {
       setDiscountType('אחוז');
-      setDiscountValue(cust.אחוז_הנחה ?? 0);
+      setDiscountValue(pct);
     } else {
       setDiscountType('ללא');
       setDiscountValue(0);
     }
-  }, [selectedCustomer, customers]);
+  };
 
   const subtotal = [...orderItems, ...packageItems].reduce((sum, item) => sum + item.סהכ, 0);
   const discountAmount = discountType === 'אחוז'
@@ -269,7 +269,7 @@ export default function NewOrderPage() {
                 label="לקוח"
                 required
                 value={selectedCustomer}
-                onChange={e => setSelectedCustomer(e.target.value)}
+                onChange={e => handleCustomerChange(e.target.value)}
               >
                 <option value="">בחר לקוח...</option>
                 {customers.map(c => (
