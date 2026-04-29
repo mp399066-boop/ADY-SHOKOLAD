@@ -38,6 +38,7 @@ export function CustomerCommunication({
   const [waMsg, setWaMsg] = useState('');
   const [emailSending, setEmailSending] = useState(false);
   const [waSending, setWaSending] = useState(false);
+  const [expandedEmailId, setExpandedEmailId] = useState<string | null>(null);
   const waEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { setItems(history); }, [history]);
@@ -192,34 +193,113 @@ export function CustomerCommunication({
               </p>
             </div>
           ) : (
-            emailItems.map(item => (
-              <div
-                key={item.id}
-                className="px-4 py-3 hover:bg-amber-50 transition-colors"
-                style={{ opacity: item._status === 'pending' ? 0.65 : 1 }}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <span
-                    className="font-medium text-sm truncate flex-1"
-                    style={{ color: '#2B1A10' }}
+            emailItems.map(item => {
+              const isOpen = expandedEmailId === item.id;
+              return (
+                <div key={item.id} style={{ opacity: item._status === 'pending' ? 0.65 : 1 }}>
+                  {/* summary row — click to toggle */}
+                  <div
+                    className="px-4 py-3 cursor-pointer hover:bg-amber-50 transition-colors select-none"
+                    onClick={() => setExpandedEmailId(isOpen ? null : item.id)}
                   >
-                    {item.נושא || 'ללא נושא'}
-                  </span>
-                  <span className="text-xs flex-shrink-0" style={{ color: '#9B7A5A' }}>
-                    {fmtDate(item.תאריך)}
-                  </span>
-                </div>
-                <p className="text-xs mt-0.5 line-clamp-1" style={{ color: '#6B4A2D' }}>
-                  {item.תוכן}
-                </p>
-                <div className="flex items-center gap-2 mt-1.5">
-                  {statusChip(item)}
-                  {item.אל && (
-                    <span className="text-xs" style={{ color: '#BFB09A' }}>→ {item.אל}</span>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                        <svg
+                          className="w-3 h-3 flex-shrink-0 transition-transform duration-200"
+                          style={{ color: '#9B7A5A', transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)' }}
+                          fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                        </svg>
+                        <span className="font-medium text-sm truncate" style={{ color: '#2B1A10' }}>
+                          {item.נושא || 'ללא נושא'}
+                        </span>
+                      </div>
+                      <span className="text-xs flex-shrink-0" style={{ color: '#9B7A5A' }}>
+                        {fmtDate(item.תאריך)}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-1.5 pr-5">
+                      {statusChip(item)}
+                      {item.אל && (
+                        <span className="text-xs truncate" style={{ color: '#BFB09A' }}>→ {item.אל}</span>
+                      )}
+                      {!isOpen && (
+                        <span className="text-xs line-clamp-1 flex-1 min-w-0" style={{ color: '#9B7A5A' }}>
+                          {item.תוכן}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* expanded detail */}
+                  {isOpen && (
+                    <div
+                      className="mx-3 mb-3 rounded-xl p-4 space-y-3 text-xs"
+                      dir="rtl"
+                      style={{ backgroundColor: '#FBF7F2', border: '1px solid #EDE0CE' }}
+                    >
+                      {/* meta grid */}
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                        {item.נושא && (
+                          <div className="col-span-2">
+                            <span className="font-semibold" style={{ color: '#8B5E34' }}>נושא: </span>
+                            <span style={{ color: '#2B1A10' }}>{item.נושא}</span>
+                          </div>
+                        )}
+                        {item.אל && (
+                          <div>
+                            <span className="font-semibold" style={{ color: '#8B5E34' }}>אל: </span>
+                            <span style={{ color: '#2B1A10' }}>{item.אל}</span>
+                          </div>
+                        )}
+                        {(item as CommItem & { מ?: string }).מ && (
+                          <div>
+                            <span className="font-semibold" style={{ color: '#8B5E34' }}>מ: </span>
+                            <span style={{ color: '#2B1A10' }}>{(item as CommItem & { מ?: string }).מ}</span>
+                          </div>
+                        )}
+                        <div>
+                          <span className="font-semibold" style={{ color: '#8B5E34' }}>תאריך: </span>
+                          <span style={{ color: '#2B1A10' }}>{fmtDate(item.תאריך)}</span>
+                        </div>
+                        <div>
+                          <span className="font-semibold" style={{ color: '#8B5E34' }}>סטטוס: </span>
+                          {statusChip(item)}
+                        </div>
+                        {(item as CommItem & { מזהה_הודעה?: string }).מזהה_הודעה && (
+                          <div className="col-span-2">
+                            <span className="font-semibold" style={{ color: '#8B5E34' }}>מזהה הודעה: </span>
+                            <span className="font-mono" style={{ color: '#6B4A2D' }}>
+                              {(item as CommItem & { מזהה_הודעה?: string }).מזהה_הודעה}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* body */}
+                      <div
+                        className="rounded-lg p-3 leading-relaxed whitespace-pre-wrap"
+                        style={{ backgroundColor: '#fff', border: '1px solid #EDE0CE', color: '#2B1A10' }}
+                      >
+                        {item.תוכן}
+                      </div>
+
+                      {/* error */}
+                      {(item as CommItem & { הודעת_שגיאה?: string }).הודעת_שגיאה && (
+                        <div
+                          className="rounded-lg p-2.5"
+                          style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA', color: '#991B1B' }}
+                        >
+                          <span className="font-semibold">שגיאה: </span>
+                          {(item as CommItem & { הודעת_שגיאה?: string }).הודעת_שגיאה}
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
 
