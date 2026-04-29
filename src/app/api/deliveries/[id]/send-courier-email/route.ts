@@ -85,21 +85,36 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const apiKey = process.env.SENDGRID_API_KEY;
   const from = process.env.FROM_EMAIL;
 
+  console.log('[send-courier-email] ENV check — SENDGRID_API_KEY:', apiKey ? `set (${apiKey.slice(0, 6)}...)` : 'MISSING');
+  console.log('[send-courier-email] ENV check — FROM_EMAIL:', from || 'MISSING');
+  console.log('[send-courier-email] to:', courier.אימייל_שליח?.slice(0, 4) + '***', '| subject:', subject);
+
   if (!apiKey || !from) {
-    return NextResponse.json({ error: 'שירות המייל אינו מוגדר בשרת' }, { status: 503 });
+    console.error('[send-courier-email] aborting — missing ENV vars');
+    return NextResponse.json({ error: 'שירות המייל אינו מוגדר בשרת (חסר SENDGRID_API_KEY או FROM_EMAIL)' }, { status: 503 });
   }
 
   try {
     sgMail.setApiKey(apiKey);
-    await sgMail.send({
+    const [sgResponse] = await sgMail.send({
       to:      courier.אימייל_שליח,
       from,
       subject,
       html:    htmlContent,
       text:    textContent,
     });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    console.log('[send-courier-email] SendGrid response status:', sgResponse.statusCode);
+  } catch (err: unknown) {
+    let msg = err instanceof Error ? err.message : String(err);
+    // SendGrid errors carry a response body with the real reason
+    if (err && typeof err === 'object' && 'response' in err) {
+      const sgErr = err as { response?: { statusCode?: number; body?: unknown } };
+      const body = sgErr.response?.body;
+      console.error('[send-courier-email] SendGrid error:', sgErr.response?.statusCode, JSON.stringify(body));
+      msg += ` | ${JSON.stringify(body)}`;
+    } else {
+      console.error('[send-courier-email] SendGrid error:', msg);
+    }
     return NextResponse.json({ error: `שליחת מייל נכשלה: ${msg}` }, { status: 500 });
   }
 

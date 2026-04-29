@@ -28,9 +28,12 @@ async function sendEmailToCourier(
   const apiKey = process.env.SENDGRID_API_KEY;
   const from   = process.env.FROM_EMAIL;
 
+  console.log('[delivery PATCH] sendEmail — SENDGRID_API_KEY:', apiKey ? `set (${apiKey.slice(0, 6)}...)` : 'MISSING');
+  console.log('[delivery PATCH] sendEmail — FROM_EMAIL:', from || 'MISSING');
+
   if (!apiKey || !from) {
-    console.warn('[delivery PATCH] email skipped — SENDGRID_API_KEY or FROM_EMAIL not set');
-    return { ok: false, error: 'שירות המייל אינו מוגדר' };
+    console.error('[delivery PATCH] email aborted — missing ENV vars');
+    return { ok: false, error: 'שירות המייל אינו מוגדר (חסר SENDGRID_API_KEY או FROM_EMAIL)' };
   }
 
   const subject = 'עדכון משלוח';
@@ -50,12 +53,19 @@ async function sendEmailToCourier(
 
   try {
     sgMail.setApiKey(apiKey);
-    await sgMail.send({ to: courierEmail, from, subject, html, text });
-    console.log('[delivery PATCH] email sent to courier:', courierEmail);
+    const [sgResponse] = await sgMail.send({ to: courierEmail, from, subject, html, text });
+    console.log('[delivery PATCH] email sent to:', courierEmail, '| status:', sgResponse.statusCode);
     return { ok: true };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error('[delivery PATCH] email failed:', msg);
+  } catch (err: unknown) {
+    let msg = err instanceof Error ? err.message : String(err);
+    if (err && typeof err === 'object' && 'response' in err) {
+      const sgErr = err as { response?: { statusCode?: number; body?: unknown } };
+      const body = sgErr.response?.body;
+      console.error('[delivery PATCH] SendGrid error:', sgErr.response?.statusCode, JSON.stringify(body));
+      msg += ` | ${JSON.stringify(body)}`;
+    } else {
+      console.error('[delivery PATCH] email failed:', msg);
+    }
     return { ok: false, error: msg };
   }
 }
