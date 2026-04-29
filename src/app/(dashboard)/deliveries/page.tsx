@@ -37,6 +37,7 @@ function DeliveriesContent() {
   const [placedDelivery, setPlacedDelivery] = useState<Delivery | null>(null);
   const [placedForm, setPlacedForm] = useState<PlacedForm>({ שעת_הנחה: '', מקום_הנחה: '', הערה: '' });
   const [savingPlaced, setSavingPlaced] = useState(false);
+  const [creatingRecord, setCreatingRecord] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -105,6 +106,37 @@ function DeliveriesContent() {
       toast.error(err instanceof Error ? err.message : 'שגיאה');
     } finally {
       setSavingPlaced(false);
+    }
+  };
+
+  const createDeliveryRecord = async (d: Delivery) => {
+    setCreatingRecord(d.הזמנה_id);
+    try {
+      const order = (d as Delivery & { הזמנות?: { תאריך_אספקה?: string; שעת_אספקה?: string; כתובת_מקבל_ההזמנה?: string; עיר?: string; הוראות_משלוח?: string } }).הזמנות;
+      const res = await fetch('/api/deliveries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          הזמנה_id: d.הזמנה_id,
+          סטטוס_משלוח: 'ממתין',
+          תאריך_משלוח: order?.תאריך_אספקה || null,
+          שעת_משלוח: order?.שעת_אספקה || null,
+          כתובת: d.כתובת || order?.כתובת_מקבל_ההזמנה || null,
+          עיר: d.עיר || order?.עיר || null,
+          הוראות_משלוח: d.הוראות_משלוח || order?.הוראות_משלוח || null,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) { toast.error(json.error || 'שגיאה ביצירת רשומת משלוח'); return; }
+      // Replace synthetic row with real delivery record
+      setDeliveries(prev => prev.map(row =>
+        row.הזמנה_id === d.הזמנה_id
+          ? { ...json.data, הזמנות: row.הזמנות, _noRecord: false }
+          : row,
+      ));
+      toast.success('רשומת משלוח נוצרה');
+    } finally {
+      setCreatingRecord(null);
     }
   };
 
@@ -220,30 +252,43 @@ function DeliveriesContent() {
                   </div>
 
                   <div className="flex flex-col gap-1 flex-shrink-0">
-                    {!isDelivered && (
+                    {d._noRecord ? (
                       <button
-                        onClick={() => openPlacedModal(d)}
-                        className="text-xs px-2.5 py-1.5 rounded-lg font-medium transition-all whitespace-nowrap ring-1"
-                        style={{ backgroundColor: '#ECFDF5', color: '#065F46', outline: '1px solid #6EE7B7' }}
+                        onClick={() => createDeliveryRecord(d)}
+                        disabled={creatingRecord === d.הזמנה_id}
+                        className="text-xs px-2.5 py-1.5 rounded-lg font-medium transition-all whitespace-nowrap border"
+                        style={{ backgroundColor: '#EFF6FF', color: '#1D4ED8', borderColor: '#BFDBFE' }}
                       >
-                        ✓ סמן שנמסר
+                        {creatingRecord === d.הזמנה_id ? 'יוצר...' : '+ צור משלוח'}
                       </button>
+                    ) : (
+                      <>
+                        {!isDelivered && (
+                          <button
+                            onClick={() => openPlacedModal(d)}
+                            className="text-xs px-2.5 py-1.5 rounded-lg font-medium transition-all whitespace-nowrap ring-1"
+                            style={{ backgroundColor: '#ECFDF5', color: '#065F46', outline: '1px solid #6EE7B7' }}
+                          >
+                            ✓ סמן שנמסר
+                          </button>
+                        )}
+                        {VALID_STATUSES.filter(s => s !== 'נמסר').map(s => (
+                          <button
+                            key={s}
+                            onClick={() => updateDeliveryStatus(d.id, s)}
+                            disabled={d.סטטוס_משלוח === s}
+                            className="text-xs px-2.5 py-1 rounded-lg border transition-all whitespace-nowrap"
+                            style={
+                              d.סטטוס_משלוח === s
+                                ? { backgroundColor: '#7C5230', color: '#FFFFFF', borderColor: '#7C5230' }
+                                : { backgroundColor: '#FFFFFF', color: '#5C3D22', borderColor: '#D4C4AE' }
+                            }
+                          >
+                            {s}
+                          </button>
+                        ))}
+                      </>
                     )}
-                    {VALID_STATUSES.filter(s => s !== 'נמסר').map(s => (
-                      <button
-                        key={s}
-                        onClick={() => updateDeliveryStatus(d.id, s)}
-                        disabled={d.סטטוס_משלוח === s}
-                        className="text-xs px-2.5 py-1 rounded-lg border transition-all whitespace-nowrap"
-                        style={
-                          d.סטטוס_משלוח === s
-                            ? { backgroundColor: '#7C5230', color: '#FFFFFF', borderColor: '#7C5230' }
-                            : { backgroundColor: '#FFFFFF', color: '#5C3D22', borderColor: '#D4C4AE' }
-                        }
-                      >
-                        {s}
-                      </button>
-                    ))}
                   </div>
                 </div>
               </Card>

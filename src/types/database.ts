@@ -276,6 +276,7 @@ export interface Delivery {
   שעת_משלוח: string | null;
   הערות: string | null;
   הזמנות?: Order;
+  _noRecord?: boolean;
 }
 
 export interface Payment {
