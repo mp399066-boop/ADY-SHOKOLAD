@@ -8,7 +8,9 @@ import { StatusBadge, UrgentBadge } from '@/components/ui/StatusBadge';
 import { PageLoading } from '@/components/ui/LoadingSpinner';
 import { formatDate, formatCurrency } from '@/lib/utils';
 import toast from 'react-hot-toast';
-import type { Order, OrderItem, Customer } from '@/types/database';
+import type { Order, OrderItem, Customer, Product, Package, PetitFourType } from '@/types/database';
+
+// ─── Interfaces ────────────────────────────────────────────────────────────────
 
 interface EditForm {
   הזמנה_דחופה: boolean;
@@ -27,15 +29,38 @@ interface EditForm {
   אופן_תשלום: string;
   סטטוס_תשלום: Order['סטטוס_תשלום'];
   סטטוס_הזמנה: Order['סטטוס_הזמנה'];
+  סכום_הנחה: string;
+}
+
+interface EditOrderItem {
+  מוצר_id: string;
+  שם_מוצר: string;
+  כמות: number;
+  מחיר_ליחידה: number;
+  סהכ: number;
+  הערות_לשורה: string;
+}
+
+interface EditPackageItem {
+  _packageId: string;
+  שם_מארז: string;
+  גודל_מארז: number;
+  כמות: number;
+  מחיר_ליחידה: number;
+  סהכ: number;
+  הערות_לשורה: string;
+  פטיפורים: { פטיפור_id: string; שם: string; כמות: number }[];
 }
 
 type FullOrder = Order & {
   לקוחות: Customer;
-  מוצרים_בהזמנה: OrderItem[];
+  מוצרים_בהזמנה: (OrderItem & { מוצרים_למכירה?: Product })[];
   משלוח: { סטטוס_משלוח: string; שם_שליח: string; עיר: string } | null;
   תשלומים: { id: string; סכום: number; אמצעי_תשלום: string; תאריך_תשלום: string }[];
   חשבוניות: { id: string; מספר_חשבונית: string; סכום: number; סטטוס: string }[];
 };
+
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const ORDER_STATUSES = ['חדשה', 'בהכנה', 'מוכנה למשלוח', 'נשלחה', 'הושלמה בהצלחה', 'בוטלה'];
 
@@ -55,6 +80,45 @@ const PAYMENT_PILL: Record<string, string> = {
   'בוטל':  'bg-rose-100 text-rose-700 ring-1 ring-rose-300',
 };
 
+// ─── Small field helpers ───────────────────────────────────────────────────────
+
+function FieldInput({ label, value, onChange, type = 'text' }: {
+  label: string; value: string; onChange: (v: string) => void; type?: string;
+}) {
+  return (
+    <div>
+      <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>{label}</label>
+      <input
+        type={type}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
+        style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
+      />
+    </div>
+  );
+}
+
+function FieldSelect({ label, value, onChange, children }: {
+  label: string; value: string; onChange: (v: string) => void; children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>{label}</label>
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
+        style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
+      >
+        {children}
+      </select>
+    </div>
+  );
+}
+
+// ─── Main page ────────────────────────────────────────────────────────────────
+
 export default function OrderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -63,6 +127,13 @@ export default function OrderDetailPage() {
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  // Catalogue data for dropdowns in the edit modal
+  const [products, setProducts] = useState<Product[]>([]);
+  const [packages, setPackages] = useState<Package[]>([]);
+  const [petitFourTypes, setPetitFourTypes] = useState<PetitFourType[]>([]);
+
+  // Edit form state — order header fields
   const [editForm, setEditForm] = useState<EditForm>({
     הזמנה_דחופה: false,
     סוג_אספקה: 'איסוף עצמי',
@@ -80,14 +151,40 @@ export default function OrderDetailPage() {
     אופן_תשלום: '',
     סטטוס_תשלום: 'ממתין',
     סטטוס_הזמנה: 'חדשה',
+    סכום_הנחה: '',
   });
 
-  useEffect(() => {
+  // Edit state — order items
+  const [editItems, setEditItems] = useState<EditOrderItem[]>([]);
+  const [editPackages, setEditPackages] = useState<EditPackageItem[]>([]);
+
+  // ── Load order ──────────────────────────────────────────────────────────────
+
+  const loadOrder = () => {
+    setLoading(true);
     fetch(`/api/orders/${id}`)
       .then(r => r.json())
       .then(({ data }) => setOrder(data))
       .finally(() => setLoading(false));
-  }, [id]);
+  };
+
+  useEffect(() => { loadOrder(); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Load catalogue (once) ───────────────────────────────────────────────────
+
+  useEffect(() => {
+    Promise.all([
+      fetch('/api/products?active=true').then(r => r.json()),
+      fetch('/api/packages').then(r => r.json()),
+      fetch('/api/petit-four-types').then(r => r.json()),
+    ]).then(([p, pkg, pf]) => {
+      setProducts(p.data || []);
+      setPackages(pkg.data || []);
+      setPetitFourTypes(pf.data || []);
+    });
+  }, []);
+
+  // ── Status updates ──────────────────────────────────────────────────────────
 
   const updateStatus = async (status: string) => {
     setUpdatingStatus(true);
@@ -120,8 +217,11 @@ export default function OrderDetailPage() {
     }
   };
 
+  // ── Open edit modal ──────────────────────────────────────────────────────────
+
   const openEdit = () => {
     if (!order) return;
+
     setEditForm({
       הזמנה_דחופה: order.הזמנה_דחופה ?? false,
       סוג_אספקה: order.סוג_אספקה ?? 'איסוף עצמי',
@@ -139,13 +239,55 @@ export default function OrderDetailPage() {
       אופן_תשלום: order.אופן_תשלום ?? '',
       סטטוס_תשלום: order.סטטוס_תשלום,
       סטטוס_הזמנה: order.סטטוס_הזמנה,
+      סכום_הנחה: order.סכום_הנחה != null ? String(order.סכום_הנחה) : '',
     });
+
+    // Product rows
+    const productRows = (order.מוצרים_בהזמנה || [])
+      .filter(item => item.סוג_שורה === 'מוצר')
+      .map(item => ({
+        מוצר_id: item.מוצר_id || '',
+        שם_מוצר: item.מוצרים_למכירה?.שם_מוצר || '',
+        כמות: item.כמות,
+        מחיר_ליחידה: item.מחיר_ליחידה,
+        סהכ: item.סהכ,
+        הערות_לשורה: item.הערות_לשורה || '',
+      }));
+    setEditItems(productRows);
+
+    // Package rows — try to match to known package by size + price
+    const packageRows = (order.מוצרים_בהזמנה || [])
+      .filter(item => item.סוג_שורה === 'מארז')
+      .map(item => {
+        const matched = packages.find(
+          p => p.גודל_מארז === item.גודל_מארז && p.מחיר_מארז === item.מחיר_ליחידה,
+        );
+        return {
+          _packageId: matched?.id || '',
+          שם_מארז: matched?.שם_מארז || `מארז ${item.גודל_מארז || ''} יח׳`,
+          גודל_מארז: item.גודל_מארז || 0,
+          כמות: item.כמות,
+          מחיר_ליחידה: item.מחיר_ליחידה,
+          סהכ: item.סהכ,
+          הערות_לשורה: item.הערות_לשורה || '',
+          פטיפורים: (item.בחירת_פטיפורים_בהזמנה || []).map(sel => ({
+            פטיפור_id: sel.פטיפור_id,
+            שם: sel.סוגי_פטיפורים?.שם_פטיפור || '',
+            כמות: sel.כמות,
+          })),
+        };
+      });
+    setEditPackages(packageRows);
+
     setShowEdit(true);
   };
+
+  // ── Save edit ────────────────────────────────────────────────────────────────
 
   const saveEdit = async () => {
     setSaving(true);
     try {
+      // 1. Save order header fields
       const payload: Record<string, unknown> = {
         הזמנה_דחופה: editForm.הזמנה_דחופה,
         סוג_אספקה: editForm.סוג_אספקה,
@@ -174,14 +316,47 @@ export default function OrderDetailPage() {
         payload.דמי_משלוח = null;
       }
 
-      const res = await fetch(`/api/orders/${id}`, {
+      const patchRes = await fetch(`/api/orders/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error);
-      setOrder(prev => prev ? { ...prev, ...json.data } : prev);
+      const patchJson = await patchRes.json();
+      if (!patchRes.ok) throw new Error(patchJson.error);
+
+      // 2. Replace order items + recalculate totals
+      const deliveryFee = editForm.סוג_אספקה === 'משלוח' && editForm.דמי_משלוח !== ''
+        ? Number(editForm.דמי_משלוח) : 0;
+      const discount = editForm.סכום_הנחה !== '' ? Number(editForm.סכום_הנחה) : 0;
+
+      const itemsRes = await fetch(`/api/orders/${id}/items`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          מוצרים: editItems
+            .filter(i => i.מוצר_id)
+            .map(i => ({
+              מוצר_id: i.מוצר_id,
+              כמות: i.כמות,
+              מחיר_ליחידה: i.מחיר_ליחידה,
+              הערות_לשורה: i.הערות_לשורה || null,
+            })),
+          מארזים: editPackages.map(p => ({
+            גודל_מארז: p.גודל_מארז,
+            כמות: p.כמות,
+            מחיר_ליחידה: p.מחיר_ליחידה,
+            הערות_לשורה: p.הערות_לשורה || null,
+            פטיפורים: p.פטיפורים.map(pf => ({ פטיפור_id: pf.פטיפור_id, כמות: pf.כמות })),
+          })),
+          סכום_הנחה: discount,
+          דמי_משלוח: deliveryFee,
+        }),
+      });
+      const itemsJson = await itemsRes.json();
+      if (!itemsRes.ok) throw new Error(itemsJson.error);
+
+      // 3. Reload order from server to reflect all changes
+      loadOrder();
       setShowEdit(false);
       toast.success('הזמנה עודכנה בהצלחה');
     } catch (err: unknown) {
@@ -190,6 +365,103 @@ export default function OrderDetailPage() {
       setSaving(false);
     }
   };
+
+  // ── Edit items helpers ───────────────────────────────────────────────────────
+
+  const addProductItem = () => {
+    setEditItems(prev => [
+      ...prev,
+      { מוצר_id: '', שם_מוצר: '', כמות: 1, מחיר_ליחידה: 0, סהכ: 0, הערות_לשורה: '' },
+    ]);
+  };
+
+  const updateProductItem = (idx: number, field: string, value: string | number) => {
+    setEditItems(prev => {
+      const items = [...prev];
+      const item = { ...items[idx], [field]: value };
+      if (field === 'מוצר_id') {
+        const prod = products.find(p => p.id === value);
+        if (prod) { item.שם_מוצר = prod.שם_מוצר; item.מחיר_ליחידה = prod.מחיר; }
+      }
+      item.סהכ = item.כמות * item.מחיר_ליחידה;
+      items[idx] = item;
+      return items;
+    });
+  };
+
+  const removeProductItem = (idx: number) => setEditItems(prev => prev.filter((_, i) => i !== idx));
+
+  const addPackageItem = () => {
+    setEditPackages(prev => [
+      ...prev,
+      { _packageId: '', שם_מארז: '', גודל_מארז: 0, כמות: 1, מחיר_ליחידה: 0, סהכ: 0, הערות_לשורה: '', פטיפורים: [] },
+    ]);
+  };
+
+  const updatePackageItem = (idx: number, field: string, value: string | number) => {
+    setEditPackages(prev => {
+      const items = [...prev];
+      let item = { ...items[idx], [field]: value };
+      if (field === '_packageId') {
+        const pkg = packages.find(p => p.id === value);
+        if (pkg) {
+          item.שם_מארז = pkg.שם_מארז;
+          item.גודל_מארז = pkg.גודל_מארז;
+          item.מחיר_ליחידה = pkg.מחיר_מארז;
+        }
+      }
+      item.סהכ = item.כמות * item.מחיר_ליחידה;
+      items[idx] = item;
+      return items;
+    });
+  };
+
+  const removePackageItem = (idx: number) => setEditPackages(prev => prev.filter((_, i) => i !== idx));
+
+  const addPetitFour = (pkgIdx: number, pfId: string) => {
+    const pf = petitFourTypes.find(p => p.id === pfId);
+    if (!pf) return;
+    setEditPackages(prev => {
+      const items = [...prev];
+      const pkg = { ...items[pkgIdx] };
+      if (!pkg.פטיפורים.find(p => p.פטיפור_id === pfId)) {
+        pkg.פטיפורים = [...pkg.פטיפורים, { פטיפור_id: pfId, שם: pf.שם_פטיפור, כמות: 1 }];
+      }
+      items[pkgIdx] = pkg;
+      return items;
+    });
+  };
+
+  const updatePetitFourQty = (pkgIdx: number, pfIdx: number, qty: number) => {
+    setEditPackages(prev => {
+      const items = [...prev];
+      const pkg = { ...items[pkgIdx] };
+      pkg.פטיפורים = pkg.פטיפורים.map((pf, i) => i === pfIdx ? { ...pf, כמות: qty } : pf);
+      items[pkgIdx] = pkg;
+      return items;
+    });
+  };
+
+  const removePetitFour = (pkgIdx: number, pfIdx: number) => {
+    setEditPackages(prev => {
+      const items = [...prev];
+      const pkg = { ...items[pkgIdx] };
+      pkg.פטיפורים = pkg.פטיפורים.filter((_, i) => i !== pfIdx);
+      items[pkgIdx] = pkg;
+      return items;
+    });
+  };
+
+  // ── Live totals in modal ─────────────────────────────────────────────────────
+
+  const editSubtotal = [...editItems, ...editPackages].reduce((s, i) => s + i.סהכ, 0);
+  const editDiscount = editForm.סכום_הנחה !== ''
+    ? Math.min(editSubtotal, Number(editForm.סכום_הנחה)) : 0;
+  const editDelivery = editForm.סוג_אספקה === 'משלוח' && editForm.דמי_משלוח !== ''
+    ? Number(editForm.דמי_משלוח) : 0;
+  const editTotal = Math.max(0, editSubtotal - editDiscount + editDelivery);
+
+  // ── Render ───────────────────────────────────────────────────────────────────
 
   if (loading) return <PageLoading />;
   if (!order) return <div className="text-center py-16" style={{ color: '#6B4A2D' }}>הזמנה לא נמצאה</div>;
@@ -200,6 +472,7 @@ export default function OrderDetailPage() {
     <div className="grid grid-cols-3 gap-5 max-w-6xl">
       {/* Main content - 2/3 */}
       <div className="col-span-2 space-y-5">
+
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -208,7 +481,7 @@ export default function OrderDetailPage() {
             {order.הזמנה_דחופה && <UrgentBadge />}
             <StatusBadge status={order.סטטוס_הזמנה} type="order" />
           </div>
-          <Button variant="secondary" size="sm" onClick={openEdit}>עריכה</Button>
+          <Button variant="secondary" size="sm" onClick={openEdit}>עריכת הזמנה</Button>
         </div>
 
         {/* Customer */}
@@ -286,7 +559,9 @@ export default function OrderDetailPage() {
                 {order.מוצרים_בהזמנה.map((item) => (
                   <>
                     <tr key={item.id} className="border-b" style={{ borderColor: '#F5ECD8' }}>
-                      <td className="py-2 px-2 font-medium">{(item as OrderItem & { מוצרים_למכירה?: { שם_מוצר: string } }).מוצרים_למכירה?.שם_מוצר || '-'}</td>
+                      <td className="py-2 px-2 font-medium">
+                        {(item as OrderItem & { מוצרים_למכירה?: { שם_מוצר: string } }).מוצרים_למכירה?.שם_מוצר || '-'}
+                      </td>
                       <td className="py-2 px-2">
                         <span className={`text-xs px-1.5 py-0.5 rounded ${item.סוג_שורה === 'מארז' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>
                           {item.סוג_שורה}
@@ -321,6 +596,7 @@ export default function OrderDetailPage() {
 
       {/* Sidebar - 1/3 */}
       <div className="space-y-5">
+
         {/* Status update */}
         <Card>
           <CardHeader><CardTitle>עדכון סטטוס</CardTitle></CardHeader>
@@ -431,214 +707,336 @@ export default function OrderDetailPage() {
         )}
       </div>
 
-      {/* Edit modal */}
+      {/* ══════════════════════════════════════════════════════════════════════
+          Edit Modal
+          ══════════════════════════════════════════════════════════════════════ */}
       {showEdit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowEdit(false)}>
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 overflow-y-auto py-6 px-4"
+          onClick={() => setShowEdit(false)}
+        >
           <div
-            className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 space-y-4"
+            className="bg-white rounded-2xl shadow-xl w-full max-w-4xl space-y-5 p-6 mb-6"
             style={{ direction: 'rtl' }}
             onClick={e => e.stopPropagation()}
           >
-            <h3 className="text-lg font-bold" style={{ color: '#2B1A10' }}>עריכת הזמנה</h3>
+            <h3 className="text-lg font-bold" style={{ color: '#2B1A10' }}>עריכת הזמנה — {order.מספר_הזמנה}</h3>
 
-            {/* Supply type + urgent */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>סוג אספקה</label>
-                <select
+            {/* ── פרטי הזמנה ── */}
+            <section className="rounded-xl border p-4 space-y-4" style={{ borderColor: '#E7D2A6', backgroundColor: '#FDFAF5' }}>
+              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#8B5E34' }}>פרטי הזמנה</p>
+
+              <div className="grid grid-cols-2 gap-4">
+                <FieldSelect
+                  label="סוג אספקה"
                   value={editForm.סוג_אספקה}
-                  onChange={e => setEditForm(f => ({ ...f, סוג_אספקה: e.target.value as EditForm['סוג_אספקה'] }))}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                  style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
+                  onChange={v => setEditForm(f => ({ ...f, סוג_אספקה: v as EditForm['סוג_אספקה'] }))}
                 >
                   <option value="איסוף עצמי">איסוף עצמי</option>
                   <option value="משלוח">משלוח</option>
+                </FieldSelect>
+                <div className="flex items-end pb-2">
+                  <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: '#2B1A10' }}>
+                    <input
+                      type="checkbox"
+                      checked={editForm.הזמנה_דחופה}
+                      onChange={e => setEditForm(f => ({ ...f, הזמנה_דחופה: e.target.checked }))}
+                      className="w-4 h-4"
+                    />
+                    הזמנה דחופה
+                  </label>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <FieldInput label="תאריך אספקה" type="date" value={editForm.תאריך_אספקה} onChange={v => setEditForm(f => ({ ...f, תאריך_אספקה: v }))} />
+                <FieldInput label="שעת אספקה" type="time" value={editForm.שעת_אספקה} onChange={v => setEditForm(f => ({ ...f, שעת_אספקה: v }))} />
+              </div>
+
+              {editForm.סוג_אספקה === 'משלוח' && (
+                <div className="grid grid-cols-2 gap-3 p-3 rounded-lg" style={{ backgroundColor: '#FAF7F0' }}>
+                  <FieldInput label="שם מקבל" value={editForm.שם_מקבל} onChange={v => setEditForm(f => ({ ...f, שם_מקבל: v }))} />
+                  <FieldInput label="טלפון מקבל" type="tel" value={editForm.טלפון_מקבל} onChange={v => setEditForm(f => ({ ...f, טלפון_מקבל: v }))} />
+                  <FieldInput label="כתובת" value={editForm.כתובת_מקבל_ההזמנה} onChange={v => setEditForm(f => ({ ...f, כתובת_מקבל_ההזמנה: v }))} />
+                  <FieldInput label="עיר" value={editForm.עיר} onChange={v => setEditForm(f => ({ ...f, עיר: v }))} />
+                  <FieldInput label="הוראות משלוח" value={editForm.הוראות_משלוח} onChange={v => setEditForm(f => ({ ...f, הוראות_משלוח: v }))} />
+                  <FieldInput label="דמי משלוח (₪)" type="number" value={editForm.דמי_משלוח} onChange={v => setEditForm(f => ({ ...f, דמי_משלוח: v }))} />
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>מקור הזמנה</label>
+                <select
+                  value={editForm.מקור_ההזמנה}
+                  onChange={e => setEditForm(f => ({ ...f, מקור_ההזמנה: e.target.value }))}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none"
+                  style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
+                >
+                  <option value="">—</option>
+                  {['טלפון', 'WhatsApp', 'אינסטגרם', 'פייסבוק', 'אתר', 'הפניה', 'אחר'].map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
                 </select>
               </div>
-              <div className="flex items-end pb-2">
-                <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: '#2B1A10' }}>
-                  <input
-                    type="checkbox"
-                    checked={editForm.הזמנה_דחופה}
-                    onChange={e => setEditForm(f => ({ ...f, הזמנה_דחופה: e.target.checked }))}
-                    className="w-4 h-4"
-                  />
-                  הזמנה דחופה
-                </label>
-              </div>
-            </div>
 
-            {/* Date + time */}
-            <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>תאריך אספקה</label>
-                <input
-                  type="date"
-                  value={editForm.תאריך_אספקה}
-                  onChange={e => setEditForm(f => ({ ...f, תאריך_אספקה: e.target.value }))}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                  style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
-                />
+                <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>ברכה</label>
+                <textarea rows={2} value={editForm.ברכה_טקסט}
+                  onChange={e => setEditForm(f => ({ ...f, ברכה_טקסט: e.target.value }))}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none resize-none"
+                  style={{ borderColor: '#E7D2A6', color: '#2B1A10' }} />
               </div>
-              <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>שעת אספקה</label>
-                <input
-                  type="time"
-                  value={editForm.שעת_אספקה}
-                  onChange={e => setEditForm(f => ({ ...f, שעת_אספקה: e.target.value }))}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                  style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
-                />
-              </div>
-            </div>
 
-            {/* Delivery fields */}
-            {editForm.סוג_אספקה === 'משלוח' && (
-              <div className="space-y-3 p-3 rounded-xl" style={{ backgroundColor: '#FAF7F0' }}>
-                <p className="text-xs font-semibold" style={{ color: '#6B4A2D' }}>פרטי משלוח</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>שם מקבל</label>
-                    <input
-                      type="text"
-                      value={editForm.שם_מקבל}
-                      onChange={e => setEditForm(f => ({ ...f, שם_מקבל: e.target.value }))}
-                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                      style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
-                    />
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>הערות להזמנה</label>
+                <textarea rows={2} value={editForm.הערות_להזמנה}
+                  onChange={e => setEditForm(f => ({ ...f, הערות_להזמנה: e.target.value }))}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none resize-none"
+                  style={{ borderColor: '#E7D2A6', color: '#2B1A10' }} />
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>אמצעי תשלום</label>
+                  <select
+                    value={editForm.אופן_תשלום}
+                    onChange={e => setEditForm(f => ({ ...f, אופן_תשלום: e.target.value }))}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none"
+                    style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
+                  >
+                    <option value="">—</option>
+                    {['מזומן', 'כרטיס אשראי', 'העברה בנקאית', 'bit', 'PayBox', 'PayPal', 'אחר'].map(m => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                </div>
+                <FieldSelect label="סטטוס תשלום" value={editForm.סטטוס_תשלום}
+                  onChange={v => setEditForm(f => ({ ...f, סטטוס_תשלום: v as EditForm['סטטוס_תשלום'] }))}>
+                  {(['ממתין', 'שולם', 'חלקי', 'בוטל'] as const).map(s => <option key={s} value={s}>{s}</option>)}
+                </FieldSelect>
+                <FieldSelect label="סטטוס הזמנה" value={editForm.סטטוס_הזמנה}
+                  onChange={v => setEditForm(f => ({ ...f, סטטוס_הזמנה: v as EditForm['סטטוס_הזמנה'] }))}>
+                  {ORDER_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                </FieldSelect>
+              </div>
+            </section>
+
+            {/* ── מוצרים ── */}
+            <section className="rounded-xl border p-4 space-y-3" style={{ borderColor: '#E7D2A6', backgroundColor: '#FDFAF5' }}>
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#8B5E34' }}>מוצרים</p>
+                <button
+                  type="button"
+                  onClick={addProductItem}
+                  className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-full border font-medium hover:bg-stone-50 transition-colors"
+                  style={{ borderColor: '#8B5E34', color: '#8B5E34' }}
+                >
+                  ＋ הוסף מוצר
+                </button>
+              </div>
+
+              {editItems.length === 0 ? (
+                <p className="text-xs text-center py-3" style={{ color: '#9B7A5A' }}>
+                  אין מוצרים. לחץ &quot;הוסף מוצר&quot; להוספה.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {editItems.map((item, idx) => (
+                    <div key={idx} className="grid grid-cols-12 gap-2 items-end p-3 rounded-xl" style={{ backgroundColor: '#FAF7F0' }}>
+                      <div className="col-span-5">
+                        <label className="block text-xs mb-1" style={{ color: '#6B4A2D' }}>מוצר</label>
+                        <select
+                          value={item.מוצר_id}
+                          onChange={e => updateProductItem(idx, 'מוצר_id', e.target.value)}
+                          className="w-full border rounded-lg px-2 py-1.5 text-xs focus:outline-none"
+                          style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
+                        >
+                          <option value="">בחר מוצר...</option>
+                          {products.filter(p => p.סוג_מוצר === 'מוצר רגיל').map(p => (
+                            <option key={p.id} value={p.id}>{p.שם_מוצר}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="col-span-2">
+                        <label className="block text-xs mb-1" style={{ color: '#6B4A2D' }}>כמות</label>
+                        <input type="number" min={1} value={item.כמות}
+                          onChange={e => updateProductItem(idx, 'כמות', Number(e.target.value))}
+                          className="w-full border rounded-lg px-2 py-1.5 text-xs focus:outline-none text-center"
+                          style={{ borderColor: '#E7D2A6', color: '#2B1A10' }} />
+                      </div>
+                      <div className="col-span-2">
+                        <label className="block text-xs mb-1" style={{ color: '#6B4A2D' }}>מחיר ₪</label>
+                        <input type="number" min={0} step={0.01} value={item.מחיר_ליחידה}
+                          onChange={e => updateProductItem(idx, 'מחיר_ליחידה', Number(e.target.value))}
+                          className="w-full border rounded-lg px-2 py-1.5 text-xs focus:outline-none text-center"
+                          style={{ borderColor: '#E7D2A6', color: '#2B1A10' }} />
+                      </div>
+                      <div className="col-span-2">
+                        <label className="block text-xs mb-1" style={{ color: '#6B4A2D' }}>סה״כ</label>
+                        <div className="px-2 py-1.5 text-xs rounded-lg text-center font-semibold" style={{ backgroundColor: '#EDE0CE', color: '#4A2F1B' }}>
+                          ₪{item.סהכ.toFixed(2)}
+                        </div>
+                      </div>
+                      <div className="col-span-1 flex items-end justify-center pb-0.5">
+                        <button
+                          type="button"
+                          onClick={() => removeProductItem(idx)}
+                          title="מחק שורה"
+                          className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-red-50 transition-colors text-base"
+                          style={{ color: '#dc2626' }}
+                        >
+                          🗑
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {/* ── מארזי פטיפורים ── */}
+            <section className="rounded-xl border p-4 space-y-3" style={{ borderColor: '#E7D2A6', backgroundColor: '#FDFAF5' }}>
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#8B5E34' }}>מארזי פטיפורים</p>
+                <button
+                  type="button"
+                  onClick={addPackageItem}
+                  className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-full border font-medium hover:bg-stone-50 transition-colors"
+                  style={{ borderColor: '#8B5E34', color: '#8B5E34' }}
+                >
+                  ＋ הוסף מארז
+                </button>
+              </div>
+
+              {editPackages.length === 0 ? (
+                <p className="text-xs text-center py-3" style={{ color: '#9B7A5A' }}>
+                  אין מארזים. לחץ &quot;הוסף מארז&quot; להוספה.
+                </p>
+              ) : (
+                <div className="space-y-4">
+                  {editPackages.map((pkg, pkgIdx) => (
+                    <div key={pkgIdx} className="p-3 rounded-xl border" style={{ borderColor: '#DDD0BC', backgroundColor: '#FAF7F0' }}>
+                      <div className="grid grid-cols-4 gap-3 mb-3">
+                        <div className="col-span-2">
+                          <label className="block text-xs mb-1" style={{ color: '#6B4A2D' }}>בחר מארז</label>
+                          <select
+                            value={pkg._packageId}
+                            onChange={e => updatePackageItem(pkgIdx, '_packageId', e.target.value)}
+                            className="w-full border rounded-lg px-2 py-1.5 text-xs focus:outline-none"
+                            style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
+                          >
+                            <option value="">
+                              {pkg.גודל_מארז ? `מארז ${pkg.גודל_מארז} יח׳ (קיים)` : 'בחר מארז...'}
+                            </option>
+                            {packages.filter(p => p.פעיל).map(p => (
+                              <option key={p.id} value={p.id}>
+                                {p.שם_מארז} — {p.גודל_מארז} יח׳ · ₪{p.מחיר_מארז}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs mb-1" style={{ color: '#6B4A2D' }}>כמות</label>
+                          <input type="number" min={1} value={pkg.כמות}
+                            onChange={e => updatePackageItem(pkgIdx, 'כמות', Number(e.target.value))}
+                            className="w-full border rounded-lg px-2 py-1.5 text-xs focus:outline-none text-center"
+                            style={{ borderColor: '#E7D2A6', color: '#2B1A10' }} />
+                        </div>
+                        <div>
+                          <label className="block text-xs mb-1" style={{ color: '#6B4A2D' }}>מחיר ₪</label>
+                          <input type="number" min={0} step={0.01} value={pkg.מחיר_ליחידה}
+                            onChange={e => updatePackageItem(pkgIdx, 'מחיר_ליחידה', Number(e.target.value))}
+                            className="w-full border rounded-lg px-2 py-1.5 text-xs focus:outline-none text-center"
+                            style={{ borderColor: '#E7D2A6', color: '#2B1A10' }} />
+                        </div>
+                      </div>
+
+                      {/* Petit-four selector */}
+                      <div className="border-t pt-3 space-y-2" style={{ borderColor: '#DDD0BC' }}>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-medium" style={{ color: '#4A2F1B' }}>פטיפורים</span>
+                          <select
+                            className="text-xs border rounded px-2 py-1 w-44"
+                            style={{ borderColor: '#DDD0BC', color: '#2B1A10' }}
+                            value=""
+                            onChange={e => { if (e.target.value) addPetitFour(pkgIdx, e.target.value); }}
+                          >
+                            <option value="">＋ הוסף סוג פטיפור</option>
+                            {petitFourTypes.filter(pf => pf.פעיל).map(pf => (
+                              <option key={pf.id} value={pf.id}>{pf.שם_פטיפור}</option>
+                            ))}
+                          </select>
+                        </div>
+                        {pkg.פטיפורים.length > 0 && (
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                            {pkg.פטיפורים.map((pf, pfIdx) => (
+                              <div key={pfIdx} className="flex items-center gap-2 p-2 bg-white rounded-lg border" style={{ borderColor: '#DDD0BC' }}>
+                                <span className="flex-1 text-xs font-medium truncate" style={{ color: '#2B1A10' }}>{pf.שם}</span>
+                                <input type="number" min={1} value={pf.כמות}
+                                  onChange={e => updatePetitFourQty(pkgIdx, pfIdx, Number(e.target.value))}
+                                  className="w-10 px-1 py-1 text-xs border rounded text-center focus:outline-none"
+                                  style={{ borderColor: '#DDD0BC', color: '#2B1A10' }} />
+                                <button type="button" onClick={() => removePetitFour(pkgIdx, pfIdx)}
+                                  className="text-red-400 hover:text-red-600 text-sm leading-none">×</button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex items-center justify-between mt-3 pt-2 border-t" style={{ borderColor: '#DDD0BC' }}>
+                        <span className="text-xs font-semibold" style={{ color: '#2B1A10' }}>
+                          סה״כ מארז: ₪{pkg.סהכ.toFixed(2)}
+                        </span>
+                        <button type="button" onClick={() => removePackageItem(pkgIdx)}
+                          className="text-xs text-red-500 hover:underline">הסר מארז</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {/* ── סיכום כספי ── */}
+            <section className="rounded-xl border p-4 space-y-3" style={{ borderColor: '#E7D2A6', backgroundColor: '#FDFAF5' }}>
+              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#8B5E34' }}>סיכום כספי</p>
+              <div className="grid grid-cols-2 gap-6 items-start">
+                <FieldInput
+                  label="הנחה (₪)"
+                  type="number"
+                  value={editForm.סכום_הנחה}
+                  onChange={v => setEditForm(f => ({ ...f, סכום_הנחה: v }))}
+                />
+                <div className="space-y-1 text-sm pt-5">
+                  <div className="flex justify-between" style={{ color: '#6B4A2D' }}>
+                    <span>סכום לפני הנחה:</span>
+                    <span>₪{editSubtotal.toFixed(2)}</span>
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>טלפון מקבל</label>
-                    <input
-                      type="tel"
-                      value={editForm.טלפון_מקבל}
-                      onChange={e => setEditForm(f => ({ ...f, טלפון_מקבל: e.target.value }))}
-                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                      style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>כתובת</label>
-                    <input
-                      type="text"
-                      value={editForm.כתובת_מקבל_ההזמנה}
-                      onChange={e => setEditForm(f => ({ ...f, כתובת_מקבל_ההזמנה: e.target.value }))}
-                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                      style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>עיר</label>
-                    <input
-                      type="text"
-                      value={editForm.עיר}
-                      onChange={e => setEditForm(f => ({ ...f, עיר: e.target.value }))}
-                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                      style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>הוראות משלוח</label>
-                    <input
-                      type="text"
-                      value={editForm.הוראות_משלוח}
-                      onChange={e => setEditForm(f => ({ ...f, הוראות_משלוח: e.target.value }))}
-                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                      style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>דמי משלוח (₪)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={editForm.דמי_משלוח}
-                      onChange={e => setEditForm(f => ({ ...f, דמי_משלוח: e.target.value }))}
-                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                      style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
-                    />
+                  {editDiscount > 0 && (
+                    <div className="flex justify-between text-red-600">
+                      <span>הנחה:</span>
+                      <span>−₪{editDiscount.toFixed(2)}</span>
+                    </div>
+                  )}
+                  {editDelivery > 0 && (
+                    <div className="flex justify-between" style={{ color: '#6B4A2D' }}>
+                      <span>דמי משלוח:</span>
+                      <span>₪{editDelivery.toFixed(2)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-bold pt-1 border-t text-base" style={{ borderColor: '#E7D2A6' }}>
+                    <span style={{ color: '#2B1A10' }}>סה״כ לתשלום:</span>
+                    <span style={{ color: '#8B5E34' }}>₪{editTotal.toFixed(2)}</span>
                   </div>
                 </div>
               </div>
-            )}
+            </section>
 
-            {/* Order source */}
-            <div>
-              <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>מקור הזמנה</label>
-              <input
-                type="text"
-                value={editForm.מקור_ההזמנה}
-                onChange={e => setEditForm(f => ({ ...f, מקור_ההזמנה: e.target.value }))}
-                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
-              />
-            </div>
-
-            {/* Greeting */}
-            <div>
-              <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>ברכה</label>
-              <textarea
-                rows={2}
-                value={editForm.ברכה_טקסט}
-                onChange={e => setEditForm(f => ({ ...f, ברכה_טקסט: e.target.value }))}
-                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 resize-none"
-                style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
-              />
-            </div>
-
-            {/* Notes */}
-            <div>
-              <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>הערות להזמנה</label>
-              <textarea
-                rows={2}
-                value={editForm.הערות_להזמנה}
-                onChange={e => setEditForm(f => ({ ...f, הערות_להזמנה: e.target.value }))}
-                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 resize-none"
-                style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
-              />
-            </div>
-
-            {/* Payment method + statuses */}
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>אמצעי תשלום</label>
-                <input
-                  type="text"
-                  value={editForm.אופן_תשלום}
-                  onChange={e => setEditForm(f => ({ ...f, אופן_תשלום: e.target.value }))}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                  style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>סטטוס תשלום</label>
-                <select
-                  value={editForm.סטטוס_תשלום}
-                  onChange={e => setEditForm(f => ({ ...f, סטטוס_תשלום: e.target.value as EditForm['סטטוס_תשלום'] }))}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                  style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
-                >
-                  {['ממתין', 'שולם', 'חלקי', 'בוטל'].map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>סטטוס הזמנה</label>
-                <select
-                  value={editForm.סטטוס_הזמנה}
-                  onChange={e => setEditForm(f => ({ ...f, סטטוס_הזמנה: e.target.value as EditForm['סטטוס_הזמנה'] }))}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                  style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
-                >
-                  {ORDER_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
-            </div>
-
-            {/* Actions */}
+            {/* ── Actions ── */}
             <div className="flex gap-3 justify-end pt-2 border-t" style={{ borderColor: '#E7D2A6' }}>
               <button
                 onClick={() => setShowEdit(false)}
-                className="px-4 py-2 text-sm rounded-lg border hover:bg-stone-50"
+                className="px-4 py-2 text-sm rounded-lg border hover:bg-stone-50 transition-colors"
                 style={{ borderColor: '#E7D2A6', color: '#6B4A2D' }}
               >
                 ביטול
@@ -647,6 +1045,7 @@ export default function OrderDetailPage() {
                 {saving ? 'שומר...' : 'שמור שינויים'}
               </Button>
             </div>
+
           </div>
         </div>
       )}

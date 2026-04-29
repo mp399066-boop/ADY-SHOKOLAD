@@ -68,7 +68,8 @@ export default function NewOrderPage() {
   const [paymentStatus, setPaymentStatus] = useState<'ממתין' | 'שולם' | 'חלקי'>('ממתין');
   const [greetingText, setGreetingText] = useState('');
   const [notes, setNotes] = useState('');
-  const [discount, setDiscount] = useState(0);
+  const [discountType, setDiscountType] = useState<'ללא' | 'אחוז' | 'סכום'>('ללא');
+  const [discountValue, setDiscountValue] = useState(0);
   const [orderSource, setOrderSource] = useState('');
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
   const [packageItems, setPackageItems] = useState<PackageItem[]>([]);
@@ -87,17 +88,23 @@ export default function NewOrderPage() {
     });
   }, []);
 
-  // Auto-apply customer discount when customer is selected
+  // Auto-apply customer discount (percentage) when customer is selected
   useEffect(() => {
     const cust = customers.find(c => c.id === selectedCustomer);
     if (cust && (cust.אחוז_הנחה ?? 0) > 0) {
-      setDiscount(+(subtotal * (cust.אחוז_הנחה ?? 0) / 100).toFixed(2));
+      setDiscountType('אחוז');
+      setDiscountValue(cust.אחוז_הנחה ?? 0);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCustomer]);
 
   const subtotal = [...orderItems, ...packageItems].reduce((sum, item) => sum + item.סהכ, 0);
-  const total = subtotal - discount + deliveryFee;
+  const discountAmount = discountType === 'אחוז'
+    ? +(subtotal * discountValue / 100).toFixed(2)
+    : discountType === 'סכום'
+      ? Math.min(subtotal, discountValue)
+      : 0;
+  const total = Math.max(0, subtotal - discountAmount + deliveryFee);
   const selectedCustomerData = customers.find(c => c.id === selectedCustomer);
 
   const addProductItem = () => {
@@ -202,7 +209,8 @@ export default function NewOrderPage() {
           דמי_משלוח: deliveryFee,
           אופן_תשלום: paymentMethod,
           סטטוס_תשלום: paymentStatus,
-          סכום_הנחה: discount,
+          סוג_הנחה: discountType,
+          ערך_הנחה: discountValue,
           ברכה_טקסט: greetingText || null,
           הערות_להזמנה: notes || null,
           מקור_ההזמנה: orderSource || null,
@@ -378,9 +386,18 @@ export default function NewOrderPage() {
                         onChange={e => updateProductItem(idx, 'מוצר_id', e.target.value)}
                       >
                         <option value="">בחר...</option>
-                        {products.filter(p => p.סוג_מוצר === 'מוצר רגיל').map(p => (
-                          <option key={p.id} value={p.id}>{p.שם_מוצר}</option>
-                        ))}
+                        {products
+                          .filter(p => p.סוג_מוצר === 'מוצר רגיל')
+                          .filter(p => !p.לקוחות_עסקיים_בלבד || selectedCustomer !== '')
+                          .map(p => {
+                            const isBusinessCustomer = selectedCustomerData?.סוג_לקוח === 'עסקי';
+                            const disabled = p.לקוחות_עסקיים_בלבד && !isBusinessCustomer;
+                            return (
+                              <option key={p.id} value={p.id} disabled={disabled}>
+                                {p.שם_מוצר}{disabled ? ' — מוצר זה זמין ללקוחות עסקיים בלבד' : ''}
+                              </option>
+                            );
+                          })}
                       </Select>
                     </div>
                     <div className="col-span-2">
@@ -586,14 +603,56 @@ export default function NewOrderPage() {
                 <option value="שולם">שולם</option>
                 <option value="חלקי">חלקי</option>
               </Select>
-              <Input
-                label="הנחה (₪)"
-                type="number"
-                value={discount}
-                onChange={e => setDiscount(Number(e.target.value))}
-                min={0}
-                step={0.01}
-              />
+            </div>
+
+            {/* Discount section */}
+            <div className="col-span-3 pt-1">
+              <label className="block text-xs font-medium mb-2" style={{ color: '#6B4A2D' }}>הנחה</label>
+              <div className="flex items-center gap-3">
+                {/* Type toggle */}
+                <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: '#E7D2A6' }}>
+                  {(['ללא', 'אחוז', 'סכום'] as const).map(t => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => { setDiscountType(t); if (t === 'ללא') setDiscountValue(0); }}
+                      className="px-3 py-1.5 text-xs font-medium transition-colors"
+                      style={{
+                        backgroundColor: discountType === t ? '#8B5E34' : '#FFFFFF',
+                        color: discountType === t ? '#FFFFFF' : '#6B4A2D',
+                      }}
+                    >
+                      {t === 'אחוז' ? 'אחוזים %' : t === 'סכום' ? 'סכום ₪' : 'ללא'}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Value input */}
+                {discountType !== 'ללא' && (
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      value={discountValue}
+                      onChange={e => setDiscountValue(Number(e.target.value))}
+                      min={0}
+                      max={discountType === 'אחוז' ? 100 : undefined}
+                      step={discountType === 'אחוז' ? 0.1 : 0.01}
+                      className="w-24 border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2"
+                      style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
+                    />
+                    <span className="text-xs font-medium" style={{ color: '#6B4A2D' }}>
+                      {discountType === 'אחוז' ? '%' : '₪'}
+                    </span>
+                  </div>
+                )}
+
+                {/* Calculated amount */}
+                {discountAmount > 0 && (
+                  <span className="text-xs font-semibold text-red-600">
+                    = −₪{discountAmount.toFixed(2)}
+                  </span>
+                )}
+              </div>
             </div>
           </Card>
         </div>
@@ -662,10 +721,18 @@ export default function NewOrderPage() {
                 </div>
 
                 <div className="border-t pt-4" style={{ borderColor: '#EDE0CE' }}>
-                  {discount > 0 && (
+                  {subtotal > 0 && (
                     <div className="flex justify-between text-xs mb-1" style={{ color: '#6B4A2D' }}>
-                      <span>הנחה</span>
-                      <span className="text-red-600">−₪{discount.toFixed(2)}</span>
+                      <span>סכום ביניים</span>
+                      <span>₪{subtotal.toFixed(2)}</span>
+                    </div>
+                  )}
+                  {discountAmount > 0 && (
+                    <div className="flex justify-between text-xs mb-1" style={{ color: '#6B4A2D' }}>
+                      <span>
+                        הנחה{discountType === 'אחוז' ? ` (${discountValue}%)` : ''}
+                      </span>
+                      <span className="text-red-600">−₪{discountAmount.toFixed(2)}</span>
                     </div>
                   )}
                   {deliveryFee > 0 && (

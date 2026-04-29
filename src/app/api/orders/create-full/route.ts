@@ -38,9 +38,18 @@ export async function POST(req: NextRequest) {
   let subtotal = 0;
   for (const item of מוצרים) subtotal += (item.כמות || 1) * (item.מחיר_ליחידה || 0);
   for (const pkg of מארזי_פטיפורים) subtotal += (pkg.כמות || 1) * (pkg.מחיר_ליחידה || 0);
-  const discount = הזמנה?.סכום_הנחה || 0;
+
+  const discountType: 'ללא' | 'אחוז' | 'סכום' = הזמנה?.סוג_הנחה || 'ללא';
+  const discountValue = Number(הזמנה?.ערך_הנחה || 0);
+  let discount = 0;
+  if (discountType === 'אחוז') {
+    discount = +(subtotal * discountValue / 100).toFixed(2);
+  } else if (discountType === 'סכום') {
+    discount = Math.min(subtotal, discountValue);
+  }
+
   const shipping = הזמנה?.דמי_משלוח || 0;
-  const total = subtotal - discount + shipping;
+  const total = Math.max(0, subtotal - discount + shipping);
 
   // 3. Create order
   const { data: order, error: orderError } = await supabase
@@ -62,6 +71,8 @@ export async function POST(req: NextRequest) {
       דמי_משלוח: shipping,
       אופן_תשלום: הזמנה?.אופן_תשלום || null,
       סטטוס_תשלום: הזמנה?.סטטוס_תשלום || 'ממתין',
+      סוג_הנחה: discountType,
+      ערך_הנחה: discountValue,
       סכום_לפני_הנחה: subtotal,
       סכום_הנחה: discount,
       סך_הכל_לתשלום: total,
@@ -148,7 +159,7 @@ export async function POST(req: NextRequest) {
   if (משלוח) {
     await supabase.from('משלוחים').insert({
       הזמנה_id: order!.id,
-      סטטוס_משלוח: 'ממתין',
+      סטטוס_משלוח: 'נאסף',
       תאריך_משלוח: order!.תאריך_אספקה || null,
       שעת_משלוח: order!.שעת_אספקה || null,
       כתובת: משלוח.כתובת || order!.כתובת_מקבל_ההזמנה || null,

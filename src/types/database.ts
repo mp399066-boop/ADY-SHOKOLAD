@@ -116,7 +116,7 @@ export interface Customer {
   שם_משפחה: string;
   טלפון: string | null;
   אימייל: string | null;
-  סוג_לקוח: 'פרטי' | 'חוזר' | 'VIP' | 'מעצב אירועים';
+  סוג_לקוח: 'פרטי' | 'חוזר' | 'VIP' | 'מעצב אירועים' | 'עסקי';
   סטטוס_לקוח: string | null;
   מקור_הגעה: string | null;
   אחוז_הנחה: number | null;
@@ -144,6 +144,8 @@ export interface Order {
   דמי_משלוח: number | null;
   אופן_תשלום: string | null;
   סטטוס_תשלום: 'ממתין' | 'שולם' | 'חלקי' | 'בוטל';
+  סוג_הנחה: 'ללא' | 'אחוז' | 'סכום' | null;
+  ערך_הנחה: number | null;
   סכום_לפני_הנחה: number | null;
   סכום_הנחה: number | null;
   סך_הכל_לתשלום: number | null;
@@ -162,6 +164,7 @@ export interface Product {
   מחיר: number;
   פעיל: boolean;
   האם_צריך_בחירת_פטיפורים: boolean;
+  לקוחות_עסקיים_בלבד: boolean;
   כמות_במארז: number | null;
   כמות_במלאי: number;
   תיאור: string | null;
@@ -266,7 +269,7 @@ export interface Production {
 export interface Delivery {
   id: string;
   הזמנה_id: string;
-  סטטוס_משלוח: 'ממתין' | 'בהכנה' | 'מוכן למשלוח' | 'יצא למשלוח' | 'בדרך' | 'נמסר' | 'נכשל';
+  סטטוס_משלוח: 'נאסף' | 'נמסר';
   שם_שליח: string | null;
   טלפון_שליח: string | null;
   כתובת: string | null;
