@@ -319,51 +319,59 @@ export default function OrderDetailPage() {
         payload.דמי_משלוח = null;
       }
 
+      console.log('[saveEdit] PATCH payload:', payload);
       const patchRes = await fetch(`/api/orders/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
       const patchJson = await patchRes.json();
-      if (!patchRes.ok) throw new Error(patchJson.error);
+      if (!patchRes.ok) throw new Error(patchJson.error || `PATCH failed ${patchRes.status}`);
 
       // 2. Replace order items + recalculate totals
       const deliveryFee = editForm.סוג_אספקה === 'משלוח' && editForm.דמי_משלוח !== ''
         ? Number(editForm.דמי_משלוח) : 0;
 
+      const itemsPayload = {
+        מוצרים: editItems
+          .filter(i => i.מוצר_id)
+          .map(i => ({
+            מוצר_id: i.מוצר_id,
+            כמות: i.כמות,
+            מחיר_ליחידה: i.מחיר_ליחידה,
+            הערות_לשורה: i.הערות_לשורה || null,
+          })),
+        מארזים: editPackages.map(p => ({
+          גודל_מארז: p.גודל_מארז,
+          כמות: p.כמות,
+          מחיר_ליחידה: p.מחיר_ליחידה,
+          הערות_לשורה: p.הערות_לשורה || null,
+          פטיפורים: p.פטיפורים.map(pf => ({ פטיפור_id: pf.פטיפור_id, כמות: pf.כמות })),
+        })),
+        סוג_הנחה: editForm.סוג_הנחה,
+        ערך_הנחה: Number(editForm.ערך_הנחה) || 0,
+        דמי_משלוח: deliveryFee,
+      };
+      console.log('[saveEdit] items payload:', JSON.stringify(itemsPayload, null, 2));
+
       const itemsRes = await fetch(`/api/orders/${id}/items`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          מוצרים: editItems
-            .filter(i => i.מוצר_id)
-            .map(i => ({
-              מוצר_id: i.מוצר_id,
-              כמות: i.כמות,
-              מחיר_ליחידה: i.מחיר_ליחידה,
-              הערות_לשורה: i.הערות_לשורה || null,
-            })),
-          מארזים: editPackages.map(p => ({
-            גודל_מארז: p.גודל_מארז,
-            כמות: p.כמות,
-            מחיר_ליחידה: p.מחיר_ליחידה,
-            הערות_לשורה: p.הערות_לשורה || null,
-            פטיפורים: p.פטיפורים.map(pf => ({ פטיפור_id: pf.פטיפור_id, כמות: pf.כמות })),
-          })),
-          סוג_הנחה: editForm.סוג_הנחה,
-          ערך_הנחה: Number(editForm.ערך_הנחה) || 0,
-          דמי_משלוח: deliveryFee,
-        }),
+        body: JSON.stringify(itemsPayload),
       });
       const itemsJson = await itemsRes.json();
-      if (!itemsRes.ok) throw new Error(itemsJson.error);
+      if (!itemsRes.ok) throw new Error(itemsJson.error || `items PUT failed ${itemsRes.status}`);
 
-      // 3. Reload order from server to reflect all changes
-      loadOrder();
+      console.log('[saveEdit] success, reloading order');
+
+      // 3. Close modal first, then reload (avoids loading spinner interrupting toast)
       setShowEdit(false);
       toast.success('הזמנה עודכנה בהצלחה');
+      loadOrder();
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'שגיאה בשמירה');
+      const msg = err instanceof Error ? err.message : 'שגיאה בשמירה';
+      console.error('[saveEdit] error:', msg, err);
+      toast.error(msg);
     } finally {
       setSaving(false);
     }

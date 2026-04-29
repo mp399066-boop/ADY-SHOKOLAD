@@ -20,16 +20,35 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     דמי_משלוח: number;
   };
 
+  console.log('[items PUT] orderId:', params.id);
+  console.log('[items PUT] מוצרים:', מוצרים.length, 'מארזים:', מארזים.length, 'הנחה:', סוג_הנחה, ערך_הנחה);
+
   // 1. Get existing item IDs to delete petit-four selections first
-  const { data: existingItems } = await supabase
+  const { data: existingItems, error: fetchExistingError } = await supabase
     .from('מוצרים_בהזמנה')
     .select('id')
     .eq('הזמנה_id', params.id);
 
-  const existingIds = (existingItems || []).map((i: { id: string }) => i.id);
+  if (fetchExistingError) {
+    console.error('[items PUT] failed to fetch existing items:', fetchExistingError);
+    return NextResponse.json({ error: `שגיאה בטעינת פריטים קיימים: ${fetchExistingError.message}` }, { status: 500 });
+  }
 
+  const existingIds = (existingItems || []).map((i: { id: string }) => i.id);
+  console.log('[items PUT] existing item ids:', existingIds.length);
+
+  // Delete petit-four selections first (FK dependency)
   if (existingIds.length > 0) {
-    await supabase.from('בחירת_פטיפורים_בהזמנה').delete().in('שורת_הזמנה_id', existingIds);
+    const { error: pfDeleteError } = await supabase
+      .from('בחירת_פטיפורים_בהזמנה')
+      .delete()
+      .in('שורת_הזמנה_id', existingIds);
+
+    if (pfDeleteError) {
+      console.error('[items PUT] failed to delete petit-four selections:', pfDeleteError);
+      return NextResponse.json({ error: `מחיקת בחירות פטיפורים נכשלה: ${pfDeleteError.message}` }, { status: 500 });
+    }
+    console.log('[items PUT] deleted petit-four selections for', existingIds.length, 'items');
   }
 
   // 2. Delete all existing order items
@@ -38,24 +57,36 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     .delete()
     .eq('הזמנה_id', params.id);
 
-  if (deleteError) return NextResponse.json({ error: deleteError.message }, { status: 500 });
+  if (deleteError) {
+    console.error('[items PUT] failed to delete order items:', deleteError);
+    return NextResponse.json({ error: `מחיקת פריטי הזמנה נכשלה: ${deleteError.message}` }, { status: 500 });
+  }
+  console.log('[items PUT] deleted existing order items');
 
   // 3. Validate product IDs
   const incomingProductIds = מוצרים.map(i => i.מוצר_id).filter(Boolean);
-  let validProductIds = new Set<string>();
+  let validProductIds = new Set<string>(incomingProductIds); // default: trust all IDs
   if (incomingProductIds.length > 0) {
-    const { data: existingProds } = await supabase
+    const { data: existingProds, error: prodsError } = await supabase
       .from('מוצרים_למכירה')
       .select('id')
       .in('id', incomingProductIds);
+    if (prodsError) {
+      console.error('[items PUT] product validation query failed:', prodsError);
+      return NextResponse.json({ error: `ולידציית מוצרים נכשלה: ${prodsError.message}` }, { status: 500 });
+    }
     validProductIds = new Set((existingProds || []).map((p: { id: string }) => p.id));
+    console.log('[items PUT] valid product ids:', validProductIds.size, '/', incomingProductIds.length);
   }
 
   // 4. Insert new product rows
   let subtotal = 0;
 
   for (const item of מוצרים) {
-    if (item.מוצר_id && !validProductIds.has(item.מוצר_id)) continue;
+    if (item.מוצר_id && !validProductIds.has(item.מוצר_id)) {
+      console.warn('[items PUT] skipping unknown product id:', item.מוצר_id);
+      continue;
+    }
     const lineTotal = (item.כמות || 1) * (item.מחיר_ליחידה || 0);
     subtotal += lineTotal;
     const { error } = await supabase.from('מוצרים_בהזמנה').insert({
@@ -67,7 +98,11 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       סהכ: lineTotal,
       הערות_לשורה: item.הערות_לשורה || null,
     });
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) {
+      console.error('[items PUT] failed to insert product row:', error, item);
+      return NextResponse.json({ error: `הוספת מוצר נכשלה: ${error.message}` }, { status: 500 });
+    }
+    console.log('[items PUT] inserted product row, מוצר_id:', item.מוצר_id, 'סהכ:', lineTotal);
   }
 
   // 5. Insert new package rows + petit-four selections
@@ -89,7 +124,11 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       .select()
       .single();
 
-    if (pkgError) return NextResponse.json({ error: pkgError.message }, { status: 500 });
+    if (pkgError) {
+      console.error('[items PUT] failed to insert package row:', pkgError, pkg);
+      return NextResponse.json({ error: `הוספת מארז נכשלה: ${pkgError.message}` }, { status: 500 });
+    }
+    console.log('[items PUT] inserted package row id:', pkgRow?.id, 'גודל:', pkg.גודל_מארז, 'סהכ:', lineTotal);
 
     if (pkg.פטיפורים && pkgRow) {
       for (const pf of pkg.פטיפורים) {
@@ -98,7 +137,10 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
           פטיפור_id: pf.פטיפור_id,
           כמות: pf.כמות || 1,
         });
-        if (pfError) return NextResponse.json({ error: pfError.message }, { status: 500 });
+        if (pfError) {
+          console.error('[items PUT] failed to insert petit-four selection:', pfError, pf);
+          return NextResponse.json({ error: `הוספת פטיפור נכשלה: ${pfError.message}` }, { status: 500 });
+        }
       }
     }
   }
@@ -126,7 +168,11 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     .select()
     .single();
 
-  if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 });
+  if (updateError) {
+    console.error('[items PUT] failed to update order totals:', updateError);
+    return NextResponse.json({ error: `עדכון סכומי הזמנה נכשל: ${updateError.message}` }, { status: 500 });
+  }
 
+  console.log('[items PUT] done — subtotal:', subtotal, 'discount:', discountAmt, 'total:', total);
   return NextResponse.json({ data: updatedOrder });
 }

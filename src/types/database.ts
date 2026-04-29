@@ -68,6 +68,11 @@ export interface Database {
         Insert: Partial<Delivery>;
         Update: Partial<Delivery>;
       };
+      שליחים: {
+        Row: Courier;
+        Insert: Partial<Courier>;
+        Update: Partial<Courier>;
+      };
       תשלומים: {
         Row: Payment;
         Insert: Partial<Payment>;
@@ -116,7 +121,7 @@ export interface Customer {
   שם_משפחה: string;
   טלפון: string | null;
   אימייל: string | null;
-  סוג_לקוח: 'פרטי' | 'חוזר' | 'VIP' | 'מעצב אירועים' | 'עסקי';
+  סוג_לקוח: 'פרטי' | 'חוזר' | 'עסקי';
   סטטוס_לקוח: string | null;
   מקור_הגעה: string | null;
   אחוז_הנחה: number | null;
@@ -269,7 +274,7 @@ export interface Production {
 export interface Delivery {
   id: string;
   הזמנה_id: string;
-  סטטוס_משלוח: 'נאסף' | 'נמסר';
+  סטטוס_משלוח: 'ממתין' | 'נאסף' | 'נמסר';
   שם_שליח: string | null;
   טלפון_שליח: string | null;
   כתובת: string | null;
@@ -278,8 +283,23 @@ export interface Delivery {
   תאריך_משלוח: string | null;
   שעת_משלוח: string | null;
   הערות: string | null;
+  courier_id: string | null;
+  delivery_token: string | null;
+  delivered_at: string | null;
+  whatsapp_sent_at: string | null;
   הזמנות?: Order;
+  שליחים?: { id: string; שם_שליח: string; טלפון_שליח: string } | null;
   _noRecord?: boolean;
+}
+
+export interface Courier {
+  id: string;
+  שם_שליח: string;
+  טלפון_שליח: string;
+  הערות: string | null;
+  פעיל: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Payment {
