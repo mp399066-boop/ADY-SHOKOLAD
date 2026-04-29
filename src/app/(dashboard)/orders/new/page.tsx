@@ -608,55 +608,25 @@ export default function NewOrderPage() {
               </Select>
             </div>
 
-            {/* Discount section */}
-            <div className="col-span-3 pt-1">
-              <label className="block text-xs font-medium mb-2" style={{ color: '#6B4A2D' }}>הנחה</label>
-              <div className="flex items-center gap-3">
-                {/* Type toggle */}
-                <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: '#E7D2A6' }}>
-                  {(['ללא', 'אחוז', 'סכום'] as const).map(t => (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => { setDiscountType(t); if (t === 'ללא') setDiscountValue(0); }}
-                      className="px-3 py-1.5 text-xs font-medium transition-colors"
-                      style={{
-                        backgroundColor: discountType === t ? '#8B5E34' : '#FFFFFF',
-                        color: discountType === t ? '#FFFFFF' : '#6B4A2D',
-                      }}
-                    >
-                      {t === 'אחוז' ? 'אחוזים %' : t === 'סכום' ? 'סכום ₪' : 'ללא'}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Value input */}
-                {discountType !== 'ללא' && (
-                  <div className="flex items-center gap-1">
-                    <input
-                      type="number"
-                      value={discountValue}
-                      onChange={e => setDiscountValue(Number(e.target.value))}
-                      min={0}
-                      max={discountType === 'אחוז' ? 100 : undefined}
-                      step={discountType === 'אחוז' ? 0.1 : 0.01}
-                      className="w-24 border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2"
-                      style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
-                    />
-                    <span className="text-xs font-medium" style={{ color: '#6B4A2D' }}>
-                      {discountType === 'אחוז' ? '%' : '₪'}
-                    </span>
-                  </div>
-                )}
-
-                {/* Calculated amount */}
-                {discountAmount > 0 && (
-                  <span className="text-xs font-semibold text-red-600">
-                    = −₪{discountAmount.toFixed(2)}
-                  </span>
-                )}
+            {/* Customer discount — read-only, auto-filled from customer profile */}
+            {discountType === 'אחוז' && discountValue > 0 && (
+              <div className="col-span-3 pt-1 flex items-center gap-2">
+                <span
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
+                  style={{ backgroundColor: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A' }}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M20 12V22H4V12" /><path d="M22 7H2v5h20V7z" /><path d="M12 22V7" />
+                    <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z" />
+                    <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z" />
+                  </svg>
+                  הנחת לקוח: {discountValue}%
+                </span>
+                <span className="text-xs font-semibold text-red-600">
+                  −₪{discountAmount.toFixed(2)}
+                </span>
               </div>
-            </div>
+            )}
           </Card>
         </div>
 
