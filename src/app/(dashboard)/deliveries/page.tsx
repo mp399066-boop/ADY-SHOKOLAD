@@ -68,17 +68,16 @@ function DeliveryStatusBadge({
   return (
     <div ref={ref} className="relative inline-block" dir="rtl">
       <button
-        onClick={() => { if (!noRecord && !isDelivered) setOpen(v => !v); }}
-        disabled={noRecord || isDelivered}
+        onClick={() => { if (!isDelivered) setOpen(v => !v); }}
+        disabled={isDelivered}
         className="inline-flex items-center gap-1 text-xs font-medium rounded-full px-2.5 py-0.5 border transition-all"
         style={{
           backgroundColor: style.bg,
           color: style.color,
           borderColor: style.border,
-          cursor: (noRecord || isDelivered) ? 'default' : 'pointer',
-          opacity: noRecord ? 0.7 : 1,
+          cursor: isDelivered ? 'default' : 'pointer',
         }}
-        title={isDelivered ? 'סטטוס סופי' : noRecord ? '' : 'לחץ לשינוי סטטוס'}
+        title={isDelivered ? 'סטטוס סופי' : 'לחץ לשינוי סטטוס'}
       >
         {status}
         {!noRecord && !isDelivered && (
@@ -160,7 +159,6 @@ function DeliveriesContent() {
   const [placedDelivery, setPlacedDelivery] = useState<DeliveryWithCourier | null>(null);
   const [placedForm, setPlacedForm] = useState<PlacedForm>({ שעת_הנחה: '', מקום_הנחה: '', הערה: '' });
   const [savingPlaced, setSavingPlaced] = useState(false);
-  const [creatingRecord, setCreatingRecord] = useState<string | null>(null);
   const [assigningCourier, setAssigningCourier] = useState<string | null>(null);
   const [generatingToken, setGeneratingToken] = useState<string | null>(null);
   const [sendChoiceDelivery, setSendChoiceDelivery] = useState<DeliveryWithCourier | null>(null);
@@ -199,16 +197,21 @@ function DeliveriesContent() {
       return;
     }
 
-    // Update local state — include token and sent timestamps from server response
-    setDeliveries(prev => prev.map(d =>
-      d.id === id ? {
+    // Update local state — if a delivery record was just auto-created, replace synthetic row
+    setDeliveries(prev => prev.map(d => {
+      if (d.id !== id) return d;
+      const order = (d as DeliveryWithCourier & { הזמנות?: OrderJoin }).הזמנות;
+      if (json.was_created && json.data) {
+        return { ...d, ...json.data, _noRecord: false, הזמנות: order, שליחים: d.שליחים };
+      }
+      return {
         ...d,
         סטטוס_משלוח: newStatus as Delivery['סטטוס_משלוח'],
         delivery_token: json.token || d.delivery_token,
         whatsapp_sent_at: json.data?.whatsapp_sent_at || d.whatsapp_sent_at,
         email_sent_at: json.data?.email_sent_at || d.email_sent_at,
-      } : d,
-    ));
+      };
+    }));
 
     if (newStatus === 'נאסף') {
       console.log('[deliveries] נאסף trigger — auto_sent:', json.auto_sent, '| link:', json.delivery_link);
@@ -276,36 +279,6 @@ function DeliveriesContent() {
     }
   };
 
-  const createDeliveryRecord = async (d: DeliveryWithCourier) => {
-    setCreatingRecord(d.הזמנה_id);
-    try {
-      const order = (d as DeliveryWithCourier & { הזמנות?: { תאריך_אספקה?: string; שעת_אספקה?: string; כתובת_מקבל_ההזמנה?: string; עיר?: string; הוראות_משלוח?: string } }).הזמנות;
-      const res = await fetch('/api/deliveries', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          הזמנה_id: d.הזמנה_id,
-          סטטוס_משלוח: 'ממתין',
-          תאריך_משלוח: order?.תאריך_אספקה || null,
-          שעת_משלוח: order?.שעת_אספקה || null,
-          כתובת: d.כתובת || order?.כתובת_מקבל_ההזמנה || null,
-          עיר: d.עיר || order?.עיר || null,
-          הוראות_משלוח: d.הוראות_משלוח || order?.הוראות_משלוח || null,
-        }),
-      });
-      const json = await res.json();
-      if (!res.ok) { toast.error(json.error || 'שגיאה ביצירת רשומת משלוח'); return; }
-      setDeliveries(prev => prev.map(row =>
-        row.הזמנה_id === d.הזמנה_id
-          ? { ...json.data, הזמנות: row.הזמנות, _noRecord: false }
-          : row,
-      ));
-      toast.success('רשומת משלוח נוצרה');
-    } finally {
-      setCreatingRecord(null);
-    }
-  };
-
   const assignCourier = async (deliveryId: string, courierId: string | null) => {
     setAssigningCourier(deliveryId);
     try {
@@ -314,21 +287,23 @@ function DeliveriesContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ courier_id: courierId || null }),
       });
+      const json = await res.json();
       if (!res.ok) {
-        const json = await res.json();
         toast.error(json.error || 'שגיאה בשיוך שליח');
         return;
       }
       const assigned = courierId ? couriers.find(c => c.id === courierId) : null;
-      setDeliveries(prev => prev.map(d =>
-        d.id === deliveryId ? {
-          ...d,
-          courier_id: courierId,
-          שליחים: assigned
-            ? { id: assigned.id, שם_שליח: assigned.שם_שליח, טלפון_שליח: assigned.טלפון_שליח }
-            : null,
-        } : d,
-      ));
+      setDeliveries(prev => prev.map(d => {
+        if (d.id !== deliveryId) return d;
+        const order = (d as DeliveryWithCourier & { הזמנות?: OrderJoin }).הזמנות;
+        const courierData = assigned
+          ? { id: assigned.id, שם_שליח: assigned.שם_שליח, טלפון_שליח: assigned.טלפון_שליח }
+          : null;
+        if (json.was_created && json.data) {
+          return { ...d, ...json.data, _noRecord: false, הזמנות: order, שליחים: courierData };
+        }
+        return { ...d, courier_id: courierId, שליחים: courierData };
+      }));
       toast.success(courierId ? 'שליח שויך' : 'שליח הוסר');
     } finally {
       setAssigningCourier(null);
@@ -532,27 +507,23 @@ function DeliveriesContent() {
                     {/* Courier selector */}
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-xs" style={{ color: '#7A5840' }}>שליח:</span>
-                      {d._noRecord ? (
-                        <span className="text-xs" style={{ color: '#B0A090' }}>שמור את המשלוח תחילה</span>
-                      ) : (
-                        <select
-                          value={d.courier_id || ''}
-                          onChange={e => assignCourier(d.id, e.target.value || null)}
-                          disabled={assigningCourier === d.id}
-                          className="text-xs rounded-lg px-2 py-0.5 border"
-                          style={{
-                            borderColor: '#C8B89E',
-                            color: d.courier_id ? '#1E120A' : '#B0A090',
-                            backgroundColor: 'white',
-                            minWidth: '130px',
-                          }}
-                        >
-                          <option value="">— לא משויך —</option>
-                          {couriers.map(c => (
-                            <option key={c.id} value={c.id}>{c.שם_שליח}</option>
-                          ))}
-                        </select>
-                      )}
+                      <select
+                        value={d.courier_id || ''}
+                        onChange={e => assignCourier(d.id, e.target.value || null)}
+                        disabled={assigningCourier === d.id}
+                        className="text-xs rounded-lg px-2 py-0.5 border"
+                        style={{
+                          borderColor: '#C8B89E',
+                          color: d.courier_id ? '#1E120A' : '#B0A090',
+                          backgroundColor: 'white',
+                          minWidth: '130px',
+                        }}
+                      >
+                        <option value="">— לא משויך —</option>
+                        {couriers.map(c => (
+                          <option key={c.id} value={c.id}>{c.שם_שליח}</option>
+                        ))}
+                      </select>
                       {courierPhone && !d._noRecord && (
                         <a href={`tel:${courierPhone}`} dir="ltr" className="text-xs hover:underline" style={{ color: '#7C5230' }}>
                           {courierPhone}
@@ -587,17 +558,6 @@ function DeliveriesContent() {
                   {/* Right: actions */}
                   <div className="flex flex-col gap-1.5 flex-shrink-0 items-end">
                     <ActionBtn title="צפייה בהזמנה" href={`/orders/${d.הזמנה_id}`} icon={<IconEye className="w-4 h-4" />} />
-
-                    {d._noRecord && (
-                      <button
-                        onClick={() => createDeliveryRecord(d)}
-                        disabled={creatingRecord === d.הזמנה_id}
-                        className="text-xs px-2.5 py-1.5 rounded-lg font-medium transition-all whitespace-nowrap border"
-                        style={{ backgroundColor: '#EFF6FF', color: '#1D4ED8', borderColor: '#BFDBFE' }}
-                      >
-                        {creatingRecord === d.הזמנה_id ? 'יוצר...' : '+ צור משלוח'}
-                      </button>
-                    )}
 
                     {!d._noRecord && (
                       <button
