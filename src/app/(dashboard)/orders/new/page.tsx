@@ -88,15 +88,18 @@ export default function NewOrderPage() {
     });
   }, []);
 
-  // Auto-apply customer discount (percentage) when customer is selected
+  // Auto-apply customer discount (percentage) when customer changes
   useEffect(() => {
+    if (!selectedCustomer) return;
     const cust = customers.find(c => c.id === selectedCustomer);
     if (cust && (cust.אחוז_הנחה ?? 0) > 0) {
       setDiscountType('אחוז');
       setDiscountValue(cust.אחוז_הנחה ?? 0);
+    } else {
+      setDiscountType('ללא');
+      setDiscountValue(0);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCustomer]);
+  }, [selectedCustomer, customers]);
 
   const subtotal = [...orderItems, ...packageItems].reduce((sum, item) => sum + item.סהכ, 0);
   const discountAmount = discountType === 'אחוז'
