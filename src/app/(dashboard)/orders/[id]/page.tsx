@@ -181,7 +181,10 @@ export default function OrderDetailPage() {
       fetch('/api/packages').then(r => r.json()),
       fetch('/api/petit-four-types').then(r => r.json()),
     ]).then(([p, pkg, pf]) => {
-      setProducts(p.data || []);
+      const allProducts: Product[] = p.data || [];
+      console.log('[order-edit] products loaded:', allProducts.length,
+        '| business-only count:', allProducts.filter((x: Product) => x.לקוחות_עסקיים_בלבד).length);
+      setProducts(allProducts);
       setPackages(pkg.data || []);
       setPetitFourTypes(pf.data || []);
     });
@@ -932,9 +935,12 @@ export default function OrderDetailPage() {
                           style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
                         >
                           <option value="">בחר מוצר...</option>
-                          {products.filter(p => p.סוג_מוצר === 'מוצר רגיל').map(p => (
-                            <option key={p.id} value={p.id}>{p.שם_מוצר}</option>
-                          ))}
+                          {products
+                            .filter(p => p.סוג_מוצר === 'מוצר רגיל')
+                            .filter(p => !p.לקוחות_עסקיים_בלבד || order.לקוחות?.סוג_לקוח === 'עסקי')
+                            .map(p => (
+                              <option key={p.id} value={p.id}>{p.שם_מוצר}</option>
+                            ))}
                         </select>
                       </div>
                       <div className="col-span-2">

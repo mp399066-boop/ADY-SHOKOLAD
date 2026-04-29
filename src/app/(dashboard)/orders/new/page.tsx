@@ -81,8 +81,12 @@ export default function NewOrderPage() {
       fetch('/api/petit-four-types').then(r => r.json()),
       fetch('/api/packages').then(r => r.json()),
     ]).then(([c, p, pf, pkg]) => {
+      const allProducts = p.data || [];
+      console.log('[new-order] products loaded:', allProducts.length,
+        '| business-only count:', allProducts.filter((x: { לקוחות_עסקיים_בלבד?: boolean }) => x.לקוחות_עסקיים_בלבד).length,
+        '| sample:', allProducts.slice(0, 3).map((x: { שם_מוצר: string; לקוחות_עסקיים_בלבד?: boolean }) => `${x.שם_מוצר}=${x.לקוחות_עסקיים_בלבד}`));
       setCustomers(c.data || []);
-      setProducts(p.data || []);
+      setProducts(allProducts);
       setPetitFourTypes(pf.data || []);
       setPackages(pkg.data || []);
     });
@@ -394,14 +398,17 @@ export default function NewOrderPage() {
                         onChange={e => updateProductItem(idx, 'מוצר_id', e.target.value)}
                       >
                         <option value="">בחר...</option>
-                        {products
-                          .filter(p => p.סוג_מוצר === 'מוצר רגיל')
-                          .filter(p => !p.לקוחות_עסקיים_בלבד || selectedCustomerData?.סוג_לקוח === 'עסקי')
-                          .map(p => (
-                            <option key={p.id} value={p.id}>
-                              {p.שם_מוצר}
-                            </option>
-                          ))}
+                        {(() => {
+                          const customerType = selectedCustomerData?.סוג_לקוח || 'none';
+                          const regular = products.filter(p => p.סוג_מוצר === 'מוצר רגיל');
+                          const visible = regular.filter(p => !p.לקוחות_עסקיים_בלבד || customerType === 'עסקי');
+                          console.log('[new-order] product dropdown — customerType:', customerType,
+                            '| regular:', regular.length, '| visible after filter:', visible.length,
+                            '| hidden business-only:', regular.length - visible.length);
+                          return visible.map(p => (
+                            <option key={p.id} value={p.id}>{p.שם_מוצר}</option>
+                          ));
+                        })()}
                       </Select>
                     </div>
                     <div className="col-span-2">
