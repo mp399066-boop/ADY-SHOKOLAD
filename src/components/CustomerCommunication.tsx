@@ -159,7 +159,7 @@ export function CustomerCommunication({
         {/* header */}
         <div
           className="flex items-center justify-between px-4 py-3 flex-shrink-0"
-          style={{ backgroundColor: '#7B1520', borderBottom: '1px solid #621019' }}
+          style={{ backgroundColor: '#A63A3A', borderBottom: '1px solid #8F2F2F' }}
         >
           <div className="flex items-center gap-2 min-w-0">
             <span className="font-semibold text-sm text-white">מיילים</span>
