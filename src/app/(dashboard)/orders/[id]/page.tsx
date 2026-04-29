@@ -10,6 +10,25 @@ import { formatDate, formatCurrency } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import type { Order, OrderItem, Customer } from '@/types/database';
 
+interface EditForm {
+  הזמנה_דחופה: boolean;
+  סוג_אספקה: 'משלוח' | 'איסוף עצמי';
+  תאריך_אספקה: string;
+  שעת_אספקה: string;
+  מקור_ההזמנה: string;
+  שם_מקבל: string;
+  טלפון_מקבל: string;
+  כתובת_מקבל_ההזמנה: string;
+  עיר: string;
+  הוראות_משלוח: string;
+  דמי_משלוח: string;
+  ברכה_טקסט: string;
+  הערות_להזמנה: string;
+  אופן_תשלום: string;
+  סטטוס_תשלום: Order['סטטוס_תשלום'];
+  סטטוס_הזמנה: Order['סטטוס_הזמנה'];
+}
+
 type FullOrder = Order & {
   לקוחות: Customer;
   מוצרים_בהזמנה: OrderItem[];
@@ -42,6 +61,26 @@ export default function OrderDetailPage() {
   const [order, setOrder] = useState<FullOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editForm, setEditForm] = useState<EditForm>({
+    הזמנה_דחופה: false,
+    סוג_אספקה: 'איסוף עצמי',
+    תאריך_אספקה: '',
+    שעת_אספקה: '',
+    מקור_ההזמנה: '',
+    שם_מקבל: '',
+    טלפון_מקבל: '',
+    כתובת_מקבל_ההזמנה: '',
+    עיר: '',
+    הוראות_משלוח: '',
+    דמי_משלוח: '',
+    ברכה_טקסט: '',
+    הערות_להזמנה: '',
+    אופן_תשלום: '',
+    סטטוס_תשלום: 'ממתין',
+    סטטוס_הזמנה: 'חדשה',
+  });
 
   useEffect(() => {
     fetch(`/api/orders/${id}`)
@@ -81,6 +120,77 @@ export default function OrderDetailPage() {
     }
   };
 
+  const openEdit = () => {
+    if (!order) return;
+    setEditForm({
+      הזמנה_דחופה: order.הזמנה_דחופה ?? false,
+      סוג_אספקה: order.סוג_אספקה ?? 'איסוף עצמי',
+      תאריך_אספקה: order.תאריך_אספקה ?? '',
+      שעת_אספקה: order.שעת_אספקה ?? '',
+      מקור_ההזמנה: order.מקור_ההזמנה ?? '',
+      שם_מקבל: order.שם_מקבל ?? '',
+      טלפון_מקבל: order.טלפון_מקבל ?? '',
+      כתובת_מקבל_ההזמנה: order.כתובת_מקבל_ההזמנה ?? '',
+      עיר: order.עיר ?? '',
+      הוראות_משלוח: order.הוראות_משלוח ?? '',
+      דמי_משלוח: order.דמי_משלוח != null ? String(order.דמי_משלוח) : '',
+      ברכה_טקסט: order.ברכה_טקסט ?? '',
+      הערות_להזמנה: order.הערות_להזמנה ?? '',
+      אופן_תשלום: order.אופן_תשלום ?? '',
+      סטטוס_תשלום: order.סטטוס_תשלום,
+      סטטוס_הזמנה: order.סטטוס_הזמנה,
+    });
+    setShowEdit(true);
+  };
+
+  const saveEdit = async () => {
+    setSaving(true);
+    try {
+      const payload: Record<string, unknown> = {
+        הזמנה_דחופה: editForm.הזמנה_דחופה,
+        סוג_אספקה: editForm.סוג_אספקה,
+        תאריך_אספקה: editForm.תאריך_אספקה || null,
+        שעת_אספקה: editForm.שעת_אספקה || null,
+        מקור_ההזמנה: editForm.מקור_ההזמנה || null,
+        ברכה_טקסט: editForm.ברכה_טקסט || null,
+        הערות_להזמנה: editForm.הערות_להזמנה || null,
+        אופן_תשלום: editForm.אופן_תשלום || null,
+        סטטוס_תשלום: editForm.סטטוס_תשלום,
+        סטטוס_הזמנה: editForm.סטטוס_הזמנה,
+      };
+      if (editForm.סוג_אספקה === 'משלוח') {
+        payload.שם_מקבל = editForm.שם_מקבל || null;
+        payload.טלפון_מקבל = editForm.טלפון_מקבל || null;
+        payload.כתובת_מקבל_ההזמנה = editForm.כתובת_מקבל_ההזמנה || null;
+        payload.עיר = editForm.עיר || null;
+        payload.הוראות_משלוח = editForm.הוראות_משלוח || null;
+        payload.דמי_משלוח = editForm.דמי_משלוח !== '' ? Number(editForm.דמי_משלוח) : null;
+      } else {
+        payload.שם_מקבל = null;
+        payload.טלפון_מקבל = null;
+        payload.כתובת_מקבל_ההזמנה = null;
+        payload.עיר = null;
+        payload.הוראות_משלוח = null;
+        payload.דמי_משלוח = null;
+      }
+
+      const res = await fetch(`/api/orders/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error);
+      setOrder(prev => prev ? { ...prev, ...json.data } : prev);
+      setShowEdit(false);
+      toast.success('הזמנה עודכנה בהצלחה');
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'שגיאה בשמירה');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (loading) return <PageLoading />;
   if (!order) return <div className="text-center py-16" style={{ color: '#6B4A2D' }}>הזמנה לא נמצאה</div>;
 
@@ -98,6 +208,7 @@ export default function OrderDetailPage() {
             {order.הזמנה_דחופה && <UrgentBadge />}
             <StatusBadge status={order.סטטוס_הזמנה} type="order" />
           </div>
+          <Button variant="secondary" size="sm" onClick={openEdit}>עריכה</Button>
         </div>
 
         {/* Customer */}
@@ -319,6 +430,226 @@ export default function OrderDetailPage() {
           </Card>
         )}
       </div>
+
+      {/* Edit modal */}
+      {showEdit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowEdit(false)}>
+          <div
+            className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 space-y-4"
+            style={{ direction: 'rtl' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold" style={{ color: '#2B1A10' }}>עריכת הזמנה</h3>
+
+            {/* Supply type + urgent */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>סוג אספקה</label>
+                <select
+                  value={editForm.סוג_אספקה}
+                  onChange={e => setEditForm(f => ({ ...f, סוג_אספקה: e.target.value as EditForm['סוג_אספקה'] }))}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
+                  style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
+                >
+                  <option value="איסוף עצמי">איסוף עצמי</option>
+                  <option value="משלוח">משלוח</option>
+                </select>
+              </div>
+              <div className="flex items-end pb-2">
+                <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: '#2B1A10' }}>
+                  <input
+                    type="checkbox"
+                    checked={editForm.הזמנה_דחופה}
+                    onChange={e => setEditForm(f => ({ ...f, הזמנה_דחופה: e.target.checked }))}
+                    className="w-4 h-4"
+                  />
+                  הזמנה דחופה
+                </label>
+              </div>
+            </div>
+
+            {/* Date + time */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>תאריך אספקה</label>
+                <input
+                  type="date"
+                  value={editForm.תאריך_אספקה}
+                  onChange={e => setEditForm(f => ({ ...f, תאריך_אספקה: e.target.value }))}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
+                  style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>שעת אספקה</label>
+                <input
+                  type="time"
+                  value={editForm.שעת_אספקה}
+                  onChange={e => setEditForm(f => ({ ...f, שעת_אספקה: e.target.value }))}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
+                  style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
+                />
+              </div>
+            </div>
+
+            {/* Delivery fields */}
+            {editForm.סוג_אספקה === 'משלוח' && (
+              <div className="space-y-3 p-3 rounded-xl" style={{ backgroundColor: '#FAF7F0' }}>
+                <p className="text-xs font-semibold" style={{ color: '#6B4A2D' }}>פרטי משלוח</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>שם מקבל</label>
+                    <input
+                      type="text"
+                      value={editForm.שם_מקבל}
+                      onChange={e => setEditForm(f => ({ ...f, שם_מקבל: e.target.value }))}
+                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
+                      style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>טלפון מקבל</label>
+                    <input
+                      type="tel"
+                      value={editForm.טלפון_מקבל}
+                      onChange={e => setEditForm(f => ({ ...f, טלפון_מקבל: e.target.value }))}
+                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
+                      style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>כתובת</label>
+                    <input
+                      type="text"
+                      value={editForm.כתובת_מקבל_ההזמנה}
+                      onChange={e => setEditForm(f => ({ ...f, כתובת_מקבל_ההזמנה: e.target.value }))}
+                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
+                      style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>עיר</label>
+                    <input
+                      type="text"
+                      value={editForm.עיר}
+                      onChange={e => setEditForm(f => ({ ...f, עיר: e.target.value }))}
+                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
+                      style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>הוראות משלוח</label>
+                    <input
+                      type="text"
+                      value={editForm.הוראות_משלוח}
+                      onChange={e => setEditForm(f => ({ ...f, הוראות_משלוח: e.target.value }))}
+                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
+                      style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>דמי משלוח (₪)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={editForm.דמי_משלוח}
+                      onChange={e => setEditForm(f => ({ ...f, דמי_משלוח: e.target.value }))}
+                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
+                      style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Order source */}
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>מקור הזמנה</label>
+              <input
+                type="text"
+                value={editForm.מקור_ההזמנה}
+                onChange={e => setEditForm(f => ({ ...f, מקור_ההזמנה: e.target.value }))}
+                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
+                style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
+              />
+            </div>
+
+            {/* Greeting */}
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>ברכה</label>
+              <textarea
+                rows={2}
+                value={editForm.ברכה_טקסט}
+                onChange={e => setEditForm(f => ({ ...f, ברכה_טקסט: e.target.value }))}
+                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 resize-none"
+                style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
+              />
+            </div>
+
+            {/* Notes */}
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>הערות להזמנה</label>
+              <textarea
+                rows={2}
+                value={editForm.הערות_להזמנה}
+                onChange={e => setEditForm(f => ({ ...f, הערות_להזמנה: e.target.value }))}
+                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 resize-none"
+                style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
+              />
+            </div>
+
+            {/* Payment method + statuses */}
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>אמצעי תשלום</label>
+                <input
+                  type="text"
+                  value={editForm.אופן_תשלום}
+                  onChange={e => setEditForm(f => ({ ...f, אופן_תשלום: e.target.value }))}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
+                  style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>סטטוס תשלום</label>
+                <select
+                  value={editForm.סטטוס_תשלום}
+                  onChange={e => setEditForm(f => ({ ...f, סטטוס_תשלום: e.target.value as EditForm['סטטוס_תשלום'] }))}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
+                  style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
+                >
+                  {['ממתין', 'שולם', 'חלקי', 'בוטל'].map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>סטטוס הזמנה</label>
+                <select
+                  value={editForm.סטטוס_הזמנה}
+                  onChange={e => setEditForm(f => ({ ...f, סטטוס_הזמנה: e.target.value as EditForm['סטטוס_הזמנה'] }))}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
+                  style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
+                >
+                  {ORDER_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-3 justify-end pt-2 border-t" style={{ borderColor: '#E7D2A6' }}>
+              <button
+                onClick={() => setShowEdit(false)}
+                className="px-4 py-2 text-sm rounded-lg border hover:bg-stone-50"
+                style={{ borderColor: '#E7D2A6', color: '#6B4A2D' }}
+              >
+                ביטול
+              </button>
+              <Button onClick={saveEdit} disabled={saving}>
+                {saving ? 'שומר...' : 'שמור שינויים'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
