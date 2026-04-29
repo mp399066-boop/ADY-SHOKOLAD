@@ -7,12 +7,14 @@ interface OrderRow {
   id: string;
   מספר_הזמנה: string;
   שם_מקבל: string | null;
+  טלפון_מקבל: string | null;
   לקוח_id: string;
   תאריך_אספקה: string | null;
   שעת_אספקה: string | null;
   כתובת_מקבל_ההזמנה: string | null;
   עיר: string | null;
   הוראות_משלוח: string | null;
+  דמי_משלוח: number | null;
   לקוחות?: { שם_פרטי: string; שם_משפחה: string } | null;
 }
 
@@ -42,15 +44,17 @@ export async function GET(req: NextRequest) {
   const date = searchParams.get('date');
   const status = searchParams.get('status');
 
-  // Fetch orders that require delivery (not completed/cancelled)
+  // Fetch all orders that are deliveries:
+  // either marked סוג_אספקה='משלוח', OR have a delivery address, OR have delivery fee > 0
   let ordersQuery = supabase
     .from('הזמנות')
-    .select('id, מספר_הזמנה, שם_מקבל, לקוח_id, תאריך_אספקה, שעת_אספקה, כתובת_מקבל_ההזמנה, עיר, הוראות_משלוח, לקוחות(שם_פרטי, שם_משפחה)')
-    .eq('סוג_אספקה', 'משלוח')
+    .select('id, מספר_הזמנה, שם_מקבל, טלפון_מקבל, לקוח_id, תאריך_אספקה, שעת_אספקה, כתובת_מקבל_ההזמנה, עיר, הוראות_משלוח, דמי_משלוח, לקוחות(שם_פרטי, שם_משפחה)')
+    .or('סוג_אספקה.eq.משלוח,כתובת_מקבל_ההזמנה.not.is.null,דמי_משלוח.gt.0')
     .neq('סטטוס_הזמנה', 'הושלמה בהצלחה')
     .neq('סטטוס_הזמנה', 'בוטלה')
     .order('תאריך_אספקה', { ascending: true });
 
+  // date filter only when explicitly provided — no default
   if (date) ordersQuery = ordersQuery.eq('תאריך_אספקה', date);
 
   const { data: ordersRaw, error: ordersError } = await ordersQuery;

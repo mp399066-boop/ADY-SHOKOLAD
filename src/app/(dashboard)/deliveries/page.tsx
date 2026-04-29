@@ -148,7 +148,8 @@ interface PlacedForm {
 
 function DeliveriesContent() {
   const searchParams = useSearchParams();
-  const defaultDate = searchParams.get('date') || new Date().toISOString().split('T')[0];
+  // Default: no date filter — show all deliveries
+  const defaultDate = searchParams.get('date') || '';
 
   const [deliveries, setDeliveries] = useState<DeliveryWithCourier[]>([]);
   const [loading, setLoading] = useState(true);
@@ -179,7 +180,10 @@ function DeliveriesContent() {
     if (statusFilter) params.set('status', statusFilter);
     fetch(`/api/deliveries?${params}`)
       .then(r => r.json())
-      .then(({ data }) => setDeliveries(data || []))
+      .then(({ data, error }) => {
+        console.log('[deliveries] received:', (data || []).length, 'rows | date filter:', date || 'none', '| error:', error || 'none');
+        setDeliveries(data || []);
+      })
       .finally(() => setLoading(false));
   }, [date, statusFilter]);
 
