@@ -162,6 +162,7 @@ function DeliveriesContent() {
   const [creatingRecord, setCreatingRecord] = useState<string | null>(null);
   const [assigningCourier, setAssigningCourier] = useState<string | null>(null);
   const [generatingToken, setGeneratingToken] = useState<string | null>(null);
+  const [sendChoiceDelivery, setSendChoiceDelivery] = useState<DeliveryWithCourier | null>(null);
 
   // Load active couriers once
   useEffect(() => {
@@ -318,17 +319,29 @@ function DeliveriesContent() {
     }
   };
 
-  const sendToCourier = async (delivery: DeliveryWithCourier) => {
+  const handleSendToCourier = (delivery: DeliveryWithCourier) => {
+    const courier = delivery.courier_id ? couriers.find(c => c.id === delivery.courier_id) : null;
+    if (!courier) { toast.error('לא שויך שליח'); return; }
+    if (!courier.טלפון_שליח && !courier.אימייל_שליח) {
+      toast.error('חסר טלפון ואימייל לשליח');
+      return;
+    }
+    // If both → open choice modal
+    if (courier.טלפון_שליח && courier.אימייל_שליח) {
+      setSendChoiceDelivery(delivery);
+      return;
+    }
+    // Single channel — send directly
+    sendToCourier(delivery, courier.טלפון_שליח ? 'whatsapp' : 'email');
+  };
+
+  const sendToCourier = async (delivery: DeliveryWithCourier, channel: 'whatsapp' | 'email') => {
     const courier = delivery.courier_id ? couriers.find(c => c.id === delivery.courier_id) : null;
     if (!courier) { toast.error('לא שויך שליח'); return; }
 
-    if (!courier.טלפון_שליח && !courier.אימייל_שליח) {
-      toast.error('לא ניתן לשלוח — חסר טלפון או אימייל לשליח');
-      return;
-    }
+    if (channel === 'whatsapp') {
+      if (!courier.טלפון_שליח) { toast.error('אין טלפון לשליח'); return; }
 
-    // ── WhatsApp path (phone exists) ──────────────────────────────
-    if (courier.טלפון_שליח) {
       let link = '';
       let token = delivery.delivery_token;
       if (!token) {
@@ -360,11 +373,15 @@ function DeliveriesContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ whatsapp_sent_at: new Date().toISOString() }),
       });
+      setDeliveries(prev => prev.map(d =>
+        d.id === delivery.id ? { ...d, whatsapp_sent_at: new Date().toISOString() } : d,
+      ));
       toast.success('נפתח WhatsApp לשליחה');
       return;
     }
 
-    // ── Email path (no phone, email exists) ───────────────────────
+    // Email
+    if (!courier.אימייל_שליח) { toast.error('אין אימייל לשליח'); return; }
     const res = await fetch(`/api/deliveries/${delivery.id}/send-courier-email`, { method: 'POST' });
     const data = await res.json();
     if (!res.ok) { toast.error(data.error || 'שגיאה בשליחת מייל'); return; }
@@ -563,14 +580,16 @@ function DeliveriesContent() {
 
                     {canSendToCourier && (
                       <button
-                        onClick={() => sendToCourier(d)}
-                        title={assignedCourier?.טלפון_שליח ? 'שלח לשליח ב-WhatsApp' : 'שלח לשליח במייל'}
+                        onClick={() => handleSendToCourier(d)}
+                        title="שלח לשליח"
                         className="text-xs px-2.5 py-1.5 rounded-lg font-medium transition-all whitespace-nowrap border flex items-center gap-1"
                         style={{ backgroundColor: '#F0FDF4', color: '#15803D', borderColor: '#86EFAC' }}
                       >
-                        {assignedCourier?.טלפון_שליח
-                          ? <><IconWhatsApp className="w-3 h-3" />שלח לשליח</>
-                          : <>✉️ שלח לשליח</>}
+                        {assignedCourier?.טלפון_שליח && assignedCourier?.אימייל_שליח
+                          ? <>📤 שלח לשליח</>
+                          : assignedCourier?.טלפון_שליח
+                            ? <><IconWhatsApp className="w-3 h-3" />שלח לשליח</>
+                            : <>✉️ שלח לשליח</>}
                       </button>
                     )}
                   </div>
@@ -617,6 +636,57 @@ function DeliveriesContent() {
           </div>
         </div>
       </Modal>
+
+      {/* Send channel choice modal */}
+      <Modal
+        open={!!sendChoiceDelivery}
+        onClose={() => setSendChoiceDelivery(null)}
+        title="בחר אופן שליחה"
+      >
+        {sendChoiceDelivery && (() => {
+          const courier = couriers.find(c => c.id === sendChoiceDelivery.courier_id);
+          return (
+            <div className="space-y-3">
+              <p className="text-sm" style={{ color: '#6B4A2D' }}>
+                שליח: <span className="font-semibold" style={{ color: '#1E120A' }}>{courier?.שם_שליח}</span>
+              </p>
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={() => {
+                    setSendChoiceDelivery(null);
+                    sendToCourier(sendChoiceDelivery, 'whatsapp');
+                  }}
+                  className="flex items-center gap-3 w-full px-4 py-3 rounded-xl border text-sm font-medium transition-all hover:bg-[#F0FDF4] text-right"
+                  style={{ borderColor: '#86EFAC', color: '#15803D' }}
+                >
+                  <IconWhatsApp className="w-5 h-5 flex-shrink-0" />
+                  <div>
+                    <div>שלח ב-WhatsApp</div>
+                    <div className="text-xs font-normal" style={{ color: '#6B9E7A' }}>{courier?.טלפון_שליח}</div>
+                  </div>
+                </button>
+                <button
+                  onClick={() => {
+                    setSendChoiceDelivery(null);
+                    sendToCourier(sendChoiceDelivery, 'email');
+                  }}
+                  className="flex items-center gap-3 w-full px-4 py-3 rounded-xl border text-sm font-medium transition-all hover:bg-[#EFF6FF] text-right"
+                  style={{ borderColor: '#BFDBFE', color: '#1D4ED8' }}
+                >
+                  <span className="text-lg flex-shrink-0">✉️</span>
+                  <div>
+                    <div>שלח במייל</div>
+                    <div className="text-xs font-normal" style={{ color: '#6B7FBD' }}>{courier?.אימייל_שליח}</div>
+                  </div>
+                </button>
+              </div>
+              <div className="flex justify-end pt-1">
+                <Button variant="outline" size="sm" onClick={() => setSendChoiceDelivery(null)}>ביטול</Button>
+              </div>
+            </div>
+          );
+        })()}
+      </Modal>
     </div>
   );
 }
@@ -654,8 +724,12 @@ function CouriersContent() {
   };
 
   const handleSave = async () => {
-    if (!form.שם_שליח.trim() || !form.טלפון_שליח.trim()) {
-      toast.error('שם וטלפון שדות חובה');
+    if (!form.שם_שליח.trim()) {
+      toast.error('שם שליח הוא שדה חובה');
+      return;
+    }
+    if (!form.טלפון_שליח.trim() && !form.אימייל_שליח.trim()) {
+      toast.error('חובה להזין טלפון או אימייל לשליח');
       return;
     }
     setSaving(true);
@@ -768,27 +842,29 @@ function CouriersContent() {
         title={editing ? 'עריכת שליח' : 'הוספת שליח'}
       >
         <div className="space-y-4">
+          <Input
+            label="שם שליח"
+            required
+            value={form.שם_שליח}
+            onChange={e => setForm(p => ({ ...p, שם_שליח: e.target.value }))}
+          />
           <div className="grid grid-cols-2 gap-3">
-            <Input
-              label="שם שליח"
-              required
-              value={form.שם_שליח}
-              onChange={e => setForm(p => ({ ...p, שם_שליח: e.target.value }))}
-            />
             <Input
               label="טלפון שליח"
               type="tel"
               value={form.טלפון_שליח}
               onChange={e => setForm(p => ({ ...p, טלפון_שליח: e.target.value }))}
+              hint="לשליחה ב-WhatsApp"
+            />
+            <Input
+              label="אימייל שליח"
+              type="email"
+              value={form.אימייל_שליח}
+              onChange={e => setForm(p => ({ ...p, אימייל_שליח: e.target.value }))}
+              hint="לשליחה במייל"
             />
           </div>
-          <Input
-            label="אימייל שליח"
-            type="email"
-            value={form.אימייל_שליח}
-            onChange={e => setForm(p => ({ ...p, אימייל_שליח: e.target.value }))}
-            hint="אם אין טלפון, הקישור יישלח למייל"
-          />
+          <p className="text-xs" style={{ color: '#9B7A5A' }}>חובה למלא לפחות טלפון או אימייל</p>
           <Textarea
             label="הערות"
             rows={2}
