@@ -605,16 +605,17 @@ export default function CustomerDetailPage() {
             )}
           </Card>
 
-          {/* communication */}
-          <CustomerCommunication
-            customerId={id}
-            phone={customer.טלפון}
-            email={customer.אימייל}
-            history={customer.תיעוד_תקשורת || []}
-            onSend={log => setCustomer(prev => prev ? { ...prev, תיעוד_תקשורת: [log, ...prev.תיעוד_תקשורת] } : prev)}
-          />
         </div>
       </div>
+
+      {/* communication — full width below main grid */}
+      <CustomerCommunication
+        customerId={id}
+        phone={customer.טלפון}
+        email={customer.אימייל}
+        history={customer.תיעוד_תקשורת || []}
+        onSend={log => setCustomer(prev => prev ? { ...prev, תיעוד_תקשורת: [log, ...prev.תיעוד_תקשורת] } : prev)}
+      />
 
       {/* ── 5. secondary tabs (invoices / files / notes) ── */}
       <Card className="p-0 overflow-hidden">
