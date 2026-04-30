@@ -115,7 +115,10 @@ export async function POST(req: Request) {
     const isPaid = PAID_STATUSES.has((wc.status as string) ?? '');
     const paymentStatus: 'שולם' | 'ממתין' = isPaid ? 'שולם' : 'ממתין';
     const rawMethod = (wc.payment_method as string) ?? '';
-    const paymentMethod = PAYMENT_METHOD_MAP[rawMethod] ?? (wc.payment_method_title as string) ?? rawMethod || null;
+    const paymentMethod =
+      PAYMENT_METHOD_MAP[rawMethod] ??
+      (wc.payment_method_title as string) ??
+      (rawMethod || null);
 
     const shippingAddr = (wc.shipping ?? {}) as Record<string, string>;
     const deliveryAddress = shippingAddr.address_1 || billing.address_1 || null;
