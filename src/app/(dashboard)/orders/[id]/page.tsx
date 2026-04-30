@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { StatusBadge, UrgentBadge } from '@/components/ui/StatusBadge';
@@ -526,7 +527,17 @@ export default function OrderDetailPage() {
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div>
               <span style={{ color: '#6B4A2D' }}>שם: </span>
-              <span className="font-medium" style={{ color: '#2B1A10' }}>{customer?.שם_פרטי} {customer?.שם_משפחה}</span>
+              {customer?.id ? (
+                <Link
+                  href={`/customers/${customer.id}`}
+                  className="font-semibold hover:underline"
+                  style={{ color: '#8B5E34', textUnderlineOffset: '2px' }}
+                >
+                  {customer.שם_פרטי} {customer.שם_משפחה}
+                </Link>
+              ) : (
+                <span className="font-medium" style={{ color: '#2B1A10' }}>{customer?.שם_פרטי} {customer?.שם_משפחה}</span>
+              )}
             </div>
             <div>
               <span style={{ color: '#6B4A2D' }}>טלפון: </span>
@@ -748,7 +759,11 @@ export default function OrderDetailPage() {
             <div className="space-y-2">
               {order.חשבוניות.map(inv => (
                 <div key={inv.id} className="flex justify-between text-sm p-2 rounded" style={{ backgroundColor: '#FAF7F0' }}>
-                  <span style={{ color: '#6B4A2D' }}>#{inv.מספר_חשבונית}</span>
+                  {inv.קישור_חשבונית ? (
+                    <a href={inv.קישור_חשבונית} target="_blank" rel="noopener noreferrer" style={{ color: '#8B5E34', textDecoration: 'underline', textUnderlineOffset: '2px' }}>#{inv.מספר_חשבונית}</a>
+                  ) : (
+                    <span style={{ color: '#6B4A2D' }}>#{inv.מספר_חשבונית}</span>
+                  )}
                   <span className="font-medium">{formatCurrency(inv.סכום)}</span>
                 </div>
               ))}

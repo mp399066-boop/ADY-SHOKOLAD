@@ -50,9 +50,9 @@ export default function NavBar() {
         style={{
           backgroundColor: '#FFFFFF',
           borderBottom: '1px solid #EAE0D4',
-          boxShadow: '0 1px 0 rgba(0,0,0,0.03)',
+          boxShadow: '0 1px 3px rgba(58,42,26,0.06)',
           direction: 'rtl',
-          height: '48px',
+          height: '54px',
         }}
       >
         {/* Brand */}
@@ -77,81 +77,85 @@ export default function NavBar() {
         </div>
 
         {/* Desktop nav */}
-        <nav className="hidden md:flex items-stretch flex-1 gap-0.5 overflow-x-auto h-full px-1">
-          {NAV_MAIN.map(({ href, label, Icon }) => {
+        <nav className="hidden md:flex items-stretch flex-1 overflow-x-auto h-full px-1">
+          {NAV_MAIN.map(({ href, label }) => {
             const active = isActive(href);
             return (
               <Link
                 key={href}
                 href={href}
-                className="flex items-center gap-1.5 px-3.5 text-xs transition-all duration-150 whitespace-nowrap relative rounded-sm my-2"
+                className="flex items-center px-4 whitespace-nowrap relative transition-all duration-150"
                 style={active
                   ? {
-                      color: '#6B3E1A',
-                      fontWeight: 600,
-                      backgroundColor: '#F5EAD8',
-                      borderBottom: '2px solid #C9A46A',
-                      borderRadius: '6px 6px 0 0',
+                      color: '#5C3410',
+                      fontWeight: 700,
+                      fontSize: '13px',
+                      borderBottom: '2.5px solid #C9A46A',
                       marginBottom: '-1px',
-                      paddingBottom: 'calc(0.5rem + 1px)',
+                      backgroundColor: '#FBF3E8',
                     }
-                  : { color: '#7A6654', fontWeight: 400 }
+                  : {
+                      color: '#6B5544',
+                      fontWeight: 500,
+                      fontSize: '13px',
+                    }
                 }
                 onMouseEnter={e => {
                   if (!active) {
-                    (e.currentTarget as HTMLAnchorElement).style.color = '#3A2A1A';
+                    (e.currentTarget as HTMLAnchorElement).style.color = '#2B1A10';
                     (e.currentTarget as HTMLAnchorElement).style.backgroundColor = '#FAF4EC';
                   }
                 }}
                 onMouseLeave={e => {
                   if (!active) {
-                    (e.currentTarget as HTMLAnchorElement).style.color = '#7A6654';
+                    (e.currentTarget as HTMLAnchorElement).style.color = '#6B5544';
                     (e.currentTarget as HTMLAnchorElement).style.backgroundColor = 'transparent';
                   }
                 }}
               >
-                <Icon className="w-3 h-3 flex-shrink-0 opacity-70" />
-                <span>{label}</span>
+                {label}
               </Link>
             );
           })}
 
-          <span className="w-px self-center h-4 mx-2 flex-shrink-0" style={{ backgroundColor: '#E0D4C4' }} />
+          <span className="w-px self-center h-4 mx-1 flex-shrink-0" style={{ backgroundColor: '#DDD0C0' }} />
 
-          {NAV_SYSTEM.map(({ href, label, Icon }) => {
+          {NAV_SYSTEM.map(({ href, label }) => {
             const active = isActive(href);
             return (
               <Link
                 key={href}
                 href={href}
-                className="flex items-center gap-1.5 px-3.5 text-xs transition-all duration-150 whitespace-nowrap relative rounded-sm my-2"
+                className="flex items-center px-4 whitespace-nowrap relative transition-all duration-150"
                 style={active
                   ? {
-                      color: '#6B3E1A',
-                      fontWeight: 600,
-                      backgroundColor: '#F5EAD8',
-                      borderBottom: '2px solid #C9A46A',
-                      borderRadius: '6px 6px 0 0',
+                      color: '#5C3410',
+                      fontWeight: 700,
+                      fontSize: '13px',
+                      borderBottom: '2.5px solid #C9A46A',
                       marginBottom: '-1px',
-                      paddingBottom: 'calc(0.5rem + 1px)',
+                      backgroundColor: '#FBF3E8',
                     }
-                  : { color: '#7A6654', fontWeight: 400 }
+                  : {
+                      color: '#6B5544',
+                      fontWeight: 500,
+                      fontSize: '13px',
+                    }
                 }
                 onMouseEnter={e => {
                   if (!active) {
-                    (e.currentTarget as HTMLAnchorElement).style.color = '#3A2A1A';
+                    (e.currentTarget as HTMLAnchorElement).style.color = '#2B1A10';
                     (e.currentTarget as HTMLAnchorElement).style.backgroundColor = '#FAF4EC';
                   }
                 }}
                 onMouseLeave={e => {
                   if (!active) {
-                    (e.currentTarget as HTMLAnchorElement).style.color = '#7A6654';
+                    (e.currentTarget as HTMLAnchorElement).style.color = '#6B5544';
                     (e.currentTarget as HTMLAnchorElement).style.backgroundColor = 'transparent';
                   }
                 }}
               >
-                <Icon className="w-3 h-3 flex-shrink-0 opacity-70" />
-                <span>{label}</span>
+                {label}
               </Link>
             );
           })}

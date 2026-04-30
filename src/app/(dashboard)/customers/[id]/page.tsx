@@ -340,22 +340,27 @@ export default function CustomerDetailPage() {
       )}
 
       {/* ── 2. hero card ── */}
-      <div className="rounded-3xl overflow-hidden border bg-white shadow-sm" style={{ borderColor: '#EDE0CE' }}>
-        {/* gradient strip */}
-        <div className="h-24" style={{ background: 'linear-gradient(135deg, #8B5E34 0%, #C7A46B 100%)' }} />
+      <div className="rounded-2xl overflow-hidden border bg-white" style={{ borderColor: '#DDD0BC', boxShadow: '0 2px 12px rgba(58,42,26,0.08)' }}>
+        {/* gradient banner */}
+        <div className="relative h-32" style={{ background: 'linear-gradient(130deg, #6B3E1A 0%, #A0672A 55%, #C9A46A 100%)' }}>
+          <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(circle at 80% 50%, #EDD9A3 0%, transparent 60%)' }} />
+        </div>
 
-        {/* floating content */}
-        <div className="px-6 pb-6 -mt-12">
-          <div className="flex flex-col sm:flex-row sm:items-end gap-4">
+        {/* content below banner */}
+        <div className="px-7 pb-7 -mt-10">
+          <div className="flex flex-col sm:flex-row sm:items-end gap-5">
             {/* avatar */}
-            <div className="h-24 w-24 rounded-2xl border-4 border-white bg-white shadow-md flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#FAF7F0' }}>
+            <div
+              className="h-20 w-20 rounded-2xl flex items-center justify-center flex-shrink-0 border-4"
+              style={{ backgroundColor: '#FBF5EB', borderColor: '#FFFFFF', boxShadow: '0 2px 10px rgba(58,42,26,0.14)' }}
+            >
               <IUser />
             </div>
 
-            {/* name + badges + actions */}
-            <div className="flex-1 min-w-0 pb-1">
-              <div className="flex flex-wrap items-center gap-2 mb-1.5">
-                <h1 className="text-2xl md:text-3xl font-bold" style={{ color: '#2B1A10' }}>
+            {/* name + meta */}
+            <div className="flex-1 min-w-0 pt-2">
+              <div className="flex flex-wrap items-baseline gap-2 mb-1">
+                <h1 className="font-bold leading-tight" style={{ color: '#1E100A', fontSize: '1.65rem', letterSpacing: '-0.02em' }}>
                   {customer.שם_פרטי} {customer.שם_משפחה}
                 </h1>
                 <StatusPill label={customer.סוג_לקוח} color={customer.סוג_לקוח} />
@@ -363,18 +368,15 @@ export default function CustomerDetailPage() {
                   <StatusPill label={customer.סטטוס_לקוח} color={customer.סטטוס_לקוח} />
                 )}
               </div>
-              <div className="flex items-center gap-1.5 text-sm" style={{ color: '#9B7A5A' }}>
-                <ICal className="w-3.5 h-3.5 flex-shrink-0" />
-                <span>לקוח מאז {formatDate(customer.תאריך_יצירה)}</span>
-              </div>
+              <p className="text-xs" style={{ color: '#A08060' }}>לקוח מאז {formatDate(customer.תאריך_יצירה)}</p>
             </div>
 
-            {/* action buttons */}
-            <div className="flex flex-wrap gap-2 pb-1">
+            {/* actions */}
+            <div className="flex flex-wrap gap-2 pb-0.5">
               <button
                 onClick={() => setEditing(e => !e)}
-                className="h-9 px-3 rounded-xl flex items-center gap-1.5 text-xs font-medium border transition-all hover:bg-amber-50"
-                style={{ borderColor: '#C7A46B', color: '#8B5E34' }}
+                className="h-9 px-4 rounded-xl flex items-center gap-1.5 font-semibold border transition-all hover:bg-amber-50"
+                style={{ borderColor: '#C7A46B', color: '#7A4E1E', fontSize: '13px' }}
               >
                 <IconEdit className="w-3.5 h-3.5" />
                 עריכה
@@ -384,8 +386,8 @@ export default function CustomerDetailPage() {
                   href={whatsappLink}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="h-9 px-3 rounded-xl flex items-center gap-1.5 text-xs font-medium transition-all hover:brightness-105"
-                  style={{ backgroundColor: '#25D366', color: '#fff' }}
+                  className="h-9 px-4 rounded-xl flex items-center gap-1.5 font-semibold transition-all hover:brightness-105"
+                  style={{ backgroundColor: '#22C55E', color: '#fff', fontSize: '13px' }}
                 >
                   <IconWhatsApp className="w-3.5 h-3.5" />
                   WhatsApp
@@ -394,8 +396,8 @@ export default function CustomerDetailPage() {
               {customer.אימייל && (
                 <a
                   href={`mailto:${customer.אימייל}`}
-                  className="h-9 px-3 rounded-xl flex items-center gap-1.5 text-xs font-medium border transition-all hover:bg-amber-50"
-                  style={{ borderColor: '#C7A46B', color: '#8B5E34' }}
+                  className="h-9 px-4 rounded-xl flex items-center gap-1.5 font-semibold border transition-all hover:bg-amber-50"
+                  style={{ borderColor: '#C7A46B', color: '#7A4E1E', fontSize: '13px' }}
                 >
                   <IMail className="w-3.5 h-3.5" />
                   מייל
@@ -403,8 +405,8 @@ export default function CustomerDetailPage() {
               )}
               <Link href="/orders/new">
                 <button
-                  className="h-9 px-3 rounded-xl flex items-center gap-1.5 text-xs font-medium text-white transition-all hover:brightness-110"
-                  style={{ backgroundColor: '#8B5E34' }}
+                  className="h-9 px-4 rounded-xl flex items-center gap-1.5 font-semibold text-white transition-all hover:brightness-110"
+                  style={{ backgroundColor: '#8B5E34', fontSize: '13px' }}
                 >
                   <IconPlus className="w-3.5 h-3.5" />
                   הזמנה חדשה
@@ -413,48 +415,48 @@ export default function CustomerDetailPage() {
               {customer.הזמנות.length === 0 && (
                 <button
                   onClick={handleDelete}
-                  className="h-9 px-3 rounded-xl flex items-center gap-1.5 text-xs font-medium border transition-all hover:bg-red-50"
-                  style={{ borderColor: '#FECACA', color: '#DC2626' }}
+                  className="h-9 px-4 rounded-xl flex items-center gap-1.5 font-semibold border transition-all hover:bg-red-50"
+                  style={{ borderColor: '#FCA5A5', color: '#DC2626', fontSize: '13px' }}
                 >
-                  מחק לקוח
+                  מחק
                 </button>
               )}
             </div>
           </div>
 
           {/* contact strip */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-5 pt-5" style={{ borderTop: '1px solid #EDE0CE' }}>
-            <div className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#F0E6D6', color: '#8B5E34' }}>
-                <IPhone className="w-4 h-4" />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-0 mt-6 pt-5 divide-x divide-x-reverse" style={{ borderTop: '1px solid #EDE0CE' }}>
+            {[
+              {
+                label: 'טלפון',
+                icon: <IPhone className="w-4 h-4" />,
+                content: customer.טלפון
+                  ? <a href={`tel:${customer.טלפון}`} dir="ltr" className="font-semibold hover:underline" style={{ color: '#2B1A10', fontSize: '14px' }}>{customer.טלפון}</a>
+                  : <span style={{ color: '#C0AA90' }}>—</span>,
+              },
+              {
+                label: 'אימייל',
+                icon: <IMail className="w-4 h-4" />,
+                content: customer.אימייל
+                  ? <a href={`mailto:${customer.אימייל}`} dir="ltr" className="font-semibold hover:underline truncate block" style={{ color: '#2B1A10', fontSize: '14px' }}>{customer.אימייל}</a>
+                  : <span style={{ color: '#C0AA90' }}>—</span>,
+              },
+              {
+                label: 'מקור הגעה',
+                icon: <IMap className="w-4 h-4" />,
+                content: <span className="font-semibold" style={{ color: '#2B1A10', fontSize: '14px' }}>{customer.מקור_הגעה || '—'}</span>,
+              },
+            ].map(item => (
+              <div key={item.label} className="flex items-center gap-3 px-0 sm:px-5 py-3 first:pr-0 last:pl-0" style={{ borderColor: '#EDE0CE' }}>
+                <div className="h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#F2E8DA', color: '#8B5E34' }}>
+                  {item.icon}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs mb-0.5" style={{ color: '#A08060' }}>{item.label}</p>
+                  {item.content}
+                </div>
               </div>
-              <div>
-                <p className="text-xs mb-0.5" style={{ color: '#9B7A5A' }}>טלפון</p>
-                {customer.טלפון
-                  ? <a href={`tel:${customer.טלפון}`} dir="ltr" className="text-sm font-medium hover:underline" style={{ color: '#2B1A10' }}>{customer.טלפון}</a>
-                  : <span className="text-sm" style={{ color: '#BFB09A' }}>—</span>}
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#F0E6D6', color: '#8B5E34' }}>
-                <IMail className="w-4 h-4" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs mb-0.5" style={{ color: '#9B7A5A' }}>אימייל</p>
-                {customer.אימייל
-                  ? <a href={`mailto:${customer.אימייל}`} dir="ltr" className="text-sm font-medium hover:underline truncate block" style={{ color: '#2B1A10' }}>{customer.אימייל}</a>
-                  : <span className="text-sm" style={{ color: '#BFB09A' }}>—</span>}
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#F0E6D6', color: '#8B5E34' }}>
-                <IMap className="w-4 h-4" />
-              </div>
-              <div>
-                <p className="text-xs mb-0.5" style={{ color: '#9B7A5A' }}>מקור הגעה</p>
-                <span className="text-sm font-medium" style={{ color: '#2B1A10' }}>{customer.מקור_הגעה || '—'}</span>
-              </div>
-            </div>
+            ))}
           </div>
         </div>
       </div>
