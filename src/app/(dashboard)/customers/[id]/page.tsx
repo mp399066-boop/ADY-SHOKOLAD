@@ -138,21 +138,27 @@ function StatCard({ icon, label, value, hint, tone }: {
   tone: 'primary' | 'success' | 'info' | 'warning';
 }) {
   const tones = {
-    primary: { bg: '#F0E6D6', color: '#8B5E34' },
-    success: { bg: '#DCFCE7', color: '#166534' },
-    info:    { bg: '#EFF6FF', color: '#1D4ED8' },
-    warning: { bg: '#FEF3C7', color: '#D97706' },
+    primary: { bg: '#F0E6D6', color: '#8B5E34', border: '#E2D0BE' },
+    success: { bg: '#E6F0E6', color: '#2D6648', border: '#C8DEC8' },
+    info:    { bg: '#E6EAF0', color: '#2A4E6B', border: '#C4D0DC' },
+    warning: { bg: '#F0E8D8', color: '#7A5820', border: '#DDC89A' },
   };
   const t = tones[tone];
   return (
-    <div className="rounded-2xl p-4 bg-white border" style={{ borderColor: '#EDE0CE' }}>
-      <div className="flex items-start justify-between mb-3">
-        <div className="h-9 w-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: t.bg, color: t.color }}>
+    <div
+      className="rounded-2xl p-4 bg-white border"
+      style={{
+        borderColor: t.border,
+        boxShadow: '0 1px 4px rgba(58,42,26,0.06)',
+      }}
+    >
+      <div className="flex items-center justify-between mb-3">
+        <div className="h-8 w-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: t.bg, color: t.color }}>
           {icon}
         </div>
       </div>
-      <div className="text-2xl font-bold tabular-nums mb-0.5" style={{ color: '#2B1A10' }}>{value}</div>
-      <div className="text-xs font-medium" style={{ color: '#6B4A2D' }}>{label}</div>
+      <div className="text-[1.6rem] font-bold tabular-nums leading-tight mb-1" style={{ color: '#2B1A10', letterSpacing: '-0.02em' }}>{value}</div>
+      <div className="text-xs font-semibold uppercase tracking-wide mb-0.5" style={{ color: t.color, opacity: 0.85 }}>{label}</div>
       {hint && <div className="text-xs mt-0.5" style={{ color: '#9B7A5A' }}>{hint}</div>}
     </div>
   );
@@ -559,42 +565,41 @@ export default function CustomerDetailPage() {
                 }
               />
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+              <div className="overflow-x-auto -mx-1">
+                <table className="w-full">
                   <thead>
-                    <tr style={{ borderBottom: '1px solid #EDE0CE' }}>
-                      {['מספר', 'תאריך', 'סכום', 'סטטוס', 'פעולות'].map(h => (
-                        <th key={h} className="py-2 pb-3 text-right text-xs font-semibold" style={{ color: '#6B4A2D' }}>{h}</th>
+                    <tr style={{ backgroundColor: '#FAF6F0', borderBottom: '1px solid #EDE0CE' }}>
+                      {['מספר הזמנה', 'תאריך אספקה', 'סכום', 'סטטוס', ''].map(h => (
+                        <th key={h} className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wide" style={{ color: '#8B5E34' }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="divide-y" style={{ '--tw-divide-opacity': 1 } as React.CSSProperties}>
                     {customer.הזמנות.slice(0, 8).map(o => (
                       <tr
                         key={o.id}
-                        className="border-b hover:bg-amber-50 transition-colors"
-                        style={{ borderColor: '#F5ECD8' }}
+                        className="transition-colors cursor-pointer"
+                        style={{ borderColor: '#F2EAE0' }}
+                        onClick={() => router.push(`/orders/${o.id}`)}
+                        onMouseEnter={e => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = '#FBF5EC'}
+                        onMouseLeave={e => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = ''}
                       >
-                        <td className="py-2.5 font-mono text-xs font-semibold" style={{ color: '#8B5E34' }}>
+                        <td className="px-3 py-3 font-mono text-xs font-bold" style={{ color: '#8B5E34' }}>
                           {o.מספר_הזמנה}
                         </td>
-                        <td className="py-2.5 text-xs" style={{ color: '#6B4A2D' }}>
-                          {formatDate(o.תאריך_אספקה)}
+                        <td className="px-3 py-3 text-xs" style={{ color: '#6B4A2D' }}>
+                          {o.תאריך_אספקה ? formatDate(o.תאריך_אספקה) : <span style={{ color: '#C0AA90' }}>—</span>}
                         </td>
-                        <td className="py-2.5 font-semibold text-xs" style={{ color: '#2B1A10' }}>
+                        <td className="px-3 py-3 font-semibold text-xs" style={{ color: '#2B1A10' }}>
                           {formatCurrency(o.סך_הכל_לתשלום)}
                         </td>
-                        <td className="py-2.5">
+                        <td className="px-3 py-3">
                           <StatusBadge status={o.סטטוס_הזמנה} type="order" />
                         </td>
-                        <td className="py-2.5">
-                          <button
-                            onClick={() => router.push(`/orders/${o.id}`)}
-                            className="h-7 w-7 rounded-lg flex items-center justify-center transition-colors hover:bg-amber-100"
-                            style={{ color: '#8B5E34' }}
-                          >
+                        <td className="px-3 py-3">
+                          <div className="h-7 w-7 rounded-lg flex items-center justify-center" style={{ color: '#B08060' }}>
                             <IEye className="w-3.5 h-3.5" />
-                          </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -634,7 +639,11 @@ export default function CustomerDetailPage() {
                 {customer.חשבוניות.map(inv => (
                   <div key={inv.id} className="flex justify-between items-center p-3 rounded-xl text-sm" style={{ backgroundColor: '#FAF7F0' }}>
                     <div>
-                      <span className="font-mono font-semibold text-xs" style={{ color: '#8B5E34' }}>#{inv.מספר_חשבונית}</span>
+                      {inv.קישור_חשבונית ? (
+                        <a href={inv.קישור_חשבונית} target="_blank" rel="noopener noreferrer" className="font-mono font-semibold text-xs" style={{ color: '#8B5E34', textDecoration: 'underline', textUnderlineOffset: '2px' }}>#{inv.מספר_חשבונית}</a>
+                      ) : (
+                        <span className="font-mono font-semibold text-xs" style={{ color: '#8B5E34' }}>#{inv.מספר_חשבונית}</span>
+                      )}
                       <span className="mr-3 text-xs" style={{ color: '#6B4A2D' }}>{formatDate(inv.תאריך_יצירה)}</span>
                     </div>
                     <span className="font-semibold text-xs" style={{ color: '#2B1A10' }}>{formatCurrency(inv.סכום)}</span>

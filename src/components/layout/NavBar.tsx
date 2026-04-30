@@ -77,33 +77,46 @@ export default function NavBar() {
         </div>
 
         {/* Desktop nav */}
-        <nav className="hidden md:flex items-stretch flex-1 gap-0 overflow-x-auto h-full">
+        <nav className="hidden md:flex items-stretch flex-1 gap-0.5 overflow-x-auto h-full px-1">
           {NAV_MAIN.map(({ href, label, Icon }) => {
             const active = isActive(href);
             return (
               <Link
                 key={href}
                 href={href}
-                className="flex items-center gap-1.5 px-3 text-xs transition-colors duration-150 whitespace-nowrap relative"
+                className="flex items-center gap-1.5 px-3.5 text-xs transition-all duration-150 whitespace-nowrap relative rounded-sm my-2"
                 style={active
                   ? {
-                      color: '#8B5E34',
-                      fontWeight: 500,
+                      color: '#6B3E1A',
+                      fontWeight: 600,
+                      backgroundColor: '#F5EAD8',
                       borderBottom: '2px solid #C9A46A',
+                      borderRadius: '6px 6px 0 0',
                       marginBottom: '-1px',
+                      paddingBottom: 'calc(0.5rem + 1px)',
                     }
-                  : { color: '#8A7664', fontWeight: 400 }
+                  : { color: '#7A6654', fontWeight: 400 }
                 }
-                onMouseEnter={e => { if (!active) (e.currentTarget as HTMLAnchorElement).style.color = '#3A2A1A'; }}
-                onMouseLeave={e => { if (!active) (e.currentTarget as HTMLAnchorElement).style.color = '#8A7664'; }}
+                onMouseEnter={e => {
+                  if (!active) {
+                    (e.currentTarget as HTMLAnchorElement).style.color = '#3A2A1A';
+                    (e.currentTarget as HTMLAnchorElement).style.backgroundColor = '#FAF4EC';
+                  }
+                }}
+                onMouseLeave={e => {
+                  if (!active) {
+                    (e.currentTarget as HTMLAnchorElement).style.color = '#7A6654';
+                    (e.currentTarget as HTMLAnchorElement).style.backgroundColor = 'transparent';
+                  }
+                }}
               >
-                <Icon className="w-3.5 h-3.5 flex-shrink-0" />
+                <Icon className="w-3 h-3 flex-shrink-0 opacity-70" />
                 <span>{label}</span>
               </Link>
             );
           })}
 
-          <span className="w-px self-center h-4 mx-1 flex-shrink-0" style={{ backgroundColor: '#E8DED2' }} />
+          <span className="w-px self-center h-4 mx-2 flex-shrink-0" style={{ backgroundColor: '#E0D4C4' }} />
 
           {NAV_SYSTEM.map(({ href, label, Icon }) => {
             const active = isActive(href);
@@ -111,20 +124,33 @@ export default function NavBar() {
               <Link
                 key={href}
                 href={href}
-                className="flex items-center gap-1.5 px-3 text-xs transition-colors duration-150 whitespace-nowrap relative"
+                className="flex items-center gap-1.5 px-3.5 text-xs transition-all duration-150 whitespace-nowrap relative rounded-sm my-2"
                 style={active
                   ? {
-                      color: '#8B5E34',
-                      fontWeight: 500,
+                      color: '#6B3E1A',
+                      fontWeight: 600,
+                      backgroundColor: '#F5EAD8',
                       borderBottom: '2px solid #C9A46A',
+                      borderRadius: '6px 6px 0 0',
                       marginBottom: '-1px',
+                      paddingBottom: 'calc(0.5rem + 1px)',
                     }
-                  : { color: '#8A7664', fontWeight: 400 }
+                  : { color: '#7A6654', fontWeight: 400 }
                 }
-                onMouseEnter={e => { if (!active) (e.currentTarget as HTMLAnchorElement).style.color = '#3A2A1A'; }}
-                onMouseLeave={e => { if (!active) (e.currentTarget as HTMLAnchorElement).style.color = '#8A7664'; }}
+                onMouseEnter={e => {
+                  if (!active) {
+                    (e.currentTarget as HTMLAnchorElement).style.color = '#3A2A1A';
+                    (e.currentTarget as HTMLAnchorElement).style.backgroundColor = '#FAF4EC';
+                  }
+                }}
+                onMouseLeave={e => {
+                  if (!active) {
+                    (e.currentTarget as HTMLAnchorElement).style.color = '#7A6654';
+                    (e.currentTarget as HTMLAnchorElement).style.backgroundColor = 'transparent';
+                  }
+                }}
               >
-                <Icon className="w-3.5 h-3.5 flex-shrink-0" />
+                <Icon className="w-3 h-3 flex-shrink-0 opacity-70" />
                 <span>{label}</span>
               </Link>
             );
