@@ -197,9 +197,13 @@ export async function POST(req: Request) {
         כמות: qty,
         מחיר_ליחידה: unitPrice,
         סהכ: lineTotal,
-        הערות_לשורה: matchedId ? null : name,
+        הערות_לשורה: matchedId ? null : `${name} — מוצר לא נמצא במערכת`,
       });
-      if (itemErr) console.warn('[wc-webhook] item insert error:', itemErr.message);
+      if (itemErr) {
+        console.warn('[wc-webhook] item insert error:', itemErr.message, '| item:', name);
+      } else {
+        console.log(`[wc-webhook] Item saved: "${name}" | matched: ${!!matchedId} | qty: ${qty} | price: ${unitPrice}`);
+      }
     }
 
     // ── 6. Payment record (triggers Morning invoice if paid) ─────────────────
