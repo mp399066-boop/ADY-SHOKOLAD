@@ -37,12 +37,13 @@ export async function POST(req: Request) {
       return Response.json({ success: true });
     }
 
+    console.log('[wc-webhook] START webhook processing');
     const wcOrderId = wc.id as number | undefined;
-    console.log('[wc-webhook] Order ID:', wcOrderId, '| Status:', wc.status);
+    console.log('[wc-webhook] order id:', wcOrderId, '| status:', wc.status);
     console.log('[wc-webhook] line_items:', JSON.stringify(wc.line_items ?? 'MISSING'));
 
     if (!wcOrderId) {
-      console.log('[wc-webhook] No order ID — skipping');
+      console.log('[wc-webhook] STOP: no order ID in payload');
       return Response.json({ success: true });
     }
 
@@ -51,39 +52,46 @@ export async function POST(req: Request) {
     const warnings: string[] = [];
 
     // ── 1. Idempotency ──────────────────────────────────────────────────────
-    const { data: existing } = await supabase
+    console.log('[wc-webhook] checking duplicate for sourceKey:', sourceKey);
+    const { data: existing, error: dupErr } = await supabase
       .from('הזמנות')
-      .select('id, מספר_הזמנה')
+      .select('id, מספר_הזמנה, מקור_ההזמנה')
       .eq('מקור_ההזמנה', sourceKey)
       .maybeSingle();
 
+    console.log('[wc-webhook] duplicate check result:', existing ?? 'none', '| error:', dupErr?.message ?? 'none');
+
     if (existing) {
-      console.log(`[wc-webhook] Already imported as ${existing.מספר_הזמנה} — skipping`);
+      console.log('[wc-webhook] STOP: duplicate found —', existing.מספר_הזמנה, '(id:', existing.id, ')');
       return Response.json({ success: true, skipped: true, order_id: existing.id });
     }
 
     // ── 2. Customer ─────────────────────────────────────────────────────────
+    console.log('[wc-webhook] creating/updating customer...');
     const billing = (wc.billing ?? {}) as Record<string, string>;
     const phone = normalizePhone(billing.phone);
     const email = billing.email?.trim() || null;
     const firstName = billing.first_name || 'לא ידוע';
     const lastName = billing.last_name || null;
+    console.log('[wc-webhook] billing — phone:', phone, '| email:', email, '| name:', firstName, lastName);
 
     let customerId: string;
 
     let existingCustomer: { id: string } | null = null;
     if (phone) {
-      const { data } = await supabase.from('לקוחות').select('id').eq('טלפון', phone).maybeSingle();
+      const { data, error: phErr } = await supabase.from('לקוחות').select('id').eq('טלפון', phone).maybeSingle();
+      console.log('[wc-webhook] phone lookup result:', data ?? 'not found', phErr?.message ?? '');
       existingCustomer = data;
     }
     if (!existingCustomer && email) {
-      const { data } = await supabase.from('לקוחות').select('id').eq('אימייל', email).maybeSingle();
+      const { data, error: emErr } = await supabase.from('לקוחות').select('id').eq('אימייל', email).maybeSingle();
+      console.log('[wc-webhook] email lookup result:', data ?? 'not found', emErr?.message ?? '');
       existingCustomer = data;
     }
 
     if (existingCustomer) {
       customerId = existingCustomer.id;
-      console.log('[wc-webhook] Found customer:', customerId);
+      console.log('[wc-webhook] found existing customer:', customerId);
     } else {
       const { data: created, error: custErr } = await supabase
         .from('לקוחות')
@@ -99,11 +107,11 @@ export async function POST(req: Request) {
         .single();
 
       if (custErr || !created) {
-        console.error('[wc-webhook] Failed to create customer:', custErr?.message);
+        console.error('[wc-webhook] STOP: customer creation failed:', custErr?.message);
         return Response.json({ success: true, error: 'customer creation failed' });
       }
       customerId = created.id;
-      console.log('[wc-webhook] Created customer:', customerId);
+      console.log('[wc-webhook] created new customer:', customerId);
     }
 
     // ── 3. Totals ───────────────────────────────────────────────────────────
@@ -125,6 +133,7 @@ export async function POST(req: Request) {
     const deliveryCity = shippingAddr.city || billing.city || null;
 
     // ── 4. Order ────────────────────────────────────────────────────────────
+    console.log('[wc-webhook] creating order... total:', grandTotal, '| payment:', paymentStatus, '| sourceKey:', sourceKey);
     const dateCreated = wc.date_created
       ? (wc.date_created as string).split('T')[0]
       : new Date().toISOString().split('T')[0];
@@ -166,6 +175,7 @@ export async function POST(req: Request) {
     console.log('[wc-webhook] Created order:', order.id);
 
     // ── 5. Match products & create line items ────────────────────────────────
+    console.log('[wc-webhook] creating order lines... items count:', lineItems.length);
     const { data: catalog } = await supabase.from('מוצרים_למכירה').select('id, שם_מוצר').eq('פעיל', true);
     const productByName = new Map<string, string>();
     for (const p of catalog ?? []) {
