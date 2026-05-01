@@ -59,7 +59,7 @@ type FullOrder = Order & {
   מוצרים_בהזמנה: (OrderItem & { מוצרים_למכירה?: Product })[];
   משלוח: { סטטוס_משלוח: string; שם_שליח: string; עיר: string } | null;
   תשלומים: { id: string; סכום: number; אמצעי_תשלום: string; תאריך_תשלום: string }[];
-  חשבוניות: { id: string; מספר_חשבונית: string; סכום: number; סטטוס: string }[];
+  חשבוניות: { id: string; מספר_חשבונית: string; סכום: number; סטטוס: string; קישור_חשבונית?: string | null }[];
 };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
