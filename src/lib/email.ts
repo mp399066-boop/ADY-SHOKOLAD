@@ -16,15 +16,20 @@ export interface OrderEmailData {
   subtotal: number;
   discount: number;
   total: number;
+  customerPhone?: string | null;
 }
 
-const PHONE = '05XXXXXXXX';
 const EMAIL_ADDR = 'adi548419927@gmail.com';
 const BUSINESS = 'עדי שוקולד';
 const VAT_RATE = 0.18;
 
 function fmt(n: number) {
   return `${n.toFixed(2)} ₪`;
+}
+
+function fmtPhone(raw: string): string {
+  const digits = raw.replace(/\D/g, '');
+  return digits.slice(0, 3) + '.' + digits.slice(3);
 }
 
 function buildHtml(customerName: string, d: OrderEmailData, logoUrl?: string): string {
@@ -85,9 +90,10 @@ function buildHtml(customerName: string, d: OrderEmailData, logoUrl?: string): s
             <td style="padding:28px 36px">
 
               <!-- Greeting -->
-              <p style="margin:0 0 6px;font-size:16px;font-weight:600;color:#2A1C12">שלום ${customerName},</p>
-              <p style="margin:0 0 26px;font-size:13px;color:#8A7664;line-height:1.7">
-                קיבלנו את הזמנתך בהצלחה. להלן פירוט מלא של ההזמנה.
+              <p style="margin:0 0 10px;font-size:13px;color:#8E7D6A">שלום ${customerName},</p>
+              <h2 style="margin:0 0 10px;font-size:26px;font-weight:700;color:#2A1C12;line-height:1.3;text-align:right">תודה על הזמנתך — ההזמנה התקבלה בהצלחה</h2>
+              <p style="margin:0 0 26px;font-size:15px;color:#8E7D6A;line-height:1.7">
+                קיבלנו את הזמנתך ואנו מטפלים בה כעת.
               </p>
 
               <!-- Order meta -->
@@ -164,7 +170,7 @@ function buildHtml(customerName: string, d: OrderEmailData, logoUrl?: string): s
               <div style="font-size:13px;font-weight:700;color:#3A2A1A;margin-bottom:2px">${BUSINESS}</div>
               <div style="font-size:11px;color:#8E7D6A;letter-spacing:0.05em;margin-bottom:8px">Adi Chocolate Boutique</div>
               <div style="font-size:12px;color:#8A7664;line-height:1.9">
-                טלפון: ${PHONE} &nbsp;|&nbsp; ${EMAIL_ADDR}
+                ${d.customerPhone ? `טלפון: ${fmtPhone(d.customerPhone)} &nbsp;|&nbsp; ` : ''}${EMAIL_ADDR}
               </div>
             </td>
           </tr>
@@ -215,7 +221,7 @@ function buildText(customerName: string, d: OrderEmailData): string {
     '',
     line,
     BUSINESS,
-    `טלפון: ${PHONE}`,
+    d.customerPhone ? `טלפון: ${fmtPhone(d.customerPhone)}` : '',
     `אימייל: ${EMAIL_ADDR}`,
   ].filter(l => l !== '').join('\n');
 }
