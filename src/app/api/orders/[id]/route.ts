@@ -58,15 +58,19 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const supabase = createAdminClient();
   const body = await req.json();
 
-  // Fetch current status BEFORE update for idempotency check
-  let prevStatus: string | null = null;
-  if (body.סטטוס_הזמנה === 'בהכנה') {
+  // Fetch current state BEFORE update — needed for inventory check + invoice trigger
+  const needPrev = body.סטטוס_הזמנה === 'בהכנה' || body.סטטוס_תשלום === 'שולם';
+  let prevOrderStatus: string | null = null;
+  let prevPaymentStatus: string | null = null;
+
+  if (needPrev) {
     const { data: cur } = await supabase
       .from('הזמנות')
-      .select('סטטוס_הזמנה')
+      .select('סטטוס_הזמנה, סטטוס_תשלום')
       .eq('id', params.id)
       .single();
-    prevStatus = cur?.סטטוס_הזמנה ?? null;
+    prevOrderStatus = cur?.סטטוס_הזמנה ?? null;
+    prevPaymentStatus = cur?.סטטוס_תשלום ?? null;
   }
 
   const updateData: Record<string, unknown> = { ...body, תאריך_עדכון: new Date().toISOString() };
@@ -85,7 +89,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   // Deduct product inventory only on FIRST transition from "חדשה" → "בהכנה"
-  if (body.סטטוס_הזמנה === 'בהכנה' && prevStatus === 'חדשה') {
+  if (body.סטטוס_הזמנה === 'בהכנה' && prevOrderStatus === 'חדשה') {
     const { data: items } = await supabase
       .from('מוצרים_בהזמנה')
       .select('מוצר_id, כמות')
@@ -105,6 +109,56 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
             .from('מוצרים_למכירה')
             .update({ כמות_במלאי: Math.max(0, (product.כמות_במלאי || 0) - item.כמות) })
             .eq('id', item.מוצר_id);
+        }
+      }
+    }
+  }
+
+  // Trigger invoice creation when payment status first becomes שולם
+  if (body.סטטוס_תשלום === 'שולם' && prevPaymentStatus !== 'שולם') {
+    // Idempotency: skip if invoice already exists
+    const { data: existingInvoice } = await supabase
+      .from('חשבוניות')
+      .select('id')
+      .eq('הזמנה_id', params.id)
+      .maybeSingle();
+
+    if (existingInvoice) {
+      console.log('[invoice] Invoice already exists for order', params.id, '— skipping');
+    } else {
+      const supabaseUrl = process.env.SUPABASE_URL ?? '';
+      const webhookSecret = process.env.WEBHOOK_SECRET ?? '';
+
+      if (!supabaseUrl || !webhookSecret) {
+        console.error('[invoice] Missing SUPABASE_URL or WEBHOOK_SECRET — cannot trigger invoice creation');
+      } else {
+        const fnUrl = `${supabaseUrl}/functions/v1/create-morning-invoice`;
+        const webhookPayload = {
+          type: 'UPDATE',
+          table: 'הזמנות',
+          record: { הזמנה_id: params.id, סטטוס_תשלום: 'שולם' },
+          old_record: { סטטוס_תשלום: prevPaymentStatus },
+        };
+
+        try {
+          console.log('[invoice] Calling create-morning-invoice for order', params.id);
+          const fnRes = await fetch(fnUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${webhookSecret}`,
+            },
+            body: JSON.stringify(webhookPayload),
+          });
+
+          const fnBody = await fnRes.json().catch(() => ({}));
+          if (!fnRes.ok) {
+            console.error('[invoice] create-morning-invoice failed:', fnRes.status, JSON.stringify(fnBody));
+          } else {
+            console.log('[invoice] create-morning-invoice success:', JSON.stringify(fnBody));
+          }
+        } catch (err) {
+          console.error('[invoice] Failed to call create-morning-invoice:', err instanceof Error ? err.message : err);
         }
       }
     }
