@@ -27,27 +27,31 @@ function fmt(n: number) {
   return `${n.toFixed(2)} ₪`;
 }
 
-function buildHtml(customerName: string, d: OrderEmailData): string {
+function buildHtml(customerName: string, d: OrderEmailData, logoUrl?: string): string {
   const afterDiscount = d.subtotal - d.discount;
   const vat = afterDiscount * VAT_RATE;
 
   const itemRows = d.items.map(item => `
       <tr>
-        <td style="padding:9px 12px;border-bottom:1px solid #e8e8e8;text-align:right">${item.name}</td>
-        <td style="padding:9px 12px;border-bottom:1px solid #e8e8e8;text-align:center">${item.quantity}</td>
-        <td style="padding:9px 12px;border-bottom:1px solid #e8e8e8;text-align:left">${fmt(item.unitPrice)}</td>
-        <td style="padding:9px 12px;border-bottom:1px solid #e8e8e8;text-align:left">${fmt(item.lineTotal)}</td>
+        <td style="padding:10px 14px;border-bottom:1px solid #E8DED2;text-align:right;color:#2A1C12">${item.name}</td>
+        <td style="padding:10px 14px;border-bottom:1px solid #E8DED2;text-align:center;color:#5C4A38">${item.quantity}</td>
+        <td style="padding:10px 14px;border-bottom:1px solid #E8DED2;text-align:left;color:#5C4A38;direction:ltr">${fmt(item.unitPrice)}</td>
+        <td style="padding:10px 14px;border-bottom:1px solid #E8DED2;text-align:left;font-weight:600;color:#2A1C12;direction:ltr">${fmt(item.lineTotal)}</td>
       </tr>`).join('');
 
   const discountRows = d.discount > 0 ? `
       <tr>
-        <td style="padding:6px 0;color:#555;text-align:right">הנחה</td>
-        <td style="padding:6px 0;text-align:left;color:#c0392b">-${fmt(d.discount)}</td>
+        <td style="padding:7px 0;color:#8E7D6A;text-align:right">הנחה</td>
+        <td style="padding:7px 0;text-align:left;color:#8A3228;direction:ltr">-${fmt(d.discount)}</td>
       </tr>
       <tr>
-        <td style="padding:6px 0;color:#555;text-align:right">סכום אחרי הנחה</td>
-        <td style="padding:6px 0;text-align:left">${fmt(afterDiscount)}</td>
+        <td style="padding:7px 0;color:#8E7D6A;text-align:right">סכום אחרי הנחה</td>
+        <td style="padding:7px 0;text-align:left;color:#2A1C12;direction:ltr">${fmt(afterDiscount)}</td>
       </tr>` : '';
+
+  const logoHtml = logoUrl
+    ? `<img src="${logoUrl}" alt="${BUSINESS}" width="40" height="40" style="width:40px;height:40px;object-fit:contain;border-radius:8px;display:block;margin:0 auto 10px" onerror="this.style.display='none'">`
+    : '';
 
   return `<!DOCTYPE html>
 <html lang="he" dir="rtl">
@@ -56,97 +60,99 @@ function buildHtml(customerName: string, d: OrderEmailData): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>סיכום הזמנה ${d.orderNumber}</title>
 </head>
-<body style="margin:0;padding:0;background:#f6f6f6;font-family:Arial,Helvetica,sans-serif;direction:rtl;text-align:right">
+<body style="margin:0;padding:0;background:#F7F3EC;font-family:Arial,Helvetica,sans-serif;direction:rtl;text-align:right">
 
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f6f6f6;padding:32px 16px">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#F7F3EC;padding:36px 16px">
     <tr>
       <td align="center">
 
         <!-- Card -->
-        <table width="600" cellpadding="0" cellspacing="0"
-               style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;margin:0 auto">
+        <table width="640" cellpadding="0" cellspacing="0"
+               style="max-width:640px;width:100%;background:#ffffff;border-radius:16px;border:1px solid #E8DED2;overflow:hidden;margin:0 auto;box-shadow:0 4px 24px rgba(58,42,26,0.08)">
 
           <!-- Header -->
           <tr>
-            <td style="background:#3a3a3a;color:#ffffff;padding:24px 32px;text-align:center">
-              <div style="font-size:18px;font-weight:bold;margin:0">${BUSINESS}</div>
-              <div style="font-size:13px;margin-top:6px;color:#cccccc">סיכום הזמנה מספר ${d.orderNumber}</div>
+            <td style="background:#FFFFFF;padding:28px 36px 20px;text-align:center;border-bottom:1px solid #F0EAE0">
+              ${logoHtml}
+              <div style="font-size:19px;font-weight:700;color:#2A1C12;letter-spacing:-0.01em">${BUSINESS}</div>
+              <div style="font-size:11px;color:#8E7D6A;letter-spacing:0.06em;margin-top:3px">Adi Chocolate Boutique</div>
+              <div style="font-size:13px;color:#8A7664;margin-top:10px">סיכום הזמנה מספר <strong style="color:#5C4A38">${d.orderNumber}</strong></div>
             </td>
           </tr>
 
           <!-- Body -->
           <tr>
-            <td style="padding:28px 32px">
+            <td style="padding:28px 36px">
 
               <!-- Greeting -->
-              <p style="margin:0 0 8px;font-size:15px;color:#222">שלום ${customerName},</p>
-              <p style="margin:0 0 24px;font-size:14px;color:#444;line-height:1.6">
-                קיבלנו את הזמנתך. להלן פירוט מלא.
+              <p style="margin:0 0 6px;font-size:16px;font-weight:600;color:#2A1C12">שלום ${customerName},</p>
+              <p style="margin:0 0 26px;font-size:13px;color:#8A7664;line-height:1.7">
+                קיבלנו את הזמנתך בהצלחה. להלן פירוט מלא של ההזמנה.
               </p>
 
               <!-- Order meta -->
               <table width="100%" cellpadding="0" cellspacing="0"
-                     style="margin-bottom:24px;font-size:13px;background:#f9f9f9;border-radius:6px;border:1px solid #e8e8e8">
+                     style="margin-bottom:24px;font-size:13px;background:#FAF7F2;border-radius:10px;border:1px solid #E8DED2;overflow:hidden">
                 <tr>
-                  <td style="padding:9px 14px;color:#555;width:40%;text-align:right">מספר הזמנה</td>
-                  <td style="padding:9px 14px;font-weight:600;text-align:right">${d.orderNumber}</td>
+                  <td style="padding:10px 16px;color:#8E7D6A;width:45%;text-align:right;border-bottom:1px solid #F0EAE0">מספר הזמנה</td>
+                  <td style="padding:10px 16px;font-weight:700;color:#2A1C12;text-align:right;border-bottom:1px solid #F0EAE0">${d.orderNumber}</td>
                 </tr>
-                <tr style="background:#f2f2f2">
-                  <td style="padding:9px 14px;color:#555;text-align:right">תאריך הזמנה</td>
-                  <td style="padding:9px 14px;text-align:right">${d.orderDate}</td>
+                <tr>
+                  <td style="padding:10px 16px;color:#8E7D6A;text-align:right;border-bottom:1px solid #F0EAE0">תאריך הזמנה</td>
+                  <td style="padding:10px 16px;color:#5C4A38;text-align:right;border-bottom:1px solid #F0EAE0">${d.orderDate}</td>
                 </tr>
                 ${d.deliveryDate ? `
                 <tr>
-                  <td style="padding:9px 14px;color:#555;text-align:right">תאריך אספקה</td>
-                  <td style="padding:9px 14px;font-weight:600;text-align:right">${d.deliveryDate}</td>
+                  <td style="padding:10px 16px;color:#8E7D6A;text-align:right">תאריך אספקה</td>
+                  <td style="padding:10px 16px;font-weight:600;color:#2D6648;text-align:right">${d.deliveryDate}</td>
                 </tr>` : ''}
               </table>
 
               <!-- Items -->
-              <div style="font-size:13px;font-weight:600;color:#333;margin-bottom:8px;text-align:right">
+              <div style="font-size:13px;font-weight:600;color:#3A2A1A;margin-bottom:8px;text-align:right">
                 פירוט מוצרים
               </div>
               <table width="100%" cellpadding="0" cellspacing="0"
-                     style="font-size:13px;border-collapse:collapse;margin-bottom:24px;border:1px solid #e8e8e8;border-radius:6px">
+                     style="font-size:13px;border-collapse:collapse;margin-bottom:24px;border:1px solid #E8DED2;border-radius:10px;overflow:hidden">
                 <thead>
-                  <tr style="background:#f2f2f2">
-                    <th style="padding:9px 12px;text-align:right;color:#555;font-weight:600">מוצר</th>
-                    <th style="padding:9px 12px;text-align:center;color:#555;font-weight:600">כמות</th>
-                    <th style="padding:9px 12px;text-align:left;color:#555;font-weight:600">מחיר ליח׳</th>
-                    <th style="padding:9px 12px;text-align:left;color:#555;font-weight:600">סה״כ</th>
+                  <tr style="background:#F5EFE7">
+                    <th style="padding:10px 14px;text-align:right;color:#8E7D6A;font-weight:600;border-bottom:1px solid #E8DED2">מוצר</th>
+                    <th style="padding:10px 14px;text-align:center;color:#8E7D6A;font-weight:600;border-bottom:1px solid #E8DED2">כמות</th>
+                    <th style="padding:10px 14px;text-align:left;color:#8E7D6A;font-weight:600;border-bottom:1px solid #E8DED2">מחיר ליח׳</th>
+                    <th style="padding:10px 14px;text-align:left;color:#8E7D6A;font-weight:600;border-bottom:1px solid #E8DED2">סה״כ</th>
                   </tr>
                 </thead>
                 <tbody>
-                  ${itemRows || '<tr><td colspan="4" style="padding:12px;text-align:center;color:#999">אין פריטים</td></tr>'}
+                  ${itemRows || '<tr><td colspan="4" style="padding:14px;text-align:center;color:#B0A090">אין פריטים</td></tr>'}
                 </tbody>
               </table>
 
               <!-- Financial summary -->
-              <table width="280" cellpadding="0" cellspacing="0" align="left"
-                     style="font-size:13px;margin-bottom:28px;border-top:1px solid #e8e8e8;padding-top:12px">
+              <table width="300" cellpadding="0" cellspacing="0" align="left"
+                     style="font-size:13px;margin-bottom:28px;background:#FAF7F2;border:1px solid #E8DED2;border-radius:10px;overflow:hidden">
                 <tr>
-                  <td style="padding:6px 0;color:#555;text-align:right">סכום לפני הנחה</td>
-                  <td style="padding:6px 0;text-align:left;padding-right:24px">${fmt(d.subtotal)}</td>
+                  <td style="padding:9px 16px;color:#8E7D6A;text-align:right;border-bottom:1px solid #F0EAE0">סכום לפני הנחה</td>
+                  <td style="padding:9px 16px;color:#5C4A38;text-align:left;direction:ltr;border-bottom:1px solid #F0EAE0">${fmt(d.subtotal)}</td>
                 </tr>
                 ${discountRows}
                 <tr>
-                  <td style="padding:6px 0;color:#555;text-align:right">מע"מ (18%)</td>
-                  <td style="padding:6px 0;text-align:left;padding-right:24px">${fmt(vat)}</td>
+                  <td style="padding:9px 16px;color:#8E7D6A;text-align:right;border-bottom:1px solid #E8DED2">מע"מ (18%)</td>
+                  <td style="padding:9px 16px;color:#5C4A38;text-align:left;direction:ltr;border-bottom:1px solid #E8DED2">${fmt(vat)}</td>
                 </tr>
-                <tr style="border-top:2px solid #333">
-                  <td style="padding:10px 0 6px;font-weight:700;font-size:15px;text-align:right">סה״כ לתשלום</td>
-                  <td style="padding:10px 0 6px;font-weight:700;font-size:17px;color:#1a1a1a;text-align:left;padding-right:24px">${fmt(d.total)}</td>
+                <tr style="background:#F5EFE7">
+                  <td style="padding:12px 16px;font-weight:700;font-size:14px;color:#2A1C12;text-align:right">סה״כ לתשלום</td>
+                  <td style="padding:12px 16px;font-weight:700;font-size:18px;color:#8B5E34;text-align:left;direction:ltr">${fmt(d.total)}</td>
                 </tr>
               </table>
 
               <div style="clear:both"></div>
 
               <!-- Closing -->
-              <p style="font-size:13px;color:#555;line-height:1.7;margin:0 0 4px;border-top:1px solid #e8e8e8;padding-top:20px">
+              <p style="font-size:13px;color:#8A7664;line-height:1.75;margin:0 0 4px;border-top:1px solid #F0EAE0;padding-top:22px">
                 תודה על ההזמנה. אנו מטפלים בה ונעדכן אותך בהמשך.
               </p>
-              <p style="font-size:12px;color:#999;margin:0">
-                זהו מייל אוטומטי בעקבות הזמנה שבוצעה. אין להשיב על מייל זה.
+              <p style="font-size:12px;color:#B0A090;margin:0">
+                זהו מייל אוטומטי. אין להשיב על מייל זה.
               </p>
 
             </td>
@@ -154,16 +160,12 @@ function buildHtml(customerName: string, d: OrderEmailData): string {
 
           <!-- Footer -->
           <tr>
-            <td style="background:#f2f2f2;padding:18px 32px;border-top:1px solid #e8e8e8">
-              <table width="100%" cellpadding="0" cellspacing="0" style="font-size:12px;color:#666">
-                <tr>
-                  <td style="text-align:right">
-                    <strong style="color:#333">${BUSINESS}</strong><br>
-                    טלפון: ${PHONE}<br>
-                    אימייל: ${EMAIL_ADDR}
-                  </td>
-                </tr>
-              </table>
+            <td style="background:#FDFAF5;padding:20px 36px;border-top:1px solid #F0EAE0;text-align:center">
+              <div style="font-size:13px;font-weight:700;color:#3A2A1A;margin-bottom:2px">${BUSINESS}</div>
+              <div style="font-size:11px;color:#8E7D6A;letter-spacing:0.05em;margin-bottom:8px">Adi Chocolate Boutique</div>
+              <div style="font-size:12px;color:#8A7664;line-height:1.9">
+                טלפון: ${PHONE} &nbsp;|&nbsp; ${EMAIL_ADDR}
+              </div>
             </td>
           </tr>
 
@@ -243,8 +245,15 @@ export async function sendOrderEmail(
     ? `סיכום הזמנה ${orderData.orderNumber} — ${BUSINESS}`
     : `סיכום הזמנה — ${BUSINESS}`;
 
+  let logoUrl: string | undefined;
+  try {
+    const supabase = createAdminClient();
+    const { data: biz } = await supabase.from('business_settings').select('logo_url').single();
+    if (biz?.logo_url) logoUrl = biz.logo_url;
+  } catch { /* logo is optional — silently skip */ }
+
   const html = orderData
-    ? buildHtml(customerName, orderData)
+    ? buildHtml(customerName, orderData, logoUrl)
     : `<html dir="rtl"><body style="font-family:Arial;direction:rtl;text-align:right"><p>שלום ${customerName}, קיבלנו את הזמנתך.</p></body></html>`;
 
   const text = orderData

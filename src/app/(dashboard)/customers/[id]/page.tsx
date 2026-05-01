@@ -100,6 +100,13 @@ function IMap({ className }: { className?: string }) {
     </svg>
   );
 }
+function ICalendar({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.6}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+    </svg>
+  );
+}
 
 /* ─── helper components ──────────────────────────────────────────────────── */
 function SectionHeader({ icon, title, subtitle, action }: {
@@ -337,135 +344,51 @@ export default function CustomerDetailPage() {
         className="rounded-2xl bg-white border p-6"
         style={{ borderColor: '#E8DED2', boxShadow: '0 2px 12px rgba(58,42,26,0.05)' }}
       >
-        <div className="flex flex-col sm:flex-row sm:items-center gap-5">
+        {/* Row 1: avatar + name/tags | action buttons */}
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4 min-w-0">
+            {/* avatar — business logo or customer initial */}
+            <div
+              className="rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden"
+              style={{
+                width: '72px', height: '72px',
+                backgroundColor: '#FFFFFF',
+                border: '1px solid #E8DED2',
+                boxShadow: '0 2px 10px rgba(58,42,26,0.08)',
+                padding: businessLogoUrl ? '6px' : '0',
+              }}
+            >
+              {businessLogoUrl ? (
+                <img
+                  src={businessLogoUrl}
+                  alt="לוגו"
+                  style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: '50%' }}
+                />
+              ) : (
+                <span style={{ fontSize: '1.75rem', fontWeight: 700, color: '#8B5E34', lineHeight: 1 }}>
+                  {customer.שם_פרטי?.charAt(0) || '?'}
+                </span>
+              )}
+            </div>
 
-          {/* avatar — business logo or customer initial */}
-          <div
-            className="rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden"
-            style={{
-              width: '72px', height: '72px',
-              backgroundColor: '#FFFFFF',
-              border: '1px solid #E8DED2',
-              boxShadow: '0 2px 10px rgba(58,42,26,0.08)',
-              padding: businessLogoUrl ? '6px' : '0',
-            }}
-          >
-            {businessLogoUrl ? (
-              <img
-                src={businessLogoUrl}
-                alt="לוגו"
-                style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: '50%' }}
-              />
-            ) : (
-              <span style={{ fontSize: '1.75rem', fontWeight: 700, color: '#8B5E34', lineHeight: 1 }}>
-                {customer.שם_פרטי?.charAt(0) || '?'}
-              </span>
-            )}
-          </div>
-
-          {/* name + contact */}
-          <div className="flex-1 min-w-0">
-
-            {/* name + badges row */}
-            <div className="flex flex-wrap items-center gap-2 mb-2">
+            {/* name + badges */}
+            <div className="min-w-0">
               <h1
                 className="font-bold leading-tight"
-                style={{ color: '#3A2A1A', fontSize: '1.6rem', letterSpacing: '-0.025em' }}
+                style={{ color: '#3A2A1A', fontSize: '1.5rem', letterSpacing: '-0.02em' }}
               >
                 {customer.שם_פרטי} {customer.שם_משפחה}
               </h1>
-              <StatusPill label={customer.סוג_לקוח} color={customer.סוג_לקוח} />
-              {customer.סטטוס_לקוח && (
-                <StatusPill label={customer.סטטוס_לקוח} color={customer.סטטוס_לקוח} />
-              )}
-            </div>
-
-            {/* contact info — styled rows */}
-            <div className="flex flex-col mt-3" style={{ gap: '8px' }}>
-              {customer.טלפון && (
-                <a
-                  href={`tel:${customer.טלפון}`}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '10px',
-                    padding: '10px 12px', borderRadius: '12px',
-                    border: '1px solid #E8DED2', backgroundColor: '#FFFCF8',
-                    textDecoration: 'none', transition: 'border-color 0.15s, background-color 0.15s',
-                  }}
-                  onMouseEnter={e => {
-                    e.currentTarget.style.borderColor = '#C6A77D';
-                    e.currentTarget.style.backgroundColor = '#FEF8F0';
-                  }}
-                  onMouseLeave={e => {
-                    e.currentTarget.style.borderColor = '#E8DED2';
-                    e.currentTarget.style.backgroundColor = '#FFFCF8';
-                  }}
-                >
-                  <span style={{ color: '#8B5E34', lineHeight: 1, flexShrink: 0 }}>
-                    <IPhone className="w-4 h-4" />
-                  </span>
-                  <span className="flex flex-col" style={{ gap: '1px' }}>
-                    <span style={{ fontSize: '10px', fontWeight: 500, color: '#B0A090', letterSpacing: '0.04em' }}>טלפון</span>
-                    <span dir="ltr" style={{ fontSize: '18px', fontWeight: 700, color: '#3A2A1A', letterSpacing: '0.01em', lineHeight: 1.2 }}>
-                      {customer.טלפון}
-                    </span>
-                  </span>
-                </a>
-              )}
-              {customer.אימייל && (
-                <a
-                  href={`mailto:${customer.אימייל}`}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '10px',
-                    padding: '10px 12px', borderRadius: '12px',
-                    border: '1px solid #E8DED2', backgroundColor: '#FFFCF8',
-                    textDecoration: 'none', transition: 'border-color 0.15s, background-color 0.15s',
-                  }}
-                  onMouseEnter={e => {
-                    e.currentTarget.style.borderColor = '#C6A77D';
-                    e.currentTarget.style.backgroundColor = '#FEF8F0';
-                  }}
-                  onMouseLeave={e => {
-                    e.currentTarget.style.borderColor = '#E8DED2';
-                    e.currentTarget.style.backgroundColor = '#FFFCF8';
-                  }}
-                >
-                  <span style={{ color: '#C6A77D', lineHeight: 1, flexShrink: 0 }}>
-                    <IMail className="w-4 h-4" />
-                  </span>
-                  <span className="flex flex-col" style={{ gap: '1px' }}>
-                    <span style={{ fontSize: '10px', fontWeight: 500, color: '#B0A090', letterSpacing: '0.04em' }}>מייל</span>
-                    <span dir="ltr" style={{ fontSize: '16px', fontWeight: 500, color: '#5C4A38', lineHeight: 1.2 }}>
-                      {customer.אימייל}
-                    </span>
-                  </span>
-                </a>
-              )}
-              {customer.מקור_הגעה && (
-                <div
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '10px',
-                    padding: '10px 12px', borderRadius: '12px',
-                    border: '1px solid #E8DED2', backgroundColor: '#FFFCF8',
-                  }}
-                >
-                  <span style={{ color: '#C6A77D', lineHeight: 1, flexShrink: 0 }}>
-                    <IMap className="w-4 h-4" />
-                  </span>
-                  <span className="flex flex-col" style={{ gap: '1px' }}>
-                    <span style={{ fontSize: '10px', fontWeight: 500, color: '#B0A090', letterSpacing: '0.04em' }}>מקור הגעה</span>
-                    <span style={{ fontSize: '14px', fontWeight: 400, color: '#8E7D6A', lineHeight: 1.2 }}>
-                      {customer.מקור_הגעה}
-                    </span>
-                  </span>
-                </div>
-              )}
-              <span style={{ fontSize: '12px', color: '#B0A090', paddingRight: '2px' }}>
-                לקוח מאז {formatDate(customer.תאריך_יצירה)}
-              </span>
+              <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                <StatusPill label={customer.סוג_לקוח} color={customer.סוג_לקוח} />
+                {customer.סטטוס_לקוח && (
+                  <StatusPill label={customer.סטטוס_לקוח} color={customer.סטטוס_לקוח} />
+                )}
+              </div>
             </div>
           </div>
 
-          {/* actions */}
+          {/* action buttons */}
           <div className="flex flex-wrap gap-2 flex-shrink-0">
             <button
               onClick={() => setEditing(e => !e)}
@@ -523,6 +446,107 @@ export default function CustomerDetailPage() {
                 מחק
               </button>
             )}
+          </div>
+        </div>
+
+        {/* Divider */}
+        <div style={{ height: '1px', backgroundColor: '#F0EAE0', margin: '20px 0' }} />
+
+        {/* Row 2: contact info */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4" style={{ gap: '8px' }}>
+          {customer.טלפון && (
+            <a
+              href={`tel:${customer.טלפון}`}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '10px',
+                padding: '10px 12px', borderRadius: '12px',
+                border: '1px solid #E8DED2', backgroundColor: '#FFFCF8',
+                textDecoration: 'none', transition: 'border-color 0.15s, background-color 0.15s',
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.borderColor = '#C6A77D';
+                e.currentTarget.style.backgroundColor = '#FEF8F0';
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.borderColor = '#E8DED2';
+                e.currentTarget.style.backgroundColor = '#FFFCF8';
+              }}
+            >
+              <span style={{ color: '#8B5E34', lineHeight: 1, flexShrink: 0 }}>
+                <IPhone className="w-4 h-4" />
+              </span>
+              <span className="flex flex-col" style={{ gap: '1px' }}>
+                <span style={{ fontSize: '10px', fontWeight: 500, color: '#B0A090', letterSpacing: '0.04em' }}>טלפון</span>
+                <span dir="ltr" style={{ fontSize: '17px', fontWeight: 700, color: '#3A2A1A', letterSpacing: '0.01em', lineHeight: 1.2 }}>
+                  {customer.טלפון}
+                </span>
+              </span>
+            </a>
+          )}
+          {customer.אימייל && (
+            <a
+              href={`mailto:${customer.אימייל}`}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '10px',
+                padding: '10px 12px', borderRadius: '12px',
+                border: '1px solid #E8DED2', backgroundColor: '#FFFCF8',
+                textDecoration: 'none', transition: 'border-color 0.15s, background-color 0.15s',
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.borderColor = '#C6A77D';
+                e.currentTarget.style.backgroundColor = '#FEF8F0';
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.borderColor = '#E8DED2';
+                e.currentTarget.style.backgroundColor = '#FFFCF8';
+              }}
+            >
+              <span style={{ color: '#C6A77D', lineHeight: 1, flexShrink: 0 }}>
+                <IMail className="w-4 h-4" />
+              </span>
+              <span className="flex flex-col" style={{ gap: '1px', minWidth: 0 }}>
+                <span style={{ fontSize: '10px', fontWeight: 500, color: '#B0A090', letterSpacing: '0.04em' }}>מייל</span>
+                <span dir="ltr" style={{ fontSize: '14px', fontWeight: 500, color: '#5C4A38', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {customer.אימייל}
+                </span>
+              </span>
+            </a>
+          )}
+          {customer.מקור_הגעה && (
+            <div
+              style={{
+                display: 'flex', alignItems: 'center', gap: '10px',
+                padding: '10px 12px', borderRadius: '12px',
+                border: '1px solid #E8DED2', backgroundColor: '#FFFCF8',
+              }}
+            >
+              <span style={{ color: '#C6A77D', lineHeight: 1, flexShrink: 0 }}>
+                <IMap className="w-4 h-4" />
+              </span>
+              <span className="flex flex-col" style={{ gap: '1px' }}>
+                <span style={{ fontSize: '10px', fontWeight: 500, color: '#B0A090', letterSpacing: '0.04em' }}>מקור הגעה</span>
+                <span style={{ fontSize: '14px', fontWeight: 400, color: '#8E7D6A', lineHeight: 1.2 }}>
+                  {customer.מקור_הגעה}
+                </span>
+              </span>
+            </div>
+          )}
+          <div
+            style={{
+              display: 'flex', alignItems: 'center', gap: '10px',
+              padding: '10px 12px', borderRadius: '12px',
+              border: '1px solid #E8DED2', backgroundColor: '#FFFCF8',
+            }}
+          >
+            <span style={{ color: '#C6A77D', lineHeight: 1, flexShrink: 0 }}>
+              <ICalendar className="w-4 h-4" />
+            </span>
+            <span className="flex flex-col" style={{ gap: '1px' }}>
+              <span style={{ fontSize: '10px', fontWeight: 500, color: '#B0A090', letterSpacing: '0.04em' }}>לקוח מאז</span>
+              <span style={{ fontSize: '14px', fontWeight: 400, color: '#8E7D6A', lineHeight: 1.2 }}>
+                {formatDate(customer.תאריך_יצירה)}
+              </span>
+            </span>
           </div>
         </div>
       </div>
