@@ -340,125 +340,122 @@ export default function CustomerDetailPage() {
       )}
 
       {/* ── 2. hero card ── */}
-      <div className="rounded-2xl overflow-hidden border bg-white" style={{ borderColor: '#DDD0BC', boxShadow: '0 2px 12px rgba(58,42,26,0.08)' }}>
-        {/* gradient banner */}
-        <div className="relative h-32" style={{ background: 'linear-gradient(130deg, #6B3E1A 0%, #A0672A 55%, #C9A46A 100%)' }}>
-          <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(circle at 80% 50%, #EDD9A3 0%, transparent 60%)' }} />
-        </div>
+      <div
+        className="rounded-2xl bg-white border p-6"
+        style={{ borderColor: '#EDE0CE', boxShadow: '0 1px 8px rgba(58,42,26,0.07)' }}
+      >
+        <div className="flex flex-col sm:flex-row sm:items-center gap-5">
 
-        {/* content below banner */}
-        <div className="px-7 pb-7 -mt-10">
-          <div className="flex flex-col sm:flex-row sm:items-end gap-5">
-            {/* avatar */}
-            <div
-              className="h-20 w-20 rounded-2xl flex items-center justify-center flex-shrink-0 border-4"
-              style={{ backgroundColor: '#FBF5EB', borderColor: '#FFFFFF', boxShadow: '0 2px 10px rgba(58,42,26,0.14)' }}
-            >
-              <IUser />
-            </div>
+          {/* avatar */}
+          <div
+            className="h-16 w-16 rounded-full flex items-center justify-center flex-shrink-0"
+            style={{ backgroundColor: '#F2E8DA', border: '2px solid #E4D4C0' }}
+          >
+            <IUser />
+          </div>
 
-            {/* name + meta */}
-            <div className="flex-1 min-w-0 pt-2">
-              <div className="flex flex-wrap items-baseline gap-2 mb-1">
-                <h1 className="font-bold leading-tight" style={{ color: '#1E100A', fontSize: '1.65rem', letterSpacing: '-0.02em' }}>
-                  {customer.שם_פרטי} {customer.שם_משפחה}
-                </h1>
-                <StatusPill label={customer.סוג_לקוח} color={customer.סוג_לקוח} />
-                {customer.סטטוס_לקוח && (
-                  <StatusPill label={customer.סטטוס_לקוח} color={customer.סטטוס_לקוח} />
-                )}
-              </div>
-              <p className="text-xs" style={{ color: '#A08060' }}>לקוח מאז {formatDate(customer.תאריך_יצירה)}</p>
-            </div>
-
-            {/* actions */}
-            <div className="flex flex-wrap gap-2 pb-0.5">
-              <button
-                onClick={() => setEditing(e => !e)}
-                className="h-9 px-4 rounded-xl flex items-center gap-1.5 font-semibold border transition-all hover:bg-amber-50"
-                style={{ borderColor: '#C7A46B', color: '#7A4E1E', fontSize: '13px' }}
+          {/* name + contact */}
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-wrap items-center gap-2 mb-1.5">
+              <h1
+                className="font-bold leading-tight"
+                style={{ color: '#1E100A', fontSize: '1.5rem', letterSpacing: '-0.02em' }}
               >
-                <IconEdit className="w-3.5 h-3.5" />
-                עריכה
-              </button>
-              {whatsappLink && (
+                {customer.שם_פרטי} {customer.שם_משפחה}
+              </h1>
+              <StatusPill label={customer.סוג_לקוח} color={customer.סוג_לקוח} />
+              {customer.סטטוס_לקוח && (
+                <StatusPill label={customer.סטטוס_לקוח} color={customer.סטטוס_לקוח} />
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-4">
+              {customer.טלפון && (
                 <a
-                  href={whatsappLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="h-9 px-4 rounded-xl flex items-center gap-1.5 font-semibold transition-all hover:brightness-105"
-                  style={{ backgroundColor: '#22C55E', color: '#fff', fontSize: '13px' }}
+                  href={`tel:${customer.טלפון}`}
+                  dir="ltr"
+                  className="flex items-center gap-1.5 text-sm hover:underline"
+                  style={{ color: '#7A5534' }}
                 >
-                  <IconWhatsApp className="w-3.5 h-3.5" />
-                  WhatsApp
+                  <IPhone className="w-3.5 h-3.5 flex-shrink-0" />
+                  {customer.טלפון}
                 </a>
               )}
               {customer.אימייל && (
                 <a
                   href={`mailto:${customer.אימייל}`}
-                  className="h-9 px-4 rounded-xl flex items-center gap-1.5 font-semibold border transition-all hover:bg-amber-50"
-                  style={{ borderColor: '#C7A46B', color: '#7A4E1E', fontSize: '13px' }}
+                  dir="ltr"
+                  className="flex items-center gap-1.5 text-sm hover:underline truncate"
+                  style={{ color: '#7A5534' }}
                 >
-                  <IMail className="w-3.5 h-3.5" />
-                  מייל
+                  <IMail className="w-3.5 h-3.5 flex-shrink-0" />
+                  {customer.אימייל}
                 </a>
               )}
-              <Link href="/orders/new">
-                <button
-                  className="h-9 px-4 rounded-xl flex items-center gap-1.5 font-semibold text-white transition-all hover:brightness-110"
-                  style={{ backgroundColor: '#8B5E34', fontSize: '13px' }}
-                >
-                  <IconPlus className="w-3.5 h-3.5" />
-                  הזמנה חדשה
-                </button>
-              </Link>
-              {customer.הזמנות.length === 0 && (
-                <button
-                  onClick={handleDelete}
-                  className="h-9 px-4 rounded-xl flex items-center gap-1.5 font-semibold border transition-all hover:bg-red-50"
-                  style={{ borderColor: '#FCA5A5', color: '#DC2626', fontSize: '13px' }}
-                >
-                  מחק
-                </button>
+              {customer.מקור_הגעה && (
+                <span className="flex items-center gap-1.5 text-sm" style={{ color: '#9B7A5A' }}>
+                  <IMap className="w-3.5 h-3.5 flex-shrink-0" />
+                  {customer.מקור_הגעה}
+                </span>
               )}
+              <span className="text-sm" style={{ color: '#B0906A' }}>
+                לקוח מאז {formatDate(customer.תאריך_יצירה)}
+              </span>
             </div>
           </div>
 
-          {/* contact strip */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-0 mt-6 pt-5 divide-x divide-x-reverse" style={{ borderTop: '1px solid #EDE0CE' }}>
-            {[
-              {
-                label: 'טלפון',
-                icon: <IPhone className="w-4 h-4" />,
-                content: customer.טלפון
-                  ? <a href={`tel:${customer.טלפון}`} dir="ltr" className="font-semibold hover:underline" style={{ color: '#2B1A10', fontSize: '14px' }}>{customer.טלפון}</a>
-                  : <span style={{ color: '#C0AA90' }}>—</span>,
-              },
-              {
-                label: 'אימייל',
-                icon: <IMail className="w-4 h-4" />,
-                content: customer.אימייל
-                  ? <a href={`mailto:${customer.אימייל}`} dir="ltr" className="font-semibold hover:underline truncate block" style={{ color: '#2B1A10', fontSize: '14px' }}>{customer.אימייל}</a>
-                  : <span style={{ color: '#C0AA90' }}>—</span>,
-              },
-              {
-                label: 'מקור הגעה',
-                icon: <IMap className="w-4 h-4" />,
-                content: <span className="font-semibold" style={{ color: '#2B1A10', fontSize: '14px' }}>{customer.מקור_הגעה || '—'}</span>,
-              },
-            ].map(item => (
-              <div key={item.label} className="flex items-center gap-3 px-0 sm:px-5 py-3 first:pr-0 last:pl-0" style={{ borderColor: '#EDE0CE' }}>
-                <div className="h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#F2E8DA', color: '#8B5E34' }}>
-                  {item.icon}
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs mb-0.5" style={{ color: '#A08060' }}>{item.label}</p>
-                  {item.content}
-                </div>
-              </div>
-            ))}
+          {/* actions */}
+          <div className="flex flex-wrap gap-2 flex-shrink-0">
+            <button
+              onClick={() => setEditing(e => !e)}
+              className="h-9 px-4 rounded-xl flex items-center gap-1.5 font-medium border transition-all hover:bg-amber-50"
+              style={{ borderColor: '#D4B896', color: '#7A4E1E', fontSize: '13px' }}
+            >
+              <IconEdit className="w-3.5 h-3.5" />
+              ערוך פרטים
+            </button>
+            {whatsappLink && (
+              <a
+                href={whatsappLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="h-9 px-4 rounded-xl flex items-center gap-1.5 font-medium transition-all hover:brightness-105"
+                style={{ backgroundColor: '#22C55E', color: '#fff', fontSize: '13px' }}
+              >
+                <IconWhatsApp className="w-3.5 h-3.5" />
+                WhatsApp
+              </a>
+            )}
+            {customer.אימייל && (
+              <a
+                href={`mailto:${customer.אימייל}`}
+                className="h-9 px-4 rounded-xl flex items-center gap-1.5 font-medium border transition-all hover:bg-amber-50"
+                style={{ borderColor: '#D4B896', color: '#7A4E1E', fontSize: '13px' }}
+              >
+                <IMail className="w-3.5 h-3.5" />
+                מייל
+              </a>
+            )}
+            <Link href="/orders/new">
+              <button
+                className="h-9 px-4 rounded-xl flex items-center gap-1.5 font-medium text-white transition-all hover:brightness-110"
+                style={{ backgroundColor: '#8B5E34', fontSize: '13px' }}
+              >
+                <IconPlus className="w-3.5 h-3.5" />
+                הזמנה חדשה
+              </button>
+            </Link>
+            {customer.הזמנות.length === 0 && (
+              <button
+                onClick={handleDelete}
+                className="h-9 px-4 rounded-xl flex items-center gap-1.5 font-medium border transition-all hover:bg-red-50"
+                style={{ borderColor: '#FCA5A5', color: '#DC2626', fontSize: '13px' }}
+              >
+                מחק
+              </button>
+            )}
           </div>
         </div>
+        <p style={{ fontSize: '10px', color: '#C9A46A', marginTop: '6px', textAlign: 'left' }}>ACTIVE CUSTOMER PROFILE V2</p>
       </div>
 
       {/* ── 3. activity stats ── */}
