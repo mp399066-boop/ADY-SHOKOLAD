@@ -159,17 +159,12 @@ serve(async (req: Request) => {
       });
     }
 
-    // Discount as negative line (סכום type only — percentage handled via Morning discount field)
-    let discountField: object | undefined;
+    // Discount field — Morning API expects type: 'percentage' | 'sum'
+    let discountField: { type: string; amount: number } | undefined;
     if (order.סוג_הנחה === 'אחוז' && order.ערך_הנחה && order.ערך_הנחה > 0) {
-      discountField = { type: 2, amount: order.ערך_הנחה }; // type 2 = percentage in Morning
+      discountField = { type: 'percentage', amount: order.ערך_הנחה };
     } else if (order.סוג_הנחה === 'סכום' && order.ערך_הנחה && order.ערך_הנחה > 0) {
-      incomeLines.push({
-        description: 'הנחה',
-        quantity: 1,
-        price: -order.ערך_הנחה,
-        vatType: 1,
-      });
+      discountField = { type: 'sum', amount: order.ערך_הנחה };
     }
 
     // Payment line
@@ -207,6 +202,7 @@ serve(async (req: Request) => {
     const tokenStr = String(token);
     console.log('[create-morning-invoice] Calling Morning API for order', order.מספר_הזמנה, '— URL:', documentsUrl);
     console.log('[create-morning-invoice] Token type:', typeof token, '| length:', tokenStr.length, '| first 20 chars:', tokenStr.slice(0, 20));
+    console.log('[create-morning-invoice] Discount field:', discountField ? JSON.stringify(discountField) : 'none (no discount)');
     console.log('[create-morning-invoice] Document payload:', JSON.stringify(documentBody));
 
     const docRes = await fetch(documentsUrl, {
