@@ -71,9 +71,14 @@ export default function NavBar() {
               {(settings?.business_name || 'פ').charAt(0)}
             </div>
           )}
-          <span className="text-sm font-medium hidden sm:block" style={{ color: '#3A2A1A', letterSpacing: '0.02em' }}>
-            {settings?.business_name || 'עדי תכשיט שוקולד'}
-          </span>
+          <div className="hidden sm:flex flex-col" style={{ gap: '1px' }}>
+            <span className="text-sm font-medium" style={{ color: '#3A2A1A', letterSpacing: '0.02em', lineHeight: 1.3 }}>
+              {settings?.business_name || 'עדי תכשיט שוקולד'}
+            </span>
+            <span style={{ fontSize: '10px', fontWeight: 400, color: '#8E7D6A', letterSpacing: '0.05em', lineHeight: 1.3 }}>
+              Adi Chocolate Boutique
+            </span>
+          </div>
         </div>
 
         {/* Desktop nav */}

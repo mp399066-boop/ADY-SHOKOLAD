@@ -12,6 +12,7 @@ import { Input, Select, Textarea } from '@/components/ui/Input';
 import { IconWhatsApp, IconEdit, IconChevronLeft, IconPlus } from '@/components/icons';
 import { CustomerCommunication } from '@/components/CustomerCommunication';
 import { formatDate, formatCurrency } from '@/lib/utils';
+import { createClient } from '@/lib/supabase/client';
 import toast from 'react-hot-toast';
 import type { Customer, Order, Invoice, CommunicationLog } from '@/types/database';
 
@@ -110,10 +111,10 @@ function SectionHeader({ icon, title, subtitle, action }: {
   return (
     <div className="flex items-center justify-between mb-4">
       <div className="flex items-center gap-2">
-        <span style={{ color: '#9CA3AF' }}>{icon}</span>
+        <span style={{ color: '#C6A77D' }}>{icon}</span>
         <div>
-          <h3 className="font-semibold text-sm" style={{ color: '#111827' }}>{title}</h3>
-          {subtitle && <p className="text-xs" style={{ color: '#6B7280' }}>{subtitle}</p>}
+          <h3 className="font-semibold text-sm" style={{ color: '#3A2A1A' }}>{title}</h3>
+          {subtitle && <p className="text-xs" style={{ color: '#8A7664' }}>{subtitle}</p>}
         </div>
       </div>
       {action}
@@ -131,18 +132,18 @@ function StatCard({ icon, label, value, hint, tone }: {
   void tone;
   return (
     <div
-      className="rounded-xl p-5 bg-white border"
-      style={{ borderColor: '#E5E7EB', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}
+      className="rounded-2xl p-5 bg-white"
+      style={{ border: '1px solid #E8DED2', boxShadow: '0 2px 8px rgba(58,42,26,0.04)' }}
     >
-      <div className="mb-3" style={{ color: '#9CA3AF' }}>{icon}</div>
+      <div className="mb-3" style={{ color: '#C6A77D' }}>{icon}</div>
       <div
         className="text-[1.75rem] font-bold tabular-nums leading-none mb-1.5"
-        style={{ color: '#111827', letterSpacing: '-0.03em' }}
+        style={{ color: '#3A2A1A', letterSpacing: '-0.03em' }}
       >
         {value}
       </div>
-      <div className="text-xs font-medium" style={{ color: '#6B7280' }}>{label}</div>
-      {hint && <div className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>{hint}</div>}
+      <div className="text-xs font-medium" style={{ color: '#8A7664' }}>{label}</div>
+      {hint && <div className="text-xs mt-0.5" style={{ color: '#B0A090' }}>{hint}</div>}
     </div>
   );
 }
@@ -155,11 +156,11 @@ function EmptyState({ icon, title, text, action }: {
 }) {
   return (
     <div className="py-10 text-center">
-      <div className="h-12 w-12 rounded-xl mx-auto mb-3 flex items-center justify-center" style={{ backgroundColor: '#F3F4F6', color: '#9CA3AF' }}>
+      <div className="h-12 w-12 rounded-xl mx-auto mb-3 flex items-center justify-center" style={{ backgroundColor: '#F5EFE8', color: '#C6A77D' }}>
         {icon}
       </div>
-      <p className="font-medium text-sm mb-1" style={{ color: '#374151' }}>{title}</p>
-      {text && <p className="text-xs mb-4" style={{ color: '#6B7280' }}>{text}</p>}
+      <p className="font-medium text-sm mb-1" style={{ color: '#3A2A1A' }}>{title}</p>
+      {text && <p className="text-xs mb-4" style={{ color: '#8A7664' }}>{text}</p>}
       {action}
     </div>
   );
@@ -167,12 +168,12 @@ function EmptyState({ icon, title, text, action }: {
 
 function StatusPill({ label, color }: { label: string; color: string }) {
   const map: Record<string, { bg: string; text: string; border: string }> = {
-    פעיל:  { bg: '#F0FDF4', text: '#166534', border: '#BBF7D0' },
-    חוזר:  { bg: '#EFF6FF', text: '#1D4ED8', border: '#BFDBFE' },
-    פרטי:  { bg: '#FFFBEB', text: '#92400E', border: '#FDE68A' },
-    עסקי:  { bg: '#EFF6FF', text: '#1E40AF', border: '#BFDBFE' },
+    פעיל:  { bg: '#E8F0EB', text: '#2D6648', border: '#BED3C4' },
+    חוזר:  { bg: '#EAF0F5', text: '#2A4C6A', border: '#B6CCDD' },
+    פרטי:  { bg: '#F5F1EB', text: '#6B4B32', border: '#E0D4C2' },
+    עסקי:  { bg: '#EEEAF4', text: '#4A3868', border: '#CCC4D8' },
   };
-  const s = map[color] || { bg: '#FFFBEB', text: '#92400E', border: '#FDE68A' };
+  const s = map[color] || { bg: '#F5F1EB', text: '#6B4B32', border: '#E0D4C2' };
   return (
     <span
       className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border"
@@ -194,6 +195,7 @@ export default function CustomerDetailPage() {
   const [saving, setSaving] = useState(false);
   const [editForm, setEditForm] = useState<Partial<Customer>>({});
   const [sideTab, setSideTab] = useState<SideTab>('invoices');
+  const [businessLogoUrl, setBusinessLogoUrl] = useState<string | null>(null);
 
   useEffect(() => {
     fetch(`/api/customers/${id}`)
@@ -201,6 +203,12 @@ export default function CustomerDetailPage() {
       .then(({ data }) => { setCustomer(data); setEditForm(data); })
       .finally(() => setLoading(false));
   }, [id]);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.from('business_settings').select('logo_url').single()
+      .then(({ data }: { data: any }) => { if (data?.logo_url) setBusinessLogoUrl(data.logo_url); });
+  }, []);
 
   const handleDelete = async () => {
     if (!window.confirm('האם למחוק את הלקוח לצמיתות?')) return;
@@ -248,16 +256,16 @@ export default function CustomerDetailPage() {
 
   if (!customer) return (
     <div className="max-w-6xl">
-      <Link href="/customers" className="flex items-center gap-1 text-sm mb-6 hover:underline" style={{ color: '#6B7280' }}>
+      <Link href="/customers" className="flex items-center gap-1 text-sm mb-6 hover:underline" style={{ color: '#8A7664' }}>
         <IconChevronLeft className="w-4 h-4 rtl-flip" />
         חזרה לרשימת לקוחות
       </Link>
-      <div className="rounded-xl border p-12 text-center bg-white" style={{ borderColor: '#E5E7EB' }}>
-        <div className="h-12 w-12 rounded-xl mx-auto mb-4 flex items-center justify-center" style={{ backgroundColor: '#F3F4F6', color: '#9CA3AF' }}>
+      <div className="rounded-2xl border p-12 text-center bg-white" style={{ borderColor: '#E8DED2' }}>
+        <div className="h-12 w-12 rounded-xl mx-auto mb-4 flex items-center justify-center" style={{ backgroundColor: '#F5EFE8', color: '#C6A77D' }}>
           <IUser />
         </div>
-        <h2 className="text-lg font-semibold mb-1" style={{ color: '#111827' }}>לא נמצא לקוח</h2>
-        <p className="text-sm mb-4" style={{ color: '#6B7280' }}>המזהה המבוקש: <span className="font-mono">{id}</span></p>
+        <h2 className="text-lg font-semibold mb-1" style={{ color: '#3A2A1A' }}>לא נמצא לקוח</h2>
+        <p className="text-sm mb-4" style={{ color: '#8A7664' }}>המזהה המבוקש: <span className="font-mono">{id}</span></p>
         <Link href="/customers">
           <Button variant="outline" size="sm">חזרה לרשימה</Button>
         </Link>
@@ -289,7 +297,7 @@ export default function CustomerDetailPage() {
       <Link
         href="/customers"
         className="inline-flex items-center gap-1.5 text-sm hover:underline"
-        style={{ color: '#6B7280' }}
+        style={{ color: '#8A7664' }}
       >
         <IconChevronLeft className="w-4 h-4 rtl-flip" />
         חזרה לרשימת לקוחות
@@ -326,17 +334,33 @@ export default function CustomerDetailPage() {
 
       {/* ── 2. hero card ── */}
       <div
-        className="rounded-xl bg-white border p-6"
-        style={{ borderColor: '#E5E7EB', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}
+        className="rounded-2xl bg-white border p-6"
+        style={{ borderColor: '#E8DED2', boxShadow: '0 2px 12px rgba(58,42,26,0.05)' }}
       >
         <div className="flex flex-col sm:flex-row sm:items-center gap-5">
 
-          {/* avatar */}
+          {/* avatar — business logo or customer initial */}
           <div
-            className="h-14 w-14 rounded-full flex items-center justify-center flex-shrink-0"
-            style={{ backgroundColor: '#FDF4E7', border: '1.5px solid #E8D5BC' }}
+            className="rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden"
+            style={{
+              width: '72px', height: '72px',
+              backgroundColor: '#FFFFFF',
+              border: '1px solid #E8DED2',
+              boxShadow: '0 2px 10px rgba(58,42,26,0.08)',
+              padding: businessLogoUrl ? '6px' : '0',
+            }}
           >
-            <IUser />
+            {businessLogoUrl ? (
+              <img
+                src={businessLogoUrl}
+                alt="לוגו"
+                style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: '50%' }}
+              />
+            ) : (
+              <span style={{ fontSize: '1.75rem', fontWeight: 700, color: '#8B5E34', lineHeight: 1 }}>
+                {customer.שם_פרטי?.charAt(0) || '?'}
+              </span>
+            )}
           </div>
 
           {/* name + contact */}
@@ -346,7 +370,7 @@ export default function CustomerDetailPage() {
             <div className="flex flex-wrap items-center gap-2 mb-2">
               <h1
                 className="font-bold leading-tight"
-                style={{ color: '#111827', fontSize: '1.6rem', letterSpacing: '-0.025em' }}
+                style={{ color: '#3A2A1A', fontSize: '1.6rem', letterSpacing: '-0.025em' }}
               >
                 {customer.שם_פרטי} {customer.שם_משפחה}
               </h1>
@@ -356,37 +380,86 @@ export default function CustomerDetailPage() {
               )}
             </div>
 
-            {/* contact info — phone prominent, email secondary */}
-            <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5">
+            {/* contact info — styled rows */}
+            <div className="flex flex-col mt-3" style={{ gap: '8px' }}>
               {customer.טלפון && (
                 <a
                   href={`tel:${customer.טלפון}`}
-                  dir="ltr"
-                  className="flex items-center gap-1.5 hover:underline"
-                  style={{ color: '#111827', fontSize: '0.9375rem', fontWeight: 600 }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '10px',
+                    padding: '10px 12px', borderRadius: '12px',
+                    border: '1px solid #E8DED2', backgroundColor: '#FFFCF8',
+                    textDecoration: 'none', transition: 'border-color 0.15s, background-color 0.15s',
+                  }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.borderColor = '#C6A77D';
+                    e.currentTarget.style.backgroundColor = '#FEF8F0';
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.borderColor = '#E8DED2';
+                    e.currentTarget.style.backgroundColor = '#FFFCF8';
+                  }}
                 >
-                  <span style={{ color: '#8B5E34' }}><IPhone className="w-4 h-4 flex-shrink-0" /></span>
-                  {customer.טלפון}
+                  <span style={{ color: '#8B5E34', lineHeight: 1, flexShrink: 0 }}>
+                    <IPhone className="w-4 h-4" />
+                  </span>
+                  <span className="flex flex-col" style={{ gap: '1px' }}>
+                    <span style={{ fontSize: '10px', fontWeight: 500, color: '#B0A090', letterSpacing: '0.04em' }}>טלפון</span>
+                    <span dir="ltr" style={{ fontSize: '18px', fontWeight: 700, color: '#3A2A1A', letterSpacing: '0.01em', lineHeight: 1.2 }}>
+                      {customer.טלפון}
+                    </span>
+                  </span>
                 </a>
               )}
               {customer.אימייל && (
                 <a
                   href={`mailto:${customer.אימייל}`}
-                  dir="ltr"
-                  className="flex items-center gap-1.5 hover:underline truncate"
-                  style={{ color: '#374151', fontSize: '0.875rem', fontWeight: 500 }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '10px',
+                    padding: '10px 12px', borderRadius: '12px',
+                    border: '1px solid #E8DED2', backgroundColor: '#FFFCF8',
+                    textDecoration: 'none', transition: 'border-color 0.15s, background-color 0.15s',
+                  }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.borderColor = '#C6A77D';
+                    e.currentTarget.style.backgroundColor = '#FEF8F0';
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.borderColor = '#E8DED2';
+                    e.currentTarget.style.backgroundColor = '#FFFCF8';
+                  }}
                 >
-                  <span style={{ color: '#9CA3AF' }}><IMail className="w-3.5 h-3.5 flex-shrink-0" /></span>
-                  {customer.אימייל}
+                  <span style={{ color: '#C6A77D', lineHeight: 1, flexShrink: 0 }}>
+                    <IMail className="w-4 h-4" />
+                  </span>
+                  <span className="flex flex-col" style={{ gap: '1px' }}>
+                    <span style={{ fontSize: '10px', fontWeight: 500, color: '#B0A090', letterSpacing: '0.04em' }}>מייל</span>
+                    <span dir="ltr" style={{ fontSize: '16px', fontWeight: 500, color: '#5C4A38', lineHeight: 1.2 }}>
+                      {customer.אימייל}
+                    </span>
+                  </span>
                 </a>
               )}
               {customer.מקור_הגעה && (
-                <span className="flex items-center gap-1.5" style={{ color: '#9CA3AF', fontSize: '0.8125rem' }}>
-                  <IMap className="w-3.5 h-3.5 flex-shrink-0" />
-                  {customer.מקור_הגעה}
-                </span>
+                <div
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '10px',
+                    padding: '10px 12px', borderRadius: '12px',
+                    border: '1px solid #E8DED2', backgroundColor: '#FFFCF8',
+                  }}
+                >
+                  <span style={{ color: '#C6A77D', lineHeight: 1, flexShrink: 0 }}>
+                    <IMap className="w-4 h-4" />
+                  </span>
+                  <span className="flex flex-col" style={{ gap: '1px' }}>
+                    <span style={{ fontSize: '10px', fontWeight: 500, color: '#B0A090', letterSpacing: '0.04em' }}>מקור הגעה</span>
+                    <span style={{ fontSize: '14px', fontWeight: 400, color: '#8E7D6A', lineHeight: 1.2 }}>
+                      {customer.מקור_הגעה}
+                    </span>
+                  </span>
+                </div>
               )}
-              <span style={{ color: '#9CA3AF', fontSize: '0.8125rem' }}>
+              <span style={{ fontSize: '12px', color: '#B0A090', paddingRight: '2px' }}>
                 לקוח מאז {formatDate(customer.תאריך_יצירה)}
               </span>
             </div>
@@ -397,8 +470,8 @@ export default function CustomerDetailPage() {
             <button
               onClick={() => setEditing(e => !e)}
               className="h-9 px-4 rounded-lg flex items-center gap-1.5 font-medium border transition-all"
-              style={{ borderColor: '#E5E7EB', color: '#374151', fontSize: '13px', backgroundColor: '#fff' }}
-              onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#F9FAFB')}
+              style={{ borderColor: '#E8DED2', color: '#5C4A38', fontSize: '13px', backgroundColor: '#fff' }}
+              onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#FAF7F2')}
               onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#fff')}
             >
               <IconEdit className="w-3.5 h-3.5" />
@@ -420,8 +493,8 @@ export default function CustomerDetailPage() {
               <a
                 href={`mailto:${customer.אימייל}`}
                 className="h-9 px-4 rounded-lg flex items-center gap-1.5 font-medium border transition-all"
-                style={{ borderColor: '#E5E7EB', color: '#374151', fontSize: '13px', backgroundColor: '#fff' }}
-                onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#F9FAFB')}
+                style={{ borderColor: '#E8DED2', color: '#5C4A38', fontSize: '13px', backgroundColor: '#fff' }}
+                onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#FAF7F2')}
                 onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#fff')}
               >
                 <IMail className="w-3.5 h-3.5" />
@@ -443,8 +516,8 @@ export default function CustomerDetailPage() {
               <button
                 onClick={handleDelete}
                 className="h-9 px-4 rounded-lg flex items-center gap-1.5 font-medium border transition-all"
-                style={{ borderColor: '#FECACA', color: '#DC2626', fontSize: '13px', backgroundColor: '#fff' }}
-                onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#FEF2F2')}
+                style={{ borderColor: '#F0C4C0', color: '#8A3228', fontSize: '13px', backgroundColor: '#fff' }}
+                onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#FDF2F0')}
                 onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#fff')}
               >
                 מחק
@@ -510,15 +583,15 @@ export default function CustomerDetailPage() {
               { label: 'מקור',        value: customer.מקור_הגעה || '—' },
               { label: 'מזהה לקוח',   value: customer.id,                                         mono: true  },
             ].map(row => (
-              <div key={row.label} className="flex items-center justify-between py-2.5">
-                <dt className="text-xs flex items-center" style={{ color: '#6B7280' }}>
+              <div key={row.label} className="flex items-center justify-between py-2.5" style={{ borderColor: '#F0EAE0' }}>
+                <dt className="text-xs flex items-center" style={{ color: '#8A7664' }}>
                   {row.icon}{row.label}
                 </dt>
-                <dd className="text-xs font-medium" style={{ color: '#111827' }}>
+                <dd className="text-xs font-medium" style={{ color: '#3A2A1A' }}>
                   {row.pill
                     ? <StatusPill label={row.value as string} color={row.value as string} />
                     : row.mono
-                    ? <span dir="ltr" className="font-mono text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: '#F3F4F6', color: '#374151' }}>{String(row.value).slice(0, 12)}…</span>
+                    ? <span dir="ltr" className="font-mono text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: '#F5F0E8', color: '#5C4A38' }}>{String(row.value).slice(0, 12)}…</span>
                     : row.value
                   }
                 </dd>
@@ -561,12 +634,12 @@ export default function CustomerDetailPage() {
               <div className="overflow-x-auto -mx-1">
                 <table className="w-full">
                   <thead>
-                    <tr style={{ borderBottom: '1px solid #F3F4F6' }}>
+                    <tr style={{ borderBottom: '1px solid #F0EAE0' }}>
                       {['מספר הזמנה', 'תאריך אספקה', 'סכום', 'סטטוס', ''].map(h => (
                         <th
                           key={h}
                           className="px-3 py-2.5 text-right text-xs font-medium uppercase tracking-wide"
-                          style={{ color: '#6B7280' }}
+                          style={{ color: '#8A7664' }}
                         >
                           {h}
                         </th>
@@ -578,25 +651,25 @@ export default function CustomerDetailPage() {
                       <tr
                         key={o.id}
                         className="transition-colors cursor-pointer border-b"
-                        style={{ borderColor: '#F3F4F6' }}
+                        style={{ borderColor: '#F5EEE4' }}
                         onClick={() => router.push(`/orders/${o.id}`)}
-                        onMouseEnter={e => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = '#F9FAFB'}
+                        onMouseEnter={e => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = '#FAF7F2'}
                         onMouseLeave={e => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = ''}
                       >
                         <td className="px-3 py-3 font-mono text-xs font-semibold" style={{ color: '#8B5E34' }}>
                           {o.מספר_הזמנה}
                         </td>
-                        <td className="px-3 py-3 text-xs" style={{ color: '#374151' }}>
-                          {o.תאריך_אספקה ? formatDate(o.תאריך_אספקה) : <span style={{ color: '#D1D5DB' }}>—</span>}
+                        <td className="px-3 py-3 text-xs" style={{ color: '#5C4A38' }}>
+                          {o.תאריך_אספקה ? formatDate(o.תאריך_אספקה) : <span style={{ color: '#C6B8A8' }}>—</span>}
                         </td>
-                        <td className="px-3 py-3 font-semibold text-xs" style={{ color: '#111827' }}>
+                        <td className="px-3 py-3 font-semibold text-xs" style={{ color: '#3A2A1A' }}>
                           {formatCurrency(o.סך_הכל_לתשלום)}
                         </td>
                         <td className="px-3 py-3">
                           <StatusBadge status={o.סטטוס_הזמנה} type="order" />
                         </td>
                         <td className="px-3 py-3">
-                          <span style={{ color: '#9CA3AF' }}><IEye className="w-3.5 h-3.5" /></span>
+                          <span style={{ color: '#C6A77D' }}><IEye className="w-3.5 h-3.5" /></span>
                         </td>
                       </tr>
                     ))}
@@ -634,7 +707,7 @@ export default function CustomerDetailPage() {
                   <div
                     key={inv.id}
                     className="flex justify-between items-center px-3 py-2.5 rounded-lg border"
-                    style={{ borderColor: '#F3F4F6', backgroundColor: '#FAFAFA' }}
+                    style={{ borderColor: '#F0EAE0', backgroundColor: '#FEFCF9' }}
                   >
                     <div className="flex items-center gap-3">
                       {inv.קישור_חשבונית ? (
@@ -648,11 +721,11 @@ export default function CustomerDetailPage() {
                           #{inv.מספר_חשבונית}
                         </a>
                       ) : (
-                        <span className="font-mono font-semibold text-xs" style={{ color: '#374151' }}>#{inv.מספר_חשבונית}</span>
+                        <span className="font-mono font-semibold text-xs" style={{ color: '#5C4A38' }}>#{inv.מספר_חשבונית}</span>
                       )}
-                      <span className="text-xs" style={{ color: '#9CA3AF' }}>{formatDate(inv.תאריך_יצירה)}</span>
+                      <span className="text-xs" style={{ color: '#B0A090' }}>{formatDate(inv.תאריך_יצירה)}</span>
                     </div>
-                    <span className="font-semibold text-xs" style={{ color: '#111827' }}>{formatCurrency(inv.סכום)}</span>
+                    <span className="font-semibold text-xs" style={{ color: '#3A2A1A' }}>{formatCurrency(inv.סכום)}</span>
                   </div>
                 ))}
               </div>
@@ -672,13 +745,13 @@ export default function CustomerDetailPage() {
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors border border-transparent"
-                    style={{ color: '#374151' }}
-                    onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#F9FAFB')}
+                    style={{ color: '#5C4A38' }}
+                    onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#FAF7F2')}
                     onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
                   >
-                    <span style={{ color: '#9CA3AF' }}><IFile className="w-4 h-4 flex-shrink-0" /></span>
+                    <span style={{ color: '#C6A77D' }}><IFile className="w-4 h-4 flex-shrink-0" /></span>
                     <span className="text-xs flex-1">{f.file_name}</span>
-                    <span className="text-xs" style={{ color: '#9CA3AF' }}>{formatDate(f.uploaded_at)}</span>
+                    <span className="text-xs" style={{ color: '#B0A090' }}>{formatDate(f.uploaded_at)}</span>
                   </a>
                 ))}
               </div>
@@ -688,7 +761,7 @@ export default function CustomerDetailPage() {
           {/* notes */}
           {sideTab === 'notes' && (
             customer.הערות ? (
-              <p className="text-sm whitespace-pre-wrap leading-relaxed" style={{ color: '#374151' }}>{customer.הערות}</p>
+              <p className="text-sm whitespace-pre-wrap leading-relaxed" style={{ color: '#5C4A38' }}>{customer.הערות}</p>
             ) : (
               <EmptyState
                 icon={

@@ -11,7 +11,6 @@ export default function DashboardLayout({
   return (
     <div className="flex flex-col h-screen overflow-hidden" style={{ backgroundColor: '#F8F6F2' }}>
       <NavBar />
-      <div style={{ fontSize: '10px', color: '#C9A46A', textAlign: 'center', padding: '2px 0', backgroundColor: '#fff' }}>GLOBAL HEADER CLEANED V1</div>
       <main className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full py-5 md:py-7" style={{ maxWidth: '1440px', paddingInline: '28px' }}>
           {children}
