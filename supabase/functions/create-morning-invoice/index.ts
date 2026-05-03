@@ -169,35 +169,38 @@ serve(async (req: Request) => {
       });
     }
 
-    // Discount field — Morning API expects type: 'percentage' | 'sum'
-    let discountField: { type: string; amount: number } | undefined;
+    // Discount — add as negative income line (not discount field) so Morning's total always matches payment
+    const incomeBeforeDiscount = (incomeLines as Array<{ price: number; quantity: number }>)
+      .reduce((sum, l) => sum + l.price * l.quantity, 0);
+
     if (order.סוג_הנחה === 'אחוז' && order.ערך_הנחה && order.ערך_הנחה > 0) {
-      discountField = { type: 'percentage', amount: order.ערך_הנחה };
+      const discountAmount = Math.round(incomeBeforeDiscount * order.ערך_הנחה / 100 * 100) / 100;
+      incomeLines.push({ description: `הנחה ${order.ערך_הנחה}%`, quantity: 1, price: -discountAmount, vatType: 1 });
     } else if (order.סוג_הנחה === 'סכום' && order.ערך_הנחה && order.ערך_הנחה > 0) {
-      discountField = { type: 'sum', amount: order.ערך_הנחה };
+      incomeLines.push({ description: 'הנחה', quantity: 1, price: -order.ערך_הנחה, vatType: 1 });
     }
 
-    // Payment line — calculate from income lines to match Morning's own computation
+    // Payment = sum of all income lines (including discount line) — guaranteed to match Morning's total
     const paymentMethod = order.אופן_תשלום ?? '';
     const morningPaymentType = PAYMENT_TYPE_MAP[paymentMethod] ?? 4;
 
-    const incomeTotal = (incomeLines as Array<{ price: number; quantity: number }>)
-      .reduce((sum, l) => sum + l.price * l.quantity, 0);
+    const paymentAmount = Math.round(
+      (incomeLines as Array<{ price: number; quantity: number }>)
+        .reduce((sum, l) => sum + l.price * l.quantity, 0) * 100
+    ) / 100;
 
-    let paymentAmount: number;
-    if (discountField?.type === 'sum') {
-      paymentAmount = incomeTotal - discountField.amount;
-    } else if (discountField?.type === 'percentage') {
-      paymentAmount = incomeTotal * (1 - discountField.amount / 100);
-    } else {
-      paymentAmount = incomeTotal;
+    const dbTotal = order.סך_הכל_לתשלום ?? 0;
+    const difference = Math.round(Math.abs(paymentAmount - dbTotal) * 100) / 100;
+
+    console.log('[create-morning-invoice] Income before discount:', incomeBeforeDiscount);
+    console.log('[create-morning-invoice] Discount type:', order.סוג_הנחה ?? 'none', '| value:', order.ערך_הנחה ?? 0);
+    console.log('[create-morning-invoice] Payment amount (income lines sum):', paymentAmount);
+    console.log('[create-morning-invoice] DB total (סך_הכל_לתשלום):', dbTotal);
+    console.log('[create-morning-invoice] Difference:', difference);
+
+    if (difference > 0.02) {
+      console.warn('[create-morning-invoice] WARNING: payment differs from DB total by', difference, '— proceeding with income-lines total');
     }
-    paymentAmount = Math.round(paymentAmount * 100) / 100;
-
-    console.log('[create-morning-invoice] Income lines total:', incomeTotal);
-    console.log('[create-morning-invoice] Discount:', discountField ? JSON.stringify(discountField) : 'none');
-    console.log('[create-morning-invoice] Payment amount (sent to Morning):', paymentAmount);
-    console.log('[create-morning-invoice] DB total (סך_הכל_לתשלום):', order.סך_הכל_לתשלום);
 
     const documentBody: Record<string, unknown> = {
       description: `הזמנה ${order.מספר_הזמנה}`,
@@ -220,10 +223,6 @@ serve(async (req: Request) => {
         },
       ],
     };
-
-    if (discountField) {
-      documentBody.discount = discountField;
-    }
 
     const documentsUrl = `${MORNING_API_BASE}/documents`;
     const tokenStr = String(token);
