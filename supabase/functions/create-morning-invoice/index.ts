@@ -177,10 +177,27 @@ serve(async (req: Request) => {
       discountField = { type: 'sum', amount: order.ערך_הנחה };
     }
 
-    // Payment line
+    // Payment line — calculate from income lines to match Morning's own computation
     const paymentMethod = order.אופן_תשלום ?? '';
     const morningPaymentType = PAYMENT_TYPE_MAP[paymentMethod] ?? 4;
-    const totalAmount = order.סך_הכל_לתשלום ?? 0;
+
+    const incomeTotal = (incomeLines as Array<{ price: number; quantity: number }>)
+      .reduce((sum, l) => sum + l.price * l.quantity, 0);
+
+    let paymentAmount: number;
+    if (discountField?.type === 'sum') {
+      paymentAmount = incomeTotal - discountField.amount;
+    } else if (discountField?.type === 'percentage') {
+      paymentAmount = incomeTotal * (1 - discountField.amount / 100);
+    } else {
+      paymentAmount = incomeTotal;
+    }
+    paymentAmount = Math.round(paymentAmount * 100) / 100;
+
+    console.log('[create-morning-invoice] Income lines total:', incomeTotal);
+    console.log('[create-morning-invoice] Discount:', discountField ? JSON.stringify(discountField) : 'none');
+    console.log('[create-morning-invoice] Payment amount (sent to Morning):', paymentAmount);
+    console.log('[create-morning-invoice] DB total (סך_הכל_לתשלום):', order.סך_הכל_לתשלום);
 
     const documentBody: Record<string, unknown> = {
       description: `הזמנה ${order.מספר_הזמנה}`,
@@ -198,7 +215,7 @@ serve(async (req: Request) => {
       payment: [
         {
           type: morningPaymentType,
-          price: totalAmount,
+          price: paymentAmount,
           date: new Date().toISOString().slice(0, 10),
         },
       ],
@@ -210,9 +227,7 @@ serve(async (req: Request) => {
 
     const documentsUrl = `${MORNING_API_BASE}/documents`;
     const tokenStr = String(token);
-    console.log('[create-morning-invoice] Calling Morning API for order', order.מספר_הזמנה, '— URL:', documentsUrl);
-    console.log('[create-morning-invoice] Token type:', typeof token, '| length:', tokenStr.length, '| first 20 chars:', tokenStr.slice(0, 20));
-    console.log('[create-morning-invoice] Discount field:', discountField ? JSON.stringify(discountField) : 'none (no discount)');
+    console.log('[create-morning-invoice] Calling Morning API for order', order.מספר_הזמנה);
     console.log('[create-morning-invoice] Document payload:', JSON.stringify(documentBody));
 
     const docRes = await fetch(documentsUrl, {
