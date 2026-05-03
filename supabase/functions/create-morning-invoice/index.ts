@@ -12,19 +12,13 @@ const PAYMENT_TYPE_MAP: Record<string, number> = {
 };
 
 async function getMorningToken(apiId: string, apiSecret: string): Promise<string> {
-  const authUrl = `${MORNING_AUTH_BASE}/idp/v1/oauth/token`;
-  const authBody = new URLSearchParams({
-    grant_type: 'client_credentials',
-    client_id: apiId,
-    client_secret: apiSecret,
-  });
+  const authUrl = `${MORNING_API_BASE}/account/token`;
   console.log('[create-morning-invoice] Auth URL:', authUrl);
-  console.log('[create-morning-invoice] Auth format: application/x-www-form-urlencoded');
 
   const res = await fetch(authUrl, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: authBody.toString(),
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: apiId, secret: apiSecret }),
   });
 
   const rawBody = await res.text();
@@ -35,7 +29,7 @@ async function getMorningToken(apiId: string, apiSecret: string): Promise<string
     throw new Error(`Morning auth failed ${res.status}: ${rawBody}`);
   }
   const data = JSON.parse(rawBody);
-  const accessToken = data.access_token ?? data.accessToken ?? data.token;
+  const accessToken = data.token;
   if (!accessToken) throw new Error(`Morning auth: no token in response. Keys: ${Object.keys(data).join(', ')}`);
   return accessToken;
 }
