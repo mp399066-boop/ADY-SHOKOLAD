@@ -12,17 +12,26 @@ const PAYMENT_TYPE_MAP: Record<string, number> = {
 };
 
 async function getMorningToken(apiId: string, apiSecret: string): Promise<string> {
-  const res = await fetch(`${MORNING_AUTH_BASE}/idp/v1/oauth/token`, {
+  const authUrl = `${MORNING_AUTH_BASE}/idp/v1/oauth/token`;
+  const authBody = { grant_type: 'client_credentials', client_id: apiId, client_secret: apiSecret };
+  console.log('[create-morning-invoice] Auth URL:', authUrl);
+  console.log('[create-morning-invoice] Auth body keys:', Object.keys(authBody).join(', '));
+
+  const res = await fetch(authUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ grant_type: 'client_credentials', client_id: apiId, client_secret: apiSecret }),
+    body: JSON.stringify(authBody),
   });
+
+  const rawBody = await res.text();
+  console.log('[create-morning-invoice] Auth response status:', res.status);
+  console.log('[create-morning-invoice] Auth response body:', rawBody.slice(0, 300));
+
   if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Morning auth failed ${res.status}: ${body}`);
+    throw new Error(`Morning auth failed ${res.status}: ${rawBody}`);
   }
-  const data = await res.json();
-  const accessToken = data.access_token ?? data.accessToken;
+  const data = JSON.parse(rawBody);
+  const accessToken = data.access_token ?? data.accessToken ?? data.token;
   if (!accessToken) throw new Error(`Morning auth: no token in response. Keys: ${Object.keys(data).join(', ')}`);
   return accessToken;
 }
@@ -117,6 +126,8 @@ serve(async (req: Request) => {
     // Env vars for Morning
     const morningApiId = Deno.env.get('MORNING_API_ID') ?? '';
     const morningApiSecret = Deno.env.get('MORNING_API_SECRET') ?? '';
+    console.log('[create-morning-invoice] MORNING_API_ID exists:', !!morningApiId, '| length:', morningApiId.length, '| first4:', morningApiId.slice(0, 4));
+    console.log('[create-morning-invoice] MORNING_API_SECRET exists:', !!morningApiSecret, '| length:', morningApiSecret.length, '| first4:', morningApiSecret.slice(0, 4));
     if (!morningApiId || !morningApiSecret) {
       throw new Error('MORNING_API_ID or MORNING_API_SECRET not set');
     }
