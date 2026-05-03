@@ -848,7 +848,7 @@ export default function CustomerDetailPage() {
             </div>
             <div className="flex items-center gap-2">
               <a
-                href={pdfInvoice.קישור_חשבונית!}
+                href={`/api/invoices/${pdfInvoice.id}/pdf`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
@@ -881,7 +881,7 @@ export default function CustomerDetailPage() {
               <span style={{ color: '#C6A77D' }}><IFile className="w-10 h-10" /></span>
               <p className="text-sm font-medium" style={{ color: '#3A2A1A' }}>לא ניתן להציג את ה-PDF בתוך המערכת</p>
               <a
-                href={pdfInvoice.קישור_חשבונית!}
+                href={`/api/invoices/${pdfInvoice.id}/pdf`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="px-4 py-2 rounded-lg text-sm font-medium"
@@ -893,19 +893,10 @@ export default function CustomerDetailPage() {
           ) : (
             <iframe
               key={pdfInvoice.id}
-              src={pdfInvoice.קישור_חשבונית!}
+              src={`/api/invoices/${pdfInvoice.id}/pdf`}
               className="flex-1 w-full border-0"
               title={`חשבונית ${pdfInvoice.מספר_חשבונית}`}
               onError={() => setIframeBlocked(true)}
-              onLoad={e => {
-                // Detect X-Frame-Options block: iframe loads but has no accessible content
-                try {
-                  const doc = (e.currentTarget as HTMLIFrameElement).contentDocument;
-                  if (doc && doc.body && doc.body.innerHTML === '') setIframeBlocked(true);
-                } catch {
-                  // cross-origin load — frame is rendering external content, likely OK
-                }
-              }}
             />
           )}
         </div>
