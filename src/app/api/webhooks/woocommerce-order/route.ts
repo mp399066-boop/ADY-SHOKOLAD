@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { createAdminClient } from '@/lib/supabase/server';
 import { generateOrderNumber } from '@/lib/utils';
+import { sendOrderEmail, isInternalEmail, type OrderEmailData, type EmailContext } from '@/lib/email';
 
 const PAID_STATUSES = new Set(['processing', 'completed']);
 
@@ -231,6 +232,75 @@ export async function POST(req: Request) {
     } else {
       console.log(`[wc-webhook] Payment saved — status: ${paymentStatus}${isPaid ? ' → Morning invoice will trigger' : ''}`);
     }
+
+    // ── 7. Order confirmation email (non-blocking) ───────────────────────────
+    void (async () => {
+      try {
+        const emailTo = email ?? null;
+        const emailName = `${firstName} ${lastName ?? ''}`.trim();
+
+        if (!emailTo) {
+          console.log('[wc-webhook] Email skipped: no email address for customer');
+          return;
+        }
+        if (isInternalEmail(emailTo)) {
+          console.log('[wc-webhook] Email skipped: internal address —', emailTo);
+          return;
+        }
+
+        // Fetch full order + items from DB (same pattern as create-full)
+        const { data: fullOrder } = await supabase
+          .from('הזמנות')
+          .select('*, לקוחות(*)')
+          .eq('id', order.id)
+          .single();
+
+        const { data: fullItems } = await supabase
+          .from('מוצרים_בהזמנה')
+          .select('*, מוצרים_למכירה(*), בחירת_פטיפורים_בהזמנה(*, סוגי_פטיפורים(*))')
+          .eq('הזמנה_id', order.id);
+
+        const o = (fullOrder ?? {}) as Record<string, unknown>;
+        const emailOrderData: OrderEmailData = {
+          orderNumber: (o['מספר_הזמנה'] as string) || '',
+          orderDate: (o['תאריך_הזמנה'] as string) || new Date().toISOString().split('T')[0],
+          deliveryDate: (o['תאריך_אספקה'] as string) || null,
+          subtotal: Number(o['סכום_לפני_הנחה'] || 0),
+          discount: Number(o['סכום_הנחה'] || 0),
+          total: Number(o['סך_הכל_לתשלום'] || 0),
+          customerPhone: phone,
+          items: (fullItems || []).map((item: Record<string, unknown>) => {
+            const prod = item['מוצרים_למכירה'] as Record<string, unknown> | null;
+            const pfSelections = item['בחירת_פטיפורים_בהזמנה'] as Record<string, unknown>[] | null;
+            const pfNames = pfSelections
+              ?.map(s => {
+                const pf = s['סוגי_פטיפורים'] as Record<string, string> | null;
+                return pf ? `${pf['שם_פטיפור']} ×${s['כמות']}` : '';
+              })
+              .filter(Boolean)
+              .join(', ');
+            const name =
+              item['סוג_שורה'] === 'מארז'
+                ? `מארז ${item['גודל_מארז'] || ''} יח׳${pfNames ? ` (${pfNames})` : ''}`
+                : (prod?.['שם_מוצר'] as string) || (item['הערות_לשורה'] as string) || 'פריט';
+            return {
+              name,
+              quantity: Number(item['כמות'] || 1),
+              unitPrice: Number(item['מחיר_ליחידה'] || 0),
+              lineTotal: Number(item['סהכ'] || 0),
+            };
+          }),
+        };
+
+        const emailContext: EmailContext = { customerId, orderId: order.id };
+
+        console.log('[wc-webhook] Sending order confirmation email to', emailTo);
+        await sendOrderEmail(emailTo, emailName, emailOrderData, emailContext);
+        console.log('[wc-webhook] Order confirmation email queued/sent');
+      } catch (err) {
+        console.error('[wc-webhook] Order confirmation email failed:', err instanceof Error ? err.message : err);
+      }
+    })();
 
     return Response.json({
       success: true,
