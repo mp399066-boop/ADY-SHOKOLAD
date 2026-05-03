@@ -3,8 +3,6 @@ import { createAdminClient } from '@/lib/supabase/server';
 
 const MORNING_API_BASE = 'https://api.greeninvoice.co.il/api/v1';
 
-const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
-
 async function getMorningToken(): Promise<string> {
   const apiId = process.env.MORNING_API_ID ?? '';
   const apiSecret = process.env.MORNING_API_SECRET ?? '';
@@ -21,37 +19,27 @@ async function getMorningToken(): Promise<string> {
   return data.token;
 }
 
-// Try every known Green Invoice URL format in order of specificity:
-//   1. ?d=DOCID                                  (download query param)
-//   2. /ext/d/DOCID                               (viewer path)
-//   3. /documents/DOCID/download                  (REST path)
-//   4. /documents/download?id=DOCID               (alternate query param)
-//   5. any UUID anywhere in the URL               (last resort)
-function extractDocId(url: string): string | null {
-  try {
-    const parsed = new URL(url);
+// Resolve the actual download URL from whatever was stored in קישור_חשבונית.
+// Stored value may be:
+//   a) A JSON string: {"he":"https://...?d=TOKEN","origin":"https://...?d=TOKEN"}
+//   b) A plain URL string
+// Returns { downloadUrl, source }
+function resolveDownloadUrl(stored: string): { downloadUrl: string; source: string } {
+  const trimmed = stored.trim();
 
-    const d = parsed.searchParams.get('d') ?? parsed.searchParams.get('id');
-    if (d && UUID_RE.test(d)) return d;
-
-    // non-UUID ?d= still worth trying (Morning sometimes uses short IDs)
-    if (d) return d;
-
-    const patterns = [
-      /\/ext\/d\/([^/?#]+)/,
-      /\/documents\/([^/?#]+)\/download/,
-      /\/documents\/([^/?#]+)/,
-    ];
-    for (const re of patterns) {
-      const m = parsed.pathname.match(re);
-      if (m?.[1]) return m[1];
+  if (trimmed.startsWith('{')) {
+    let parsed: Record<string, string>;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      throw new Error('storedUrl looks like JSON but failed to parse');
     }
+    const url = parsed.he ?? parsed.origin ?? Object.values(parsed)[0];
+    if (!url) throw new Error('JSON storedUrl has no usable URL value');
+    return { downloadUrl: url, source: parsed.he ? 'he' : 'origin' };
+  }
 
-    // last resort: first UUID anywhere in the full URL
-    const anyUuid = url.match(UUID_RE);
-    if (anyUuid) return anyUuid[0];
-  } catch { /* malformed URL */ }
-  return null;
+  return { downloadUrl: trimmed, source: 'plain' };
 }
 
 export async function GET(_: NextRequest, { params }: { params: { id: string } }) {
@@ -68,26 +56,25 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
     }
 
     const storedUrl: string | null = invoice.קישור_חשבונית;
-    console.log('[pdf-proxy] storedUrl=', storedUrl);
+    console.log('[pdf-proxy] storedUrl=', storedUrl?.slice(0, 120));
 
     if (!storedUrl) {
       return NextResponse.json({ error: 'No URL stored for this invoice' }, { status: 404 });
     }
 
-    const docId = extractDocId(storedUrl);
-    console.log('[pdf-proxy] extractedDocId=', docId);
+    const { downloadUrl, source } = resolveDownloadUrl(storedUrl);
 
-    if (!docId) {
-      return NextResponse.json({
-        error: 'Could not extract document ID from stored URL',
-        storedUrl,
-      }, { status: 400 });
-    }
+    // Check that the download token (d=) exists — it may be any encoded string, not a UUID
+    let downloadToken: string | null = null;
+    try {
+      downloadToken = new URL(downloadUrl).searchParams.get('d');
+    } catch { /* ignore — we still try the URL as-is */ }
+
+    console.log('[pdf-proxy] parsedUrlSource=', source);
+    console.log('[pdf-proxy] downloadToken exists=', !!downloadToken);
+    console.log('[pdf-proxy] downloadUrl=', downloadUrl.slice(0, 120));
 
     const token = await getMorningToken();
-
-    const downloadUrl = `${MORNING_API_BASE}/documents/${docId}/download`;
-    console.log('[pdf-proxy] downloadUrl=', downloadUrl);
 
     const pdfRes = await fetch(downloadUrl, {
       headers: { Authorization: `Bearer ${token}` },
