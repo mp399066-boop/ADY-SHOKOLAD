@@ -59,6 +59,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const supabase = createAdminClient();
   const body = await req.json();
 
+  console.log('[invoice] PATCH called — order:', params.id, '| body keys:', Object.keys(body).join(','), '| סטטוס_תשלום:', body.סטטוס_תשלום);
+
   // Fetch current state BEFORE update — needed for inventory check + invoice trigger
   const needPrev = body.סטטוס_הזמנה === 'בהכנה' || body.סטטוס_תשלום === 'שולם';
   let prevOrderStatus: string | null = null;
@@ -72,6 +74,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       .single();
     prevOrderStatus = cur?.סטטוס_הזמנה ?? null;
     prevPaymentStatus = cur?.סטטוס_תשלום ?? null;
+    console.log('[invoice] prev — סטטוס_הזמנה:', prevOrderStatus, '| סטטוס_תשלום:', prevPaymentStatus);
   }
 
   const updateData: Record<string, unknown> = { ...body, תאריך_עדכון: new Date().toISOString() };
@@ -116,6 +119,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   }
 
   // Trigger invoice creation when payment status first becomes שולם
+  console.log('[invoice] check — body.סטטוס_תשלום:', body.סטטוס_תשלום, '| prevPaymentStatus:', prevPaymentStatus);
   if (body.סטטוס_תשלום === 'שולם' && prevPaymentStatus !== 'שולם') {
     // Idempotency: skip if invoice already exists
     const { data: existingInvoice } = await supabase
