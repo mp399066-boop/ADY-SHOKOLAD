@@ -33,153 +33,134 @@ function fmtPhone(raw: string): string {
 }
 
 function buildHtml(customerName: string, d: OrderEmailData, logoUrl?: string): string {
-  const afterDiscount = d.subtotal - d.discount;
-  const vat = afterDiscount * VAT_RATE;
-
-  const itemRows = d.items.map(item => `
-      <tr>
-        <td style="padding:10px 14px;border-bottom:1px solid #E8DED2;text-align:right;color:#2A1C12">${item.name}</td>
-        <td style="padding:10px 14px;border-bottom:1px solid #E8DED2;text-align:center;color:#5C4A38">${item.quantity}</td>
-        <td style="padding:10px 14px;border-bottom:1px solid #E8DED2;text-align:left;color:#5C4A38;direction:ltr">${fmt(item.unitPrice)}</td>
-        <td style="padding:10px 14px;border-bottom:1px solid #E8DED2;text-align:left;font-weight:600;color:#2A1C12;direction:ltr">${fmt(item.lineTotal)}</td>
-      </tr>`).join('');
-
-  const discountRows = d.discount > 0 ? `
-      <tr>
-        <td style="padding:7px 0;color:#8E7D6A;text-align:right">הנחה</td>
-        <td style="padding:7px 0;text-align:left;color:#8A3228;direction:ltr">-${fmt(d.discount)}</td>
-      </tr>
-      <tr>
-        <td style="padding:7px 0;color:#8E7D6A;text-align:right">סכום אחרי הנחה</td>
-        <td style="padding:7px 0;text-align:left;color:#2A1C12;direction:ltr">${fmt(afterDiscount)}</td>
-      </tr>` : '';
-
   const logoHtml = logoUrl
-    ? `<img src="${logoUrl}" alt="${BUSINESS}" width="40" height="40" style="width:40px;height:40px;object-fit:contain;border-radius:8px;display:block;margin:0 auto 10px" onerror="this.style.display='none'">`
+    ? `<img src="${logoUrl}" alt="${BUSINESS}" width="36" height="36" style="width:36px;height:36px;object-fit:contain;border-radius:8px;display:block;margin:0 auto 12px" onerror="this.style.display='none'">`
     : '';
+
+  // Items — one row per product: name right, qty × unit-price left
+  const itemRows = d.items.map((item, i) => {
+    const sep = i < d.items.length - 1 ? 'border-bottom:1px solid #F0EAE0;' : '';
+    return `
+    <tr>
+      <td style="${sep}padding:11px 0;font-size:14px;color:#2A1C12;text-align:right">${item.name}</td>
+      <td style="${sep}padding:11px 0;font-size:13px;color:#5C4A38;text-align:left;direction:ltr;white-space:nowrap;padding-right:8px">${item.quantity} &times; ${fmt(item.unitPrice)}</td>
+    </tr>`;
+  }).join('');
+
+  const deliveryRow = d.deliveryDate ? `
+    <tr>
+      <td style="padding:9px 16px;color:#8E7D6A;text-align:right;border-top:1px solid #F0EAE0">תאריך אספקה</td>
+      <td style="padding:9px 16px;font-weight:600;color:#2D6648;text-align:right;border-top:1px solid #F0EAE0">${d.deliveryDate}</td>
+    </tr>` : '';
+
+  // Summary rows — only show subtotal+discount if there's a discount
+  const summaryPreDiscount = d.discount > 0 ? `
+    <tr>
+      <td style="padding:7px 0;font-size:13px;color:#8E7D6A;text-align:right">סכום לפני הנחה</td>
+      <td style="padding:7px 0;font-size:13px;color:#5C4A38;text-align:left;direction:ltr">${fmt(d.subtotal)}</td>
+    </tr>
+    <tr>
+      <td style="padding:7px 0;font-size:13px;color:#8E7D6A;text-align:right">הנחה</td>
+      <td style="padding:7px 0;font-size:13px;color:#8A3228;text-align:left;direction:ltr">-${fmt(d.discount)}</td>
+    </tr>` : '';
 
   return `<!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>סיכום הזמנה ${d.orderNumber}</title>
+  <title>אישור הזמנה ${d.orderNumber}</title>
 </head>
-<body style="margin:0;padding:0;background:#F7F3EC;font-family:Arial,Helvetica,sans-serif;direction:rtl;text-align:right">
+<body style="margin:0;padding:0;background:#F7F3EC;font-family:Arial,Helvetica,sans-serif;direction:rtl">
 
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#F7F3EC;padding:36px 16px">
-    <tr>
-      <td align="center">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#F7F3EC;padding:40px 16px">
+    <tr><td align="center">
 
-        <!-- Card -->
-        <table width="640" cellpadding="0" cellspacing="0"
-               style="max-width:640px;width:100%;background:#ffffff;border-radius:16px;border:1px solid #E8DED2;overflow:hidden;margin:0 auto;box-shadow:0 4px 24px rgba(58,42,26,0.08)">
+      <!-- Card -->
+      <table width="600" cellpadding="0" cellspacing="0"
+             style="max-width:600px;width:100%;background:#FFFFFF;border-radius:16px;border:1px solid #E8DED2;overflow:hidden;margin:0 auto;box-shadow:0 4px 20px rgba(58,42,26,0.07)">
 
-          <!-- Header -->
-          <tr>
-            <td style="background:#FFFFFF;padding:28px 36px 20px;text-align:center;border-bottom:1px solid #F0EAE0">
-              ${logoHtml}
-              <div style="font-size:19px;font-weight:700;color:#2A1C12;letter-spacing:-0.01em">${BUSINESS}</div>
-              <div style="font-size:11px;color:#8E7D6A;letter-spacing:0.06em;margin-top:3px">Adi Chocolate Boutique</div>
-              <div style="font-size:13px;color:#8A7664;margin-top:10px">סיכום הזמנה מספר <strong style="color:#5C4A38">${d.orderNumber}</strong></div>
-            </td>
-          </tr>
+        <!-- Header -->
+        <tr>
+          <td style="padding:30px 40px 22px;text-align:center;border-bottom:1px solid #F0EAE0">
+            ${logoHtml}
+            <div style="font-size:15px;font-weight:700;color:#2A1C12;letter-spacing:0.01em">${BUSINESS}</div>
+            <div style="font-size:11px;color:#B0A090;letter-spacing:0.07em;margin-top:3px">ADI CHOCOLATE BOUTIQUE</div>
+          </td>
+        </tr>
 
-          <!-- Body -->
-          <tr>
-            <td style="padding:28px 36px">
+        <!-- Body -->
+        <tr>
+          <td style="padding:36px 40px">
 
-              <!-- Greeting -->
-              <p style="margin:0 0 10px;font-size:13px;color:#8E7D6A">שלום ${customerName},</p>
-              <h2 style="margin:0 0 10px;font-size:26px;font-weight:700;color:#2A1C12;line-height:1.3;text-align:right">תודה על הזמנתך — ההזמנה התקבלה בהצלחה</h2>
-              <p style="margin:0 0 26px;font-size:15px;color:#8E7D6A;line-height:1.7">
-                קיבלנו את הזמנתך ואנו מטפלים בה כעת.
-              </p>
+            <!-- Greeting + heading -->
+            <p style="margin:0 0 6px;font-size:13px;color:#8E7D6A;text-align:right">שלום ${customerName},</p>
+            <h1 style="margin:0 0 8px;font-size:24px;font-weight:700;color:#2A1C12;line-height:1.35;text-align:right">
+              תודה על הזמנתך —<br>התקבלה בהצלחה
+            </h1>
+            <p style="margin:0 0 32px;font-size:14px;color:#8A7664;line-height:1.65;text-align:right">
+              קיבלנו את הזמנתך ואנו מטפלים בה כעת.
+            </p>
 
-              <!-- Order meta -->
-              <table width="100%" cellpadding="0" cellspacing="0"
-                     style="margin-bottom:24px;font-size:13px;background:#FAF7F2;border-radius:10px;border:1px solid #E8DED2;overflow:hidden">
-                <tr>
-                  <td style="padding:10px 16px;color:#8E7D6A;width:45%;text-align:right;border-bottom:1px solid #F0EAE0">מספר הזמנה</td>
-                  <td style="padding:10px 16px;font-weight:700;color:#2A1C12;text-align:right;border-bottom:1px solid #F0EAE0">${d.orderNumber}</td>
-                </tr>
-                <tr>
-                  <td style="padding:10px 16px;color:#8E7D6A;text-align:right;border-bottom:1px solid #F0EAE0">תאריך הזמנה</td>
-                  <td style="padding:10px 16px;color:#5C4A38;text-align:right;border-bottom:1px solid #F0EAE0">${d.orderDate}</td>
-                </tr>
-                ${d.deliveryDate ? `
-                <tr>
-                  <td style="padding:10px 16px;color:#8E7D6A;text-align:right">תאריך אספקה</td>
-                  <td style="padding:10px 16px;font-weight:600;color:#2D6648;text-align:right">${d.deliveryDate}</td>
-                </tr>` : ''}
-              </table>
+            <!-- Order details box -->
+            <table width="100%" cellpadding="0" cellspacing="0"
+                   style="margin-bottom:32px;background:#FAF7F2;border-radius:10px;border:1px solid #EDE5D6;overflow:hidden;font-size:13px">
+              <tr>
+                <td style="padding:10px 16px;color:#8E7D6A;text-align:right;width:50%">מספר הזמנה</td>
+                <td style="padding:10px 16px;font-weight:700;color:#2A1C12;text-align:right">${d.orderNumber}</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;color:#8E7D6A;text-align:right;border-top:1px solid #F0EAE0">תאריך הזמנה</td>
+                <td style="padding:10px 16px;color:#5C4A38;text-align:right;border-top:1px solid #F0EAE0">${d.orderDate}</td>
+              </tr>
+              ${deliveryRow}
+            </table>
 
-              <!-- Items -->
-              <div style="font-size:13px;font-weight:600;color:#3A2A1A;margin-bottom:8px;text-align:right">
-                פירוט מוצרים
-              </div>
-              <table width="100%" cellpadding="0" cellspacing="0"
-                     style="font-size:13px;border-collapse:collapse;margin-bottom:24px;border:1px solid #E8DED2;border-radius:10px;overflow:hidden">
-                <thead>
-                  <tr style="background:#F5EFE7">
-                    <th style="padding:10px 14px;text-align:right;color:#8E7D6A;font-weight:600;border-bottom:1px solid #E8DED2">מוצר</th>
-                    <th style="padding:10px 14px;text-align:center;color:#8E7D6A;font-weight:600;border-bottom:1px solid #E8DED2">כמות</th>
-                    <th style="padding:10px 14px;text-align:left;color:#8E7D6A;font-weight:600;border-bottom:1px solid #E8DED2">מחיר ליח׳</th>
-                    <th style="padding:10px 14px;text-align:left;color:#8E7D6A;font-weight:600;border-bottom:1px solid #E8DED2">סה״כ</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${itemRows || '<tr><td colspan="4" style="padding:14px;text-align:center;color:#B0A090">אין פריטים</td></tr>'}
-                </tbody>
-              </table>
+            <!-- Items label -->
+            <div style="font-size:11px;font-weight:700;color:#8E7D6A;letter-spacing:0.08em;text-align:right;margin-bottom:6px">פירוט מוצרים</div>
+            <div style="border-top:2px solid #C6A77D;margin-bottom:2px"></div>
 
-              <!-- Financial summary -->
-              <table width="300" cellpadding="0" cellspacing="0" align="left"
-                     style="font-size:13px;margin-bottom:28px;background:#FAF7F2;border:1px solid #E8DED2;border-radius:10px;overflow:hidden">
-                <tr>
-                  <td style="padding:9px 16px;color:#8E7D6A;text-align:right;border-bottom:1px solid #F0EAE0">סכום לפני הנחה</td>
-                  <td style="padding:9px 16px;color:#5C4A38;text-align:left;direction:ltr;border-bottom:1px solid #F0EAE0">${fmt(d.subtotal)}</td>
-                </tr>
-                ${discountRows}
-                <tr>
-                  <td style="padding:9px 16px;color:#8E7D6A;text-align:right;border-bottom:1px solid #E8DED2">מע"מ (18%)</td>
-                  <td style="padding:9px 16px;color:#5C4A38;text-align:left;direction:ltr;border-bottom:1px solid #E8DED2">${fmt(vat)}</td>
-                </tr>
-                <tr style="background:#F5EFE7">
-                  <td style="padding:12px 16px;font-weight:700;font-size:14px;color:#2A1C12;text-align:right">סה״כ לתשלום</td>
-                  <td style="padding:12px 16px;font-weight:700;font-size:18px;color:#8B5E34;text-align:left;direction:ltr">${fmt(d.total)}</td>
-                </tr>
-              </table>
+            <!-- Items rows -->
+            <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px">
+              ${itemRows || `<tr><td style="padding:14px 0;text-align:center;color:#B0A090;font-size:13px">אין פריטים</td></tr>`}
+            </table>
 
-              <div style="clear:both"></div>
+            <!-- Summary -->
+            <table width="100%" cellpadding="0" cellspacing="0"
+                   style="border-top:1px solid #E8DED2;padding-top:4px;margin-bottom:28px">
+              ${summaryPreDiscount}
+              <tr>
+                <td style="padding:${d.discount > 0 ? '14px 0 4px' : '12px 0 4px'};font-size:16px;font-weight:700;color:#2A1C12;text-align:right;${d.discount > 0 ? 'border-top:1px solid #E8DED2;' : ''}">
+                  סה&quot;כ לתשלום
+                </td>
+                <td style="padding:${d.discount > 0 ? '14px 0 4px' : '12px 0 4px'};font-size:19px;font-weight:700;color:#8B5E34;text-align:left;direction:ltr;${d.discount > 0 ? 'border-top:1px solid #E8DED2;' : ''}">
+                  ${fmt(d.total)}
+                </td>
+              </tr>
+            </table>
 
-              <!-- Closing -->
-              <p style="font-size:13px;color:#8A7664;line-height:1.75;margin:0 0 4px;border-top:1px solid #F0EAE0;padding-top:22px">
-                תודה על ההזמנה. אנו מטפלים בה ונעדכן אותך בהמשך.
-              </p>
-              <p style="font-size:12px;color:#B0A090;margin:0">
-                זהו מייל אוטומטי. אין להשיב על מייל זה.
-              </p>
+            <!-- Closing -->
+            <p style="margin:0;font-size:12px;color:#B0A090;line-height:1.7;text-align:right;border-top:1px solid #F0EAE0;padding-top:20px">
+              זהו מייל אוטומטי. אין להשיב על מייל זה.
+            </p>
 
-            </td>
-          </tr>
+          </td>
+        </tr>
 
-          <!-- Footer -->
-          <tr>
-            <td style="background:#FDFAF5;padding:20px 36px;border-top:1px solid #F0EAE0;text-align:center">
-              <div style="font-size:13px;font-weight:700;color:#3A2A1A;margin-bottom:2px">${BUSINESS}</div>
-              <div style="font-size:11px;color:#8E7D6A;letter-spacing:0.05em;margin-bottom:8px">Adi Chocolate Boutique</div>
-              <div style="font-size:12px;color:#8A7664;line-height:1.9">
-                ${d.customerPhone ? `טלפון: ${fmtPhone(d.customerPhone)} &nbsp;|&nbsp; ` : ''}${EMAIL_ADDR}
-              </div>
-            </td>
-          </tr>
+        <!-- Footer -->
+        <tr>
+          <td style="background:#FDFAF5;padding:18px 40px;border-top:1px solid #F0EAE0;text-align:center">
+            <div style="font-size:13px;font-weight:700;color:#3A2A1A">${BUSINESS}</div>
+            <div style="font-size:11px;color:#B0A090;letter-spacing:0.05em;margin-top:2px">Adi Chocolate Boutique</div>
+            <div style="font-size:12px;color:#8A7664;margin-top:8px;line-height:1.9">
+              ${d.customerPhone ? `טלפון: ${fmtPhone(d.customerPhone)} &nbsp;|&nbsp; ` : ''}${EMAIL_ADDR}
+            </div>
+          </td>
+        </tr>
 
-        </table>
-        <!-- /Card -->
+      </table>
 
-      </td>
-    </tr>
+    </td></tr>
   </table>
 
 </body>
