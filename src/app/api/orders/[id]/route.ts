@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
+// deploy trigger
 
 export async function GET(_: NextRequest, { params }: { params: { id: string } }) {
   const supabase = createAdminClient();
