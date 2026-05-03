@@ -3,6 +3,8 @@ import { createAdminClient } from '@/lib/supabase/server';
 
 const MORNING_API_BASE = 'https://api.greeninvoice.co.il/api/v1';
 
+const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+
 async function getMorningToken(): Promise<string> {
   const apiId = process.env.MORNING_API_ID ?? '';
   const apiSecret = process.env.MORNING_API_SECRET ?? '';
@@ -19,17 +21,36 @@ async function getMorningToken(): Promise<string> {
   return data.token;
 }
 
-// Extract Morning document ID from either URL format:
-//   https://www.greeninvoice.co.il/api/v1/documents/download?d={docId}
-//   https://app.greeninvoice.co.il/ext/d/{docId}
+// Try every known Green Invoice URL format in order of specificity:
+//   1. ?d=DOCID                                  (download query param)
+//   2. /ext/d/DOCID                               (viewer path)
+//   3. /documents/DOCID/download                  (REST path)
+//   4. /documents/download?id=DOCID               (alternate query param)
+//   5. any UUID anywhere in the URL               (last resort)
 function extractDocId(url: string): string | null {
   try {
     const parsed = new URL(url);
-    const d = parsed.searchParams.get('d');
+
+    const d = parsed.searchParams.get('d') ?? parsed.searchParams.get('id');
+    if (d && UUID_RE.test(d)) return d;
+
+    // non-UUID ?d= still worth trying (Morning sometimes uses short IDs)
     if (d) return d;
-    const m = parsed.pathname.match(/\/ext\/d\/([^/?#]+)/);
-    if (m) return m[1];
-  } catch { /* ignore */ }
+
+    const patterns = [
+      /\/ext\/d\/([^/?#]+)/,
+      /\/documents\/([^/?#]+)\/download/,
+      /\/documents\/([^/?#]+)/,
+    ];
+    for (const re of patterns) {
+      const m = parsed.pathname.match(re);
+      if (m?.[1]) return m[1];
+    }
+
+    // last resort: first UUID anywhere in the full URL
+    const anyUuid = url.match(UUID_RE);
+    if (anyUuid) return anyUuid[0];
+  } catch { /* malformed URL */ }
   return null;
 }
 
@@ -47,20 +68,26 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
     }
 
     const storedUrl: string | null = invoice.קישור_חשבונית;
+    console.log('[pdf-proxy] storedUrl=', storedUrl);
+
     if (!storedUrl) {
       return NextResponse.json({ error: 'No URL stored for this invoice' }, { status: 404 });
     }
 
     const docId = extractDocId(storedUrl);
+    console.log('[pdf-proxy] extractedDocId=', docId);
+
     if (!docId) {
-      return NextResponse.json({ error: 'Could not extract document ID from stored URL' }, { status: 400 });
+      return NextResponse.json({
+        error: 'Could not extract document ID from stored URL',
+        storedUrl,
+      }, { status: 400 });
     }
 
     const token = await getMorningToken();
 
-    // Use the authenticated API download endpoint regardless of what was stored
     const downloadUrl = `${MORNING_API_BASE}/documents/${docId}/download`;
-    console.log('[pdf-proxy] Fetching PDF for invoice', invoice.מספר_חשבונית, '→', downloadUrl);
+    console.log('[pdf-proxy] downloadUrl=', downloadUrl);
 
     const pdfRes = await fetch(downloadUrl, {
       headers: { Authorization: `Bearer ${token}` },
@@ -68,15 +95,14 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
 
     if (!pdfRes.ok) {
       const body = await pdfRes.text().catch(() => '');
-      throw new Error(`Morning PDF download failed ${pdfRes.status}: ${body.slice(0, 200)}`);
+      throw new Error(`Morning PDF download failed ${pdfRes.status}: ${body.slice(0, 300)}`);
     }
 
-    const contentType = pdfRes.headers.get('content-type') ?? 'application/pdf';
     const pdfBuffer = await pdfRes.arrayBuffer();
 
     return new NextResponse(pdfBuffer, {
       headers: {
-        'Content-Type': contentType.includes('pdf') ? 'application/pdf' : 'application/pdf',
+        'Content-Type': 'application/pdf',
         'Content-Disposition': `inline; filename="invoice-${invoice.מספר_חשבונית}.pdf"`,
         'Cache-Control': 'private, max-age=3600',
       },
