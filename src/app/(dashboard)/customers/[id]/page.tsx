@@ -26,6 +26,51 @@ type FullCustomer = Customer & {
 
 type SideTab = 'invoices' | 'files' | 'notes';
 
+type InvoiceOrderItem = {
+  id: string;
+  סוג_שורה: string;
+  גודל_מארז: number | null;
+  כמות: number;
+  מחיר_ליחידה: number;
+  סהכ: number;
+  הערות_לשורה: string | null;
+  מוצרים_למכירה: { שם_מוצר: string } | null;
+  בחירת_פטיפורים_בהזמנה: Array<{ כמות: number; סוגי_פטיפורים: { שם_פטיפור: string } }>;
+};
+type InvoiceOrderData = {
+  מספר_הזמנה: string;
+  סכום_לפני_הנחה: number | null;
+  סכום_הנחה: number | null;
+  סך_הכל_לתשלום: number | null;
+  דמי_משלוח: number | null;
+  סוג_הנחה: string | null;
+  ערך_הנחה: number | null;
+  אופן_תשלום: string | null;
+  מוצרים_בהזמנה: InvoiceOrderItem[];
+};
+
+function getMorningViewUrl(stored: string | null): string | null {
+  if (!stored) return null;
+  const t = stored.trim();
+  if (t.startsWith('{')) {
+    try { const p = JSON.parse(t); return p.he ?? p.origin ?? null; } catch { return null; }
+  }
+  return t;
+}
+
+function buildItemDesc(item: InvoiceOrderItem): string {
+  let desc = '';
+  if (item.סוג_שורה === 'מארז' && item.גודל_מארז) {
+    desc = `מארז פטיפורים ${item.גודל_מארז} יחידות`;
+    const sel = item.בחירת_פטיפורים_בהזמנה ?? [];
+    if (sel.length > 0) desc += ` (${sel.map(s => `${s.סוגי_פטיפורים?.שם_פטיפור} ×${s.כמות}`).join(', ')})`;
+  } else {
+    desc = item.מוצרים_למכירה?.שם_מוצר ?? 'פריט';
+  }
+  if (item.הערות_לשורה) desc += ` — ${item.הערות_לשורה}`;
+  return desc;
+}
+
 /* ─── inline icon helpers ────────────────────────────────────────────────── */
 function IUser() {
   return (
@@ -203,8 +248,9 @@ export default function CustomerDetailPage() {
   const [editForm, setEditForm] = useState<Partial<Customer>>({});
   const [sideTab, setSideTab] = useState<SideTab>('invoices');
   const [businessLogoUrl, setBusinessLogoUrl] = useState<string | null>(null);
-  const [pdfInvoice, setPdfInvoice] = useState<Invoice | null>(null);
-  const [iframeBlocked, setIframeBlocked] = useState(false);
+  const [invoiceView, setInvoiceView] = useState<Invoice | null>(null);
+  const [invoiceOrder, setInvoiceOrder] = useState<InvoiceOrderData | null>(null);
+  const [invoiceLoading, setInvoiceLoading] = useState(false);
 
   useEffect(() => {
     fetch(`/api/customers/${id}`)
@@ -218,6 +264,19 @@ export default function CustomerDetailPage() {
     supabase.from('business_settings').select('logo_url').single()
       .then(({ data }: { data: any }) => { if (data?.logo_url) setBusinessLogoUrl(data.logo_url); });
   }, []);
+
+  const openInvoiceView = async (inv: Invoice) => {
+    setInvoiceView(inv);
+    setInvoiceOrder(null);
+    setInvoiceLoading(true);
+    try {
+      const res = await fetch(`/api/orders/${inv.הזמנה_id}`);
+      const { data } = await res.json();
+      setInvoiceOrder(data as InvoiceOrderData);
+    } finally {
+      setInvoiceLoading(false);
+    }
+  };
 
   const handleDelete = async () => {
     if (!window.confirm('האם למחוק את הלקוח לצמיתות?')) return;
@@ -753,18 +812,16 @@ export default function CustomerDetailPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="font-semibold text-xs" style={{ color: '#3A2A1A' }}>{formatCurrency(inv.סכום)}</span>
-                      {inv.קישור_חשבונית && (
-                        <button
-                          onClick={() => { setPdfInvoice(inv); setIframeBlocked(false); }}
-                          className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors"
-                          style={{ backgroundColor: '#F5EFE7', color: '#8B5E34', border: '1px solid #E8DED2' }}
-                          onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#EDE5D8')}
-                          onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#F5EFE7')}
-                        >
-                          <IEye className="w-3 h-3" />
-                          PDF
-                        </button>
-                      )}
+                      <button
+                        onClick={() => openInvoiceView(inv)}
+                        className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors"
+                        style={{ backgroundColor: '#F5EFE7', color: '#8B5E34', border: '1px solid #E8DED2' }}
+                        onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#EDE5D8')}
+                        onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#F5EFE7')}
+                      >
+                        <IEye className="w-3 h-3" />
+                        צפייה
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -817,91 +874,150 @@ export default function CustomerDetailPage() {
         </div>
       </Card>
     </div>
-    {/* ── PDF viewer modal ── */}
-    {pdfInvoice && (
-      <div
-        className="fixed inset-0 z-50 flex items-center justify-center"
-        style={{ backgroundColor: 'rgba(30,18,8,0.55)' }}
-        onClick={() => setPdfInvoice(null)}
-      >
+    {/* ── Invoice viewer modal ── */}
+    {invoiceView && (() => {
+      const morningUrl = getMorningViewUrl(invoiceView.קישור_חשבונית);
+      return (
         <div
-          className="relative flex flex-col rounded-2xl overflow-hidden"
-          style={{
-            width: 'min(900px, 96vw)',
-            height: 'min(780px, 92vh)',
-            backgroundColor: '#FFFFFF',
-            boxShadow: '0 24px 80px rgba(30,18,8,0.28)',
-          }}
-          onClick={e => e.stopPropagation()}
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ backgroundColor: 'rgba(30,18,8,0.55)' }}
+          onClick={() => setInvoiceView(null)}
         >
-          {/* header */}
           <div
-            className="flex items-center justify-between px-5 py-3 flex-shrink-0"
-            style={{ borderBottom: '1px solid #F0EAE0', backgroundColor: '#FDFAF5' }}
+            className="relative flex flex-col rounded-2xl overflow-hidden"
+            style={{ width: 'min(680px, 96vw)', maxHeight: '90vh', backgroundColor: '#FFFFFF', boxShadow: '0 24px 80px rgba(30,18,8,0.28)' }}
+            onClick={e => e.stopPropagation()}
           >
-            <div className="flex items-center gap-3">
-              <span style={{ color: '#C6A77D' }}><IFile className="w-4 h-4 flex-shrink-0" /></span>
-              <span className="font-semibold text-sm" style={{ color: '#3A2A1A' }}>
-                חשבונית #{pdfInvoice.מספר_חשבונית}
-              </span>
-              <span className="text-xs" style={{ color: '#B0A090' }}>{formatDate(pdfInvoice.תאריך_יצירה)}</span>
+            {/* modal header */}
+            <div className="flex items-center justify-between px-5 py-3 flex-shrink-0" style={{ borderBottom: '1px solid #F0EAE0', backgroundColor: '#FDFAF5' }}>
+              <div className="flex items-center gap-2">
+                <span style={{ color: '#C6A77D' }}><IFile className="w-4 h-4" /></span>
+                <span className="font-semibold text-sm" style={{ color: '#3A2A1A' }}>חשבונית #{invoiceView.מספר_חשבונית}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                {morningUrl && (
+                  <a href={morningUrl} target="_blank" rel="noopener noreferrer"
+                    className="text-xs px-2.5 py-1.5 rounded-lg border transition-colors"
+                    style={{ color: '#8A7664', borderColor: '#E8DED2', backgroundColor: 'transparent' }}
+                    onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#FAF7F2')}
+                    onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+                  >פתח ב-Morning ↗</a>
+                )}
+                <button onClick={() => setInvoiceView(null)}
+                  className="flex items-center justify-center w-7 h-7 rounded-lg transition-colors"
+                  style={{ color: '#8A7664' }}
+                  onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#F5EFE7')}
+                  onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+                >
+                  <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <a
-                href={`/api/invoices/${pdfInvoice.id}/pdf`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
-                style={{ backgroundColor: '#F5EFE7', color: '#8B5E34', border: '1px solid #E8DED2' }}
-                onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#EDE5D8')}
-                onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#F5EFE7')}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                </svg>
-                פתח בטאב חדש
-              </a>
-              <button
-                onClick={() => setPdfInvoice(null)}
-                className="flex items-center justify-center w-7 h-7 rounded-lg transition-colors"
-                style={{ color: '#8A7664' }}
-                onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#F5EFE7')}
-                onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+
+            {/* document content */}
+            <div className="flex-1 overflow-y-auto" style={{ backgroundColor: '#F7F3EC' }}>
+              {invoiceLoading ? (
+                <div className="flex items-center justify-center h-48">
+                  <span className="text-sm" style={{ color: '#8A7664' }}>טוען...</span>
+                </div>
+              ) : (
+                <div className="p-6" dir="rtl">
+                  <div className="bg-white rounded-xl p-7" style={{ border: '1px solid #E8DED2', boxShadow: '0 2px 12px rgba(58,42,26,0.06)' }}>
+
+                    {/* document title row */}
+                    <div className="flex justify-between items-start mb-5">
+                      <div>
+                        <div className="text-lg font-bold" style={{ color: '#2A1C12' }}>עדי שוקולד</div>
+                        <div className="text-xs" style={{ color: '#8E7D6A' }}>Adi Chocolate Boutique</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-base font-bold" style={{ color: '#2A1C12' }}>חשבונית מס / קבלה</div>
+                        <div className="text-sm mt-1" style={{ color: '#5C4A38' }}>מספר: <strong>#{invoiceView.מספר_חשבונית}</strong></div>
+                        <div className="text-xs mt-0.5" style={{ color: '#8E7D6A' }}>תאריך: {formatDate(invoiceView.תאריך_יצירה)}</div>
+                      </div>
+                    </div>
+
+                    <div style={{ borderTop: '2px solid #C6A77D', marginBottom: '20px' }} />
+
+                    {/* customer */}
+                    <div className="mb-5 p-3 rounded-lg" style={{ backgroundColor: '#FAF7F2', border: '1px solid #F0EAE0' }}>
+                      <div className="text-xs font-semibold mb-1.5" style={{ color: '#8E7D6A' }}>פרטי לקוח</div>
+                      <div className="font-medium text-sm" style={{ color: '#2A1C12' }}>{customer?.שם_פרטי} {customer?.שם_משפחה}</div>
+                      {customer?.טלפון && <div className="text-xs mt-0.5" style={{ color: '#5C4A38' }}>טלפון: {customer.טלפון}</div>}
+                      {customer?.אימייל && <div className="text-xs" style={{ color: '#5C4A38' }}>דוא&quot;ל: {customer.אימייל}</div>}
+                    </div>
+
+                    {/* items */}
+                    <div className="mb-5">
+                      <div className="text-xs font-semibold mb-2" style={{ color: '#8E7D6A' }}>פירוט מוצרים</div>
+                      <table className="w-full text-sm" style={{ borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr style={{ backgroundColor: '#F5EFE7' }}>
+                            <th className="py-2 px-3 text-right font-semibold" style={{ color: '#5C4A38', borderBottom: '1px solid #E8DED2' }}>תיאור</th>
+                            <th className="py-2 px-3 text-center font-semibold" style={{ color: '#5C4A38', borderBottom: '1px solid #E8DED2', width: '52px' }}>כמות</th>
+                            <th className="py-2 px-3 font-semibold" style={{ color: '#5C4A38', borderBottom: '1px solid #E8DED2', width: '90px', textAlign: 'left', direction: 'ltr' }}>מחיר ליח&apos;</th>
+                            <th className="py-2 px-3 font-semibold" style={{ color: '#5C4A38', borderBottom: '1px solid #E8DED2', width: '80px', textAlign: 'left', direction: 'ltr' }}>סה&quot;כ</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(invoiceOrder?.מוצרים_בהזמנה ?? []).map(item => (
+                            <tr key={item.id} style={{ borderBottom: '1px solid #F0EAE0' }}>
+                              <td className="py-2.5 px-3" style={{ color: '#3A2A1A' }}>{buildItemDesc(item)}</td>
+                              <td className="py-2.5 px-3 text-center" style={{ color: '#5C4A38' }}>{item.כמות}</td>
+                              <td className="py-2.5 px-3" style={{ color: '#5C4A38', textAlign: 'left', direction: 'ltr' }}>{formatCurrency(item.מחיר_ליחידה)}</td>
+                              <td className="py-2.5 px-3 font-medium" style={{ color: '#2A1C12', textAlign: 'left', direction: 'ltr' }}>{formatCurrency(item.סהכ)}</td>
+                            </tr>
+                          ))}
+                          {(invoiceOrder?.דמי_משלוח ?? 0) > 0 && (
+                            <tr style={{ borderBottom: '1px solid #F0EAE0' }}>
+                              <td className="py-2.5 px-3" style={{ color: '#3A2A1A' }}>דמי משלוח</td>
+                              <td className="py-2.5 px-3 text-center" style={{ color: '#5C4A38' }}>1</td>
+                              <td className="py-2.5 px-3" style={{ color: '#5C4A38', textAlign: 'left', direction: 'ltr' }}>{formatCurrency(invoiceOrder!.דמי_משלוח!)}</td>
+                              <td className="py-2.5 px-3 font-medium" style={{ color: '#2A1C12', textAlign: 'left', direction: 'ltr' }}>{formatCurrency(invoiceOrder!.דמי_משלוח!)}</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* totals */}
+                    <div className="flex justify-end">
+                      <div className="text-sm space-y-1.5" style={{ minWidth: '220px' }}>
+                        {(invoiceOrder?.סכום_לפני_הנחה ?? 0) > 0 && (
+                          <div className="flex justify-between gap-10">
+                            <span style={{ color: '#8E7D6A' }}>סכום לפני הנחה</span>
+                            <span style={{ color: '#3A2A1A' }}>{formatCurrency(invoiceOrder!.סכום_לפני_הנחה!)}</span>
+                          </div>
+                        )}
+                        {(invoiceOrder?.סכום_הנחה ?? 0) > 0 && (
+                          <div className="flex justify-between gap-10">
+                            <span style={{ color: '#8E7D6A' }}>
+                              הנחה{invoiceOrder?.סוג_הנחה === 'אחוז' && invoiceOrder.ערך_הנחה ? ` ${invoiceOrder.ערך_הנחה}%` : ''}
+                            </span>
+                            <span style={{ color: '#8A3228' }}>-{formatCurrency(invoiceOrder!.סכום_הנחה!)}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between gap-10 pt-2 mt-1" style={{ borderTop: '1px solid #E8DED2', fontWeight: 700, fontSize: '15px' }}>
+                          <span style={{ color: '#2A1C12' }}>סה&quot;כ לתשלום</span>
+                          <span style={{ color: '#8B5E34' }}>{formatCurrency(invoiceView.סכום)}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* payment method */}
+                    {invoiceOrder?.אופן_תשלום && (
+                      <div className="mt-5 pt-4 text-xs" style={{ borderTop: '1px solid #F0EAE0', color: '#8E7D6A' }}>
+                        שולם באמצעות: <strong style={{ color: '#5C4A38' }}>{invoiceOrder.אופן_תשלום}</strong>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
-
-          {/* iframe / blocked state */}
-          {iframeBlocked ? (
-            <div className="flex-1 flex flex-col items-center justify-center gap-4" style={{ backgroundColor: '#FAF7F2' }}>
-              <span style={{ color: '#C6A77D' }}><IFile className="w-10 h-10" /></span>
-              <p className="text-sm font-medium" style={{ color: '#3A2A1A' }}>לא ניתן להציג את ה-PDF בתוך המערכת</p>
-              <a
-                href={`/api/invoices/${pdfInvoice.id}/pdf`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="px-4 py-2 rounded-lg text-sm font-medium"
-                style={{ backgroundColor: '#8B5E34', color: '#FFFFFF' }}
-              >
-                פתח PDF בטאב חדש
-              </a>
-            </div>
-          ) : (
-            <iframe
-              key={pdfInvoice.id}
-              src={`/api/invoices/${pdfInvoice.id}/pdf`}
-              className="flex-1 w-full border-0"
-              title={`חשבונית ${pdfInvoice.מספר_חשבונית}`}
-              onError={() => setIframeBlocked(true)}
-            />
-          )}
         </div>
-      </div>
-    )}
+      );
+    })()}
     </>
   );
 }
