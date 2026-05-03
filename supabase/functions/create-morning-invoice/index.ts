@@ -13,14 +13,18 @@ const PAYMENT_TYPE_MAP: Record<string, number> = {
 
 async function getMorningToken(apiId: string, apiSecret: string): Promise<string> {
   const authUrl = `${MORNING_AUTH_BASE}/idp/v1/oauth/token`;
-  const authBody = { grant_type: 'client_credentials', client_id: apiId, client_secret: apiSecret };
+  const authBody = new URLSearchParams({
+    grant_type: 'client_credentials',
+    client_id: apiId,
+    client_secret: apiSecret,
+  });
   console.log('[create-morning-invoice] Auth URL:', authUrl);
-  console.log('[create-morning-invoice] Auth body keys:', Object.keys(authBody).join(', '));
+  console.log('[create-morning-invoice] Auth format: application/x-www-form-urlencoded');
 
   const res = await fetch(authUrl, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(authBody),
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: authBody.toString(),
   });
 
   const rawBody = await res.text();
