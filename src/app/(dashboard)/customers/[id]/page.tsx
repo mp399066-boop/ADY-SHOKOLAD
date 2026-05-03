@@ -203,6 +203,8 @@ export default function CustomerDetailPage() {
   const [editForm, setEditForm] = useState<Partial<Customer>>({});
   const [sideTab, setSideTab] = useState<SideTab>('invoices');
   const [businessLogoUrl, setBusinessLogoUrl] = useState<string | null>(null);
+  const [pdfInvoice, setPdfInvoice] = useState<Invoice | null>(null);
+  const [iframeBlocked, setIframeBlocked] = useState(false);
 
   useEffect(() => {
     fetch(`/api/customers/${id}`)
@@ -298,6 +300,7 @@ export default function CustomerDetailPage() {
   ];
 
   return (
+    <>
     <div className="max-w-6xl space-y-6">
 
       {/* ── 1. back link ── */}
@@ -734,22 +737,35 @@ export default function CustomerDetailPage() {
                     style={{ borderColor: '#F0EAE0', backgroundColor: '#FEFCF9' }}
                   >
                     <div className="flex items-center gap-3">
-                      {inv.קישור_חשבונית ? (
-                        <a
-                          href={inv.קישור_חשבונית}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="font-mono font-semibold text-xs"
-                          style={{ color: '#8B5E34', textDecoration: 'underline', textUnderlineOffset: '2px' }}
-                        >
-                          #{inv.מספר_חשבונית}
-                        </a>
-                      ) : (
-                        <span className="font-mono font-semibold text-xs" style={{ color: '#5C4A38' }}>#{inv.מספר_חשבונית}</span>
-                      )}
+                      <span className="font-mono font-semibold text-xs" style={{ color: '#5C4A38' }}>
+                        #{inv.מספר_חשבונית}
+                      </span>
                       <span className="text-xs" style={{ color: '#B0A090' }}>{formatDate(inv.תאריך_יצירה)}</span>
+                      <span
+                        className="text-xs px-1.5 py-0.5 rounded-full font-medium"
+                        style={{
+                          backgroundColor: inv.סטטוס === 'הופקה' ? '#E8F5E9' : '#FFF3E0',
+                          color: inv.סטטוס === 'הופקה' ? '#2E7D32' : '#E65100',
+                        }}
+                      >
+                        {inv.סטטוס}
+                      </span>
                     </div>
-                    <span className="font-semibold text-xs" style={{ color: '#3A2A1A' }}>{formatCurrency(inv.סכום)}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-xs" style={{ color: '#3A2A1A' }}>{formatCurrency(inv.סכום)}</span>
+                      {inv.קישור_חשבונית && (
+                        <button
+                          onClick={() => { setPdfInvoice(inv); setIframeBlocked(false); }}
+                          className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors"
+                          style={{ backgroundColor: '#F5EFE7', color: '#8B5E34', border: '1px solid #E8DED2' }}
+                          onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#EDE5D8')}
+                          onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#F5EFE7')}
+                        >
+                          <IEye className="w-3 h-3" />
+                          PDF
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -801,5 +817,100 @@ export default function CustomerDetailPage() {
         </div>
       </Card>
     </div>
+    {/* ── PDF viewer modal ── */}
+    {pdfInvoice && (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center"
+        style={{ backgroundColor: 'rgba(30,18,8,0.55)' }}
+        onClick={() => setPdfInvoice(null)}
+      >
+        <div
+          className="relative flex flex-col rounded-2xl overflow-hidden"
+          style={{
+            width: 'min(900px, 96vw)',
+            height: 'min(780px, 92vh)',
+            backgroundColor: '#FFFFFF',
+            boxShadow: '0 24px 80px rgba(30,18,8,0.28)',
+          }}
+          onClick={e => e.stopPropagation()}
+        >
+          {/* header */}
+          <div
+            className="flex items-center justify-between px-5 py-3 flex-shrink-0"
+            style={{ borderBottom: '1px solid #F0EAE0', backgroundColor: '#FDFAF5' }}
+          >
+            <div className="flex items-center gap-3">
+              <span style={{ color: '#C6A77D' }}><IFile className="w-4 h-4 flex-shrink-0" /></span>
+              <span className="font-semibold text-sm" style={{ color: '#3A2A1A' }}>
+                חשבונית #{pdfInvoice.מספר_חשבונית}
+              </span>
+              <span className="text-xs" style={{ color: '#B0A090' }}>{formatDate(pdfInvoice.תאריך_יצירה)}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <a
+                href={pdfInvoice.קישור_חשבונית!}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                style={{ backgroundColor: '#F5EFE7', color: '#8B5E34', border: '1px solid #E8DED2' }}
+                onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#EDE5D8')}
+                onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#F5EFE7')}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+                פתח בטאב חדש
+              </a>
+              <button
+                onClick={() => setPdfInvoice(null)}
+                className="flex items-center justify-center w-7 h-7 rounded-lg transition-colors"
+                style={{ color: '#8A7664' }}
+                onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#F5EFE7')}
+                onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          {/* iframe / blocked state */}
+          {iframeBlocked ? (
+            <div className="flex-1 flex flex-col items-center justify-center gap-4" style={{ backgroundColor: '#FAF7F2' }}>
+              <span style={{ color: '#C6A77D' }}><IFile className="w-10 h-10" /></span>
+              <p className="text-sm font-medium" style={{ color: '#3A2A1A' }}>לא ניתן להציג את ה-PDF בתוך המערכת</p>
+              <a
+                href={pdfInvoice.קישור_חשבונית!}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-2 rounded-lg text-sm font-medium"
+                style={{ backgroundColor: '#8B5E34', color: '#FFFFFF' }}
+              >
+                פתח PDF בטאב חדש
+              </a>
+            </div>
+          ) : (
+            <iframe
+              key={pdfInvoice.id}
+              src={pdfInvoice.קישור_חשבונית!}
+              className="flex-1 w-full border-0"
+              title={`חשבונית ${pdfInvoice.מספר_חשבונית}`}
+              onError={() => setIframeBlocked(true)}
+              onLoad={e => {
+                // Detect X-Frame-Options block: iframe loads but has no accessible content
+                try {
+                  const doc = (e.currentTarget as HTMLIFrameElement).contentDocument;
+                  if (doc && doc.body && doc.body.innerHTML === '') setIframeBlocked(true);
+                } catch {
+                  // cross-origin load — frame is rendering external content, likely OK
+                }
+              }}
+            />
+          )}
+        </div>
+      </div>
+    )}
+    </>
   );
 }
