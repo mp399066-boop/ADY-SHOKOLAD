@@ -133,10 +133,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       console.log('[invoice] Invoice already exists for order', params.id, '— skipping');
     } else {
       const supabaseUrl = process.env.SUPABASE_URL ?? '';
+      const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
       const webhookSecret = process.env.WEBHOOK_SECRET ?? '';
 
-      if (!supabaseUrl || !webhookSecret) {
-        console.error('[invoice] Missing SUPABASE_URL or WEBHOOK_SECRET — cannot trigger invoice creation');
+      if (!supabaseUrl || !serviceRoleKey || !webhookSecret) {
+        console.error('[invoice] Missing env vars — SUPABASE_URL:', !!supabaseUrl, '| SERVICE_ROLE_KEY:', !!serviceRoleKey, '| WEBHOOK_SECRET:', !!webhookSecret);
       } else {
         const fnUrl = `${supabaseUrl}/functions/v1/create-morning-invoice`;
         const webhookPayload = {
@@ -147,12 +148,13 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         };
 
         try {
-          console.log('[invoice] Calling create-morning-invoice for order', params.id);
+          console.log('[invoice] Calling create-morning-invoice — url:', fnUrl);
           const fnRes = await fetch(fnUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${webhookSecret}`,
+              'Authorization': `Bearer ${serviceRoleKey}`,
+              'x-webhook-secret': webhookSecret,
             },
             body: JSON.stringify(webhookPayload),
           });

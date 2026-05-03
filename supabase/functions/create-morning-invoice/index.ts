@@ -12,6 +12,7 @@ const PAYMENT_TYPE_MAP: Record<string, number> = {
 };
 
 async function getMorningToken(apiId: string, apiSecret: string): Promise<string> {
+  console.log('USING GREEN INVOICE AUTH');
   const authUrl = `${MORNING_API_BASE}/account/token`;
   console.log('[create-morning-invoice] Auth URL:', authUrl);
 
@@ -36,11 +37,11 @@ async function getMorningToken(apiId: string, apiSecret: string): Promise<string
 
 serve(async (req: Request) => {
   try {
-    // Validate webhook secret
+    // Validate webhook secret (passed in x-webhook-secret; Authorization is used by Supabase gateway)
     const webhookSecret = Deno.env.get('WEBHOOK_SECRET');
-    const authHeader = req.headers.get('Authorization') ?? '';
-    if (!webhookSecret || authHeader !== `Bearer ${webhookSecret}`) {
-      console.error('[create-morning-invoice] Unauthorized request');
+    const incomingSecret = req.headers.get('x-webhook-secret') ?? '';
+    if (!webhookSecret || incomingSecret !== webhookSecret) {
+      console.error('[create-morning-invoice] Unauthorized — x-webhook-secret mismatch');
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
     }
 
