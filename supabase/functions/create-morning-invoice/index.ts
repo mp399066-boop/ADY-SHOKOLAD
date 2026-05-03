@@ -258,7 +258,7 @@ serve(async (req: Request) => {
         לקוח_id: order.לקוח_id,
         מספר_חשבונית: invoiceNumber,
         קישור_חשבונית: invoiceUrl || null,
-        סכום: totalAmount,
+        סכום: paymentAmount,
         סטטוס: 'הופקה',
       })
       .select('id')
