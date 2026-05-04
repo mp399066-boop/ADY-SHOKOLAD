@@ -82,7 +82,8 @@ export async function POST(
       {
         method: 'POST',
         headers: {
-          Authorization: `${PAYPLUS_API_KEY}:${PAYPLUS_SECRET_KEY}`,
+          'api-key': PAYPLUS_API_KEY,
+          'secret-key': PAYPLUS_SECRET_KEY,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(ppBody),
