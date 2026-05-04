@@ -41,6 +41,10 @@ export default function ProductsPage() {
   const [showBulkConfirm, setShowBulkConfirm] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkToggling, setBulkToggling] = useState(false);
+  const [showPriceModal, setShowPriceModal] = useState(false);
+  const [priceMode, setPriceMode] = useState<'set' | 'add' | 'subtract' | 'percent'>('set');
+  const [priceValue, setPriceValue] = useState<number>(0);
+  const [bulkPricing, setBulkPricing] = useState(false);
 
   const currentSel = tab === 'products' ? selProducts : tab === 'packages' ? selPackages : selPF;
   const currentItems = tab === 'products' ? filteredProductsArr() : tab === 'packages' ? filteredPackagesArr() : filteredPFArr();
@@ -184,6 +188,25 @@ export default function ProductsPage() {
     finally { setBulkDeleting(false); }
   };
 
+  const handleBulkPrice = async () => {
+    setBulkPricing(true);
+    try {
+      const ids = Array.from(currentSel);
+      const res = await fetch('/api/products/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'update_price', ids, mode: priceMode, value: priceValue }),
+      });
+      const { succeeded, failed } = await res.json();
+      if (succeeded > 0) toast.success(`המחיר עודכן ל-${succeeded} מוצרים`);
+      if (failed > 0) toast.error(`${failed} מוצרים לא עודכנו`);
+      clearSel();
+      setShowPriceModal(false);
+      fetchAll();
+    } catch { toast.error('שגיאה בעדכון מחיר'); }
+    finally { setBulkPricing(false); }
+  };
+
   const handleBulkToggle = async (activate: boolean) => {
     setBulkToggling(true);
     try {
@@ -240,6 +263,7 @@ export default function ProductsPage() {
   // Bulk bar actions per tab
   const bulkActions = tab === 'products'
     ? [
+        { label: 'שינוי מחיר', onClick: () => { setPriceMode('set'); setPriceValue(0); setShowPriceModal(true); } },
         { label: 'הפעל', onClick: () => handleBulkToggle(true) },
         { label: 'השבת', onClick: () => handleBulkToggle(false) },
         { label: 'מחיקה', variant: 'danger' as const, icon: <IconTrash className="w-3.5 h-3.5" />, onClick: () => setShowBulkConfirm(true) },
@@ -544,6 +568,64 @@ export default function ProductsPage() {
         onClear={clearSel}
         actions={bulkActions}
       />
+
+      {/* Bulk price modal */}
+      <Modal
+        open={showPriceModal}
+        onClose={() => setShowPriceModal(false)}
+        title={`שינוי מחיר ל-${currentSel.size} מוצרים`}
+        size="sm"
+      >
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-2">
+            {([
+              { key: 'set',      label: 'קביעת מחיר חדש' },
+              { key: 'add',      label: 'הוספה למחיר' },
+              { key: 'subtract', label: 'הפחתה מהמחיר' },
+              { key: 'percent',  label: 'שינוי באחוזים' },
+            ] as const).map(m => (
+              <button
+                key={m.key}
+                onClick={() => setPriceMode(m.key)}
+                className="px-3 py-2 text-xs rounded-lg border transition-all"
+                style={{
+                  borderColor: priceMode === m.key ? '#8B5E34' : '#E8DDD0',
+                  backgroundColor: priceMode === m.key ? '#FEF9EF' : '#FFFFFF',
+                  color: priceMode === m.key ? '#8B5E34' : '#6B4A2D',
+                  fontWeight: priceMode === m.key ? 600 : 400,
+                }}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>
+              {priceMode === 'percent' ? 'אחוז שינוי (חיובי להעלאה, שלילי להורדה)' : 'סכום (₪)'}
+            </label>
+            <input
+              type="number"
+              value={priceValue}
+              onChange={e => setPriceValue(Number(e.target.value))}
+              min={priceMode === 'percent' ? -100 : 0}
+              step={priceMode === 'percent' ? 1 : 0.01}
+              className="w-full px-3 py-2 text-sm rounded-lg border focus:outline-none focus:ring-2 focus:ring-amber-100"
+              style={{ borderColor: '#DDD0BC', color: '#2B1A10' }}
+              placeholder={priceMode === 'percent' ? 'לדוגמה: 10 להעלאה, -5 להורדה' : '0.00'}
+            />
+          </div>
+
+          <div className="text-xs px-3 py-2 rounded-lg" style={{ backgroundColor: '#FEF9EF', color: '#8B5E34', border: '1px solid #F0E0C0' }}>
+            הפעולה תשפיע על {currentSel.size} מוצרים
+          </div>
+
+          <div className="flex gap-3 justify-end pt-1">
+            <Button variant="outline" onClick={() => setShowPriceModal(false)}>ביטול</Button>
+            <Button onClick={handleBulkPrice} loading={bulkPricing}>עדכן מחיר</Button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Add / Edit Modal */}
       <Modal
