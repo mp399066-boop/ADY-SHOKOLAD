@@ -77,35 +77,66 @@ export async function POST(
       ],
     };
 
-    const ppRes = await fetch(
-      `${PAYPLUS_API_URL}/api/v1.0/PaymentPages/generateLink`,
-      {
-        method: 'POST',
-        headers: {
-          'api-key': PAYPLUS_API_KEY,
-          'secret-key': PAYPLUS_SECRET_KEY,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(ppBody),
+    const ppEndpoint = `${PAYPLUS_API_URL}/api/v1.0/PaymentPages/generateLink`;
+
+    console.log('[create-payment-link] → URL:', ppEndpoint);
+    console.log('[create-payment-link] → headers:', {
+      'api-key': PAYPLUS_API_KEY ? `${PAYPLUS_API_KEY.slice(0, 6)}...` : 'MISSING',
+      'secret-key': PAYPLUS_SECRET_KEY ? '***' : 'MISSING',
+      'Content-Type': 'application/json',
+    });
+    console.log('[create-payment-link] → body:', JSON.stringify(ppBody, null, 2));
+
+    const ppRes = await fetch(ppEndpoint, {
+      method: 'POST',
+      headers: {
+        'api-key': PAYPLUS_API_KEY,
+        'secret-key': PAYPLUS_SECRET_KEY,
+        'Content-Type': 'application/json',
       },
-    );
+      body: JSON.stringify(ppBody),
+    });
 
-    const ppJson = await ppRes.json();
+    const ppRawText = await ppRes.text();
+    console.log('[create-payment-link] ← status:', ppRes.status);
+    console.log('[create-payment-link] ← body:', ppRawText);
 
-    if (!ppRes.ok || ppJson.results?.status !== '1') {
-      console.error('[create-payment-link] PayPlus error:', JSON.stringify(ppJson));
+    let ppJson: Record<string, unknown>;
+    try {
+      ppJson = JSON.parse(ppRawText);
+    } catch {
+      console.error('[create-payment-link] PayPlus returned non-JSON:', ppRawText);
       return NextResponse.json(
-        { error: ppJson.results?.message || 'שגיאה ביצירת קישור תשלום ב-PayPlus' },
+        { error: `PayPlus returned non-JSON (HTTP ${ppRes.status}): ${ppRawText.slice(0, 200)}` },
         { status: 502 },
       );
     }
 
-    const payment_url: string | undefined = ppJson.data?.payment_page_link;
-    const payplus_uid: string | undefined = ppJson.data?.payment_page_uid;
+    const resultsStatus = (ppJson.results as Record<string, unknown>)?.status;
+    const isSuccess = ppRes.ok && (resultsStatus === '1' || resultsStatus === 1);
+
+    if (!isSuccess) {
+      const ppMessage = (ppJson.results as Record<string, unknown>)?.message as string | undefined;
+      console.error('[create-payment-link] PayPlus rejected:', JSON.stringify(ppJson));
+      return NextResponse.json(
+        {
+          error: ppMessage || `PayPlus error (HTTP ${ppRes.status})`,
+          payplus_response: ppJson,
+        },
+        { status: 502 },
+      );
+    }
+
+    const ppData = ppJson.data as Record<string, unknown> | undefined;
+    const payment_url = ppData?.payment_page_link as string | undefined;
+    const payplus_uid = ppData?.payment_page_uid as string | undefined;
+
+    console.log('[create-payment-link] ← payment_url:', payment_url);
+    console.log('[create-payment-link] ← payplus_uid:', payplus_uid);
 
     if (!payment_url) {
       return NextResponse.json(
-        { error: 'PayPlus לא החזיר קישור תשלום' },
+        { error: 'PayPlus לא החזיר קישור תשלום', payplus_response: ppJson },
         { status: 502 },
       );
     }
