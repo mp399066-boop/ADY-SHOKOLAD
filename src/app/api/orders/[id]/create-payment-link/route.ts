@@ -129,7 +129,12 @@ export async function POST(
       return NextResponse.json(
         {
           error: ppMessage || `PayPlus error (HTTP ${ppRes.status})`,
-          payplus_response: ppJson,
+          debug: {
+            payplus_http_status: ppRes.status,
+            payplus_raw_body: ppRawText,
+            payplus_results: ppJson.results ?? null,
+            payplus_data: ppJson.data ?? null,
+          },
         },
         { status: 502 },
       );
