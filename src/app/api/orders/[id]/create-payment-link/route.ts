@@ -11,7 +11,11 @@ export async function POST(
   { params }: { params: { id: string } },
 ) {
   try {
+    console.log('[create-payment-link] called');
+    console.log('[create-payment-link] env check — API_KEY:', PAYPLUS_API_KEY ? 'SET' : 'MISSING', '| SECRET_KEY:', PAYPLUS_SECRET_KEY ? 'SET' : 'MISSING', '| PAGE_UID:', PAYPLUS_PAGE_UID ? 'SET' : 'MISSING');
+
     if (!PAYPLUS_API_KEY || !PAYPLUS_SECRET_KEY || !PAYPLUS_PAGE_UID) {
+      console.error('[create-payment-link] aborting — missing env vars');
       return NextResponse.json(
         { error: 'חסרים פרטי PayPlus — יש להגדיר PAYPLUS_API_KEY, PAYPLUS_SECRET_KEY, PAYPLUS_PAGE_UID' },
         { status: 500 },
@@ -20,6 +24,7 @@ export async function POST(
 
     const supabase = createAdminClient();
     const orderId = params.id;
+    console.log('[create-payment-link] order id:', orderId);
 
     const { data: order, error: orderErr } = await supabase
       .from('הזמנות')
