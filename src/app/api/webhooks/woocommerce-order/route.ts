@@ -177,10 +177,12 @@ export async function POST(req: Request) {
 
     // ── 5. Match products & create line items ────────────────────────────────
     console.log('[wc-webhook] creating order lines... items count:', lineItems.length);
-    const { data: catalog } = await supabase.from('מוצרים_למכירה').select('id, שם_מוצר').eq('פעיל', true);
+    const { data: catalog } = await supabase.from('מוצרים_למכירה').select('id, שם_מוצר, מזהה_לובהבל').eq('פעיל', true);
     const productByName = new Map<string, string>();
+    const productBySlug = new Map<string, string>();
     for (const p of catalog ?? []) {
       productByName.set((p.שם_מוצר as string).toLowerCase().trim(), p.id as string);
+      productBySlug.set((p.מזהה_לובהבל as string).toLowerCase().trim(), p.id as string);
     }
 
     for (const item of lineItems) {
@@ -190,15 +192,38 @@ export async function POST(req: Request) {
       const unitPrice = parseFloat(item.price as string) || 0;
       const lineTotal = parseFloat(item.subtotal as string) || unitPrice * qty;
 
-      const matchedId =
+      const wcSlug = sku
+        ? `wc-${sku.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').slice(0, 50)}`
+        : null;
+
+      let matchedId: string | null =
         productByName.get(name.toLowerCase().trim()) ??
-        (sku ? productByName.get(sku.toLowerCase().trim()) : undefined) ??
+        (wcSlug ? productBySlug.get(wcSlug) : undefined) ??
         null;
 
       if (!matchedId) {
-        const w = `מוצר לא נמצא: "${name}" (SKU: ${sku || '-'})`;
-        warnings.push(w);
-        console.warn('[wc-webhook]', w);
+        const slug = wcSlug ?? `wc-${Date.now()}`;
+        const { data: newProduct, error: createErr } = await supabase
+          .from('מוצרים_למכירה')
+          .insert({ מזהה_לובהבל: slug, שם_מוצר: name, מחיר: unitPrice, סוג_מוצר: 'מוצר רגיל', פעיל: true })
+          .select('id')
+          .single();
+
+        if (newProduct) {
+          matchedId = newProduct.id as string;
+          console.log(`[wc-webhook] Auto-created product: "${name}" (slug: ${slug})`);
+        } else if (wcSlug && createErr) {
+          // Possibly a UNIQUE conflict on wcSlug (e.g. product is inactive) — look it up
+          const { data: conflict } = await supabase.from('מוצרים_למכירה').select('id').eq('מזהה_לובהבל', wcSlug).maybeSingle();
+          if (conflict) {
+            matchedId = conflict.id as string;
+            console.log(`[wc-webhook] Found existing product by slug: "${name}" → ${matchedId}`);
+          } else {
+            console.warn('[wc-webhook] Failed to auto-create product:', createErr.message, '| name:', name);
+          }
+        } else {
+          console.warn('[wc-webhook] Failed to auto-create product:', createErr?.message, '| name:', name);
+        }
       }
 
       const { error: itemErr } = await supabase.from('מוצרים_בהזמנה').insert({
@@ -208,7 +233,7 @@ export async function POST(req: Request) {
         כמות: qty,
         מחיר_ליחידה: unitPrice,
         סהכ: lineTotal,
-        הערות_לשורה: matchedId ? null : `${name} — מוצר לא נמצא במערכת`,
+        הערות_לשורה: null,
       });
       if (itemErr) {
         console.warn('[wc-webhook] item insert error:', itemErr.message, '| item:', name);
@@ -282,7 +307,7 @@ export async function POST(req: Request) {
             const name =
               item['סוג_שורה'] === 'מארז'
                 ? `מארז ${item['גודל_מארז'] || ''} יח׳${pfNames ? ` (${pfNames})` : ''}`
-                : (prod?.['שם_מוצר'] as string) || (item['הערות_לשורה'] as string) || 'פריט';
+                : (prod?.['שם_מוצר'] as string) || 'פריט';
             return {
               name,
               quantity: Number(item['כמות'] || 1),

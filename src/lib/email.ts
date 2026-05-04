@@ -95,11 +95,11 @@ function buildHtml(customerName: string, d: OrderEmailData, logoUrl?: string): s
 
             <!-- Greeting + heading -->
             <p style="margin:0 0 6px;font-size:13px;color:#8E7D6A;text-align:right">שלום ${customerName},</p>
-            <h1 style="margin:0 0 8px;font-size:24px;font-weight:700;color:#2A1C12;line-height:1.35;text-align:right">
-              תודה על הזמנתך —<br>התקבלה בהצלחה
+            <h1 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#2A1C12;line-height:1.35;text-align:right">
+              הזמנתך התקבלה בהצלחה
             </h1>
-            <p style="margin:0 0 32px;font-size:14px;color:#8A7664;line-height:1.65;text-align:right">
-              קיבלנו את הזמנתך ואנו מטפלים בה כעת.
+            <p style="margin:0 0 20px;font-size:14px;color:#8A7664;line-height:1.65;text-align:right">
+              קיבלנו את ההזמנה ואנו מטפלים בה כעת.
             </p>
 
             <!-- Order details box -->
