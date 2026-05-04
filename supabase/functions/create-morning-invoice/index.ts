@@ -247,8 +247,30 @@ serve(async (req: Request) => {
     }
 
     const invoiceNumber: string = docData.number ?? docData.id ?? String(docData.documentId ?? '');
-    const invoiceUrl: string = docData.files?.downloadLinks?.he ?? docData.files?.downloadLinks?.origin ?? docData.url ?? docData.viewUrl ?? '';
-    console.log('[create-morning-invoice] Invoice URL:', invoiceUrl || 'none');
+
+    // Log all URL-related fields to identify the correct browser-viewable link
+    console.log('[create-morning-invoice] Invoice URL fields:', JSON.stringify({
+      shareLink: docData.shareLink,
+      url: docData.url,
+      viewUrl: docData.viewUrl,
+      documentUrl: docData.documentUrl,
+      pdfUrl: docData.pdfUrl,
+      'files.viewLinks': docData.files?.viewLinks,
+      'files.downloadLinks': docData.files?.downloadLinks,
+      id: docData.id,
+    }));
+
+    // Priority: shareLink (public) → viewUrl → url → constructed app viewer URL from id
+    // files.downloadLinks requires API auth and leads to 404 in browser — excluded
+    const docId: string = docData.id ?? '';
+    const invoiceUrl: string =
+      docData.shareLink ??
+      docData.viewUrl ??
+      docData.documentUrl ??
+      (docId ? `https://app.greeninvoice.co.il/ext/d/${docId}` : '') ??
+      '';
+
+    console.log('[create-morning-invoice] Invoice URL saved:', invoiceUrl || 'none');
 
     // Save to חשבוניות
     const { data: savedInvoice, error: saveErr } = await supabase
