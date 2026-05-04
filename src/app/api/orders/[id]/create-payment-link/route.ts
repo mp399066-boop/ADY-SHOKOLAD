@@ -122,7 +122,10 @@ export async function POST(
 
     if (!isSuccess) {
       const ppMessage = (ppJson.results as Record<string, unknown>)?.message as string | undefined;
-      console.error('[create-payment-link] PayPlus rejected:', JSON.stringify(ppJson));
+      console.error('[create-payment-link] PayPlus rejected — HTTP status:', ppRes.status);
+      console.error('[create-payment-link] PayPlus raw body (full):', ppRawText);
+      console.error('[create-payment-link] PayPlus parsed results:', JSON.stringify(ppJson.results ?? null));
+      console.error('[create-payment-link] PayPlus parsed data:', JSON.stringify(ppJson.data ?? null));
       return NextResponse.json(
         {
           error: ppMessage || `PayPlus error (HTTP ${ppRes.status})`,
