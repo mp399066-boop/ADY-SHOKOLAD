@@ -74,6 +74,15 @@ export default function NewOrderPage() {
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
   const [packageItems, setPackageItems] = useState<PackageItem[]>([]);
 
+  // Post-save payment link flow
+  const [savedOrderId, setSavedOrderId] = useState<string | null>(null);
+  const [savedOrderNumber, setSavedOrderNumber] = useState('');
+  const [savedCustomerPhone, setSavedCustomerPhone] = useState('');
+  const [showPostSaveModal, setShowPostSaveModal] = useState(false);
+  const [paymentLinkUrl, setPaymentLinkUrl] = useState('');
+  const [paymentLinkLoading, setPaymentLinkLoading] = useState(false);
+  const [paymentLinkCreated, setPaymentLinkCreated] = useState(false);
+
   useEffect(() => {
     Promise.all([
       fetch('/api/customers?limit=200').then(r => r.json()),
@@ -200,6 +209,28 @@ export default function NewOrderPage() {
     });
   };
 
+  const handleCreatePaymentLink = async () => {
+    if (!savedOrderId) return;
+    setPaymentLinkLoading(true);
+    try {
+      const res = await fetch(`/api/orders/${savedOrderId}/create-payment-link`, { method: 'POST' });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'שגיאה ביצירת קישור');
+      setPaymentLinkUrl(json.payment_url);
+      setPaymentLinkCreated(true);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'שגיאה ביצירת קישור תשלום');
+    } finally {
+      setPaymentLinkLoading(false);
+    }
+  };
+
+  const handleWhatsApp = () => {
+    const phone = savedCustomerPhone.replace(/\D/g, '').replace(/^0/, '972');
+    const text = encodeURIComponent(`היי, מצורף קישור לתשלום עבור ההזמנה שלך:\n${paymentLinkUrl}`);
+    window.open(`https://wa.me/${phone}?text=${text}`, '_blank');
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedCustomer) { toast.error('יש לבחור לקוח'); return; }
@@ -255,8 +286,11 @@ export default function NewOrderPage() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'שגיאה ביצירת הזמנה');
 
-      toast.success('ההזמנה נוצרה בהצלחה');
-      router.push(`/orders/${json.data.id}`);
+      const cust = customers.find(c => c.id === selectedCustomer);
+      setSavedOrderId(json.data.id);
+      setSavedOrderNumber(json.data.מספר_הזמנה || '');
+      setSavedCustomerPhone(cust?.טלפון || '');
+      setShowPostSaveModal(true);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'שגיאה ביצירת הזמנה');
     } finally {
@@ -749,6 +783,114 @@ export default function NewOrderPage() {
           </div>
         </div>
       </div>
+
+      {/* Post-save: payment link modal */}
+      {showPostSaveModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ backgroundColor: 'rgba(43,26,16,0.45)', backdropFilter: 'blur(3px)' }}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden"
+            style={{ direction: 'rtl', border: '1px solid #EDE0CE' }}
+          >
+            {!paymentLinkCreated ? (
+              <>
+                {/* Success icon + prompt */}
+                <div className="px-6 pt-7 pb-5 text-center space-y-3">
+                  <div
+                    className="w-13 h-13 rounded-full flex items-center justify-center mx-auto"
+                    style={{ backgroundColor: '#D1FAE5', width: '52px', height: '52px' }}
+                  >
+                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="#065F46">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="text-base font-semibold mb-1" style={{ color: '#2B1A10' }}>
+                      ההזמנה נשמרה בהצלחה
+                      {savedOrderNumber && <span className="font-normal text-sm"> #{savedOrderNumber}</span>}
+                    </h3>
+                    <p className="text-sm" style={{ color: '#6B4A2D' }}>האם ליצור קישור תשלום ללקוחה?</p>
+                  </div>
+                </div>
+                <div className="px-6 pb-6 space-y-2">
+                  <button
+                    onClick={handleCreatePaymentLink}
+                    disabled={paymentLinkLoading}
+                    className="w-full py-2.5 text-sm font-semibold rounded-xl transition-all"
+                    style={{ backgroundColor: '#8B5E34', color: '#FFFFFF', opacity: paymentLinkLoading ? 0.7 : 1 }}
+                  >
+                    {paymentLinkLoading ? 'יוצר קישור...' : 'צור קישור תשלום'}
+                  </button>
+                  <button
+                    onClick={() => router.push(`/orders/${savedOrderId}`)}
+                    className="w-full py-2.5 text-sm font-medium rounded-xl border transition-all"
+                    style={{ borderColor: '#DDD0BC', color: '#6B4A2D', backgroundColor: '#FFFFFF' }}
+                  >
+                    דלג
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Payment link created */}
+                <div className="px-6 pt-7 pb-5 text-center space-y-3">
+                  <div
+                    className="rounded-full flex items-center justify-center mx-auto"
+                    style={{ backgroundColor: '#FEF9EF', width: '52px', height: '52px', border: '1px solid #F0E0C0' }}
+                  >
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="#8B5E34">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="text-base font-semibold mb-2" style={{ color: '#2B1A10' }}>קישור תשלום נוצר בהצלחה</h3>
+                    <p
+                      className="text-xs px-3 py-2 rounded-lg text-right truncate"
+                      style={{ backgroundColor: '#FAF7F2', color: '#6B4A2D', border: '1px solid #EDE0CE', direction: 'ltr' }}
+                    >
+                      {paymentLinkUrl}
+                    </p>
+                  </div>
+                </div>
+                <div className="px-6 pb-6 space-y-2">
+                  <button
+                    onClick={() => window.open(paymentLinkUrl, '_blank')}
+                    className="w-full py-2.5 text-sm font-semibold rounded-xl transition-all"
+                    style={{ backgroundColor: '#8B5E34', color: '#FFFFFF' }}
+                  >
+                    פתח תשלום
+                  </button>
+                  <button
+                    onClick={() => { navigator.clipboard.writeText(paymentLinkUrl); toast.success('הקישור הועתק'); }}
+                    className="w-full py-2.5 text-sm font-medium rounded-xl border transition-all"
+                    style={{ borderColor: '#DDD0BC', color: '#6B4A2D', backgroundColor: '#FFFFFF' }}
+                  >
+                    העתק קישור
+                  </button>
+                  {savedCustomerPhone && (
+                    <button
+                      onClick={handleWhatsApp}
+                      className="w-full py-2.5 text-sm font-medium rounded-xl border transition-all"
+                      style={{ borderColor: '#D1FAE5', color: '#065F46', backgroundColor: '#F0FDF4' }}
+                    >
+                      שלח בוואטסאפ
+                    </button>
+                  )}
+                  <button
+                    onClick={() => router.push(`/orders/${savedOrderId}`)}
+                    className="w-full text-xs pt-1"
+                    style={{ color: '#9B7A5A' }}
+                  >
+                    עבור להזמנה
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Mobile bottom bar */}
       <div
