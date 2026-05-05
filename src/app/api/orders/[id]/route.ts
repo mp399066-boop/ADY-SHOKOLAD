@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
+import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 // deploy trigger
 
 export async function GET(_: NextRequest, { params }: { params: { id: string } }) {
+  const auth = await requireManagementUser();
+  if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
 
   const { data: order, error } = await supabase
@@ -56,6 +59,8 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+  const auth = await requireManagementUser();
+  if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
   const body = await req.json();
 
@@ -176,6 +181,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 }
 
 export async function DELETE(_: NextRequest, { params }: { params: { id: string } }) {
+  const auth = await requireManagementUser();
+  if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
   const { error } = await supabase.from('הזמנות').delete().eq('id', params.id);
   if (error) {

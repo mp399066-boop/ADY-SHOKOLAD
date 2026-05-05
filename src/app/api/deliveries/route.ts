@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
+import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 
 interface OrderRow {
   id: string;
@@ -39,6 +40,8 @@ interface DeliveryRow {
 }
 
 export async function GET(req: NextRequest) {
+  const auth = await requireManagementUser();
+  if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
   const { searchParams } = new URL(req.url);
   const date   = searchParams.get('date');
@@ -129,6 +132,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireManagementUser();
+  if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
   const body = await req.json();
   if (!body.הזמנה_id) return NextResponse.json({ error: 'הזמנה היא שדה חובה' }, { status: 400 });

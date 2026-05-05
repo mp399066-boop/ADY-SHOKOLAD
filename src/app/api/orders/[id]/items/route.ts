@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
+import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 
 // PUT: replace all order items, recalculate totals
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
+  const auth = await requireManagementUser();
+  if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
   const body = await req.json();
 

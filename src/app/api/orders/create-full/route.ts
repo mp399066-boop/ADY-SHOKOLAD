@@ -2,10 +2,13 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
+import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { generateOrderNumber } from '@/lib/utils';
 import { sendOrderEmail, isInternalEmail, type OrderEmailData, type EmailContext } from '@/lib/email';
 
 export async function POST(req: NextRequest) {
+  const auth = await requireManagementUser();
+  if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
   const body = await req.json();
 

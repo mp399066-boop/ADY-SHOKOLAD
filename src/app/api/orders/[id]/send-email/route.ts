@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
+import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 
 function buildEmailHtml(order: Record<string, unknown>, customer: Record<string, string> | null, items: Record<string, unknown>[]): string {
   const deliveryRow = order['סוג_אספקה'] === 'משלוח' && order['כתובת_מקבל_ההזמנה']
@@ -96,6 +97,8 @@ function buildEmailHtml(order: Record<string, unknown>, customer: Record<string,
 }
 
 export async function POST(_: NextRequest, { params }: { params: { id: string } }) {
+  const auth = await requireManagementUser();
+  if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
 
   const { data: order, error } = await supabase

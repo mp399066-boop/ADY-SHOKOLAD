@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
+import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 
 // Bulk update כמות_במלאי for finished products (מוצרים_למכירה)
 export async function POST(req: NextRequest) {
+  const auth = await requireManagementUser();
+  if (!auth) return unauthorizedResponse();
   try {
     const { ids, mode, value } = await req.json();
     if (!Array.isArray(ids) || ids.length === 0) {

@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
+import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 
 const TABLE_MAP: Record<string, string> = {
   לקוחות: 'לקוחות',
@@ -184,6 +185,8 @@ function coerceValue(key: string, raw: unknown): unknown {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireManagementUser();
+  if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
   const body = await req.json();
   const { entity, rows } = body;

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
+import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 
 // One-time fix: replace Morning download-API URLs with browser-viewable viewer URLs.
 // The Morning download URL is: https://www.greeninvoice.co.il/api/v1/documents/download?d={docId}
@@ -9,6 +10,8 @@ import { createAdminClient } from '@/lib/supabase/server';
 // Returns: list of invoices found, proposed viewer URL, and whether the update succeeded.
 
 export async function POST() {
+  const auth = await requireManagementUser();
+  if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
 
   const { data: invoices, error } = await supabase

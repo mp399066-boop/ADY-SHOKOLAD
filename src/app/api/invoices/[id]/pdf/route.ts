@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
+import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 
 const MORNING_API_BASE = 'https://api.greeninvoice.co.il/api/v1';
 
@@ -43,6 +44,8 @@ function resolveDownloadUrl(stored: string): { downloadUrl: string; source: stri
 }
 
 export async function GET(_: NextRequest, { params }: { params: { id: string } }) {
+  const auth = await requireManagementUser();
+  if (!auth) return unauthorizedResponse();
   try {
     const supabase = createAdminClient();
     const { data: invoice, error } = await supabase

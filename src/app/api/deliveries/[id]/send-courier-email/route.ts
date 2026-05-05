@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
+import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import sgMail from '@sendgrid/mail';
 import { randomBytes } from 'crypto';
 
@@ -11,6 +12,8 @@ type OrderJoin = {
 };
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+  const auth = await requireManagementUser();
+  if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
 
   // 1. Fetch delivery + order

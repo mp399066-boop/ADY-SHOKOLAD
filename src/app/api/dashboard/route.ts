@@ -2,8 +2,11 @@ export const dynamic = 'force-dynamic';
 
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
+import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 
 export async function GET() {
+  const auth = await requireManagementUser();
+  if (!auth) return unauthorizedResponse();
   try {
     const hasUrl        = !!process.env.NEXT_PUBLIC_SUPABASE_URL;
     const hasAnonKey    = !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
