@@ -237,6 +237,8 @@ export default function NewOrderPage() {
     e.preventDefault();
     // Synchronous guard — blocks any second call that arrives before setLoading re-renders
     if (submittingRef.current || loading) return;
+    // If an order was already created (post-save modal open), never create another
+    if (savedOrderId) return;
     if (!selectedCustomer) { toast.error('יש לבחור לקוח'); return; }
 
     submittingRef.current = true;
@@ -824,6 +826,7 @@ export default function NewOrderPage() {
                 </div>
                 <div className="px-6 pb-6 space-y-2">
                   <button
+                    type="button"
                     onClick={handleCreatePaymentLink}
                     disabled={paymentLinkLoading}
                     className="w-full py-2.5 text-sm font-semibold rounded-xl transition-all"
@@ -832,6 +835,7 @@ export default function NewOrderPage() {
                     {paymentLinkLoading ? 'יוצר קישור...' : 'צור קישור תשלום'}
                   </button>
                   <button
+                    type="button"
                     onClick={() => router.push(`/orders/${savedOrderId}`)}
                     className="w-full py-2.5 text-sm font-medium rounded-xl border transition-all"
                     style={{ borderColor: '#DDD0BC', color: '#6B4A2D', backgroundColor: '#FFFFFF' }}
@@ -864,6 +868,7 @@ export default function NewOrderPage() {
                 </div>
                 <div className="px-6 pb-6 space-y-2">
                   <button
+                    type="button"
                     onClick={() => window.open(paymentLinkUrl, '_blank')}
                     className="w-full py-2.5 text-sm font-semibold rounded-xl transition-all"
                     style={{ backgroundColor: '#8B5E34', color: '#FFFFFF' }}
@@ -871,6 +876,7 @@ export default function NewOrderPage() {
                     פתח תשלום
                   </button>
                   <button
+                    type="button"
                     onClick={() => { navigator.clipboard.writeText(paymentLinkUrl); toast.success('הקישור הועתק'); }}
                     className="w-full py-2.5 text-sm font-medium rounded-xl border transition-all"
                     style={{ borderColor: '#DDD0BC', color: '#6B4A2D', backgroundColor: '#FFFFFF' }}
@@ -879,6 +885,7 @@ export default function NewOrderPage() {
                   </button>
                   {savedCustomerPhone && (
                     <button
+                      type="button"
                       onClick={handleWhatsApp}
                       className="w-full py-2.5 text-sm font-medium rounded-xl border transition-all"
                       style={{ borderColor: '#D1FAE5', color: '#065F46', backgroundColor: '#F0FDF4' }}
@@ -887,6 +894,7 @@ export default function NewOrderPage() {
                     </button>
                   )}
                   <button
+                    type="button"
                     onClick={() => router.push(`/orders/${savedOrderId}`)}
                     className="w-full text-xs pt-1"
                     style={{ color: '#9B7A5A' }}
