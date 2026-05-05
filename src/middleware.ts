@@ -1,6 +1,12 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
+type CookieToSet = {
+  name: string;
+  value: string;
+  options?: Parameters<NextResponse['cookies']['set']>[2];
+};
+
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
@@ -12,7 +18,7 @@ export async function middleware(request: NextRequest) {
         getAll() {
           return request.cookies.getAll();
         },
-        setAll(cookiesToSet) {
+        setAll(cookiesToSet: CookieToSet[]) {
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value),
           );
@@ -31,7 +37,6 @@ export async function middleware(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
-  // Helper: check authorized_users table (RLS policy allows authenticated user to read own row)
   const isAuthorized = async (): Promise<boolean> => {
     if (!user?.email) return false;
     const { data } = await supabase
@@ -39,6 +44,7 @@ export async function middleware(request: NextRequest) {
       .select('is_active')
       .eq('email', user.email.toLowerCase())
       .maybeSingle();
+
     return data?.is_active === true;
   };
 
@@ -46,15 +52,12 @@ export async function middleware(request: NextRequest) {
     if (user) {
       const authorized = await isAuthorized();
       if (authorized) {
-        // Already logged in and authorized → go to dashboard
         return NextResponse.redirect(new URL('/dashboard', request.url));
       }
-      // Logged in to Google but not authorized → stay on /login (page will sign them out)
     }
     return supabaseResponse;
   }
 
-  // All other protected routes
   if (!user) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
@@ -68,7 +71,6 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // Protect all routes except: Next.js internals, static files, auth callback, API routes
   matcher: [
     '/((?!_next/static|_next/image|favicon.ico|auth/|api/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
