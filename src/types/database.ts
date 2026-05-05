@@ -378,4 +378,7 @@ export interface DashboardStats {
   lowInventory: number;
   deliveriesToday: number;
   unpaidAmount: number;
+  deliveriesCollected: number;
+  deliveriesDelivered: number;
+  revenueToday: number;
 }

@@ -33,16 +33,19 @@ export async function GET() {
     const tomorrow = new Date(Date.now() + 86400000).toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
 
     const [
-      { count: ordersToday, error: e1 },
-      { count: ordersTomorrow, error: e2 },
-      { count: urgentOrders, error: e3 },
-      { count: unpaidOrders, error: e4 },
-      { count: inPreparation, error: e5 },
-      { count: readyForDelivery, error: e6 },
-      { count: shipped, error: e7 },
-      { count: lowInventory, error: e8 },
-      { count: deliveriesToday, error: e9 },
-      { data: unpaidRows, error: e10 },
+      { count: ordersToday,        error: e1  },
+      { count: ordersTomorrow,     error: e2  },
+      { count: urgentOrders,       error: e3  },
+      { count: unpaidOrders,       error: e4  },
+      { count: inPreparation,      error: e5  },
+      { count: readyForDelivery,   error: e6  },
+      { count: shipped,            error: e7  },
+      { count: lowInventory,       error: e8  },
+      { count: deliveriesToday,    error: e9  },
+      { data: unpaidRows,          error: e10 },
+      { count: deliveriesCollected, error: e11 },
+      { count: deliveriesDelivered, error: e12 },
+      { data: revenueTodayRows,    error: e13 },
     ] = await Promise.all([
       supabase.from('הזמנות').select('*', { count: 'exact', head: true }).eq('תאריך_אספקה', today).neq('סטטוס_הזמנה', 'בוטלה'),
       supabase.from('הזמנות').select('*', { count: 'exact', head: true }).eq('תאריך_אספקה', tomorrow).neq('סטטוס_הזמנה', 'בוטלה'),
@@ -54,9 +57,14 @@ export async function GET() {
       supabase.from('מלאי_חומרי_גלם').select('*', { count: 'exact', head: true }).in('סטטוס_מלאי', ['מלאי נמוך', 'קריטי', 'אזל מהמלאי']),
       supabase.from('משלוחים').select('*', { count: 'exact', head: true }).eq('תאריך_משלוח', today),
       supabase.from('הזמנות').select('סך_הכל_לתשלום').eq('סטטוס_תשלום', 'ממתין').neq('סטטוס_הזמנה', 'בוטלה'),
+      // deliveries by status (all time, not just today — reflects current pipeline state)
+      supabase.from('משלוחים').select('*', { count: 'exact', head: true }).eq('סטטוס_משלוח', 'נאסף'),
+      supabase.from('משלוחים').select('*', { count: 'exact', head: true }).eq('סטטוס_משלוח', 'נמסר'),
+      // revenue: paid orders with delivery date = today
+      supabase.from('הזמנות').select('סך_הכל_לתשלום').eq('תאריך_אספקה', today).eq('סטטוס_תשלום', 'שולם'),
     ]);
 
-    const firstError = e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || e10;
+    const firstError = e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || e10 || e11 || e12 || e13;
     if (firstError) {
       const msg = firstError.message || firstError.details || firstError.hint || 'שגיאה בטעינת הנתונים';
       return NextResponse.json({ error: msg }, { status: 500 });
@@ -67,18 +75,26 @@ export async function GET() {
       0,
     );
 
+    const revenueToday = (revenueTodayRows ?? []).reduce(
+      (sum: number, row: any) => sum + (row['סך_הכל_לתשלום'] ?? 0),
+      0,
+    );
+
     return NextResponse.json({
       data: {
-        ordersToday: ordersToday ?? 0,
-        ordersTomorrow: ordersTomorrow ?? 0,
-        urgentOrders: urgentOrders ?? 0,
-        unpaidOrders: unpaidOrders ?? 0,
-        inPreparation: inPreparation ?? 0,
-        readyForDelivery: readyForDelivery ?? 0,
-        shipped: shipped ?? 0,
-        lowInventory: lowInventory ?? 0,
-        deliveriesToday: deliveriesToday ?? 0,
+        ordersToday:          ordersToday          ?? 0,
+        ordersTomorrow:       ordersTomorrow       ?? 0,
+        urgentOrders:         urgentOrders         ?? 0,
+        unpaidOrders:         unpaidOrders         ?? 0,
+        inPreparation:        inPreparation        ?? 0,
+        readyForDelivery:     readyForDelivery     ?? 0,
+        shipped:              shipped              ?? 0,
+        lowInventory:         lowInventory         ?? 0,
+        deliveriesToday:      deliveriesToday      ?? 0,
         unpaidAmount,
+        deliveriesCollected:  deliveriesCollected  ?? 0,
+        deliveriesDelivered:  deliveriesDelivered  ?? 0,
+        revenueToday,
       },
     });
   } catch (err: any) {

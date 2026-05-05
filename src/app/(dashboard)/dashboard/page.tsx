@@ -132,11 +132,12 @@ export default function DashboardPage() {
     ordersToday: 0, ordersTomorrow: 0, urgentOrders: 0, unpaidOrders: 0,
     inPreparation: 0, readyForDelivery: 0, shipped: 0, lowInventory: 0,
     deliveriesToday: 0, unpaidAmount: 0,
+    deliveriesCollected: 0, deliveriesDelivered: 0, revenueToday: 0,
   };
 
   const activeTasks = s.ordersToday + s.inPreparation;
 
-  const statCards: StatCardProps[] = [
+  const orderCards: StatCardProps[] = [
     {
       label: 'הזמנות להיום', value: s.ordersToday, href: '/orders', filterParam: 'today',
       accent: '#8B5E34',
@@ -153,14 +154,37 @@ export default function DashboardPage() {
       icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M15.362 5.214A8.252 8.252 0 0112 21 8.25 8.25 0 016.038 7.048 8.287 8.287 0 009 9.6a8.983 8.983 0 013.361-6.867 8.21 8.21 0 003 2.48z" /><path strokeLinecap="round" strokeLinejoin="round" d="M12 18a3.75 3.75 0 00.495-7.467 5.99 5.99 0 00-1.925 3.546 5.974 5.974 0 01-2.133-1A3.75 3.75 0 0012 18z" /></svg>,
     },
     {
-      label: 'משלוחים היום', value: s.deliveriesToday, href: '/deliveries',
-      accent: '#0891B2',
-      icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 18.75a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 01-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 00-3.213-9.193 2.056 2.056 0 00-1.58-.86H14.25M16.5 18.75h-2.25m0-11.177v-.958c0-.568-.422-1.048-.987-1.106a48.554 48.554 0 00-10.026 0 1.106 1.106 0 00-.987 1.106v7.635m12-6.677v6.677m0 4.5v-4.5m0 0h-12" /></svg>,
+      label: 'בהכנה', value: s.inPreparation, href: '/orders', filterParam: 'preparation',
+      accent: '#7C3AED',
+      icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 11-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 004.486-6.336l-3.276 3.277a3.004 3.004 0 01-2.25-2.25l3.276-3.276a4.5 4.5 0 00-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085m-1.745 1.437L5.909 7.5H4.5L2.25 3.75l1.5-1.5L7.5 4.5v1.409l4.26 4.26m-1.745 1.437l1.745-1.437m6.615 8.206L15.75 15.75M4.867 19.125h.008v.008h-.008v-.008z" /></svg>,
+    },
+    {
+      label: 'מוכן למשלוח', value: s.readyForDelivery, href: '/orders', filterParam: 'ready',
+      accent: '#059669',
+      icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
     },
     {
       label: 'מלאי נמוך', value: s.lowInventory, href: '/inventory', urgent: true,
       accent: '#DC2626',
       icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" /></svg>,
+    },
+  ];
+
+  const deliveryCards: StatCardProps[] = [
+    {
+      label: 'משלוחים להיום', value: s.deliveriesToday, href: '/deliveries',
+      accent: '#0891B2',
+      icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 18.75a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 01-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 00-3.213-9.193 2.056 2.056 0 00-1.58-.86H14.25M16.5 18.75h-2.25m0-11.177v-.958c0-.568-.422-1.048-.987-1.106a48.554 48.554 0 00-10.026 0 1.106 1.106 0 00-.987 1.106v7.635m12-6.677v6.677m0 4.5v-4.5m0 0h-12" /></svg>,
+    },
+    {
+      label: 'נאסף', value: s.deliveriesCollected, href: '/deliveries',
+      accent: '#D97706',
+      icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007z" /></svg>,
+    },
+    {
+      label: 'נמסר', value: s.deliveriesDelivered, href: '/deliveries',
+      accent: '#059669',
+      icon: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 9.75h4.875a2.625 2.625 0 010 5.25H12M8.25 9.75L10.5 7.5M8.25 9.75L10.5 12m9-7.243V21.75l-3.75-1.5-3.75 1.5-3.75-1.5-3.75 1.5V4.757c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0c1.1.128 1.907 1.077 1.907 2.185z" /></svg>,
     },
   ];
 
@@ -184,9 +208,20 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* ── 5 stat cards ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-        {statCards.map(card => <StatCard key={card.label} {...card} />)}
+      {/* ── order stat cards ── */}
+      <div>
+        <p className="text-xs font-medium mb-2" style={{ color: '#9B8472' }}>הזמנות</p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          {orderCards.map(card => <StatCard key={card.label} {...card} />)}
+        </div>
+      </div>
+
+      {/* ── delivery stat cards ── */}
+      <div>
+        <p className="text-xs font-medium mb-2" style={{ color: '#9B8472' }}>משלוחים</p>
+        <div className="grid grid-cols-3 gap-3">
+          {deliveryCards.map(card => <StatCard key={card.label} {...card} />)}
+        </div>
       </div>
 
       {/* ── two columns ── */}
@@ -220,20 +255,34 @@ export default function DashboardPage() {
           </div>
 
           {/* payment summary */}
-          <Link href="/orders?filter=unpaid">
+          <div className="grid grid-cols-2 gap-3">
+            <Link href="/orders?filter=unpaid">
+              <div
+                className="rounded-2xl border p-4 bg-white hover:shadow-sm transition-all cursor-pointer h-full"
+                style={{ borderColor: '#EDE0CE' }}
+              >
+                <p className="text-xs mb-1" style={{ color: '#9B7A5A' }}>ממתין לתשלום</p>
+                <p className="text-xl font-bold tabular-nums" style={{ color: '#2B1A10' }}>
+                  {formatCurrency(s.unpaidAmount)}
+                </p>
+                <p className="text-xs mt-0.5" style={{ color: '#9B7A5A' }}>
+                  {s.unpaidOrders} הזמנות
+                </p>
+              </div>
+            </Link>
             <div
-              className="rounded-2xl border p-4 bg-white hover:shadow-sm transition-all cursor-pointer"
-              style={{ borderColor: '#EDE0CE' }}
+              className="rounded-2xl border p-4 h-full"
+              style={{ borderColor: '#D1FAE5', backgroundColor: '#F0FDF4' }}
             >
-              <p className="text-xs mb-1" style={{ color: '#9B7A5A' }}>ממתין לתשלום</p>
-              <p className="text-2xl font-bold tabular-nums" style={{ color: '#2B1A10' }}>
-                {formatCurrency(s.unpaidAmount)}
+              <p className="text-xs mb-1" style={{ color: '#065F46' }}>הכנסות היום</p>
+              <p className="text-xl font-bold tabular-nums" style={{ color: '#065F46' }}>
+                {formatCurrency(s.revenueToday)}
               </p>
-              <p className="text-xs mt-0.5" style={{ color: '#9B7A5A' }}>
-                מ-{s.unpaidOrders} הזמנות
+              <p className="text-xs mt-0.5" style={{ color: '#6EE7B7' }}>
+                הזמנות שולמו
               </p>
             </div>
-          </Link>
+          </div>
         </div>
 
         {/* right: today's orders */}
