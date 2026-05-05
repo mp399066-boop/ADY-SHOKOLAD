@@ -54,7 +54,7 @@ export default function NewCustomerPage() {
           <Input label="טלפון" type="tel" value={form.טלפון} onChange={e => set('טלפון', e.target.value)} />
           <Input label="אימייל" type="email" value={form.אימייל} onChange={e => set('אימייל', e.target.value)} />
           <Select label="סוג לקוח" value={form.סוג_לקוח} onChange={e => set('סוג_לקוח', e.target.value)}>
-            {['פרטי', 'חוזר', 'עסקי'].map(t => <option key={t} value={t}>{t}</option>)}
+            {['פרטי', 'חוזר', 'עסקי - קבוע', 'עסקי - כמות'].map(t => <option key={t} value={t}>{t}</option>)}
           </Select>
           <Select label="מקור הגעה" value={form.מקור_הגעה} onChange={e => set('מקור_הגעה', e.target.value)}>
             <option value="">-</option>

@@ -121,7 +121,7 @@ export interface Customer {
   שם_משפחה: string;
   טלפון: string | null;
   אימייל: string | null;
-  סוג_לקוח: 'פרטי' | 'חוזר' | 'עסקי';
+  סוג_לקוח: 'פרטי' | 'חוזר' | 'עסקי' | 'עסקי - קבוע' | 'עסקי - כמות';
   סטטוס_לקוח: string | null;
   מקור_הגעה: string | null;
   אחוז_הנחה: number | null;
@@ -174,6 +174,7 @@ export interface Product {
   כמות_במלאי: number;
   תיאור: string | null;
   תמונה_url: string | null;
+  price_availability: 'retail' | 'business_fixed' | 'business_quantity' | null;
   תאריך_יצירה: string;
   תאריך_עדכון: string;
 }

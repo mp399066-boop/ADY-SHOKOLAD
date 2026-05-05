@@ -134,7 +134,8 @@ export default function NewOrderPage() {
       : 0;
   const total = Math.max(0, subtotal - discountAmount + deliveryFee);
   const selectedCustomerData = customers.find(c => c.id === selectedCustomer);
-  const isBusiness = selectedCustomerData?.סוג_לקוח === 'עסקי';
+  const customerType = selectedCustomerData?.סוג_לקוח;
+  const isBusiness = customerType === 'עסקי' || customerType === 'עסקי - קבוע' || customerType === 'עסקי - כמות';
   const VAT_RATE = 0.18;
   // VAT display only — סך_הכל_לתשלום stored in DB is always pre-VAT (server calculates it)
   const vatAmount = isBusiness ? +(total * VAT_RATE).toFixed(2) : 0;
@@ -154,10 +155,13 @@ export default function NewOrderPage() {
         const prod = products.find(p => p.id === value);
         if (prod) {
           item.שם_מוצר = prod.שם_מוצר;
-          const isBiz = selectedCustomerData?.סוג_לקוח === 'עסקי';
-          const priceEntry = isBiz
-            ? priceList.find(pl => pl.מוצר_id === String(value) && pl.price_type === 'business_fixed')
-            : priceList.find(pl => pl.מוצר_id === String(value) && pl.price_type === 'retail');
+          const custType = selectedCustomerData?.סוג_לקוח;
+          let priceType = 'retail';
+          if (custType === 'עסקי - כמות') priceType = 'business_quantity';
+          else if (custType === 'עסקי - קבוע' || custType === 'עסקי') priceType = 'business_fixed';
+          const priceEntry =
+            priceList.find(pl => pl.מוצר_id === String(value) && pl.price_type === priceType) ||
+            (priceType !== 'retail' ? priceList.find(pl => pl.מוצר_id === String(value) && pl.price_type === 'business_fixed') : undefined);
           item.מחיר_ליחידה = priceEntry ? priceEntry.מחיר : prod.מחיר;
         }
       }
@@ -470,12 +474,16 @@ export default function NewOrderPage() {
                       >
                         <option value="">בחר...</option>
                         {(() => {
-                          const customerType = selectedCustomerData?.סוג_לקוח || 'none';
+                          const custType = selectedCustomerData?.סוג_לקוח || 'none';
+                          const isBusinessCust = custType === 'עסקי' || custType === 'עסקי - קבוע' || custType === 'עסקי - כמות';
+                          const isQuantityCust = custType === 'עסקי - כמות';
                           const regular = products.filter(p => p.סוג_מוצר === 'מוצר רגיל');
-                          const visible = regular.filter(p => !p.לקוחות_עסקיים_בלבד || customerType === 'עסקי');
-                          console.log('[new-order] product dropdown — customerType:', customerType,
-                            '| regular:', regular.length, '| visible after filter:', visible.length,
-                            '| hidden business-only:', regular.length - visible.length);
+                          const visible = regular.filter(p => {
+                            const avail = p.price_availability ?? (p.לקוחות_עסקיים_בלבד ? 'business_fixed' : 'retail');
+                            if (avail === 'retail') return true;
+                            if (avail === 'business_quantity') return isQuantityCust;
+                            return isBusinessCust; // business_fixed
+                          });
                           return visible.map(p => (
                             <option key={p.id} value={p.id}>{p.שם_מוצר}</option>
                           ));

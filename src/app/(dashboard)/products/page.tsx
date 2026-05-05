@@ -102,7 +102,7 @@ export default function ProductsPage() {
   const openAdd = () => {
     setEditMode(false);
     setEditId(null);
-    if (tab === 'products') setForm({ שם_מוצר: '', סוג_מוצר: 'מוצר רגיל', מחיר: 0, פעיל: true, תיאור: '', לקוחות_עסקיים_בלבד: false });
+    if (tab === 'products') setForm({ שם_מוצר: '', סוג_מוצר: 'מוצר רגיל', מחיר: 0, פעיל: true, תיאור: '', price_availability: 'retail', לקוחות_עסקיים_בלבד: false });
     if (tab === 'packages') setForm({ שם_מארז: '', גודל_מארז: 0, כמה_סוגים_מותר_לבחור: 1, מחיר_מארז: 0, פעיל: true });
     if (tab === 'petitfours') setForm({ שם_פטיפור: '', פעיל: true, הערות: '' });
     setShowModal(true);
@@ -122,10 +122,17 @@ export default function ProductsPage() {
       if (tab === 'packages') url = editMode && editId ? `/api/packages/${editId}` : '/api/packages';
       if (tab === 'petitfours') url = editMode && editId ? `/api/petit-four-types/${editId}` : '/api/petit-four-types';
 
+      const body = tab === 'products'
+        ? {
+            ...form,
+            לקוחות_עסקיים_בלבד: form.price_availability !== 'retail',
+          }
+        : form;
+
       const res = await fetch(url, {
         method: editMode ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify(body),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
@@ -382,9 +389,9 @@ export default function ProductsPage() {
                             </div>
                             <p className="text-xs mb-2" style={{ color: '#9B7A5A' }}>
                               {p.סוג_מוצר}
-                              {p.לקוחות_עסקיים_בלבד && (
+                              {(p.price_availability === 'business_fixed' || p.price_availability === 'business_quantity' || (!p.price_availability && p.לקוחות_עסקיים_בלבד)) && (
                                 <span className="mr-2 text-xs px-1.5 py-0.5 rounded-full" style={{ backgroundColor: '#EFF6FF', color: '#1D4ED8' }}>
-                                  עסקי בלבד
+                                  {p.price_availability === 'business_quantity' ? 'כמות' : 'עסקי בלבד'}
                                 </span>
                               )}
                             </p>
@@ -669,16 +676,15 @@ export default function ProductsPage() {
                 onChange={e => setForm(p => ({ ...p, תיאור: e.target.value }))}
                 rows={2}
               />
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={Boolean(form.לקוחות_עסקיים_בלבד)}
-                  onChange={e => setForm(p => ({ ...p, לקוחות_עסקיים_בלבד: e.target.checked }))}
-                  className="w-4 h-4 rounded"
-                  style={{ accentColor: '#1D4ED8' }}
-                />
-                <span className="text-sm" style={{ color: '#2B1A10' }}>זמין ללקוחות עסקיים בלבד</span>
-              </label>
+              <Select
+                label="זמינות מחירון"
+                value={String(form.price_availability ?? 'retail')}
+                onChange={e => setForm(p => ({ ...p, price_availability: e.target.value }))}
+              >
+                <option value="retail">זמין לכולם (מחיר קמעונאי)</option>
+                <option value="business_fixed">לקוחות עסקיים קבועים (מחיר עסקי קבוע)</option>
+                <option value="business_quantity">לקוחות עסקיים לפי כמות (מחיר כמות)</option>
+              </Select>
             </>
           )}
           {tab === 'packages' && (
