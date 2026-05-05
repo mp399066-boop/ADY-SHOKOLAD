@@ -65,7 +65,21 @@ export async function POST(req: NextRequest) {
     const sheetName = workbook.SheetNames[0];
     if (!sheetName) return NextResponse.json({ error: 'הקובץ ריק' }, { status: 400 });
     const sheet = workbook.Sheets[sheetName];
-    rawRows = XLSX.utils.sheet_to_json(sheet, { defval: '' }) as Record<string, unknown>[];
+    const parsed = XLSX.utils.sheet_to_json(sheet, { defval: '' }) as Record<string, unknown>[];
+    // Normalize keys: trim whitespace and unify quote characters so
+    // 'כולל מע"מ' (ASCII "), 'כולל מע״מ' (Hebrew gershayim U+05F4) and
+    // 'כולל מע“מ' (smart quotes) all map to the same key.
+    rawRows = parsed.map(row => {
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(row)) {
+        const normalized = k
+          .trim()
+          .replace(/״/g, '"')          // Hebrew gershayim ״ → "
+          .replace(/[“”]/g, '"');  // Smart quotes → "
+        out[normalized] = v;
+      }
+      return out;
+    });
   } catch {
     return NextResponse.json({ error: 'לא ניתן לקרוא את הקובץ — ודא שהוא קובץ Excel תקין' }, { status: 400 });
   }
@@ -97,10 +111,11 @@ export async function POST(req: NextRequest) {
     const rowNumber = idx + 2;
     const sku = String(col(row, 'SKU', 'sku', 'קוד מוצר', 'קוד', 'מזהה')).trim();
     const productName = String(col(row, 'שם מוצר', 'שם_מוצר', 'product_name', 'שם')).trim();
-    const priceTypeRaw = col(row, 'סוג מחירון', 'סוג_מחירון', 'price_type', 'סוג');
+    const priceTypeRaw = col(row, 'סוג מחירון', 'סוג_מחירון', 'price_type', 'סוג מחיר', 'סוג');
     const priceRaw = col(row, 'מחיר', 'price');
-    const minQtyRaw = col(row, 'כמות מינימום', 'כמות_מינימום', 'min_quantity', 'כמות מינ', 'כמות מינימלית');
-    const includesVatRaw = col(row, 'כולל מע״מ', 'כולל מע"מ', 'כולל מעמ', 'includes_vat', 'מעמ', 'מע"מ');
+    const minQtyRaw = col(row, 'כמות מינימום', 'כמות_מינימום', 'min_quantity', 'כמות מינ\'', 'כמות מינ', 'כמות מינימלית');
+    // After key normalization above, all quote variants become ASCII "
+    const includesVatRaw = col(row, 'כולל מע"מ', 'כולל מעמ', 'includes_vat', 'מע"מ', 'מעמ');
     const isActiveRaw = col(row, 'פעיל', 'פעיל?', 'is_active', 'active');
 
     const rowErrors: string[] = [];

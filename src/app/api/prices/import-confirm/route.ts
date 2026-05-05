@@ -52,7 +52,6 @@ export async function POST(req: NextRequest) {
       includes_vat: row.includesVat,
       פעיל: row.isActive,
       uploaded_at: now,
-      סוג_לקוח: row.priceType,
     };
 
     if (existing?.id) {
