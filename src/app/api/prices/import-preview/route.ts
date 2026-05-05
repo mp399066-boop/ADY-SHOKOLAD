@@ -42,11 +42,24 @@ function parseBool(v: unknown, defaultVal = true): boolean {
   return ['כן', 'yes', 'true', '1'].includes(s);
 }
 
-function col(row: Record<string, unknown>, ...keys: string[]): unknown {
-  for (const k of keys) {
-    if (row[k] !== undefined && row[k] !== null) return row[k];
-  }
-  return '';
+// Normalize header for comparison: trim + collapse all quote variants to ASCII "
+// Uses explicit Unicode escapes to avoid source-encoding ambiguity.
+function nh(s: string): string {
+  return String(s).trim()
+    .replace(/״/g, '"')         // Hebrew gershayim ״ (U+05F4)
+    .replace(/“|”/g, '"')  // Smart quotes “ ”
+    .replace(/″/g, '"')         // Double prime ″ (U+2033)
+    .toLowerCase();
+}
+
+interface RawParsedRow {
+  sku: unknown;
+  productName: unknown;
+  priceType: unknown;
+  price: unknown;
+  minQty: unknown;
+  includesVat: unknown;
+  isActive: unknown;
 }
 
 export async function POST(req: NextRequest) {
@@ -58,33 +71,54 @@ export async function POST(req: NextRequest) {
   const file = formData.get('file') as File | null;
   if (!file) return NextResponse.json({ error: 'קובץ חסר' }, { status: 400 });
 
-  let rawRows: Record<string, unknown>[];
+  let parsedRows: RawParsedRow[];
   try {
     const buffer = Buffer.from(await file.arrayBuffer());
     const workbook = XLSX.read(buffer, { type: 'buffer' });
     const sheetName = workbook.SheetNames[0];
     if (!sheetName) return NextResponse.json({ error: 'הקובץ ריק' }, { status: 400 });
     const sheet = workbook.Sheets[sheetName];
-    const parsed = XLSX.utils.sheet_to_json(sheet, { defval: '' }) as Record<string, unknown>[];
-    // Normalize keys: trim whitespace and unify quote characters so
-    // 'כולל מע"מ' (ASCII "), 'כולל מע״מ' (Hebrew gershayim U+05F4) and
-    // 'כולל מע“מ' (smart quotes) all map to the same key.
-    rawRows = parsed.map(row => {
-      const out: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(row)) {
-        const normalized = k
-          .trim()
-          .replace(/״/g, '"')          // Hebrew gershayim ״ → "
-          .replace(/[“”]/g, '"');  // Smart quotes → "
-        out[normalized] = v;
-      }
-      return out;
-    });
+
+    // header:1 → raw arrays; bypasses all key-encoding ambiguity
+    const allRows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: '' });
+    if (allRows.length < 2) return NextResponse.json({ error: 'הקובץ אינו מכיל שורות נתונים' }, { status: 400 });
+
+    const headerRow = (allRows[0] as string[]).map(h => String(h ?? ''));
+    const dataRows = allRows.slice(1) as unknown[][];
+
+    const findCI = (aliases: string[]): number => {
+      const na = aliases.map(nh);
+      return headerRow.findIndex(h => na.includes(nh(h)));
+    };
+
+    const CI = {
+      sku:         findCI(['SKU', 'sku', 'קוד מוצר', 'קוד', 'מזהה']),
+      productName: findCI(['שם מוצר', 'שם_מוצר', 'product_name', 'שם']),
+      priceType:   findCI(['סוג מחירון', 'סוג_מחירון', 'price_type', 'סוג מחיר']),
+      price:       findCI(['מחיר', 'price']),
+      minQty:      findCI(['כמות מינימום', 'כמות_מינימום', 'min_quantity', 'כמות מינ']),
+      includesVat: findCI(['כולל מע"מ', 'כולל מעמ', 'includes_vat', 'מע"מ', 'מעמ']),
+      isActive:    findCI(['פעיל', 'פעיל?', 'is_active', 'active']),
+    };
+
+    const gc = (row: unknown[], i: number) => i >= 0 ? (row[i] ?? '') : '';
+
+    parsedRows = dataRows
+      .filter(r => r.some(c => c !== '' && c !== null && c !== undefined))
+      .map(r => ({
+        sku:         gc(r, CI.sku),
+        productName: gc(r, CI.productName),
+        priceType:   gc(r, CI.priceType),
+        price:       gc(r, CI.price),
+        minQty:      gc(r, CI.minQty),
+        includesVat: gc(r, CI.includesVat),
+        isActive:    gc(r, CI.isActive),
+      }));
   } catch {
     return NextResponse.json({ error: 'לא ניתן לקרוא את הקובץ — ודא שהוא קובץ Excel תקין' }, { status: 400 });
   }
 
-  if (rawRows.length === 0) return NextResponse.json({ error: 'הקובץ אינו מכיל שורות נתונים' }, { status: 400 });
+  if (parsedRows.length === 0) return NextResponse.json({ error: 'הקובץ אינו מכיל שורות נתונים' }, { status: 400 });
 
   const supabase = createAdminClient();
 
@@ -95,28 +129,27 @@ export async function POST(req: NextRequest) {
 
   const productMap = new Map<string, string>();
   for (const p of products || []) {
-    productMap.set(String(p.שם_מוצר).toLowerCase().trim(), p.id as string);
+    productMap.set(String(p['שם_מוצר']).toLowerCase().trim(), p.id as string);
   }
 
   const existingSet = new Set<string>();
   for (const e of existingEntries || []) {
-    existingSet.add(`${e.מוצר_id}|${e.price_type}|${e.min_quantity ?? ''}`);
+    existingSet.add(`${e['מוצר_id']}|${e.price_type}|${e.min_quantity ?? ''}`);
   }
 
   const validRows: PreviewRow[] = [];
   const errors: PreviewError[] = [];
   const seenInFile = new Set<string>();
 
-  rawRows.forEach((row, idx) => {
+  parsedRows.forEach((row, idx) => {
     const rowNumber = idx + 2;
-    const sku = String(col(row, 'SKU', 'sku', 'קוד מוצר', 'קוד', 'מזהה')).trim();
-    const productName = String(col(row, 'שם מוצר', 'שם_מוצר', 'product_name', 'שם')).trim();
-    const priceTypeRaw = col(row, 'סוג מחירון', 'סוג_מחירון', 'price_type', 'סוג מחיר', 'סוג');
-    const priceRaw = col(row, 'מחיר', 'price');
-    const minQtyRaw = col(row, 'כמות מינימום', 'כמות_מינימום', 'min_quantity', 'כמות מינ\'', 'כמות מינ', 'כמות מינימלית');
-    // After key normalization above, all quote variants become ASCII "
-    const includesVatRaw = col(row, 'כולל מע"מ', 'כולל מעמ', 'includes_vat', 'מע"מ', 'מעמ');
-    const isActiveRaw = col(row, 'פעיל', 'פעיל?', 'is_active', 'active');
+    const sku = String(row.sku ?? '').trim();
+    const productName = String(row.productName ?? '').trim();
+    const priceTypeRaw = row.priceType;
+    const priceRaw = row.price;
+    const minQtyRaw = row.minQty;
+    const includesVatRaw = row.includesVat;
+    const isActiveRaw = row.isActive;
 
     const rowErrors: string[] = [];
 

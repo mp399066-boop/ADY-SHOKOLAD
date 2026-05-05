@@ -474,16 +474,17 @@ export default function NewOrderPage() {
                       >
                         <option value="">בחר...</option>
                         {(() => {
-                          const custType = selectedCustomerData?.סוג_לקוח || 'none';
-                          const isBusinessCust = custType === 'עסקי' || custType === 'עסקי - קבוע' || custType === 'עסקי - כמות';
-                          const isQuantityCust = custType === 'עסקי - כמות';
+                          const ct = customerType || '';
                           const regular = products.filter(p => p.סוג_מוצר === 'מוצר רגיל');
                           const visible = regular.filter(p => {
                             const avail = p.price_availability ?? (p.לקוחות_עסקיים_בלבד ? 'business_fixed' : 'retail');
-                            if (avail === 'retail') return true;
-                            if (avail === 'business_quantity') return isQuantityCust;
-                            return isBusinessCust; // business_fixed
+                            if (!ct) return true;
+                            if (ct === 'פרטי' || ct === 'חוזר') return avail === 'retail';
+                            if (ct === 'עסקי - קבוע' || ct === 'עסקי') return avail === 'business_fixed';
+                            if (ct === 'עסקי - כמות') return avail === 'business_quantity';
+                            return true;
                           });
+                          console.log('[new-order] customer type:', customerType, '| filtered products:', visible.length);
                           return visible.map(p => (
                             <option key={p.id} value={p.id}>{p.שם_מוצר}</option>
                           ));
