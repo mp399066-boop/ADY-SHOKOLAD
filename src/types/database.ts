@@ -360,10 +360,18 @@ export interface CommunicationLog {
 
 export interface PriceListItem {
   id: string;
-  מוצר_id: string;
-  סוג_לקוח: string;
+  מוצר_id: string | null;
+  סוג_לקוח: string | null;
   מחיר: number;
   תאריך_יצירה: string;
+  sku: string | null;
+  product_name_snapshot: string | null;
+  price_type: 'retail' | 'business_quantity' | 'business_fixed' | null;
+  min_quantity: number | null;
+  includes_vat: boolean | null;
+  פעיל: boolean | null;
+  uploaded_at: string | null;
+  תאריך_עדכון: string | null;
   מוצרים_למכירה?: Product;
 }
 
