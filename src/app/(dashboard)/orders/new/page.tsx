@@ -56,6 +56,7 @@ export default function NewOrderPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [petitFourTypes, setPetitFourTypes] = useState<PetitFourType[]>([]);
   const [packages, setPackages] = useState<Package[]>([]);
+  const [priceList, setPriceList] = useState<{ מוצר_id: string; price_type: string; מחיר: number; min_quantity: number | null }[]>([]);
 
   const [selectedCustomer, setSelectedCustomer] = useState('');
   const [isUrgent, setIsUrgent] = useState(false);
@@ -93,7 +94,8 @@ export default function NewOrderPage() {
       fetch('/api/products?active=true').then(r => r.json()),
       fetch('/api/petit-four-types').then(r => r.json()),
       fetch('/api/packages').then(r => r.json()),
-    ]).then(([c, p, pf, pkg]) => {
+      fetch('/api/prices').then(r => r.json()),
+    ]).then(([c, p, pf, pkg, prices]) => {
       const allProducts = p.data || [];
       console.log('[new-order] products loaded:', allProducts.length,
         '| business-only count:', allProducts.filter((x: { לקוחות_עסקיים_בלבד?: boolean }) => x.לקוחות_עסקיים_בלבד).length,
@@ -102,6 +104,7 @@ export default function NewOrderPage() {
       setProducts(allProducts);
       setPetitFourTypes(pf.data || []);
       setPackages(pkg.data || []);
+      setPriceList(prices.data || []);
     });
   }, []);
 
@@ -131,6 +134,11 @@ export default function NewOrderPage() {
       : 0;
   const total = Math.max(0, subtotal - discountAmount + deliveryFee);
   const selectedCustomerData = customers.find(c => c.id === selectedCustomer);
+  const isBusiness = selectedCustomerData?.סוג_לקוח === 'עסקי';
+  const VAT_RATE = 0.18;
+  // VAT display only — סך_הכל_לתשלום stored in DB is always pre-VAT (server calculates it)
+  const vatAmount = isBusiness ? +(total * VAT_RATE).toFixed(2) : 0;
+  const totalWithVat = isBusiness ? +(total * (1 + VAT_RATE)).toFixed(2) : total;
 
   const addProductItem = () => {
     setOrderItems(prev => [...prev, {
@@ -144,7 +152,14 @@ export default function NewOrderPage() {
       const item = { ...items[idx], [field]: value };
       if (field === 'מוצר_id') {
         const prod = products.find(p => p.id === value);
-        if (prod) { item.שם_מוצר = prod.שם_מוצר; item.מחיר_ליחידה = prod.מחיר; }
+        if (prod) {
+          item.שם_מוצר = prod.שם_מוצר;
+          const isBiz = selectedCustomerData?.סוג_לקוח === 'עסקי';
+          const priceEntry = isBiz
+            ? priceList.find(pl => pl.מוצר_id === String(value) && pl.price_type === 'business_fixed')
+            : priceList.find(pl => pl.מוצר_id === String(value) && pl.price_type === 'retail');
+          item.מחיר_ליחידה = priceEntry ? priceEntry.מחיר : prod.מחיר;
+        }
       }
       item.סהכ = item.כמות * item.מחיר_ליחידה;
       items[idx] = item;
@@ -478,7 +493,7 @@ export default function NewOrderPage() {
                     </div>
                     <div className="col-span-2">
                       <Input
-                        label="מחיר"
+                        label={isBusiness ? 'מחיר (לפני מע״מ)' : 'מחיר'}
                         type="number"
                         value={item.מחיר_ליחידה}
                         onChange={e => updateProductItem(idx, 'מחיר_ליחידה', Number(e.target.value))}
@@ -779,11 +794,30 @@ export default function NewOrderPage() {
                     </div>
                   )}
                   <div className="flex justify-between items-center">
-                    <span className="text-sm font-semibold" style={{ color: '#2B1A10' }}>סך הכל</span>
+                    <span className="text-sm font-semibold" style={{ color: '#2B1A10' }}>
+                      {isBusiness ? 'סה״כ לפני מע״מ' : 'סך הכל'}
+                    </span>
                     <span className="text-xl font-bold" style={{ color: '#8B5E34' }}>
                       ₪{total.toFixed(2)}
                     </span>
                   </div>
+                  {isBusiness && (
+                    <>
+                      <div className="flex justify-between text-xs mt-1.5" style={{ color: '#6B4A2D' }}>
+                        <span>מע״מ 18%</span>
+                        <span>₪{vatAmount.toFixed(2)}</span>
+                      </div>
+                      <div
+                        className="flex justify-between items-center mt-1.5 pt-2 border-t"
+                        style={{ borderColor: '#EDE0CE' }}
+                      >
+                        <span className="text-sm font-semibold" style={{ color: '#2B1A10' }}>סה״כ כולל מע״מ</span>
+                        <span className="text-lg font-bold" style={{ color: '#8B5E34' }}>
+                          ₪{totalWithVat.toFixed(2)}
+                        </span>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
