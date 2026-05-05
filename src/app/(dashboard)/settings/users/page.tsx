@@ -7,6 +7,7 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input, Select } from '@/components/ui/Input';
 import { PageLoading } from '@/components/ui/LoadingSpinner';
+import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import toast from 'react-hot-toast';
 
 type UserRole = 'admin' | 'staff' | 'delivery';
@@ -62,6 +63,8 @@ export default function UsersPage() {
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState('');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [deactivateTarget, setDeactivateTarget] = useState<AuthorizedUser | null>(null);
+  const [deactivating, setDeactivating] = useState(false);
 
   useEffect(() => {
     async function init() {
@@ -130,6 +133,30 @@ export default function UsersPage() {
       toast.error('שגיאה בעדכון');
     } finally {
       setUpdatingId(null);
+    }
+  }
+
+  async function handleDeactivate() {
+    if (!deactivateTarget) return;
+    setDeactivating(true);
+    try {
+      const res = await fetch(`/api/users/${deactivateTarget.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: false }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        toast.error(json.error || 'שגיאה בהשבתת המשתמש');
+        return;
+      }
+      setUsers(prev => prev.map(u => (u.id === deactivateTarget.id ? json.data : u)));
+      toast.success('המשתמש הושבת');
+      setDeactivateTarget(null);
+    } catch {
+      toast.error('שגיאה בהשבתת המשתמש');
+    } finally {
+      setDeactivating(false);
     }
   }
 
@@ -267,12 +294,10 @@ export default function UsersPage() {
                         </select>
                       </td>
 
-                      {/* Active toggle */}
+                      {/* Status badge (read-only) */}
                       <td className="py-3 px-3">
-                        <button
-                          disabled={isUpdating}
-                          onClick={() => handlePatch(user.id, { is_active: !user.is_active })}
-                          className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium transition-opacity"
+                        <span
+                          className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium"
                           style={user.is_active
                             ? { backgroundColor: '#E8F5EE', color: '#2A7A4F' }
                             : { backgroundColor: '#FDE8E7', color: '#A0362C' }
@@ -283,7 +308,7 @@ export default function UsersPage() {
                             style={{ backgroundColor: user.is_active ? '#2A7A4F' : '#A0362C' }}
                           />
                           {user.is_active ? 'פעיל' : 'מושבת'}
-                        </button>
+                        </span>
                       </td>
 
                       {/* Created date */}
@@ -299,10 +324,24 @@ export default function UsersPage() {
 
                       {/* Actions */}
                       <td className="py-3 px-3">
-                        {isUpdating && (
-                          <span className="text-xs" style={{ color: '#8A7664' }}>
-                            שומר...
-                          </span>
+                        {isUpdating ? (
+                          <span className="text-xs" style={{ color: '#8A7664' }}>שומר...</span>
+                        ) : user.is_active ? (
+                          <button
+                            onClick={() => setDeactivateTarget(user)}
+                            className="text-xs px-2.5 py-1 rounded-lg border font-medium transition-colors hover:bg-red-50"
+                            style={{ borderColor: '#FCCACA', color: '#A0362C' }}
+                          >
+                            השבת
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handlePatch(user.id, { is_active: true })}
+                            className="text-xs px-2.5 py-1 rounded-lg border font-medium transition-colors hover:bg-green-50"
+                            style={{ borderColor: '#BBE0CE', color: '#2A7A4F' }}
+                          >
+                            הפעל
+                          </button>
                         )}
                       </td>
                     </tr>
@@ -335,6 +374,16 @@ export default function UsersPage() {
           ))}
         </div>
       </Card>
+
+      <ConfirmModal
+        open={!!deactivateTarget}
+        title="השבתת משתמש"
+        description={`האם להשבית את המשתמש? הוא לא יוכל להיכנס למערכת.${deactivateTarget ? `\n${deactivateTarget.email}` : ''}`}
+        confirmLabel="השבת"
+        loading={deactivating}
+        onConfirm={handleDeactivate}
+        onClose={() => { if (!deactivating) setDeactivateTarget(null); }}
+      />
     </div>
   );
 }
