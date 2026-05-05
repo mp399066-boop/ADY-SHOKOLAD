@@ -9,6 +9,7 @@ import { sendOrderEmail, isInternalEmail, type OrderEmailData, type EmailContext
 export async function POST(req: NextRequest) {
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
+  console.log('[create-full] POST received', new Date().toISOString(), '| user:', auth.email);
   const supabase = createAdminClient();
   const body = await req.json();
 

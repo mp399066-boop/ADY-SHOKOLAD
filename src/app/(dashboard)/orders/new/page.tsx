@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
@@ -48,6 +48,8 @@ function SectionHeader({ number, title }: { number: number; title: string }) {
 export default function NewOrderPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  // Synchronous lock — prevents double-submit before React re-renders the disabled button
+  const submittingRef = useRef(false);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [petitFourTypes, setPetitFourTypes] = useState<PetitFourType[]>([]);
@@ -233,9 +235,13 @@ export default function NewOrderPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Synchronous guard — blocks any second call that arrives before setLoading re-renders
+    if (submittingRef.current || loading) return;
     if (!selectedCustomer) { toast.error('יש לבחור לקוח'); return; }
 
+    submittingRef.current = true;
     setLoading(true);
+    console.log('[new-order] submit started', new Date().toISOString());
     try {
       const payload = {
         לקוח: { id: selectedCustomer },
@@ -286,6 +292,7 @@ export default function NewOrderPage() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'שגיאה ביצירת הזמנה');
 
+      console.log('[new-order] order created:', json.data?.מספר_הזמנה);
       const cust = customers.find(c => c.id === selectedCustomer);
       setSavedOrderId(json.data.id);
       setSavedOrderNumber(json.data.מספר_הזמנה || '');
@@ -294,6 +301,7 @@ export default function NewOrderPage() {
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'שגיאה ביצירת הזמנה');
     } finally {
+      submittingRef.current = false;
       setLoading(false);
     }
   };
