@@ -212,37 +212,39 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   if (!courier) {
     console.log('[delivery PATCH] no courier assigned — skip auto-send');
-  } else if (courier.טלפון_שליח) {
-    // WhatsApp — build URL, frontend will open it
-    if (!existing.whatsapp_sent_at) {
+  } else {
+    // Email: sent automatically server-side if courier has email address
+    if (courier.אימייל_שליח) {
+      if (!existing.email_sent_at) {
+        const result = await sendEmailToCourier(
+          courier.אימייל_שליח,
+          courier.שם_שליח,
+          recipientName,
+          deliveryLink,
+        );
+        if (result.ok) {
+          updatePayload.email_sent_at = new Date().toISOString();
+          autoSentChannel = 'email';
+        } else {
+          sendError = result.error || 'שגיאה בשליחת מייל';
+        }
+      } else {
+        console.log('[delivery PATCH] email already sent at', existing.email_sent_at, '— skip');
+        autoSentChannel = 'email';
+      }
+    }
+    // WhatsApp: build URL as helper only — frontend opens it, NOT automatic
+    if (courier.טלפון_שליח && !existing.whatsapp_sent_at) {
       whatsappUrl = buildWaUrl(courier.טלפון_שליח, courier.שם_שליח, recipientName, deliveryLink);
       updatePayload.whatsapp_sent_at = new Date().toISOString();
-      autoSentChannel = 'whatsapp';
-      console.log('[delivery PATCH] WhatsApp URL built for courier:', courier.שם_שליח);
-    } else {
-      console.log('[delivery PATCH] WhatsApp already sent at', existing.whatsapp_sent_at, '— skip');
+      console.log('[delivery PATCH] WhatsApp URL built (helper, not automatic) for courier:', courier.שם_שליח);
+    } else if (courier.טלפון_שליח && existing.whatsapp_sent_at) {
+      console.log('[delivery PATCH] WhatsApp already opened at', existing.whatsapp_sent_at, '— skip');
     }
-  } else if (courier.אימייל_שליח) {
-    // Email — send server-side
-    if (!existing.email_sent_at) {
-      const result = await sendEmailToCourier(
-        courier.אימייל_שליח,
-        courier.שם_שליח,
-        recipientName,
-        deliveryLink,
-      );
-      if (result.ok) {
-        updatePayload.email_sent_at = new Date().toISOString();
-        autoSentChannel = 'email';
-      } else {
-        sendError = result.error || 'שגיאה בשליחת מייל';
-      }
-    } else {
-      console.log('[delivery PATCH] email already sent at', existing.email_sent_at, '— skip');
+    if (!courier.אימייל_שליח && !courier.טלפון_שליח) {
+      console.warn('[delivery PATCH] courier has no phone or email:', courier.שם_שליח);
+      sendError = `לשליח ${courier.שם_שליח} אין טלפון ואימייל`;
     }
-  } else {
-    console.warn('[delivery PATCH] courier has no phone or email:', courier.שם_שליח);
-    sendError = `לשליח ${courier.שם_שליח} אין טלפון ואימייל`;
   }
 
   // 6. Persist update

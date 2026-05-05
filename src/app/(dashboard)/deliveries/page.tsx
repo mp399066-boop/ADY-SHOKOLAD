@@ -214,28 +214,21 @@ function DeliveriesContent() {
     }));
 
     if (newStatus === 'נאסף') {
-      console.log('[deliveries] נאסף trigger — auto_sent:', json.auto_sent, '| link:', json.delivery_link);
+      console.log('[deliveries] נאסף trigger — auto_sent:', json.auto_sent, '| whatsapp_url:', !!json.whatsapp_url, '| send_error:', json.send_error);
 
-      // WhatsApp: server built the URL, open it here
+      const msgs: string[] = ['סטטוס עודכן ל"נאסף"'];
+
+      // Email was sent automatically by the server
+      if (json.auto_sent === 'email') msgs.push('מייל נשלח לשליח אוטומטית');
+
+      // WhatsApp URL: open as a manual helper — this is NOT automatic sending
       if (json.whatsapp_url) {
         window.open(json.whatsapp_url, '_blank');
-        toast.success('סטטוס עודכן ל"נאסף" — נפתח WhatsApp לשליח');
-        return;
+        msgs.push('WhatsApp נפתח לשליח (שליחה ידנית)');
       }
 
-      if (json.auto_sent === 'email') {
-        toast.success('סטטוס עודכן ל"נאסף" — מייל נשלח לשליח');
-        return;
-      }
-
-      if (json.send_error) {
-        toast.success('סטטוס עודכן ל"נאסף"');
-        toast.error(json.send_error);
-        return;
-      }
-
-      // No courier assigned
-      toast.success('סטטוס עודכן ל"נאסף"');
+      toast.success(msgs.join(' — '));
+      if (json.send_error) toast.error(json.send_error);
     }
   };
 

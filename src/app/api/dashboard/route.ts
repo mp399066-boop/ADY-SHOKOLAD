@@ -64,9 +64,29 @@ export async function GET() {
       supabase.from('הזמנות').select('סך_הכל_לתשלום').eq('תאריך_אספקה', today).eq('סטטוס_תשלום', 'שולם'),
     ]);
 
+    // Diagnostic: log calculated dates and raw results
+    console.log('[dashboard] today:', today, '| tomorrow:', tomorrow);
+    console.log('[dashboard] counts:', {
+      ordersToday, ordersTomorrow, urgentOrders, unpaidOrders,
+      inPreparation, readyForDelivery, shipped, lowInventory,
+      deliveriesToday, deliveriesCollected, deliveriesDelivered,
+    });
+    console.log('[dashboard] errors:', {
+      e1: e1?.message, e2: e2?.message, e3: e3?.message, e4: e4?.message,
+      e5: e5?.message, e6: e6?.message, e7: e7?.message, e8: e8?.message,
+      e9: e9?.message, e10: e10?.message, e11: e11?.message, e12: e12?.message, e13: e13?.message,
+    });
+    console.log('[dashboard] revenue rows:', revenueTodayRows?.length ?? 'null', '| unpaid rows:', unpaidRows?.length ?? 'null');
+
+    // Diagnostic: check actual column names in DB
+    const { data: sampleOrder } = await supabase.from('הזמנות').select('*').limit(1).maybeSingle();
+    if (sampleOrder) console.log('[dashboard] sample order keys:', Object.keys(sampleOrder).join(', '));
+    else console.log('[dashboard] no orders found in table');
+
     const firstError = e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || e10 || e11 || e12 || e13;
     if (firstError) {
       const msg = firstError.message || firstError.details || firstError.hint || 'שגיאה בטעינת הנתונים';
+      console.error('[dashboard] query error:', msg);
       return NextResponse.json({ error: msg }, { status: 500 });
     }
 

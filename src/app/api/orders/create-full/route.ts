@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { generateOrderNumber } from '@/lib/utils';
+import sgMail from '@sendgrid/mail';
 import { sendOrderEmail, isInternalEmail, type OrderEmailData, type EmailContext } from '@/lib/email';
 
 // In-memory idempotency store — maps clientRequestId → { orderId, response, expiresAt }
@@ -307,6 +308,46 @@ export async function POST(req: NextRequest) {
   } else {
     console.log('[create-full] skipping email —', emailTo ? 'internal address' : 'no email');
   }
+
+  // Admin alert — fire-and-forget, never fails the order
+  void (async () => {
+    try {
+      const apiKey = process.env.SENDGRID_API_KEY;
+      const from = process.env.FROM_EMAIL;
+      if (!apiKey || !from) return;
+      sgMail.setApiKey(apiKey);
+
+      const o = fullOrder as Record<string, unknown>;
+      const cust = (o['לקוחות'] as Record<string, string>) || {};
+      const custName = `${cust['שם_פרטי'] || ''} ${cust['שם_משפחה'] || ''}`.trim();
+      const custPhone = cust['טלפון'] || '';
+      const delivDate = (o['תאריך_אספקה'] as string) || '';
+      const delivTime = (o['שעת_אספקה'] as string) || '';
+      const delivType = (o['סוג_אספקה'] as string) || '';
+      const orderTotal = Number(o['סך_הכל_לתשלום'] || 0);
+      const orderNum = (o['מספר_הזמנה'] as string) || '';
+
+      const lines = [
+        `הזמנה חדשה התקבלה: ${orderNum}`,
+        `לקוח: ${custName}${custPhone ? ` | ${custPhone}` : ''}`,
+        delivDate
+          ? `אספקה: ${delivDate}${delivTime ? ` ${delivTime}` : ''}${delivType ? ` | ${delivType}` : ''}`
+          : (delivType ? `סוג: ${delivType}` : ''),
+        `סה"כ: ${orderTotal.toFixed(2)} ₪`,
+      ].filter(Boolean).join('\n');
+
+      await sgMail.send({
+        to: 'adi548419927@gmail.com',
+        from,
+        subject: `הזמנה חדשה ${orderNum} — ${custName || 'לקוח'}`,
+        text: lines,
+        html: `<div dir="rtl" style="font-family:Arial;direction:rtl;text-align:right">${lines.replace(/\n/g, '<br>')}</div>`,
+      });
+      console.log('[create-full] admin alert sent for', orderNum);
+    } catch (err) {
+      console.error('[create-full] admin alert failed (non-blocking):', err);
+    }
+  })();
 
   console.log('[create-full] STEP 6: returning response for order', order!.id);
 
