@@ -58,6 +58,41 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
   });
 }
 
+// Call Morning Edge Function for a specific document type.
+// Idempotency is enforced inside the Edge Function by (הזמנה_id + סוג_מסמך).
+async function callMorning(orderId: string, documentType: 'tax_invoice' | 'receipt'): Promise<void> {
+  const supabaseUrl = process.env.SUPABASE_URL ?? '';
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
+  const webhookSecret = process.env.WEBHOOK_SECRET ?? '';
+  if (!supabaseUrl || !serviceRoleKey || !webhookSecret) {
+    console.error('[invoice] Missing env vars — SUPABASE_URL:', !!supabaseUrl, '| SERVICE_ROLE_KEY:', !!serviceRoleKey, '| WEBHOOK_SECRET:', !!webhookSecret);
+    return;
+  }
+  try {
+    console.log('[invoice] Calling Morning for', documentType, '— order:', orderId);
+    const res = await fetch(`${supabaseUrl}/functions/v1/create-morning-invoice`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${serviceRoleKey}`,
+        'x-webhook-secret': webhookSecret,
+      },
+      body: JSON.stringify({
+        type: 'UPDATE',
+        table: 'הזמנות',
+        document_type: documentType,
+        record: { הזמנה_id: orderId },
+        old_record: {},
+      }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) console.error('[invoice] Morning failed:', res.status, JSON.stringify(body));
+    else console.log('[invoice] Morning success:', JSON.stringify(body));
+  } catch (err) {
+    console.error('[invoice] Failed to call Morning:', err instanceof Error ? err.message : err);
+  }
+}
+
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
@@ -68,7 +103,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   console.log('[invoice] env — SUPABASE_URL:', process.env.SUPABASE_URL ? 'set' : 'MISSING', '| WEBHOOK_SECRET:', process.env.WEBHOOK_SECRET ? `set(${process.env.WEBHOOK_SECRET.length}chars)` : 'MISSING');
 
   // Fetch current state BEFORE update — needed for inventory check + invoice trigger
-  const needPrev = body.סטטוס_הזמנה === 'בהכנה' || body.סטטוס_תשלום === 'שולם';
+  const needPrev = body.סטטוס_הזמנה === 'בהכנה' || body.סטטוס_תשלום === 'שולם' || body.סטטוס_הזמנה === 'הושלמה בהצלחה';
   let prevOrderStatus: string | null = null;
   let prevPaymentStatus: string | null = null;
 
@@ -124,57 +159,14 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     }
   }
 
-  // Trigger invoice creation when payment status first becomes שולם
-  console.log('[invoice] check — body.סטטוס_תשלום:', body.סטטוס_תשלום, '| prevPaymentStatus:', prevPaymentStatus);
+  // חשבונית מס: first time order status → הושלמה בהצלחה
+  if (body.סטטוס_הזמנה === 'הושלמה בהצלחה' && prevOrderStatus !== 'הושלמה בהצלחה') {
+    await callMorning(params.id, 'tax_invoice');
+  }
+
+  // קבלה: first time payment status → שולם
   if (body.סטטוס_תשלום === 'שולם' && prevPaymentStatus !== 'שולם') {
-    // Idempotency: skip if invoice already exists
-    const { data: existingInvoice } = await supabase
-      .from('חשבוניות')
-      .select('id')
-      .eq('הזמנה_id', params.id)
-      .maybeSingle();
-
-    if (existingInvoice) {
-      console.log('[invoice] Invoice already exists for order', params.id, '— skipping');
-    } else {
-      const supabaseUrl = process.env.SUPABASE_URL ?? '';
-      const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
-      const webhookSecret = process.env.WEBHOOK_SECRET ?? '';
-
-      if (!supabaseUrl || !serviceRoleKey || !webhookSecret) {
-        console.error('[invoice] Missing env vars — SUPABASE_URL:', !!supabaseUrl, '| SERVICE_ROLE_KEY:', !!serviceRoleKey, '| WEBHOOK_SECRET:', !!webhookSecret);
-      } else {
-        const fnUrl = `${supabaseUrl}/functions/v1/create-morning-invoice`;
-        const webhookPayload = {
-          type: 'UPDATE',
-          table: 'הזמנות',
-          record: { הזמנה_id: params.id, סטטוס_תשלום: 'שולם' },
-          old_record: { סטטוס_תשלום: prevPaymentStatus },
-        };
-
-        try {
-          console.log('[invoice] Calling create-morning-invoice — url:', fnUrl);
-          const fnRes = await fetch(fnUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${serviceRoleKey}`,
-              'x-webhook-secret': webhookSecret,
-            },
-            body: JSON.stringify(webhookPayload),
-          });
-
-          const fnBody = await fnRes.json().catch(() => ({}));
-          if (!fnRes.ok) {
-            console.error('[invoice] create-morning-invoice failed:', fnRes.status, JSON.stringify(fnBody));
-          } else {
-            console.log('[invoice] create-morning-invoice success:', JSON.stringify(fnBody));
-          }
-        } catch (err) {
-          console.error('[invoice] Failed to call create-morning-invoice:', err instanceof Error ? err.message : err);
-        }
-      }
-    }
+    await callMorning(params.id, 'receipt');
   }
 
   return NextResponse.json({ data });

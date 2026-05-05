@@ -343,7 +343,7 @@ export default function NewOrderPage() {
     <form onSubmit={handleSubmit} className="max-w-6xl">
       <div className="flex gap-6">
         {/* Main form */}
-        <div className="flex-1 space-y-4 min-w-0">
+        <div className="flex-1 space-y-4 min-w-0 pb-24 lg:pb-0">
 
           {/* 1. Customer */}
           <Card>
@@ -524,6 +524,11 @@ export default function NewOrderPage() {
                     </div>
                   </div>
                 ))}
+                <div className="pt-2 border-t" style={{ borderColor: '#EDE0CE' }}>
+                  <Button type="button" variant="outline" size="sm" onClick={addProductItem}>
+                    + הוסף מוצר נוסף
+                  </Button>
+                </div>
               </div>
             )}
           </Card>
