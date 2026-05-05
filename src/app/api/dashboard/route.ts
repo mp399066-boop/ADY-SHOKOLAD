@@ -57,31 +57,22 @@ export async function GET() {
       supabase.from('מלאי_חומרי_גלם').select('*', { count: 'exact', head: true }).in('סטטוס_מלאי', ['מלאי נמוך', 'קריטי', 'אזל מהמלאי']),
       supabase.from('משלוחים').select('*', { count: 'exact', head: true }).eq('תאריך_משלוח', today),
       supabase.from('הזמנות').select('סך_הכל_לתשלום').eq('סטטוס_תשלום', 'ממתין').neq('סטטוס_הזמנה', 'בוטלה'),
-      // deliveries by status (all time, not just today — reflects current pipeline state)
-      supabase.from('משלוחים').select('*', { count: 'exact', head: true }).eq('סטטוס_משלוח', 'נאסף'),
-      supabase.from('משלוחים').select('*', { count: 'exact', head: true }).eq('סטטוס_משלוח', 'נמסר'),
+      // deliveries by status — filtered to today only (תאריך_משלוח = today)
+      supabase.from('משלוחים').select('*', { count: 'exact', head: true }).eq('תאריך_משלוח', today).eq('סטטוס_משלוח', 'נאסף'),
+      supabase.from('משלוחים').select('*', { count: 'exact', head: true }).eq('תאריך_משלוח', today).eq('סטטוס_משלוח', 'נמסר'),
       // revenue: paid orders with delivery date = today
       supabase.from('הזמנות').select('סך_הכל_לתשלום').eq('תאריך_אספקה', today).eq('סטטוס_תשלום', 'שולם'),
     ]);
 
-    // Diagnostic: log calculated dates and raw results
-    console.log('[dashboard] today:', today, '| tomorrow:', tomorrow);
-    console.log('[dashboard] counts:', {
-      ordersToday, ordersTomorrow, urgentOrders, unpaidOrders,
-      inPreparation, readyForDelivery, shipped, lowInventory,
-      deliveriesToday, deliveriesCollected, deliveriesDelivered,
-    });
-    console.log('[dashboard] errors:', {
-      e1: e1?.message, e2: e2?.message, e3: e3?.message, e4: e4?.message,
-      e5: e5?.message, e6: e6?.message, e7: e7?.message, e8: e8?.message,
-      e9: e9?.message, e10: e10?.message, e11: e11?.message, e12: e12?.message, e13: e13?.message,
-    });
-    console.log('[dashboard] revenue rows:', revenueTodayRows?.length ?? 'null', '| unpaid rows:', unpaidRows?.length ?? 'null');
-
-    // Diagnostic: check actual column names in DB
-    const { data: sampleOrder } = await supabase.from('הזמנות').select('*').limit(1).maybeSingle();
-    if (sampleOrder) console.log('[dashboard] sample order keys:', Object.keys(sampleOrder).join(', '));
-    else console.log('[dashboard] no orders found in table');
+    // Diagnostic logs — visible in Vercel Function Logs
+    console.log('[dashboard] date used — today:', today, '| tomorrow:', tomorrow);
+    console.log('[dashboard] orders — today:', ordersToday, '| tomorrow:', ordersTomorrow, '| urgent:', urgentOrders, '| unpaid:', unpaidOrders);
+    console.log('[dashboard] pipeline — inPrep:', inPreparation, '| ready:', readyForDelivery, '| shipped:', shipped);
+    console.log('[dashboard] deliveries (table=משלוחים, field=תאריך_משלוח, date=' + today + ') — total today:', deliveriesToday, '| collected (נאסף):', deliveriesCollected, '| delivered (נמסר):', deliveriesDelivered);
+    console.log('[dashboard] revenue rows (paid+today):', revenueTodayRows?.length ?? 'null', '| unpaid rows:', unpaidRows?.length ?? 'null');
+    const errMap = { e1: e1?.message, e2: e2?.message, e3: e3?.message, e4: e4?.message, e5: e5?.message, e6: e6?.message, e7: e7?.message, e8: e8?.message, e9: e9?.message, e10: e10?.message, e11: e11?.message, e12: e12?.message, e13: e13?.message };
+    const anyErr = Object.values(errMap).find(Boolean);
+    if (anyErr) console.error('[dashboard] query errors:', JSON.stringify(errMap));
 
     const firstError = e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || e10 || e11 || e12 || e13;
     if (firstError) {
