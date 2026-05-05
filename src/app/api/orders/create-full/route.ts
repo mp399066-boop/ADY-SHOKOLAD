@@ -6,12 +6,46 @@ import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireA
 import { generateOrderNumber } from '@/lib/utils';
 import { sendOrderEmail, isInternalEmail, type OrderEmailData, type EmailContext } from '@/lib/email';
 
+// In-memory idempotency store — maps clientRequestId → { orderId, response, expiresAt }
+// Prevents duplicate orders when the client sends the same request more than once.
+const idempotencyCache = new Map<string, { orderId: string; responseBody: unknown; expiresAt: number }>();
+const IDEMPOTENCY_TTL_MS = 60_000; // 60 seconds
+
+function pruneExpired() {
+  const now = Date.now();
+  idempotencyCache.forEach((entry, key) => {
+    if (entry.expiresAt < now) idempotencyCache.delete(key);
+  });
+}
+
 export async function POST(req: NextRequest) {
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
-  console.log('[create-full] POST received', new Date().toISOString(), '| user:', auth.email);
-  const supabase = createAdminClient();
+
   const body = await req.json();
+  const { clientRequestId } = body;
+
+  console.log('[create-full] POST received', {
+    time: new Date().toISOString(),
+    user: auth.email,
+    clientRequestId: clientRequestId || 'NONE',
+    customer: body.לקוח?.id || body.לקוח?.שם_פרטי,
+    deliveryDate: body.הזמנה?.תאריך_אספקה,
+    itemCount: (body.מוצרים || []).length + (body.מארזי_פטיפורים || []).length,
+    cacheSize: idempotencyCache.size,
+  });
+
+  // Check idempotency cache before doing any work
+  if (clientRequestId) {
+    pruneExpired();
+    const cached = idempotencyCache.get(clientRequestId);
+    if (cached) {
+      console.log('[create-full] DUPLICATE REQUEST detected — returning cached result for', clientRequestId);
+      return NextResponse.json({ ...cached.responseBody as object, deduplicated: true }, { status: 201 });
+    }
+  }
+
+  const supabase = createAdminClient();
 
   const {
     לקוח,
@@ -23,6 +57,8 @@ export async function POST(req: NextRequest) {
   } = body;
 
   if (!לקוח) return NextResponse.json({ error: 'פרטי לקוח הם חובה' }, { status: 400 });
+
+  console.log('[create-full] STEP 1: resolving customer', { hasId: !!לקוח.id });
 
   // 1. Find or create customer
   let customerId: string;
@@ -37,6 +73,8 @@ export async function POST(req: NextRequest) {
     if (error) return NextResponse.json({ error: `יצירת לקוח נכשלה: ${error.message}` }, { status: 500 });
     customerId = created!.id;
   }
+
+  console.log('[create-full] STEP 2: calculating totals', { customerId });
 
   // 2. Calculate totals
   let subtotal = 0;
@@ -55,7 +93,9 @@ export async function POST(req: NextRequest) {
   const shipping = הזמנה?.דמי_משלוח || 0;
   const total = Math.max(0, subtotal - discount + shipping);
 
-  // 3. Create order
+  console.log('[create-full] STEP 3: inserting order into DB', { customerId, total, subtotal });
+
+  // 3. Create order — THIS IS THE ONLY INSERT TO הזמנות IN THIS HANDLER
   const { data: order, error: orderError } = await supabase
     .from('הזמנות')
     .insert({
@@ -88,6 +128,8 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (orderError) return NextResponse.json({ error: `יצירת הזמנה נכשלה: ${orderError.message}` }, { status: 500 });
+
+  console.log('[create-full] STEP 4: order inserted successfully', { orderId: order!.id, orderNumber: order!.מספר_הזמנה });
 
   // 4. Validate product IDs + business-only check
   const incomingProductIds = (מוצרים as Record<string, unknown>[])
@@ -177,6 +219,8 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  console.log('[create-full] STEP 5: order lines created, creating delivery/payment records');
+
   // 7. Create delivery record
   if (משלוח) {
     await supabase.from('משלוחים').insert({
@@ -264,5 +308,18 @@ export async function POST(req: NextRequest) {
     console.log('[create-full] skipping email —', emailTo ? 'internal address' : 'no email');
   }
 
-  return NextResponse.json({ data: { ...fullOrder, מוצרים_בהזמנה: fullItems || [] } }, { status: 201 });
+  console.log('[create-full] STEP 6: returning response for order', order!.id);
+
+  const responseBody = { data: { ...fullOrder, מוצרים_בהזמנה: fullItems || [] } };
+
+  // Cache result so duplicate requests within 60s get the same order back
+  if (clientRequestId) {
+    idempotencyCache.set(clientRequestId, {
+      orderId: order!.id,
+      responseBody,
+      expiresAt: Date.now() + IDEMPOTENCY_TTL_MS,
+    });
+  }
+
+  return NextResponse.json(responseBody, { status: 201 });
 }

@@ -50,6 +50,8 @@ export default function NewOrderPage() {
   const [loading, setLoading] = useState(false);
   // Synchronous lock — prevents double-submit before React re-renders the disabled button
   const submittingRef = useRef(false);
+  // Unique ID for this form instance — sent to server for idempotency deduplication
+  const clientRequestIdRef = useRef(`req_${Date.now()}_${Math.random().toString(36).slice(2)}`);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [petitFourTypes, setPetitFourTypes] = useState<PetitFourType[]>([]);
@@ -243,9 +245,17 @@ export default function NewOrderPage() {
 
     submittingRef.current = true;
     setLoading(true);
-    console.log('[new-order] submit started', new Date().toISOString());
+    const reqId = clientRequestIdRef.current;
+    console.log('[new-order] submit started', {
+      time: new Date().toISOString(),
+      reqId,
+      savedOrderId,
+      loading,
+      submittingRef: submittingRef.current,
+    });
     try {
       const payload = {
+        clientRequestId: reqId,
         לקוח: { id: selectedCustomer },
         הזמנה: {
           הזמנה_דחופה: isUrgent,
@@ -285,16 +295,18 @@ export default function NewOrderPage() {
           : null,
       };
 
+      console.log('[new-order] calling fetch', { reqId, time: new Date().toISOString() });
       const res = await fetch('/api/orders/create-full', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
+      console.log('[new-order] fetch returned', { reqId, status: res.status, time: new Date().toISOString() });
 
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'שגיאה ביצירת הזמנה');
 
-      console.log('[new-order] order created:', json.data?.מספר_הזמנה);
+      console.log('[new-order] order created:', json.data?.מספר_הזמנה, '| deduplicated:', json.deduplicated);
       const cust = customers.find(c => c.id === selectedCustomer);
       setSavedOrderId(json.data.id);
       setSavedOrderNumber(json.data.מספר_הזמנה || '');
