@@ -42,14 +42,32 @@ function parseBool(v: unknown, defaultVal = true): boolean {
   return ['כן', 'yes', 'true', '1'].includes(s);
 }
 
-// Normalize header for comparison: trim + collapse all quote variants to ASCII "
-// Uses explicit Unicode escapes to avoid source-encoding ambiguity.
+// Normalize a header string for comparison.
+// Uses charCodeAt() throughout — zero reliance on Unicode character literals
+// in regex or string values, so the result is encoding-safe.
 function nh(s: string): string {
-  return String(s).trim()
-    .replace(/״/g, '"')         // Hebrew gershayim ״ (U+05F4)
-    .replace(/“|”/g, '"')  // Smart quotes “ ”
-    .replace(/″/g, '"')         // Double prime ″ (U+2033)
-    .toLowerCase();
+  const src = String(s);
+  const out: string[] = [];
+  for (let i = 0; i < src.length; i++) {
+    const c = src.charCodeAt(i);
+    // Skip invisible / control characters:
+    //   0xFEFF = BOM, 0x200B-0x200D = zero-width, 0x00AD = soft-hyphen
+    if (c === 0xFEFF || c === 0x200B || c === 0x200C || c === 0x200D || c === 0x00AD) continue;
+    // Normalize whitespace variants to ASCII space (0x20):
+    //   0x00A0 = NBSP, 0x1680, 0x2000-0x200A, 0x202F, 0x205F, 0x3000
+    if (c === 0x00A0 || c === 0x1680 || (c >= 0x2000 && c <= 0x200A) || c === 0x202F || c === 0x205F || c === 0x3000) {
+      out.push(' ');
+      continue;
+    }
+    // Normalize quote variants to ASCII double-quote (0x22):
+    //   0x05F4 = Hebrew gershayim, 0x201C/0x201D = smart quotes, 0x2033 = double prime
+    if (c === 0x05F4 || c === 0x201C || c === 0x201D || c === 0x2033) {
+      out.push('"');
+      continue;
+    }
+    out.push(src[i]);
+  }
+  return out.join('').trim().toLowerCase();
 }
 
 interface RawParsedRow {
@@ -79,13 +97,15 @@ export async function POST(req: NextRequest) {
     if (!sheetName) return NextResponse.json({ error: 'הקובץ ריק' }, { status: 400 });
     const sheet = workbook.Sheets[sheetName];
 
-    // header:1 → raw arrays; bypasses all key-encoding ambiguity
+    // header:1 returns raw arrays — no key-encoding ambiguity
     const allRows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: '' });
     if (allRows.length < 2) return NextResponse.json({ error: 'הקובץ אינו מכיל שורות נתונים' }, { status: 400 });
 
     const headerRow = (allRows[0] as string[]).map(h => String(h ?? ''));
     const dataRows = allRows.slice(1) as unknown[][];
 
+    // Find column index by matching header against a list of accepted aliases,
+    // all normalized through nh() for encoding-safe comparison.
     const findCI = (aliases: string[]): number => {
       const na = aliases.map(nh);
       return headerRow.findIndex(h => na.includes(nh(h)));
@@ -97,6 +117,8 @@ export async function POST(req: NextRequest) {
       priceType:   findCI(['סוג מחירון', 'סוג_מחירון', 'price_type', 'סוג מחיר']),
       price:       findCI(['מחיר', 'price']),
       minQty:      findCI(['כמות מינימום', 'כמות_מינימום', 'min_quantity', 'כמות מינ']),
+      // כולל מע"מ — the " may be ASCII (0x22), gershayim (0x05F4), or smart-quote.
+      // nh() normalises all of them to 0x22, so all variants match the alias below.
       includesVat: findCI(['כולל מע"מ', 'כולל מעמ', 'includes_vat', 'מע"מ', 'מעמ']),
       isActive:    findCI(['פעיל', 'פעיל?', 'is_active', 'active']),
     };
