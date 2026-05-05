@@ -1,12 +1,40 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
+import Link from 'next/link';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input, Textarea } from '@/components/ui/Input';
 import { PageLoading } from '@/components/ui/LoadingSpinner';
 import toast from 'react-hot-toast';
 import type { BusinessSettings } from '@/types/database';
+
+const SETTINGS_TABS = [
+  { href: '/settings',       label: 'הגדרות עסק'      },
+  { href: '/settings/users', label: 'משתמשים והרשאות' },
+];
+
+function SettingsTabs() {
+  return (
+    <div className="flex gap-1 mb-6 border-b" style={{ borderColor: '#EAE0D4' }}>
+      {SETTINGS_TABS.map(tab => {
+        const isActive = tab.href === '/settings';
+        return (
+          <Link
+            key={tab.href}
+            href={tab.href}
+            className="px-4 py-2.5 text-sm font-medium relative transition-colors"
+            style={isActive
+              ? { color: '#5C3410', borderBottom: '2.5px solid #C9A46A', marginBottom: '-1px' }
+              : { color: '#8A7664' }}
+          >
+            {tab.label}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<BusinessSettings | null>(null);
@@ -76,6 +104,7 @@ export default function SettingsPage() {
 
   return (
     <div className="max-w-3xl space-y-5">
+      <SettingsTabs />
       {/* Logo */}
       <Card>
         <CardHeader><CardTitle>לוגו העסק</CardTitle></CardHeader>

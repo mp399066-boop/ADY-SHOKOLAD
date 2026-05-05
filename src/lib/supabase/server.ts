@@ -12,8 +12,7 @@ export function createClient() {
         getAll() {
           return cookieStore.getAll();
         },
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        setAll(cookiesToSet: any[]) {
+        setAll(cookiesToSet: { name: string; value: string; options?: object }[]) {
           try {
             cookiesToSet.forEach(({ name, value, options }: { name: string; value: string; options?: object }) =>
               cookieStore.set(name, value, options)
@@ -25,8 +24,7 @@ export function createClient() {
   );
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function createAdminClient(): any {
+export function createAdminClient(): any { // service_role key — intentionally untyped, Hebrew columns not in DB types
   // Use supabase-js directly (no cookie handling needed for admin routes).
   // Trim trailing slash to prevent "requested path is invalid" errors.
   const url = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').replace(/\/+$/, '');
