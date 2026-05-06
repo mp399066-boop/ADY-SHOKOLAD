@@ -198,7 +198,7 @@ export async function POST(req: NextRequest) {
   const supabase = createAdminClient();
 
   const [{ data: products }, { data: existingEntries }] = await Promise.all([
-    supabase.from('מוצרים_למכירה').select('id, שם_מוצר').eq('פעיל', true),
+    supabase.from('מוצרים_למכירה').select('id, שם_מוצר'), // include inactive so we don't re-create them
     supabase.from('מחירון').select('מוצר_id, price_type, min_quantity, sku'),
   ]);
 
