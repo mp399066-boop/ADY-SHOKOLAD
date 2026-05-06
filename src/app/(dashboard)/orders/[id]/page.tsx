@@ -645,7 +645,12 @@ export default function OrderDetailPage() {
                     <tr key={item.id} className="border-b" style={{ borderColor: '#F5ECD8' }}>
                       <td className="py-2 px-2 font-medium">
                         {item.סוג_שורה === 'מארז'
-                          ? (packages.find(p => p.גודל_מארז === item.גודל_מארז)?.שם_מארז || `מארז ${item.גודל_מארז ?? '?'} יח׳`)
+                          ? (() => {
+                              const pkg = packages.find(p => p.גודל_מארז === item.גודל_מארז);
+                              const base = pkg?.שם_מארז || 'מארז פטיפורים';
+                              const size = item.גודל_מארז ?? pkg?.גודל_מארז ?? '?';
+                              return `${base} ${size}`;
+                            })()
                           : ((item as OrderItem & { מוצרים_למכירה?: { שם_מוצר: string } }).מוצרים_למכירה?.שם_מוצר || '-')}
                       </td>
                       <td className="py-2 px-2">
