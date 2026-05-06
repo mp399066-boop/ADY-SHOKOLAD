@@ -33,7 +33,7 @@ function mapPriceType(raw: unknown): PriceType | null {
   if (['פרטי', 'רגיל', 'retail'].includes(s)) return 'retail';
   if (['עסקי - קבוע', 'עסקי-קבוע', 'business_fixed'].includes(s)) return 'business_fixed';
   if (['עסקי - כמות', 'עסקי-כמות', 'business_quantity'].includes(s)) return 'business_quantity';
-  if (['פרטי - אירוע', 'פרטי-אירוע', 'retail_quantity', 'לקוח פרטי אירוע - כמות'].includes(s)) return 'retail_quantity';
+  if (['לקוח פרטי אירוע - כמות', 'פרטי - אירוע', 'פרטי-אירוע', 'retail_quantity'].includes(s)) return 'retail_quantity';
   return null;
 }
 
