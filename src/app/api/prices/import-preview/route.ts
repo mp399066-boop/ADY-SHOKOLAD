@@ -48,8 +48,22 @@ function normalizePriceTypeValue(raw: unknown): string {
   return s.trim();
 }
 
-function mapPriceType(raw: unknown): PriceType | null {
+function mapPriceType(raw: unknown, minQtyRaw?: unknown): PriceType | null {
   const s = normalizePriceTypeValue(raw).toLowerCase();
+
+  // Helper: does this row have a usable min_quantity value?
+  const minQtyNum = Number(minQtyRaw);
+  const hasMinQty = minQtyRaw !== '' && minQtyRaw != null && !isNaN(minQtyNum) && minQtyNum > 0;
+
+  // VAT-hint detection:
+  // "(לפני מע״מ)" / "לפני מעמ" → business tier (no VAT)
+  // "(כולל מע״מ)" / "כולל מעמ" → private/retail tier (includes VAT)
+  if (s.includes('לפני מע')) {
+    return hasMinQty ? 'business_quantity' : 'business_fixed';
+  }
+  if (s.includes('כולל מע')) {
+    return hasMinQty ? 'retail_quantity' : 'retail';
+  }
 
   // Exact English / code fallbacks
   if (s === 'retail') return 'retail';
@@ -61,17 +75,14 @@ function mapPriceType(raw: unknown): PriceType | null {
   if (s === 'פרטי' || s === 'רגיל') return 'retail';
 
   // "פרטי" + ("אירוע" or "כמות"), NOT "עסקי" → retail_quantity
-  // Covers: "פרטי אירוע - כמות", "פרטי - אירוע", "פרטי - כמות"
   if (s.includes('פרטי') && (s.includes('אירוע') || s.includes('כמות')) && !s.includes('עסקי')) {
     return 'retail_quantity';
   }
 
   // "עסקי" + "קבוע" → business_fixed
-  // Covers: "עסקי קבוע", "עסקי - קבוע"
   if (s.includes('עסקי') && s.includes('קבוע')) return 'business_fixed';
 
   // "עסקי" + ("כמות" or "אירוע") → business_quantity
-  // Covers: "עסקי - כמות", "עסקי כמות", "עסקי אירוע - כמות"
   if (s.includes('עסקי') && (s.includes('כמות') || s.includes('אירוע'))) return 'business_quantity';
 
   return null;
@@ -228,7 +239,7 @@ export async function POST(req: NextRequest) {
 
     if (!productName) rowErrors.push('שם מוצר חסר');
 
-    const priceType = mapPriceType(priceTypeRaw);
+    const priceType = mapPriceType(priceTypeRaw, minQtyRaw);
     if (!priceType) rowErrors.push(`סוג מחירון לא תקין: "${priceTypeRaw}" (אפשרויות: לקוח פרטי / לקוח פרטי אירוע - כמות / עסקי קבוע / עסקי אירוע - כמות)`);
 
     const price = Number(priceRaw);
