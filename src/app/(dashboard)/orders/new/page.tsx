@@ -191,7 +191,7 @@ export default function NewOrderPage() {
           return { ...item, מחיר_ליחידה: entry.מחיר, סהכ: item.כמות * entry.מחיר, missingPrice: false };
         }
         const prod = products.find(p => p.id === item.מוצר_id);
-        if ((effectivePriceType === 'retail' || effectivePriceType === 'retail_quantity') && prod) {
+        if (effectivePriceType === 'retail' && prod) {
           return { ...item, מחיר_ליחידה: prod.מחיר, סהכ: item.כמות * prod.מחיר, missingPrice: false };
         }
         return { ...item, מחיר_ליחידה: 0, סהכ: 0, missingPrice: true };
@@ -246,7 +246,6 @@ export default function NewOrderPage() {
     setOrderItems(prev => {
       const items = [...prev];
       const item = { ...items[idx], [field]: value };
-      const isPrivate = effectivePriceType === 'retail' || effectivePriceType === 'retail_quantity';
 
       if (field === 'מוצר_id') {
         const prod = products.find(p => p.id === value);
@@ -256,10 +255,12 @@ export default function NewOrderPage() {
           if (entry) {
             item.מחיר_ליחידה = entry.מחיר;
             item.missingPrice = false;
-          } else if (isPrivate) {
+          } else if (effectivePriceType === 'retail') {
+            // retail: fall back to base product price
             item.מחיר_ליחידה = prod.מחיר;
             item.missingPrice = false;
           } else {
+            // retail_quantity / business: must have explicit price list entry
             item.מחיר_ליחידה = 0;
             item.missingPrice = true;
           }
@@ -372,6 +373,22 @@ export default function NewOrderPage() {
     // If an order was already created (post-save modal open), never create another
     if (savedOrderId) return;
     if (!selectedCustomer) { toast.error('יש לבחור לקוח'); return; }
+
+    // Block on missing price in active tier
+    const missingPriceItem = orderItems.find(item => item.מוצר_id && item.missingPrice);
+    if (missingPriceItem) {
+      toast.error(`אין מחיר למוצר "${missingPriceItem.שם_מוצר || ''}" במחירון הפעיל — לא ניתן לשמור`);
+      return;
+    }
+
+    // Block on < 20 units per item in quantity tiers
+    if (effectivePriceType === 'retail_quantity' || effectivePriceType === 'business_quantity') {
+      const underMin = orderItems.find(item => item.מוצר_id && item.כמות < 20);
+      if (underMin) {
+        toast.error(`מינימום להזמנת דגם במחירון אירוע/כמות הוא 20 יחידות (${underMin.שם_מוצר || ''})`);
+        return;
+      }
+    }
 
     submittingRef.current = true;
     setLoading(true);
@@ -620,12 +637,17 @@ export default function NewOrderPage() {
               <div className="flex items-center gap-3">
                 <SectionHeader number={deliveryType === 'משלוח' ? 4 : 3} title="מוצרים" />
                 {selectedCustomer && (
-                  <span
-                    className="text-xs font-medium px-2.5 py-1 rounded-full"
-                    style={{ backgroundColor: TIER_INFO[effectivePriceType].bg, color: TIER_INFO[effectivePriceType].color }}
-                  >
-                    {TIER_INFO[effectivePriceType].label}
-                  </span>
+                  <div className="flex flex-col gap-0.5">
+                    <span
+                      className="text-xs font-medium px-2.5 py-1 rounded-full self-start"
+                      style={{ backgroundColor: TIER_INFO[effectivePriceType].bg, color: TIER_INFO[effectivePriceType].color }}
+                    >
+                      מחירון: {TIER_INFO[effectivePriceType].label}
+                    </span>
+                    {effectivePriceType === 'retail_quantity' && (customerType === 'פרטי' || customerType === 'חוזר') && (
+                      <span className="text-xs" style={{ color: '#7C5A1E' }}>✓ ההזמנה עומדת בתנאי אירוע/כמות</span>
+                    )}
+                  </div>
                 )}
               </div>
               <Button type="button" variant="outline" size="sm" onClick={addProductItem}>
@@ -638,11 +660,17 @@ export default function NewOrderPage() {
               </p>
             ) : (
               <div className="space-y-2">
-                {orderItems.map((item, idx) => (
+                {orderItems.map((item, idx) => {
+                  const retailEntry = effectivePriceType === 'retail_quantity' && item.מוצר_id
+                    ? priceList.find(pl => pl.מוצר_id === item.מוצר_id && pl.price_type === 'retail')
+                    : undefined;
+                  const showStrikethrough = !!retailEntry && retailEntry.מחיר !== item.מחיר_ליחידה && !item.missingPrice;
+                  const belowMin = (effectivePriceType === 'retail_quantity' || effectivePriceType === 'business_quantity') && item.מוצר_id && item.כמות > 0 && item.כמות < 20;
+                  return (
                   <div
                     key={idx}
                     className="p-3 rounded-xl"
-                    style={{ backgroundColor: '#FAF7F0' }}
+                    style={{ backgroundColor: '#FAF7F0', border: (item.missingPrice || belowMin) ? '1px solid #FBBF24' : undefined }}
                   >
                   <div className="grid grid-cols-12 gap-2 items-end">
                     <div className="col-span-4">
@@ -702,14 +730,22 @@ export default function NewOrderPage() {
                       </button>
                     </div>
                   </div>
-                  {item.missingPrice && (
-                    <p className="text-xs text-amber-600 mt-1.5">⚠ אין מחיר במחירון זה</p>
+                  {showStrikethrough && retailEntry && (
+                    <div className="flex items-center gap-2 mt-1.5">
+                      <span className="text-xs px-1.5 py-0.5 rounded font-medium" style={{ backgroundColor: '#D5F0E3', color: '#1D6A3D' }}>מחיר אירוע</span>
+                      <span className="text-xs" style={{ color: '#9B7A5A', textDecoration: 'line-through' }}>₪{retailEntry.מחיר.toFixed(2)}</span>
+                      <span className="text-xs font-semibold" style={{ color: '#1D6A3D' }}>₪{item.מחיר_ליחידה.toFixed(2)}</span>
+                    </div>
                   )}
-                  {(effectivePriceType === 'retail_quantity' || effectivePriceType === 'business_quantity') && item.כמות > 0 && item.כמות < 20 && (
-                    <p className="text-xs text-amber-600 mt-0.5">⚠ מינימום 20 יח׳ במחיר כמות</p>
+                  {item.missingPrice && (
+                    <p className="text-xs text-amber-600 mt-1.5">⚠ אין מחיר למוצר זה במחירון הפעיל</p>
+                  )}
+                  {belowMin && (
+                    <p className="text-xs text-amber-600 mt-0.5">⚠ מינימום להזמנת דגם במחירון אירוע/כמות הוא 20 יחידות</p>
                   )}
                   </div>
-                ))}
+                  );
+                })}
                 <div className="pt-2 border-t" style={{ borderColor: '#EDE0CE' }}>
                   <Button type="button" variant="outline" size="sm" onClick={addProductItem}>
                     + הוסף מוצר נוסף
