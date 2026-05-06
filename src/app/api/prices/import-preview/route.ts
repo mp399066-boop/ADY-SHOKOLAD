@@ -13,6 +13,7 @@ export interface PreviewRow {
   productName: string;
   productId: string | null;
   productFound: boolean;
+  isNewProduct: boolean;
   priceType: PriceType;
   price: number;
   minQuantity: number | null;
@@ -249,11 +250,13 @@ export async function POST(req: NextRequest) {
       rowErrors.push(`מחיר לא תקין: "${priceRaw}"`);
     }
 
-    const minQuantity = (minQtyRaw !== '' && minQtyRaw !== null && minQtyRaw !== undefined)
+    // Auto-default min_quantity to 20 for quantity tiers when missing/invalid
+    const minQuantityRaw = (minQtyRaw !== '' && minQtyRaw !== null && minQtyRaw !== undefined)
       ? Number(minQtyRaw) : null;
-
-    if ((priceType === 'business_quantity' || priceType === 'retail_quantity') && (minQuantity === null || isNaN(minQuantity as number) || (minQuantity as number) <= 0)) {
-      rowErrors.push('כמות מינימום חסרה עבור מחירון כמות');
+    let effectiveMinQty: number | null = null;
+    if (priceType === 'business_quantity' || priceType === 'retail_quantity') {
+      effectiveMinQty = (minQuantityRaw !== null && !isNaN(minQuantityRaw) && minQuantityRaw > 0)
+        ? minQuantityRaw : 20;
     }
 
     // Primary lookup: by product name; fallback: by SKU via existing price list entries
@@ -261,21 +264,18 @@ export async function POST(req: NextRequest) {
     if (!productId && sku) {
       productId = skuMap.get(sku.toLowerCase()) ?? null;
     }
-
-    if (productName && !productId) {
-      rowErrors.push(`מוצר לא נמצא: "${productName}"${sku ? ` (SKU: ${sku})` : ''}`);
-    }
+    const isNewProduct = !!(productName && !productId);
 
     if (rowErrors.length > 0) {
       errors.push({ rowNumber, sku, productName, errors: rowErrors });
       return;
     }
 
-    const minQty = (priceType === 'business_quantity' || priceType === 'retail_quantity') ? (minQuantity as number) : null;
-    const dedupeKey = `${productId}|${priceType}|${minQty ?? ''}`;
+    // For dedup: use name-keyed prefix for products not yet in DB
+    const dedupeKey = `${productId ?? ('__new__:' + productName)}|${priceType}|${effectiveMinQty ?? ''}`;
 
     if (seenInFile.has(dedupeKey)) {
-      errors.push({ rowNumber, sku, productName, errors: [`כפילות בקובץ: ${productName} + ${priceTypeRaw}${minQty ? ` (כמות ${minQty})` : ''}`] });
+      errors.push({ rowNumber, sku, productName, errors: [`כפילות בקובץ: ${productName} + ${priceTypeRaw}${effectiveMinQty ? ` (כמות ${effectiveMinQty})` : ''}`] });
       return;
     }
     seenInFile.add(dedupeKey);
@@ -288,14 +288,23 @@ export async function POST(req: NextRequest) {
       productName,
       productId,
       productFound: productId !== null,
+      isNewProduct,
       priceType: priceType!,
       price,
-      minQuantity: minQty,
+      minQuantity: effectiveMinQty,
       includesVat: parseBool(includesVatRaw, true),
       isActive: parseBool(isActiveRaw, true),
       isNew,
     });
   });
 
-  return NextResponse.json({ validRows, errors });
+  const newProductNames = new Set(validRows.filter(r => r.isNewProduct).map(r => r.productName));
+  const summary = {
+    newProducts: newProductNames.size,
+    newPrices: validRows.filter(r => r.isNew).length,
+    updatedPrices: validRows.filter(r => !r.isNew).length,
+    errors: errors.length,
+  };
+
+  return NextResponse.json({ validRows, errors, summary });
 }

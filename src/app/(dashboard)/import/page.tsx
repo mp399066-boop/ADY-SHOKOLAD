@@ -432,6 +432,7 @@ function GeneralImportTab() {
 
 const PRICE_TYPE_LABELS: Record<string, string> = {
   retail:            'פרטי',
+  retail_quantity:   'פרטי - אירוע',
   business_fixed:    'עסקי - קבוע',
   business_quantity: 'עסקי - כמות',
 };
@@ -445,7 +446,7 @@ function PriceImportTab() {
   const [importing, setImporting] = useState(false);
   const [validRows, setValidRows] = useState<PreviewRow[]>([]);
   const [errors, setErrors] = useState<PreviewError[]>([]);
-  const [importResult, setImportResult] = useState<{ inserted: number; updated: number } | null>(null);
+  const [importResult, setImportResult] = useState<{ inserted: number; updated: number; newProductsCreated: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -488,7 +489,7 @@ function PriceImportTab() {
       });
       const json = await res.json();
       if (!res.ok) { toast.error(json.error || 'שגיאה בייבוא'); return; }
-      setImportResult({ inserted: json.inserted, updated: json.updated });
+      setImportResult({ inserted: json.inserted, updated: json.updated, newProductsCreated: json.newProductsCreated ?? 0 });
       setStep('done');
     } catch {
       toast.error('שגיאה בייבוא המחירון');
@@ -623,6 +624,14 @@ function PriceImportTab() {
                   <span className="mr-2 text-xs font-normal" style={{ color: '#6B9E6B' }}>
                     ({validRows.filter(r => r.isNew).length} חדשות, {validRows.filter(r => !r.isNew).length} עדכונים)
                   </span>
+                  {(() => {
+                    const newProdCount = new Set(validRows.filter(r => r.isNewProduct).map(r => r.productName)).size;
+                    return newProdCount > 0 ? (
+                      <span className="mr-2 text-xs font-normal" style={{ color: '#92400E' }}>
+                        · {newProdCount} מוצרים חדשים ייצרו
+                      </span>
+                    ) : null;
+                  })()}
                 </h3>
                 <div className="flex gap-2">
                   <Button type="button" variant="outline" size="sm" onClick={reset}>החלף קובץ</Button>
@@ -647,7 +656,9 @@ function PriceImportTab() {
                         <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>{row.sku || '—'}</td>
                         <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>
                           {row.productName}
-                          {!row.productFound && <span className="mr-1 text-amber-600">(לא נמצא)</span>}
+                          {row.isNewProduct && (
+                            <span className="mr-1 text-xs px-1 py-0.5 rounded" style={{ backgroundColor: '#FFF3CD', color: '#92400E' }}>מוצר חדש</span>
+                          )}
                         </td>
                         <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>
                           {PRICE_TYPE_LABELS[row.priceType]}
@@ -698,9 +709,12 @@ function PriceImportTab() {
               </svg>
             </div>
             <h3 className="text-base font-semibold" style={{ color: '#2B1A10' }}>ייבוא הושלם בהצלחה</h3>
-            <div className="flex gap-6 text-sm">
+            <div className="flex gap-6 text-sm flex-wrap justify-center">
               <span><strong style={{ color: '#166534' }}>{importResult.inserted}</strong> <span style={{ color: '#6B5744' }}>שורות חדשות</span></span>
               <span><strong style={{ color: '#1E40AF' }}>{importResult.updated}</strong> <span style={{ color: '#6B5744' }}>שורות עודכנו</span></span>
+              {importResult.newProductsCreated > 0 && (
+                <span><strong style={{ color: '#92400E' }}>{importResult.newProductsCreated}</strong> <span style={{ color: '#6B5744' }}>מוצרים נוצרו</span></span>
+              )}
             </div>
             <Button type="button" variant="outline" onClick={reset}>ייבא קובץ נוסף</Button>
           </div>
