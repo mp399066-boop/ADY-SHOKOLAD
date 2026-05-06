@@ -50,7 +50,8 @@ function computeEffectivePriceType(
   if (custType === 'עסקי - קבוע' || custType === 'עסקי') return 'business_fixed';
 
   // Private / recurring customers — check for event/quantity upgrade
-  const totalUnits = items.reduce((sum, it) => sum + (it.כמות || 0), 0);
+  // Only count items with a product selected (מוצר_id not empty)
+  const totalUnits = items.reduce((sum, it) => it.מוצר_id ? sum + (it.כמות || 0) : sum, 0);
   if (totalUnits >= 250) return 'retail_quantity';
 
   // Amount threshold at retail prices; only one cake item counts toward 2500
