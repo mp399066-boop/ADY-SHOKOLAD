@@ -4,31 +4,20 @@ import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import toast from 'react-hot-toast';
+import { PriceTypeBadge, PRICE_TYPE_LABELS } from '@/lib/priceTypeUtils';
 
 type PriceRow = {
   id: string;
   מוצר_id: string | null;
   sku: string | null;
   product_name_snapshot: string | null;
-  price_type: 'retail' | 'business_fixed' | 'business_quantity' | null;
+  price_type: 'retail' | 'business_fixed' | 'business_quantity' | 'retail_quantity' | null;
   מחיר: number;
   min_quantity: number | null;
   includes_vat: boolean | null;
   פעיל: boolean | null;
   תאריך_עדכון: string | null;
   מוצרים_למכירה?: { שם_מוצר: string } | null;
-};
-
-const TYPE_LABEL: Record<string, string> = {
-  retail: 'פרטי / רגיל',
-  business_fixed: 'עסקי קבוע',
-  business_quantity: 'עסקי כמות',
-};
-
-const TYPE_COLOR: Record<string, { bg: string; color: string }> = {
-  retail:            { bg: '#EFF6FF', color: '#1D4ED8' },
-  business_fixed:    { bg: '#FEF3C7', color: '#92400E' },
-  business_quantity: { bg: '#F0FDF4', color: '#166534' },
 };
 
 export default function PricesManageTab({ onImportClick }: { onImportClick: () => void }) {
@@ -132,9 +121,10 @@ export default function PricesManageTab({ onImportClick }: { onImportClick: () =
             style={{ borderColor: '#DDD0BC', color: '#2B1A10' }}
           >
             <option value="">כל הסוגים</option>
-            <option value="retail">פרטי / רגיל</option>
-            <option value="business_fixed">עסקי קבוע</option>
-            <option value="business_quantity">עסקי כמות</option>
+            <option value="retail">{PRICE_TYPE_LABELS.retail}</option>
+            <option value="retail_quantity">{PRICE_TYPE_LABELS.retail_quantity}</option>
+            <option value="business_fixed">{PRICE_TYPE_LABELS.business_fixed}</option>
+            <option value="business_quantity">{PRICE_TYPE_LABELS.business_quantity}</option>
           </select>
           <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: '#6B4A2D' }}>
             <input
@@ -181,7 +171,6 @@ export default function PricesManageTab({ onImportClick }: { onImportClick: () =
               <tbody>
                 {filtered.map(row => {
                   const name = row.מוצרים_למכירה?.שם_מוצר || row.product_name_snapshot || '—';
-                  const typeStyle = TYPE_COLOR[row.price_type ?? ''] ?? { bg: '#F3F4F6', color: '#374151' };
                   const isEditing = editingId === row.id;
                   const inactive = !row.פעיל;
                   return (
@@ -192,12 +181,7 @@ export default function PricesManageTab({ onImportClick }: { onImportClick: () =
                       <td className="py-2.5 px-3 font-medium" style={{ color: '#2B1A10' }}>{name}</td>
                       <td className="py-2.5 px-3 font-mono text-xs" style={{ color: '#9B7A5A' }}>{row.sku || '—'}</td>
                       <td className="py-2.5 px-3">
-                        <span
-                          className="inline-block px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap"
-                          style={{ backgroundColor: typeStyle.bg, color: typeStyle.color }}
-                        >
-                          {TYPE_LABEL[row.price_type ?? ''] ?? row.price_type ?? '—'}
-                        </span>
+                        <PriceTypeBadge type={row.price_type} />
                       </td>
                       <td className="py-2.5 px-3 text-center" style={{ color: '#6B4A2D' }}>
                         {row.min_quantity != null ? row.min_quantity : '—'}

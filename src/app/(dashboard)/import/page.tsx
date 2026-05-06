@@ -7,6 +7,7 @@ import { Select } from '@/components/ui/Input';
 import toast from 'react-hot-toast';
 import type { PreviewRow, PreviewError } from '@/app/api/prices/import-preview/route';
 import PricesManageTab from '@/components/prices/PricesManageTab';
+import { PriceTypeBadge, PRICE_TYPE_LABELS } from '@/lib/priceTypeUtils';
 
 // ─── General import types & helpers ───────────────────────────────────────
 
@@ -430,12 +431,7 @@ function GeneralImportTab() {
 
 // ─── Price import tab ──────────────────────────────────────────────────────
 
-const PRICE_TYPE_LABELS: Record<string, string> = {
-  retail:            'פרטי',
-  retail_quantity:   'פרטי - אירוע',
-  business_fixed:    'עסקי - קבוע',
-  business_quantity: 'עסקי - כמות',
-};
+// PRICE_TYPE_LABELS and PriceTypeBadge imported from @/lib/priceTypeUtils
 
 type PriceStep = 'upload' | 'preview' | 'done';
 
@@ -548,7 +544,7 @@ function PriceImportTab() {
           </table>
         </div>
         <ul className="mt-3 text-xs space-y-1" style={{ color: '#6B5744' }}>
-          <li>• <strong>סוג מחירון:</strong> פרטי / עסקי - קבוע / עסקי - כמות</li>
+          <li>• <strong>סוג מחירון:</strong> {Object.values(PRICE_TYPE_LABELS).join(' / ')}</li>
           <li>• <strong>מחיר עסקי</strong> נשמר לפני מע״מ — יש לסמן &quot;לא&quot; בעמודת כולל מע״מ</li>
           <li>• <strong>כמות מינימום</strong> חובה לסוג &quot;עסקי - כמות&quot;, אופציונלי לשאר</li>
           <li>• <strong>שם מוצר</strong> חייב להתאים בדיוק לשם המוצר במערכת</li>
@@ -660,11 +656,8 @@ function PriceImportTab() {
                             <span className="mr-1 text-xs px-1 py-0.5 rounded" style={{ backgroundColor: '#FFF3CD', color: '#92400E' }}>מוצר חדש</span>
                           )}
                         </td>
-                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>
-                          {PRICE_TYPE_LABELS[row.priceType]}
-                          {row.priceType !== 'retail' && (
-                            <span className="mr-1 text-xs" style={{ color: '#8A7664' }}>(לפני מע״מ)</span>
-                          )}
+                        <td className="border px-2 py-1">
+                          <PriceTypeBadge type={row.priceType} />
                         </td>
                         <td className="border px-2 py-1 font-medium" style={{ borderColor: '#DDD0BE', color: '#2B1A10' }}>₪{row.price.toFixed(2)}</td>
                         <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>{row.minQuantity ?? '—'}</td>

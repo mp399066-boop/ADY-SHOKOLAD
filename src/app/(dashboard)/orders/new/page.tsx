@@ -74,10 +74,10 @@ function computeEffectivePriceType(
 }
 
 const TIER_INFO: Record<EffectivePriceType, { label: string; color: string; bg: string }> = {
-  retail:            { label: 'מחיר פרטי רגיל',   color: '#5C3410', bg: '#EFE4D3' },
-  retail_quantity:   { label: 'מחיר אירוע פרטי',  color: '#7C5A1E', bg: '#FFF3CD' },
-  business_fixed:    { label: 'מחיר עסקי קבוע',   color: '#1A4D6E', bg: '#D6EAF8' },
-  business_quantity: { label: 'מחיר עסקי כמות',   color: '#1D6A3D', bg: '#D5F0E3' },
+  retail:            { label: 'לקוח פרטי',                  color: '#5C3410', bg: '#EFE4D3' },
+  retail_quantity:   { label: 'לקוח פרטי אירוע - כמות',    color: '#7C5A1E', bg: '#FFF3CD' },
+  business_fixed:    { label: 'עסקי קבוע',                  color: '#1A4D6E', bg: '#D6EAF8' },
+  business_quantity: { label: 'עסקי אירוע - כמות',          color: '#1D6A3D', bg: '#D5F0E3' },
 };
 
 interface PackageItem {
