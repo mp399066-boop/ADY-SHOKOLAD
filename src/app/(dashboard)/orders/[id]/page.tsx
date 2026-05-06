@@ -10,6 +10,7 @@ import { PageLoading } from '@/components/ui/LoadingSpinner';
 import { formatDate, formatCurrency } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import type { Order, OrderItem, Customer, Product, Package, PetitFourType } from '@/types/database';
+import { DeliveryTypeCards } from '@/components/orders/DeliveryTypeCards';
 
 // ─── Interfaces ────────────────────────────────────────────────────────────────
 
@@ -852,26 +853,23 @@ export default function OrderDetailPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <FieldSelect
-                  label="סוג אספקה"
-                  value={editForm.סוג_אספקה}
-                  onChange={v => setEditForm(f => ({ ...f, סוג_אספקה: v as EditForm['סוג_אספקה'] }))}
-                >
-                  <option value="איסוף עצמי">איסוף עצמי</option>
-                  <option value="משלוח">משלוח</option>
-                </FieldSelect>
-                <div className="flex items-end pb-2">
-                  <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: '#2B1A10' }}>
-                    <input
-                      type="checkbox"
-                      checked={editForm.הזמנה_דחופה}
-                      onChange={e => setEditForm(f => ({ ...f, הזמנה_דחופה: e.target.checked }))}
-                      className="w-4 h-4"
-                    />
-                    הזמנה דחופה
-                  </label>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium mb-2" style={{ color: '#6B4A2D' }}>סוג אספקה</label>
+                  <DeliveryTypeCards
+                    value={editForm.סוג_אספקה}
+                    onChange={v => setEditForm(f => ({ ...f, סוג_אספקה: v }))}
+                  />
                 </div>
+                <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: '#2B1A10' }}>
+                  <input
+                    type="checkbox"
+                    checked={editForm.הזמנה_דחופה}
+                    onChange={e => setEditForm(f => ({ ...f, הזמנה_דחופה: e.target.checked }))}
+                    className="w-4 h-4"
+                  />
+                  הזמנה דחופה
+                </label>
               </div>
 
               <div className="grid grid-cols-2 gap-4">

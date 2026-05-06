@@ -10,6 +10,7 @@ import { PageLoading } from '@/components/ui/LoadingSpinner';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import toast from 'react-hot-toast';
 import type { Customer, Product, PetitFourType, Package } from '@/types/database';
+import { DeliveryTypeCards } from '@/components/orders/DeliveryTypeCards';
 
 interface OrderItem {
   מוצר_id: string;
@@ -462,21 +463,19 @@ export default function NewOrderPage() {
                 value={deliveryTime}
                 onChange={e => setDeliveryTime(e.target.value)}
               />
-              <Select
-                label="סוג אספקה"
-                value={deliveryType}
-                onChange={e => {
-                  const t = e.target.value as 'משלוח' | 'איסוף עצמי';
-                  setDeliveryType(t);
-                  if (t === 'משלוח' && recipientType === 'customer' && selectedCustomerData) {
-                    setRecipientName(`${selectedCustomerData.שם_פרטי} ${selectedCustomerData.שם_משפחה}`.trim());
-                    setRecipientPhone(selectedCustomerData.טלפון || '');
-                  }
-                }}
-              >
-                <option value="משלוח">משלוח</option>
-                <option value="איסוף עצמי">איסוף עצמי</option>
-              </Select>
+              <div className="col-span-2">
+                <label className="block text-xs font-medium mb-2" style={{ color: '#6B4A2D' }}>סוג אספקה</label>
+                <DeliveryTypeCards
+                  value={deliveryType}
+                  onChange={t => {
+                    setDeliveryType(t);
+                    if (t === 'משלוח' && recipientType === 'customer' && selectedCustomerData) {
+                      setRecipientName(`${selectedCustomerData.שם_פרטי} ${selectedCustomerData.שם_משפחה}`.trim());
+                      setRecipientPhone(selectedCustomerData.טלפון || '');
+                    }
+                  }}
+                />
+              </div>
               <Select
                 label="מקור הזמנה"
                 value={orderSource}
