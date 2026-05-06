@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Input';
 import toast from 'react-hot-toast';
 import type { PreviewRow, PreviewError } from '@/app/api/prices/import-preview/route';
+import PricesManageTab from '@/components/prices/PricesManageTab';
 
 // ─── General import types & helpers ───────────────────────────────────────
 
@@ -711,10 +712,11 @@ function PriceImportTab() {
 
 // ─── Main page ─────────────────────────────────────────────────────────────
 
-type Tab = 'general' | 'price';
+type Tab = 'general' | 'prices' | 'price';
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'general', label: 'ייבוא נתונים'  },
+  { key: 'prices',  label: 'מחירונים'       },
   { key: 'price',   label: 'ייבוא מחירון'  },
 ];
 
@@ -723,7 +725,9 @@ export default function ImportPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('tab') === 'price') setActiveTab('price');
+    const tab = params.get('tab');
+    if (tab === 'price') setActiveTab('price');
+    else if (tab === 'prices') setActiveTab('prices');
   }, []);
 
   return (
@@ -745,7 +749,9 @@ export default function ImportPage() {
         ))}
       </div>
 
-      {activeTab === 'general' ? <GeneralImportTab /> : <PriceImportTab />}
+      {activeTab === 'general' && <GeneralImportTab />}
+      {activeTab === 'prices'  && <PricesManageTab onImportClick={() => setActiveTab('price')} />}
+      {activeTab === 'price'   && <PriceImportTab />}
     </div>
   );
 }
