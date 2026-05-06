@@ -28,12 +28,52 @@ export interface PreviewError {
   errors: string[];
 }
 
+// Normalize a price-type cell value for lenient comparison:
+// • Unicode dash variants → ASCII hyphen
+// • Special whitespace → regular space
+// • Collapse repeated spaces, normalize space-around-dash
+// • Strip leading "לקוח " prefix
+function normalizePriceTypeValue(raw: unknown): string {
+  let s = String(raw ?? '');
+  // Unicode dashes → hyphen
+  s = s.replace(/[­‐-―−﹘﹣－]/g, '-');
+  // Special spaces → regular space
+  s = s.replace(/[   - 　]/g, ' ');
+  // Collapse runs of spaces
+  s = s.replace(/\s+/g, ' ');
+  // Normalise padding around hyphens (so "עסקי-קבוע" and "עסקי - קבוע" both become "עסקי - קבוע")
+  s = s.replace(/\s*-\s*/g, ' - ');
+  // Strip leading "לקוח " prefix
+  s = s.replace(/^לקוח\s+/i, '');
+  return s.trim();
+}
+
 function mapPriceType(raw: unknown): PriceType | null {
-  const s = String(raw ?? '').trim();
-  if (['פרטי', 'רגיל', 'retail'].includes(s)) return 'retail';
-  if (['עסקי - קבוע', 'עסקי-קבוע', 'business_fixed'].includes(s)) return 'business_fixed';
-  if (['עסקי - כמות', 'עסקי-כמות', 'business_quantity'].includes(s)) return 'business_quantity';
-  if (['לקוח פרטי אירוע - כמות', 'פרטי - אירוע', 'פרטי-אירוע', 'retail_quantity'].includes(s)) return 'retail_quantity';
+  const s = normalizePriceTypeValue(raw).toLowerCase();
+
+  // Exact English / code fallbacks
+  if (s === 'retail') return 'retail';
+  if (s === 'retail_quantity') return 'retail_quantity';
+  if (s === 'business_fixed') return 'business_fixed';
+  if (s === 'business_quantity') return 'business_quantity';
+
+  // "פרטי" or "רגיל" alone → retail
+  if (s === 'פרטי' || s === 'רגיל') return 'retail';
+
+  // "פרטי" + ("אירוע" or "כמות"), NOT "עסקי" → retail_quantity
+  // Covers: "פרטי אירוע - כמות", "פרטי - אירוע", "פרטי - כמות"
+  if (s.includes('פרטי') && (s.includes('אירוע') || s.includes('כמות')) && !s.includes('עסקי')) {
+    return 'retail_quantity';
+  }
+
+  // "עסקי" + "קבוע" → business_fixed
+  // Covers: "עסקי קבוע", "עסקי - קבוע"
+  if (s.includes('עסקי') && s.includes('קבוע')) return 'business_fixed';
+
+  // "עסקי" + ("כמות" or "אירוע") → business_quantity
+  // Covers: "עסקי - כמות", "עסקי כמות", "עסקי אירוע - כמות"
+  if (s.includes('עסקי') && (s.includes('כמות') || s.includes('אירוע'))) return 'business_quantity';
+
   return null;
 }
 
@@ -147,12 +187,22 @@ export async function POST(req: NextRequest) {
 
   const [{ data: products }, { data: existingEntries }] = await Promise.all([
     supabase.from('מוצרים_למכירה').select('id, שם_מוצר').eq('פעיל', true),
-    supabase.from('מחירון').select('מוצר_id, price_type, min_quantity'),
+    supabase.from('מחירון').select('מוצר_id, price_type, min_quantity, sku'),
   ]);
 
+  // name → product_id (primary lookup)
   const productMap = new Map<string, string>();
   for (const p of products || []) {
     productMap.set(String(p['שם_מוצר']).toLowerCase().trim(), p.id as string);
+  }
+
+  // sku → product_id (fallback lookup via existing price list entries)
+  const skuMap = new Map<string, string>();
+  for (const e of existingEntries || []) {
+    if (e.sku && e['מוצר_id']) {
+      const key = String(e.sku).toLowerCase().trim();
+      if (key && !skuMap.has(key)) skuMap.set(key, e['מוצר_id'] as string);
+    }
   }
 
   const existingSet = new Set<string>();
@@ -179,7 +229,7 @@ export async function POST(req: NextRequest) {
     if (!productName) rowErrors.push('שם מוצר חסר');
 
     const priceType = mapPriceType(priceTypeRaw);
-    if (!priceType) rowErrors.push(`סוג מחירון לא תקין: "${priceTypeRaw}" (אפשרויות: פרטי / פרטי - אירוע / עסקי - קבוע / עסקי - כמות)`);
+    if (!priceType) rowErrors.push(`סוג מחירון לא תקין: "${priceTypeRaw}" (אפשרויות: לקוח פרטי / לקוח פרטי אירוע - כמות / עסקי קבוע / עסקי אירוע - כמות)`);
 
     const price = Number(priceRaw);
     if (priceRaw === '' || priceRaw === null) {
@@ -195,10 +245,14 @@ export async function POST(req: NextRequest) {
       rowErrors.push('כמות מינימום חסרה עבור מחירון כמות');
     }
 
-    const productId = productName ? (productMap.get(productName.toLowerCase()) ?? null) : null;
+    // Primary lookup: by product name; fallback: by SKU via existing price list entries
+    let productId = productName ? (productMap.get(productName.toLowerCase()) ?? null) : null;
+    if (!productId && sku) {
+      productId = skuMap.get(sku.toLowerCase()) ?? null;
+    }
 
     if (productName && !productId) {
-      rowErrors.push(`מוצר לא נמצא: "${productName}"`);
+      rowErrors.push(`מוצר לא נמצא: "${productName}"${sku ? ` (SKU: ${sku})` : ''}`);
     }
 
     if (rowErrors.length > 0) {
