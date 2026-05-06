@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
@@ -23,6 +23,7 @@ interface OrderItem {
 }
 
 type PriceEntry = { מוצר_id: string; price_type: string; מחיר: number; min_quantity: number | null };
+type EffectivePriceType = 'retail' | 'retail_quantity' | 'business_fixed' | 'business_quantity';
 
 function resolvePriceListEntry(
   priceList: PriceEntry[],
@@ -30,14 +31,53 @@ function resolvePriceListEntry(
   priceType: string,
   qty: number,
 ): PriceEntry | undefined {
-  if (priceType === 'business_quantity') {
+  if (priceType === 'business_quantity' || priceType === 'retail_quantity') {
     const tiers = priceList
-      .filter(pl => pl.מוצר_id === productId && pl.price_type === 'business_quantity' && (pl.min_quantity ?? 0) <= qty)
+      .filter(pl => pl.מוצר_id === productId && pl.price_type === priceType && (pl.min_quantity ?? 0) <= qty)
       .sort((a, b) => (b.min_quantity ?? 0) - (a.min_quantity ?? 0));
     return tiers[0];
   }
   return priceList.find(pl => pl.מוצר_id === productId && pl.price_type === priceType);
 }
+
+function computeEffectivePriceType(
+  custType: string | undefined,
+  items: { מוצר_id: string; כמות: number }[],
+  products: { id: string; קטגוריית_מוצר?: string | null }[],
+  priceList: PriceEntry[],
+): EffectivePriceType {
+  if (custType === 'עסקי - כמות') return 'business_quantity';
+  if (custType === 'עסקי - קבוע' || custType === 'עסקי') return 'business_fixed';
+
+  // Private / recurring customers — check for event/quantity upgrade
+  const totalUnits = items.reduce((sum, it) => sum + (it.כמות || 0), 0);
+  if (totalUnits >= 250) return 'retail_quantity';
+
+  // Amount threshold at retail prices; only one cake item counts toward 2500
+  let nonCakeTotal = 0;
+  let maxCakeTotal = 0;
+  for (const it of items) {
+    if (!it.מוצר_id) continue;
+    const retailEntry = priceList.find(pl => pl.מוצר_id === it.מוצר_id && pl.price_type === 'retail');
+    if (!retailEntry) continue;
+    const lineTotal = retailEntry.מחיר * (it.כמות || 0);
+    const prod = products.find(p => p.id === it.מוצר_id);
+    if (prod?.קטגוריית_מוצר === 'עוגה') {
+      maxCakeTotal = Math.max(maxCakeTotal, lineTotal);
+    } else {
+      nonCakeTotal += lineTotal;
+    }
+  }
+  if (nonCakeTotal + maxCakeTotal >= 2500) return 'retail_quantity';
+  return 'retail';
+}
+
+const TIER_INFO: Record<EffectivePriceType, { label: string; color: string; bg: string }> = {
+  retail:            { label: 'מחיר פרטי רגיל',   color: '#5C3410', bg: '#EFE4D3' },
+  retail_quantity:   { label: 'מחיר אירוע פרטי',  color: '#7C5A1E', bg: '#FFF3CD' },
+  business_fixed:    { label: 'מחיר עסקי קבוע',   color: '#1A4D6E', bg: '#D6EAF8' },
+  business_quantity: { label: 'מחיר עסקי כמות',   color: '#1D6A3D', bg: '#D5F0E3' },
+};
 
 interface PackageItem {
   מוצר_id: string | null;
@@ -71,6 +111,7 @@ export default function NewOrderPage() {
   const submittingRef = useRef(false);
   // Unique ID for this form instance — sent to server for idempotency deduplication
   const clientRequestIdRef = useRef(`req_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+  const prevTierRef = useRef<EffectivePriceType | ''>('');
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [petitFourTypes, setPetitFourTypes] = useState<PetitFourType[]>([]);
@@ -129,6 +170,36 @@ export default function NewOrderPage() {
     });
   }, []);
 
+  const selectedCustomerData = customers.find(c => c.id === selectedCustomer);
+  const customerType = selectedCustomerData?.סוג_לקוח;
+
+  const effectivePriceType = useMemo(
+    () => computeEffectivePriceType(customerType, orderItems, products, priceList),
+    [customerType, orderItems, products, priceList],
+  );
+
+  // Reprice all product items when the effective tier changes
+  useEffect(() => {
+    if (prevTierRef.current === effectivePriceType) return;
+    prevTierRef.current = effectivePriceType;
+    setOrderItems(prev => {
+      if (prev.length === 0) return prev;
+      return prev.map(item => {
+        if (!item.מוצר_id) return item;
+        const entry = resolvePriceListEntry(priceList, item.מוצר_id, effectivePriceType, item.כמות);
+        if (entry) {
+          return { ...item, מחיר_ליחידה: entry.מחיר, סהכ: item.כמות * entry.מחיר, missingPrice: false };
+        }
+        const prod = products.find(p => p.id === item.מוצר_id);
+        if ((effectivePriceType === 'retail' || effectivePriceType === 'retail_quantity') && prod) {
+          return { ...item, מחיר_ליחידה: prod.מחיר, סהכ: item.כמות * prod.מחיר, missingPrice: false };
+        }
+        return { ...item, מחיר_ליחידה: 0, סהכ: 0, missingPrice: true };
+      });
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectivePriceType]);
+
   const handleCustomerChange = (customerId: string) => {
     setSelectedCustomer(customerId);
     const cust = customers.find(c => c.id === customerId);
@@ -159,8 +230,6 @@ export default function NewOrderPage() {
       ? Math.min(subtotal, discountValue)
       : 0;
   const total = Math.max(0, subtotal - discountAmount + deliveryFee);
-  const selectedCustomerData = customers.find(c => c.id === selectedCustomer);
-  const customerType = selectedCustomerData?.סוג_לקוח;
   const isBusiness = customerType === 'עסקי' || customerType === 'עסקי - קבוע' || customerType === 'עסקי - כמות';
   const VAT_RATE = 0.18;
   // VAT display only — סך_הכל_לתשלום stored in DB is always pre-VAT (server calculates it)
@@ -177,33 +246,28 @@ export default function NewOrderPage() {
     setOrderItems(prev => {
       const items = [...prev];
       const item = { ...items[idx], [field]: value };
-
-      const custType = selectedCustomerData?.סוג_לקוח;
-      let priceType = 'retail';
-      if (custType === 'עסקי - כמות') priceType = 'business_quantity';
-      else if (custType === 'עסקי - קבוע' || custType === 'עסקי') priceType = 'business_fixed';
-      const isBusinessCust = priceType !== 'retail';
+      const isPrivate = effectivePriceType === 'retail' || effectivePriceType === 'retail_quantity';
 
       if (field === 'מוצר_id') {
         const prod = products.find(p => p.id === value);
         if (prod) {
           item.שם_מוצר = prod.שם_מוצר;
-          const entry = resolvePriceListEntry(priceList, String(value), priceType, item.כמות);
+          const entry = resolvePriceListEntry(priceList, String(value), effectivePriceType, item.כמות);
           if (entry) {
             item.מחיר_ליחידה = entry.מחיר;
             item.missingPrice = false;
-          } else if (isBusinessCust) {
-            item.מחיר_ליחידה = 0;
-            item.missingPrice = true;
-          } else {
+          } else if (isPrivate) {
             item.מחיר_ליחידה = prod.מחיר;
             item.missingPrice = false;
+          } else {
+            item.מחיר_ליחידה = 0;
+            item.missingPrice = true;
           }
         }
       }
 
-      if (field === 'כמות' && priceType === 'business_quantity' && item.מוצר_id) {
-        const entry = resolvePriceListEntry(priceList, item.מוצר_id, 'business_quantity', Number(value));
+      if (field === 'כמות' && (effectivePriceType === 'business_quantity' || effectivePriceType === 'retail_quantity') && item.מוצר_id) {
+        const entry = resolvePriceListEntry(priceList, item.מוצר_id, effectivePriceType, Number(value));
         if (entry) {
           item.מחיר_ליחידה = entry.מחיר;
           item.missingPrice = false;
@@ -553,7 +617,17 @@ export default function NewOrderPage() {
           {/* 4. Products */}
           <Card>
             <CardHeader>
-              <SectionHeader number={deliveryType === 'משלוח' ? 4 : 3} title="מוצרים" />
+              <div className="flex items-center gap-3">
+                <SectionHeader number={deliveryType === 'משלוח' ? 4 : 3} title="מוצרים" />
+                {selectedCustomer && (
+                  <span
+                    className="text-xs font-medium px-2.5 py-1 rounded-full"
+                    style={{ backgroundColor: TIER_INFO[effectivePriceType].bg, color: TIER_INFO[effectivePriceType].color }}
+                  >
+                    {TIER_INFO[effectivePriceType].label}
+                  </span>
+                )}
+              </div>
               <Button type="button" variant="outline" size="sm" onClick={addProductItem}>
                 + הוסף מוצר
               </Button>
@@ -630,6 +704,9 @@ export default function NewOrderPage() {
                   </div>
                   {item.missingPrice && (
                     <p className="text-xs text-amber-600 mt-1.5">⚠ אין מחיר במחירון זה</p>
+                  )}
+                  {(effectivePriceType === 'retail_quantity' || effectivePriceType === 'business_quantity') && item.כמות > 0 && item.כמות < 20 && (
+                    <p className="text-xs text-amber-600 mt-0.5">⚠ מינימום 20 יח׳ במחיר כמות</p>
                   )}
                   </div>
                 ))}

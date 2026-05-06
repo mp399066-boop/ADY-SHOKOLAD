@@ -5,7 +5,7 @@ import * as XLSX from 'xlsx';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse, forbiddenResponse } from '@/lib/auth/requireAuthorizedUser';
 
-export type PriceType = 'retail' | 'business_quantity' | 'business_fixed';
+export type PriceType = 'retail' | 'business_quantity' | 'business_fixed' | 'retail_quantity';
 
 export interface PreviewRow {
   rowNumber: number;
@@ -33,6 +33,7 @@ function mapPriceType(raw: unknown): PriceType | null {
   if (['פרטי', 'רגיל', 'retail'].includes(s)) return 'retail';
   if (['עסקי - קבוע', 'עסקי-קבוע', 'business_fixed'].includes(s)) return 'business_fixed';
   if (['עסקי - כמות', 'עסקי-כמות', 'business_quantity'].includes(s)) return 'business_quantity';
+  if (['פרטי - אירוע', 'פרטי-אירוע', 'retail_quantity', 'לקוח פרטי אירוע - כמות'].includes(s)) return 'retail_quantity';
   return null;
 }
 
@@ -178,7 +179,7 @@ export async function POST(req: NextRequest) {
     if (!productName) rowErrors.push('שם מוצר חסר');
 
     const priceType = mapPriceType(priceTypeRaw);
-    if (!priceType) rowErrors.push(`סוג מחירון לא תקין: "${priceTypeRaw}" (אפשרויות: פרטי / עסקי - קבוע / עסקי - כמות)`);
+    if (!priceType) rowErrors.push(`סוג מחירון לא תקין: "${priceTypeRaw}" (אפשרויות: פרטי / פרטי - אירוע / עסקי - קבוע / עסקי - כמות)`);
 
     const price = Number(priceRaw);
     if (priceRaw === '' || priceRaw === null) {
@@ -190,8 +191,8 @@ export async function POST(req: NextRequest) {
     const minQuantity = (minQtyRaw !== '' && minQtyRaw !== null && minQtyRaw !== undefined)
       ? Number(minQtyRaw) : null;
 
-    if (priceType === 'business_quantity' && (minQuantity === null || isNaN(minQuantity as number) || (minQuantity as number) <= 0)) {
-      rowErrors.push('כמות מינימום חסרה עבור מחירון עסקי-כמות');
+    if ((priceType === 'business_quantity' || priceType === 'retail_quantity') && (minQuantity === null || isNaN(minQuantity as number) || (minQuantity as number) <= 0)) {
+      rowErrors.push('כמות מינימום חסרה עבור מחירון כמות');
     }
 
     const productId = productName ? (productMap.get(productName.toLowerCase()) ?? null) : null;
@@ -205,7 +206,7 @@ export async function POST(req: NextRequest) {
       return;
     }
 
-    const minQty = priceType === 'business_quantity' ? (minQuantity as number) : null;
+    const minQty = (priceType === 'business_quantity' || priceType === 'retail_quantity') ? (minQuantity as number) : null;
     const dedupeKey = `${productId}|${priceType}|${minQty ?? ''}`;
 
     if (seenInFile.has(dedupeKey)) {

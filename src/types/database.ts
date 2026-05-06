@@ -178,6 +178,7 @@ export interface Product {
   תיאור: string | null;
   תמונה_url: string | null;
   price_availability: 'retail' | 'business_fixed' | 'business_quantity' | null;
+  קטגוריית_מוצר: 'עוגה' | 'פטיפורים' | 'קינוחים' | 'מארז' | 'אחר' | null;
   תאריך_יצירה: string;
   תאריך_עדכון: string;
 }
@@ -370,7 +371,7 @@ export interface PriceListItem {
   תאריך_יצירה: string;
   sku: string | null;
   product_name_snapshot: string | null;
-  price_type: 'retail' | 'business_quantity' | 'business_fixed' | null;
+  price_type: 'retail' | 'business_quantity' | 'business_fixed' | 'retail_quantity' | null;
   min_quantity: number | null;
   includes_vat: boolean | null;
   פעיל: boolean | null;
