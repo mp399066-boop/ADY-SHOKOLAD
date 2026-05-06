@@ -10,9 +10,9 @@ import toast from 'react-hot-toast';
 import type { BusinessSettings } from '@/types/database';
 
 const SETTINGS_TABS = [
-  { href: '/settings',              label: 'הגדרות עסק'      },
-  { href: '/settings/users',        label: 'משתמשים והרשאות' },
-  { href: '/settings/price-import', label: 'ייבוא מחירון'    },
+  { href: '/settings',       label: 'הגדרות עסק'      },
+  { href: '/settings/users', label: 'משתמשים והרשאות' },
+  { href: '/settings/prices', label: 'מחירונים'        },
 ];
 
 function SettingsTabs() {

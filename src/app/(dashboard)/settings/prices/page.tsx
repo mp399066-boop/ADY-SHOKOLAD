@@ -6,6 +6,34 @@ import { Button } from '@/components/ui/Button';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 
+const SETTINGS_TABS = [
+  { href: '/settings',        label: 'הגדרות עסק'      },
+  { href: '/settings/users',  label: 'משתמשים והרשאות' },
+  { href: '/settings/prices', label: 'מחירונים'         },
+];
+
+function SettingsTabs() {
+  return (
+    <div className="flex gap-1 mb-6 border-b" style={{ borderColor: '#EAE0D4' }}>
+      {SETTINGS_TABS.map(tab => {
+        const isActive = tab.href === '/settings/prices';
+        return (
+          <Link
+            key={tab.href}
+            href={tab.href}
+            className="px-4 py-2.5 text-sm font-medium relative transition-colors"
+            style={isActive
+              ? { color: '#5C3410', borderBottom: '2.5px solid #C9A46A', marginBottom: '-1px' }
+              : { color: '#8A7664' }}
+          >
+            {tab.label}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
 type PriceRow = {
   id: string;
   מוצר_id: string | null;
@@ -107,6 +135,7 @@ export default function PricesManagePage() {
 
   return (
     <div className="max-w-5xl space-y-4">
+      <SettingsTabs />
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

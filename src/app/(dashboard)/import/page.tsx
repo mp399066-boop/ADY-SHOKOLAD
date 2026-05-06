@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
+import Link from 'next/link';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Input';
@@ -275,9 +276,22 @@ export default function ImportPage() {
   return (
     <div className="max-w-5xl space-y-5">
 
+      {/* Price list import — dedicated screen */}
+      <Card>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-semibold" style={{ color: '#2B1A10' }}>ייבוא מחירון</h2>
+            <p className="text-xs mt-0.5" style={{ color: '#9B7A5A' }}>טעינת מחירון עסקי / קמעוני מקובץ אקסל</p>
+          </div>
+          <Link href="/settings/price-import">
+            <Button variant="outline" size="sm">פתח מסך ייבוא מחירון</Button>
+          </Link>
+        </div>
+      </Card>
+
       {/* Config */}
       <Card>
-        <CardHeader><CardTitle>ייבוא נתונים</CardTitle></CardHeader>
+        <CardHeader><CardTitle>ייבוא נתונים כלליים</CardTitle></CardHeader>
         <div className="grid grid-cols-2 gap-4 mb-4">
           <Select
             label="סוג נתונים"
