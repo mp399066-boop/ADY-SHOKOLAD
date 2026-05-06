@@ -161,6 +161,8 @@ export default function OrderDetailPage() {
   // Edit state — order items
   const [editItems, setEditItems] = useState<EditOrderItem[]>([]);
   const [editPackages, setEditPackages] = useState<EditPackageItem[]>([]);
+  // Recipient type state for edit modal (UI-only until migration 015 is applied)
+  const [editRecipientType, setEditRecipientType] = useState<'customer' | 'other'>('customer');
 
   // ── Load order ──────────────────────────────────────────────────────────────
 
@@ -228,6 +230,12 @@ export default function OrderDetailPage() {
 
   const openEdit = () => {
     if (!order) return;
+
+    // Derive recipient type heuristically from stored fields vs customer data
+    const custFullName = `${order.לקוחות?.שם_פרטי || ''} ${order.לקוחות?.שם_משפחה || ''}`.trim();
+    const nameMatches = order.שם_מקבל === custFullName;
+    const phoneMatches = !order.טלפון_מקבל || order.טלפון_מקבל === order.לקוחות?.טלפון;
+    setEditRecipientType(nameMatches && phoneMatches ? 'customer' : 'other');
 
     setEditForm({
       הזמנה_דחופה: order.הזמנה_דחופה ?? false,
@@ -321,6 +329,7 @@ export default function OrderDetailPage() {
         payload.עיר = editForm.עיר || null;
         payload.הוראות_משלוח = editForm.הוראות_משלוח || null;
         payload.דמי_משלוח = editForm.דמי_משלוח !== '' ? Number(editForm.דמי_משלוח) : null;
+        payload.delivery_recipient_type = editRecipientType;
       } else {
         payload.שם_מקבל = null;
         payload.טלפון_מקבל = null;
@@ -328,6 +337,7 @@ export default function OrderDetailPage() {
         payload.עיר = null;
         payload.הוראות_משלוח = null;
         payload.דמי_משלוח = null;
+        payload.delivery_recipient_type = null;
       }
 
       console.log('[saveEdit] PATCH payload:', payload);
@@ -563,9 +573,24 @@ export default function OrderDetailPage() {
             <div><span style={{ color: '#6B4A2D' }}>שעה: </span><span>{order.שעת_אספקה || '-'}</span></div>
             <div><span style={{ color: '#6B4A2D' }}>אספקה: </span><span>{order.סוג_אספקה}</span></div>
             <div><span style={{ color: '#6B4A2D' }}>מקור: </span><span>{order.מקור_ההזמנה || '-'}</span></div>
+            {order.סוג_אספקה === 'משלוח' && (() => {
+              const custFullName = `${customer?.שם_פרטי || ''} ${customer?.שם_משפחה || ''}`.trim();
+              const isForCustomer = order.שם_מקבל === custFullName && (!order.טלפון_מקבל || order.טלפון_מקבל === customer?.טלפון);
+              return (
+                <div>
+                  <span style={{ color: '#6B4A2D' }}>משלוח אל: </span>
+                  <span className="font-medium text-xs px-2 py-0.5 rounded-full"
+                    style={isForCustomer
+                      ? { backgroundColor: '#DBEAFE', color: '#1E40AF' }
+                      : { backgroundColor: '#FEF3C7', color: '#92400E' }}>
+                    {isForCustomer ? 'הלקוח המזמין' : 'מישהו אחר'}
+                  </span>
+                </div>
+              );
+            })()}
             {order.שם_מקבל && <div><span style={{ color: '#6B4A2D' }}>מקבל: </span><span>{order.שם_מקבל}</span></div>}
             {order.טלפון_מקבל && <div><span style={{ color: '#6B4A2D' }}>טלפון מקבל: </span><span>{order.טלפון_מקבל}</span></div>}
-            {order.כתובת_מקבל_ההזמנה && <div className="col-span-2"><span style={{ color: '#6B4A2D' }}>כתובת: </span><span>{order.כתובת_מקבל_ההזמנה}, {order.עיר}</span></div>}
+            {order.כתובת_מקבל_ההזמנה && <div className="col-span-2"><span style={{ color: '#6B4A2D' }}>כתובת: </span><span>{order.כתובת_מקבל_ההזמנה}{order.עיר ? `, ${order.עיר}` : ''}</span></div>}
             {order.הוראות_משלוח && <div className="col-span-3"><span style={{ color: '#6B4A2D' }}>הוראות: </span><span>{order.הוראות_משלוח}</span></div>}
           </div>
         </Card>
@@ -619,7 +644,9 @@ export default function OrderDetailPage() {
                   <>
                     <tr key={item.id} className="border-b" style={{ borderColor: '#F5ECD8' }}>
                       <td className="py-2 px-2 font-medium">
-                        {(item as OrderItem & { מוצרים_למכירה?: { שם_מוצר: string } }).מוצרים_למכירה?.שם_מוצר || '-'}
+                        {item.סוג_שורה === 'מארז'
+                          ? (packages.find(p => p.גודל_מארז === item.גודל_מארז)?.שם_מארז || `מארז ${item.גודל_מארז ?? '?'} יח׳`)
+                          : ((item as OrderItem & { מוצרים_למכירה?: { שם_מוצר: string } }).מוצרים_למכירה?.שם_מוצר || '-')}
                       </td>
                       <td className="py-2 px-2">
                         <span className={`text-xs px-1.5 py-0.5 rounded ${item.סוג_שורה === 'מארז' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>
@@ -819,13 +846,52 @@ export default function OrderDetailPage() {
               </div>
 
               {editForm.סוג_אספקה === 'משלוח' && (
-                <div className="grid grid-cols-2 gap-3 p-3 rounded-lg" style={{ backgroundColor: '#FAF7F0' }}>
+                <div className="space-y-3">
+                  <div className="flex gap-2">
+                    {([
+                      { key: 'customer', label: 'שליחה ללקוח המזמין' },
+                      { key: 'other',    label: 'שליחה למישהו אחר'   },
+                    ] as const).map(opt => (
+                      <button
+                        key={opt.key}
+                        type="button"
+                        onClick={() => {
+                          setEditRecipientType(opt.key);
+                          if (opt.key === 'customer' && order.לקוחות) {
+                            setEditForm(f => ({
+                              ...f,
+                              שם_מקבל: `${order.לקוחות!.שם_פרטי} ${order.לקוחות!.שם_משפחה}`.trim(),
+                              טלפון_מקבל: order.לקוחות!.טלפון || '',
+                              כתובת_מקבל_ההזמנה: '',
+                              עיר: '',
+                            }));
+                          } else if (opt.key === 'other') {
+                            setEditForm(f => ({
+                              ...f,
+                              שם_מקבל: '',
+                              טלפון_מקבל: '',
+                              כתובת_מקבל_ההזמנה: '',
+                              עיר: '',
+                            }));
+                          }
+                        }}
+                        className="px-3 py-1.5 text-xs font-medium rounded-full border transition-colors"
+                        style={editRecipientType === opt.key
+                          ? { backgroundColor: '#8B5E34', color: '#fff', borderColor: '#8B5E34' }
+                          : { backgroundColor: '#fff', color: '#6B4A2D', borderColor: '#DDD0BC' }}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 p-3 rounded-lg" style={{ backgroundColor: '#FAF7F0' }}>
                   <FieldInput label="שם מקבל" value={editForm.שם_מקבל} onChange={v => setEditForm(f => ({ ...f, שם_מקבל: v }))} />
                   <FieldInput label="טלפון מקבל" type="tel" value={editForm.טלפון_מקבל} onChange={v => setEditForm(f => ({ ...f, טלפון_מקבל: v }))} />
                   <FieldInput label="כתובת" value={editForm.כתובת_מקבל_ההזמנה} onChange={v => setEditForm(f => ({ ...f, כתובת_מקבל_ההזמנה: v }))} />
                   <FieldInput label="עיר" value={editForm.עיר} onChange={v => setEditForm(f => ({ ...f, עיר: v }))} />
                   <FieldInput label="הוראות משלוח" value={editForm.הוראות_משלוח} onChange={v => setEditForm(f => ({ ...f, הוראות_משלוח: v }))} />
                   <FieldInput label="דמי משלוח (₪)" type="number" value={editForm.דמי_משלוח} onChange={v => setEditForm(f => ({ ...f, דמי_משלוח: v }))} />
+                  </div>
                 </div>
               )}
 

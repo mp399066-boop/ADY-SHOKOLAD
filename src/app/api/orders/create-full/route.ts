@@ -114,6 +114,7 @@ export async function POST(req: NextRequest) {
       עיר: הזמנה?.עיר || null,
       הוראות_משלוח: הזמנה?.הוראות_משלוח || null,
       דמי_משלוח: shipping,
+      delivery_recipient_type: הזמנה?.delivery_recipient_type || null,
       אופן_תשלום: הזמנה?.אופן_תשלום || null,
       סטטוס_תשלום: הזמנה?.סטטוס_תשלום || 'ממתין',
       סוג_הנחה: discountType,

@@ -147,6 +147,7 @@ export interface Order {
   עיר: string | null;
   הוראות_משלוח: string | null;
   דמי_משלוח: number | null;
+  delivery_recipient_type: 'customer' | 'other' | null;
   אופן_תשלום: string | null;
   סטטוס_תשלום: 'ממתין' | 'שולם' | 'חלקי' | 'בוטל';
   סוג_הנחה: 'ללא' | 'אחוז' | 'סכום' | null;

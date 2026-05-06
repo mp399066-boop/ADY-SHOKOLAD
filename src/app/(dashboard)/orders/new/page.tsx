@@ -81,6 +81,7 @@ export default function NewOrderPage() {
   const [deliveryDate, setDeliveryDate] = useState('');
   const [deliveryTime, setDeliveryTime] = useState('');
   const [deliveryType, setDeliveryType] = useState<'משלוח' | 'איסוף עצמי'>('משלוח');
+  const [recipientType, setRecipientType] = useState<'customer' | 'other'>('customer');
   const [recipientName, setRecipientName] = useState('');
   const [recipientPhone, setRecipientPhone] = useState('');
   const [recipientAddress, setRecipientAddress] = useState('');
@@ -141,6 +142,11 @@ export default function NewOrderPage() {
       setDiscountType('ללא');
       setDiscountValue(0);
       console.log('[discount debug] → no discount');
+    }
+    // Auto-fill recipient from customer when in "customer" mode
+    if (deliveryType === 'משלוח' && recipientType === 'customer' && cust) {
+      setRecipientName(`${cust.שם_פרטי} ${cust.שם_משפחה}`.trim());
+      setRecipientPhone(cust.טלפון || '');
     }
   };
 
@@ -326,6 +332,7 @@ export default function NewOrderPage() {
           עיר: recipientCity || null,
           הוראות_משלוח: deliveryInstructions || null,
           דמי_משלוח: deliveryFee,
+          delivery_recipient_type: deliveryType === 'משלוח' ? recipientType : null,
           אופן_תשלום: paymentMethod,
           סטטוס_תשלום: paymentStatus,
           סוג_הנחה: discountType,
@@ -438,7 +445,14 @@ export default function NewOrderPage() {
               <Select
                 label="סוג אספקה"
                 value={deliveryType}
-                onChange={e => setDeliveryType(e.target.value as 'משלוח' | 'איסוף עצמי')}
+                onChange={e => {
+                  const t = e.target.value as 'משלוח' | 'איסוף עצמי';
+                  setDeliveryType(t);
+                  if (t === 'משלוח' && recipientType === 'customer' && selectedCustomerData) {
+                    setRecipientName(`${selectedCustomerData.שם_פרטי} ${selectedCustomerData.שם_משפחה}`.trim());
+                    setRecipientPhone(selectedCustomerData.טלפון || '');
+                  }
+                }}
               >
                 <option value="משלוח">משלוח</option>
                 <option value="איסוף עצמי">איסוף עצמי</option>
@@ -460,6 +474,38 @@ export default function NewOrderPage() {
           {deliveryType === 'משלוח' && (
             <Card>
               <SectionHeader number={3} title="פרטי משלוח" />
+              {/* Recipient type toggle */}
+              <div className="flex gap-2 mb-4">
+                {([
+                  { key: 'customer', label: 'שליחה ללקוח המזמין' },
+                  { key: 'other',    label: 'שליחה למישהו אחר'   },
+                ] as const).map(opt => (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    onClick={() => {
+                      setRecipientType(opt.key);
+                      if (opt.key === 'customer' && selectedCustomerData) {
+                        setRecipientName(`${selectedCustomerData.שם_פרטי} ${selectedCustomerData.שם_משפחה}`.trim());
+                        setRecipientPhone(selectedCustomerData.טלפון || '');
+                        setRecipientAddress('');
+                        setRecipientCity('');
+                      } else if (opt.key === 'other') {
+                        setRecipientName('');
+                        setRecipientPhone('');
+                        setRecipientAddress('');
+                        setRecipientCity('');
+                      }
+                    }}
+                    className="px-3 py-1.5 text-xs font-medium rounded-full border transition-colors"
+                    style={recipientType === opt.key
+                      ? { backgroundColor: '#8B5E34', color: '#fff', borderColor: '#8B5E34' }
+                      : { backgroundColor: '#fff', color: '#6B4A2D', borderColor: '#DDD0BC' }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <Input label="שם מקבל" value={recipientName} onChange={e => setRecipientName(e.target.value)} />
                 <Input label="טלפון מקבל" value={recipientPhone} onChange={e => setRecipientPhone(e.target.value)} />
