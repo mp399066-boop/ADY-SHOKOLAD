@@ -144,7 +144,7 @@ export default function PricesManagePage() {
             {loading ? 'טוען...' : `${activeCount} מחירים פעילים מתוך ${rows.length}`}
           </p>
         </div>
-        <Link href="/settings/price-import">
+        <Link href="/import?tab=price">
           <Button variant="outline" size="sm">ייבוא מאקסל</Button>
         </Link>
       </div>
@@ -194,7 +194,7 @@ export default function PricesManagePage() {
               {rows.length === 0 ? 'אין מחירים. ייבא מאקסל להתחיל.' : 'לא נמצאו תוצאות לסינון.'}
             </p>
             {rows.length === 0 && (
-              <Link href="/settings/price-import">
+              <Link href="/import?tab=price">
                 <Button variant="outline" size="sm">ייבוא מחירון מאקסל</Button>
               </Link>
             )}
