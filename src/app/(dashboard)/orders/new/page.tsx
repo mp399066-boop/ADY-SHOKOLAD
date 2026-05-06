@@ -18,6 +18,24 @@ interface OrderItem {
   מחיר_ליחידה: number;
   סהכ: number;
   הערות_לשורה: string;
+  missingPrice?: boolean;
+}
+
+type PriceEntry = { מוצר_id: string; price_type: string; מחיר: number; min_quantity: number | null };
+
+function resolvePriceListEntry(
+  priceList: PriceEntry[],
+  productId: string,
+  priceType: string,
+  qty: number,
+): PriceEntry | undefined {
+  if (priceType === 'business_quantity') {
+    const tiers = priceList
+      .filter(pl => pl.מוצר_id === productId && pl.price_type === 'business_quantity' && (pl.min_quantity ?? 0) <= qty)
+      .sort((a, b) => (b.min_quantity ?? 0) - (a.min_quantity ?? 0));
+    return tiers[0];
+  }
+  return priceList.find(pl => pl.מוצר_id === productId && pl.price_type === priceType);
 }
 
 interface PackageItem {
@@ -143,7 +161,7 @@ export default function NewOrderPage() {
 
   const addProductItem = () => {
     setOrderItems(prev => [...prev, {
-      מוצר_id: '', שם_מוצר: '', כמות: 1, מחיר_ליחידה: 0, סהכ: 0, הערות_לשורה: '',
+      מוצר_id: '', שם_מוצר: '', כמות: 1, מחיר_ליחידה: 0, סהכ: 0, הערות_לשורה: '', missingPrice: false,
     }]);
   };
 
@@ -151,20 +169,41 @@ export default function NewOrderPage() {
     setOrderItems(prev => {
       const items = [...prev];
       const item = { ...items[idx], [field]: value };
+
+      const custType = selectedCustomerData?.סוג_לקוח;
+      let priceType = 'retail';
+      if (custType === 'עסקי - כמות') priceType = 'business_quantity';
+      else if (custType === 'עסקי - קבוע' || custType === 'עסקי') priceType = 'business_fixed';
+      const isBusinessCust = priceType !== 'retail';
+
       if (field === 'מוצר_id') {
         const prod = products.find(p => p.id === value);
         if (prod) {
           item.שם_מוצר = prod.שם_מוצר;
-          const custType = selectedCustomerData?.סוג_לקוח;
-          let priceType = 'retail';
-          if (custType === 'עסקי - כמות') priceType = 'business_quantity';
-          else if (custType === 'עסקי - קבוע' || custType === 'עסקי') priceType = 'business_fixed';
-          const priceEntry =
-            priceList.find(pl => pl.מוצר_id === String(value) && pl.price_type === priceType) ||
-            (priceType !== 'retail' ? priceList.find(pl => pl.מוצר_id === String(value) && pl.price_type === 'business_fixed') : undefined);
-          item.מחיר_ליחידה = priceEntry ? priceEntry.מחיר : prod.מחיר;
+          const entry = resolvePriceListEntry(priceList, String(value), priceType, item.כמות);
+          if (entry) {
+            item.מחיר_ליחידה = entry.מחיר;
+            item.missingPrice = false;
+          } else if (isBusinessCust) {
+            item.מחיר_ליחידה = 0;
+            item.missingPrice = true;
+          } else {
+            item.מחיר_ליחידה = prod.מחיר;
+            item.missingPrice = false;
+          }
         }
       }
+
+      if (field === 'כמות' && priceType === 'business_quantity' && item.מוצר_id) {
+        const entry = resolvePriceListEntry(priceList, item.מוצר_id, 'business_quantity', Number(value));
+        if (entry) {
+          item.מחיר_ליחידה = entry.מחיר;
+          item.missingPrice = false;
+        } else {
+          item.missingPrice = true;
+        }
+      }
+
       item.סהכ = item.כמות * item.מחיר_ליחידה;
       items[idx] = item;
       return items;
@@ -463,9 +502,10 @@ export default function NewOrderPage() {
                 {orderItems.map((item, idx) => (
                   <div
                     key={idx}
-                    className="grid grid-cols-12 gap-2 items-end p-3 rounded-xl"
+                    className="p-3 rounded-xl"
                     style={{ backgroundColor: '#FAF7F0' }}
                   >
+                  <div className="grid grid-cols-12 gap-2 items-end">
                     <div className="col-span-4">
                       <Select
                         label="מוצר"
@@ -522,6 +562,10 @@ export default function NewOrderPage() {
                         ×
                       </button>
                     </div>
+                  </div>
+                  {item.missingPrice && (
+                    <p className="text-xs text-amber-600 mt-1.5">⚠ אין מחיר במחירון זה</p>
+                  )}
                   </div>
                 ))}
                 <div className="pt-2 border-t" style={{ borderColor: '#EDE0CE' }}>
