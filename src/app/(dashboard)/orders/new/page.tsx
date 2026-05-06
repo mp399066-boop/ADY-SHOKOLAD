@@ -95,6 +95,7 @@ export default function NewOrderPage() {
   const [discountType, setDiscountType] = useState<'ללא' | 'אחוז' | 'סכום'>('ללא');
   const [discountValue, setDiscountValue] = useState(0);
   const [orderSource, setOrderSource] = useState('');
+  const [orderType, setOrderType] = useState<'רגיל' | 'סאטמר'>('רגיל');
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
   const [packageItems, setPackageItems] = useState<PackageItem[]>([]);
 
@@ -333,6 +334,7 @@ export default function NewOrderPage() {
           הוראות_משלוח: deliveryInstructions || null,
           דמי_משלוח: deliveryFee,
           delivery_recipient_type: deliveryType === 'משלוח' ? recipientType : null,
+          סוג_הזמנה: orderType,
           אופן_תשלום: paymentMethod,
           סטטוס_תשלום: paymentStatus,
           סוג_הנחה: discountType,
@@ -418,7 +420,7 @@ export default function NewOrderPage() {
           <Card>
             <SectionHeader number={2} title="פרטי הזמנה" />
             <div className="grid grid-cols-2 gap-4">
-              <div className="col-span-2">
+              <div className="col-span-2 flex items-center gap-6">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
@@ -429,6 +431,24 @@ export default function NewOrderPage() {
                   />
                   <span className="text-sm font-medium text-red-600">הזמנה דחופה</span>
                 </label>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium" style={{ color: '#6B4A2D' }}>סוג הזמנה:</span>
+                  <div className="flex gap-1">
+                    {(['רגיל', 'סאטמר'] as const).map(t => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setOrderType(t)}
+                        className="px-3 py-1 text-xs font-medium rounded-full border transition-colors"
+                        style={orderType === t
+                          ? { backgroundColor: '#8B5E34', color: '#fff', borderColor: '#8B5E34' }
+                          : { backgroundColor: '#fff', color: '#6B4A2D', borderColor: '#DDD0BC' }}
+                      >
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
               <Input
                 label="תאריך אספקה"

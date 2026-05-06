@@ -32,6 +32,7 @@ interface EditForm {
   סטטוס_הזמנה: Order['סטטוס_הזמנה'];
   סוג_הנחה: 'ללא' | 'אחוז' | 'סכום';
   ערך_הנחה: string;
+  סוג_הזמנה: 'רגיל' | 'סאטמר';
 }
 
 interface EditOrderItem {
@@ -156,6 +157,7 @@ export default function OrderDetailPage() {
     סטטוס_הזמנה: 'חדשה',
     סוג_הנחה: 'ללא',
     ערך_הנחה: '0',
+    סוג_הזמנה: 'רגיל',
   });
 
   // Edit state — order items
@@ -256,6 +258,7 @@ export default function OrderDetailPage() {
       סטטוס_הזמנה: order.סטטוס_הזמנה,
       סוג_הנחה: (order.סוג_הנחה as 'ללא' | 'אחוז' | 'סכום') ?? 'ללא',
       ערך_הנחה: order.ערך_הנחה != null ? String(order.ערך_הנחה) : '0',
+      סוג_הזמנה: (order.סוג_הזמנה as 'רגיל' | 'סאטמר') ?? 'רגיל',
     });
 
     setShowEdit(true);
@@ -312,6 +315,7 @@ export default function OrderDetailPage() {
       // 1. Save order header fields
       const payload: Record<string, unknown> = {
         הזמנה_דחופה: editForm.הזמנה_דחופה,
+        סוג_הזמנה: editForm.סוג_הזמנה,
         סוג_אספקה: editForm.סוג_אספקה,
         תאריך_אספקה: editForm.תאריך_אספקה || null,
         שעת_אספקה: editForm.שעת_אספקה || null,
@@ -527,6 +531,11 @@ export default function OrderDetailPage() {
             <h2 className="text-lg font-bold" style={{ color: '#2B1A10' }}>{order.מספר_הזמנה}</h2>
             {order.הזמנה_דחופה && <UrgentBadge />}
             <StatusBadge status={order.סטטוס_הזמנה} type="order" />
+            {(order.סוג_הזמנה as string) === 'סאטמר' && (
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: '#EDE9FE', color: '#6D28D9' }}>
+                סאטמר
+              </span>
+            )}
           </div>
           <Button variant="secondary" size="sm" onClick={openEdit}>עריכת הזמנה</Button>
         </div>
@@ -821,7 +830,27 @@ export default function OrderDetailPage() {
 
             {/* ── פרטי הזמנה ── */}
             <section className="rounded-xl border p-4 space-y-4" style={{ borderColor: '#E7D2A6', backgroundColor: '#FDFAF5' }}>
-              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#8B5E34' }}>פרטי הזמנה</p>
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#8B5E34' }}>פרטי הזמנה</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium" style={{ color: '#6B4A2D' }}>סוג הזמנה:</span>
+                  <div className="flex gap-1">
+                    {(['רגיל', 'סאטמר'] as const).map(t => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setEditForm(f => ({ ...f, סוג_הזמנה: t }))}
+                        className="px-3 py-1 text-xs font-medium rounded-full border transition-colors"
+                        style={editForm.סוג_הזמנה === t
+                          ? { backgroundColor: '#8B5E34', color: '#fff', borderColor: '#8B5E34' }
+                          : { backgroundColor: '#fff', color: '#6B4A2D', borderColor: '#DDD0BC' }}
+                      >
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <FieldSelect

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
+import { sendSatmarSummaryEmail } from '@/lib/satmar-email';
 // deploy trigger
 
 export async function GET(_: NextRequest, { params }: { params: { id: string } }) {
@@ -102,20 +103,22 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   console.log('[invoice] PATCH called — order:', params.id, '| body keys:', Object.keys(body).join(','), '| סטטוס_תשלום:', body.סטטוס_תשלום);
   console.log('[invoice] env — SUPABASE_URL:', process.env.SUPABASE_URL ? 'set' : 'MISSING', '| WEBHOOK_SECRET:', process.env.WEBHOOK_SECRET ? `set(${process.env.WEBHOOK_SECRET.length}chars)` : 'MISSING');
 
-  // Fetch current state BEFORE update — needed for inventory check + invoice trigger
+  // Fetch current state BEFORE update — needed for inventory check + invoice/satmar trigger
   const needPrev = body.סטטוס_הזמנה === 'בהכנה' || body.סטטוס_תשלום === 'שולם' || body.סטטוס_הזמנה === 'הושלמה בהצלחה';
   let prevOrderStatus: string | null = null;
   let prevPaymentStatus: string | null = null;
+  let orderType = 'רגיל';
 
   if (needPrev) {
     const { data: cur } = await supabase
       .from('הזמנות')
-      .select('סטטוס_הזמנה, סטטוס_תשלום')
+      .select('סטטוס_הזמנה, סטטוס_תשלום, סוג_הזמנה')
       .eq('id', params.id)
       .single();
     prevOrderStatus = cur?.סטטוס_הזמנה ?? null;
     prevPaymentStatus = cur?.סטטוס_תשלום ?? null;
-    console.log('[invoice] prev — סטטוס_הזמנה:', prevOrderStatus, '| סטטוס_תשלום:', prevPaymentStatus);
+    orderType = (cur as Record<string, unknown> | null)?.['סוג_הזמנה'] as string ?? 'רגיל';
+    console.log('[invoice] prev — סטטוס_הזמנה:', prevOrderStatus, '| סטטוס_תשלום:', prevPaymentStatus, '| סוג_הזמנה:', orderType);
   }
 
   const updateData: Record<string, unknown> = { ...body, תאריך_עדכון: new Date().toISOString() };
@@ -159,14 +162,22 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     }
   }
 
-  // חשבונית מס: first time order status → הושלמה בהצלחה
+  // חשבונית מס / סאטמר: first time order status → הושלמה בהצלחה
   if (body.סטטוס_הזמנה === 'הושלמה בהצלחה' && prevOrderStatus !== 'הושלמה בהצלחה') {
-    await callMorning(params.id, 'tax_invoice');
+    if (orderType === 'סאטמר') {
+      await sendSatmarSummaryEmail(params.id);
+    } else {
+      await callMorning(params.id, 'tax_invoice');
+    }
   }
 
-  // קבלה: first time payment status → שולם
+  // קבלה / סאטמר: first time payment status → שולם
   if (body.סטטוס_תשלום === 'שולם' && prevPaymentStatus !== 'שולם') {
-    await callMorning(params.id, 'receipt');
+    if (orderType === 'סאטמר') {
+      await sendSatmarSummaryEmail(params.id);
+    } else {
+      await callMorning(params.id, 'receipt');
+    }
   }
 
   return NextResponse.json({ data });

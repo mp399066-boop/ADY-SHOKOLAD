@@ -148,6 +148,8 @@ export interface Order {
   הוראות_משלוח: string | null;
   דמי_משלוח: number | null;
   delivery_recipient_type: 'customer' | 'other' | null;
+  סוג_הזמנה: 'רגיל' | 'סאטמר';
+  satmar_summary_sent_at: string | null;
   אופן_תשלום: string | null;
   סטטוס_תשלום: 'ממתין' | 'שולם' | 'חלקי' | 'בוטל';
   סוג_הנחה: 'ללא' | 'אחוז' | 'סכום' | null;

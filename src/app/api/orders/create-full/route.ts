@@ -115,6 +115,7 @@ export async function POST(req: NextRequest) {
       הוראות_משלוח: הזמנה?.הוראות_משלוח || null,
       דמי_משלוח: shipping,
       delivery_recipient_type: הזמנה?.delivery_recipient_type || null,
+      סוג_הזמנה: הזמנה?.סוג_הזמנה || 'רגיל',
       אופן_תשלום: הזמנה?.אופן_תשלום || null,
       סטטוס_תשלום: הזמנה?.סטטוס_תשלום || 'ממתין',
       סוג_הנחה: discountType,
