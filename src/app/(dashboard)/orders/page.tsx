@@ -19,6 +19,7 @@ import type { Order } from '@/types/database';
 
 const FILTERS = [
   { key: '',            label: 'הכל'             },
+  { key: 'drafts',      label: 'טיוטות'          },
   { key: 'today',       label: 'היום'            },
   { key: 'tomorrow',    label: 'מחר'             },
   { key: 'urgent',      label: 'דחופות'          },

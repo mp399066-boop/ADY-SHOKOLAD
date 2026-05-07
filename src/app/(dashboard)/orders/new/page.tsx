@@ -148,6 +148,11 @@ export default function NewOrderPage() {
   const draftOrderIdRef = useRef<string | null>(draftIdParam);
   const [savingDraft, setSavingDraft] = useState(false);
 
+  // Auto-save
+  const autoSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isAutoSavingRef = useRef(false);
+  const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+
   // New product modal (Fix 3)
   const [newProductModal, setNewProductModal] = useState<{ rowIdx: number } | null>(null);
   const [newProductName, setNewProductName] = useState('');
@@ -281,6 +286,62 @@ export default function NewOrderPage() {
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effectivePriceType]);
+
+  // Whether the form has enough content to be worth auto-saving
+  const hasContent = !!(
+    selectedCustomer ||
+    orderItems.some(i => i.מוצר_id) ||
+    deliveryDate ||
+    notes.trim() ||
+    recipientName.trim()
+  );
+
+  // Auto-save: debounced 3s after any form change; creates/updates a draft silently
+  useEffect(() => {
+    if (!hasContent) return;
+    if (savedOrderId) return; // Already finalized
+
+    if (autoSaveTimeoutRef.current) clearTimeout(autoSaveTimeoutRef.current);
+
+    autoSaveTimeoutRef.current = setTimeout(async () => {
+      if (isAutoSavingRef.current) return;
+      isAutoSavingRef.current = true;
+      setAutoSaveStatus('saving');
+      try {
+        const payload = buildPayload('טיוטה');
+        if (draftOrderIdRef.current) {
+          await fetch(`/api/orders/${draftOrderIdRef.current}/save-draft`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+        } else {
+          const res = await fetch('/api/orders/create-full', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+          const json = await res.json();
+          if (res.ok && json.data?.id) {
+            draftOrderIdRef.current = json.data.id;
+            window.history.replaceState(null, '', `/orders/new?draft=${json.data.id}`);
+          }
+        }
+        setAutoSaveStatus('saved');
+        setTimeout(() => setAutoSaveStatus('idle'), 2500);
+      } catch {
+        setAutoSaveStatus('idle');
+      } finally {
+        isAutoSavingRef.current = false;
+      }
+    }, 3000);
+
+    return () => { if (autoSaveTimeoutRef.current) clearTimeout(autoSaveTimeoutRef.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCustomer, orderItems, packageItems, deliveryDate, deliveryTime, deliveryType,
+      recipientName, recipientPhone, recipientAddress, recipientCity, deliveryInstructions,
+      deliveryFee, paymentMethod, paymentStatus, greetingText, notes, discountType,
+      discountValue, orderSource, orderType, isUrgent, savedOrderId]);
 
   const handleCustomerChange = (customerId: string) => {
     setSelectedCustomer(customerId);
@@ -564,15 +625,30 @@ export default function NewOrderPage() {
     setSavingDraft(true);
     try {
       const payload = buildPayload('טיוטה');
-      const res = await fetch('/api/orders/create-full', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'שגיאה בשמירת טיוטה');
+      let orderId: string;
+      if (draftOrderIdRef.current) {
+        // Draft already created by auto-save — update it in place
+        const res = await fetch(`/api/orders/${draftOrderIdRef.current}/save-draft`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || 'שגיאה בשמירת טיוטה');
+        orderId = draftOrderIdRef.current;
+      } else {
+        const res = await fetch('/api/orders/create-full', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || 'שגיאה בשמירת טיוטה');
+        orderId = json.data.id;
+        draftOrderIdRef.current = orderId;
+      }
       toast.success('הטיוטה נשמרה');
-      router.push(`/orders/${json.data.id}`);
+      router.push(`/orders/${orderId}`);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'שגיאה בשמירת טיוטה');
     } finally {
@@ -1302,6 +1378,31 @@ export default function NewOrderPage() {
                 ביטול
               </Button>
             </div>
+
+            {/* Auto-save status indicator */}
+            {autoSaveStatus !== 'idle' && (
+              <div
+                className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
+                style={{ backgroundColor: '#F5F0FA', color: '#5B21B6', border: '1px solid #DDD6FE' }}
+              >
+                {autoSaveStatus === 'saving' ? (
+                  <>
+                    <svg className="animate-spin w-3 h-3 flex-shrink-0" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                    </svg>
+                    <span>שמירה אוטומטית...</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-3 h-3 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span>טיוטה נשמרה</span>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>

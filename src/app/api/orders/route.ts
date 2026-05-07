@@ -29,9 +29,11 @@ export async function GET(req: NextRequest) {
     if (filter === 'archive') {
       // Archive: only completed / archived orders
       query = query.eq('סטטוס_הזמנה', 'הושלמה בהצלחה');
+    } else if (filter === 'drafts') {
+      query = query.eq('סטטוס_הזמנה', 'טיוטה');
     } else {
-      // All other views: exclude completed/archived orders
-      query = query.neq('סטטוס_הזמנה', 'הושלמה בהצלחה');
+      // All other views: exclude completed/archived orders AND drafts
+      query = query.neq('סטטוס_הזמנה', 'הושלמה בהצלחה').neq('סטטוס_הזמנה', 'טיוטה');
       if (filter === 'today') query = query.eq('תאריך_אספקה', today);
       else if (filter === 'tomorrow') query = query.eq('תאריך_אספקה', tomorrow);
       else if (filter === 'urgent') query = query.eq('הזמנה_דחופה', true).neq('סטטוס_הזמנה', 'בוטלה');
