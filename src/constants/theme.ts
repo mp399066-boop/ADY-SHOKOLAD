@@ -50,6 +50,7 @@ export const STATUS_COLORS: Record<string, StatusColor> = {
   נשלחה:              { bg: '#EEF0F4', text: '#3E4E6A', border: '#C8D2E2' },
   'הושלמה בהצלחה':    { bg: '#E4EEE8', text: '#2A5C38', border: '#B4D2BE' },
   בוטלה:              { bg: '#F0EAE8', text: '#8A3228', border: '#D8BCB6' },
+  טיוטה:              { bg: '#F5F0FA', text: '#5B21B6', border: '#DDD6FE' },
 };
 
 export const PAYMENT_STATUS_COLORS: Record<string, StatusColor> = {

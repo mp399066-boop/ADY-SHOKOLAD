@@ -538,8 +538,32 @@ export default function OrderDetailPage() {
               </span>
             )}
           </div>
-          <Button variant="secondary" size="sm" onClick={openEdit}>עריכת הזמנה</Button>
+          {order.סטטוס_הזמנה === 'טיוטה' ? (
+            <Link
+              href={`/orders/new?draft=${order.id}`}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors"
+              style={{ backgroundColor: '#F5F0FA', color: '#5B21B6', border: '1px solid #DDD6FE' }}
+            >
+              ✏️ ערוך טיוטה
+            </Link>
+          ) : (
+            <Button variant="secondary" size="sm" onClick={openEdit}>עריכת הזמנה</Button>
+          )}
         </div>
+
+        {/* Draft notice */}
+        {order.סטטוס_הזמנה === 'טיוטה' && (
+          <div
+            className="flex items-start gap-3 px-4 py-3 rounded-xl text-sm"
+            style={{ backgroundColor: '#F5F0FA', border: '1px solid #DDD6FE', color: '#5B21B6' }}
+          >
+            <span className="text-base">📝</span>
+            <div>
+              <span className="font-semibold">טיוטה — ההזמנה לא אושרה עדיין.</span>
+              <span className="mr-1">לחץ &quot;ערוך טיוטה&quot; כדי לסיים ולאשר.</span>
+            </div>
+          </div>
+        )}
 
         {/* Customer */}
         <Card>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -142,6 +142,21 @@ export default function NewOrderPage() {
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
   const [packageItems, setPackageItems] = useState<PackageItem[]>([]);
 
+  // Draft support
+  const searchParams = useSearchParams();
+  const draftIdParam = searchParams.get('draft');
+  const draftOrderIdRef = useRef<string | null>(draftIdParam);
+  const [savingDraft, setSavingDraft] = useState(false);
+
+  // New product modal (Fix 3)
+  const [newProductModal, setNewProductModal] = useState<{ rowIdx: number } | null>(null);
+  const [newProductName, setNewProductName] = useState('');
+  const [newProductSku, setNewProductSku] = useState('');
+  const [newProductType, setNewProductType] = useState('מוצר רגיל');
+  const [newProductCategory, setNewProductCategory] = useState('אחר');
+  const [newProductActive, setNewProductActive] = useState(true);
+  const [newProductSaving, setNewProductSaving] = useState(false);
+
   // Post-save payment link flow
   const [savedOrderId, setSavedOrderId] = useState<string | null>(null);
   const [savedOrderNumber, setSavedOrderNumber] = useState('');
@@ -152,13 +167,18 @@ export default function NewOrderPage() {
   const [paymentLinkCreated, setPaymentLinkCreated] = useState(false);
 
   useEffect(() => {
+    const draftFetch = draftIdParam
+      ? fetch(`/api/orders/${draftIdParam}`).then(r => r.json())
+      : Promise.resolve(null);
+
     Promise.all([
       fetch('/api/customers?limit=200').then(r => r.json()),
       fetch('/api/products?active=true').then(r => r.json()),
       fetch('/api/petit-four-types').then(r => r.json()),
       fetch('/api/packages').then(r => r.json()),
       fetch('/api/prices').then(r => r.json()),
-    ]).then(([c, p, pf, pkg, prices]) => {
+      draftFetch,
+    ]).then(([c, p, pf, pkg, prices, draftResp]) => {
       const allProducts = p.data || [];
       console.log('[new-order] products loaded:', allProducts.length,
         '| business-only count:', allProducts.filter((x: { לקוחות_עסקיים_בלבד?: boolean }) => x.לקוחות_עסקיים_בלבד).length,
@@ -168,7 +188,68 @@ export default function NewOrderPage() {
       setPetitFourTypes(pf.data || []);
       setPackages(pkg.data || []);
       setPriceList(prices.data || []);
+
+      // Pre-fill form from draft order
+      if (draftResp?.data && draftResp.data.סטטוס_הזמנה === 'טיוטה') {
+        const o = draftResp.data;
+        draftOrderIdRef.current = o.id;
+        setSelectedCustomer(o.לקוח_id || '');
+        setIsUrgent(o.הזמנה_דחופה || false);
+        setDeliveryDate(o.תאריך_אספקה || '');
+        setDeliveryTime(o.שעת_אספקה || '');
+        setDeliveryType(o.סוג_אספקה === 'איסוף עצמי' ? 'איסוף עצמי' : 'משלוח');
+        if (o.delivery_recipient_type) setRecipientType(o.delivery_recipient_type);
+        setRecipientName(o.שם_מקבל || '');
+        setRecipientPhone(o.טלפון_מקבל || '');
+        setRecipientAddress(o.כתובת_מקבל_ההזמנה || '');
+        setRecipientCity(o.עיר || '');
+        setDeliveryInstructions(o.הוראות_משלוח || '');
+        setDeliveryFee(o.דמי_משלוח || 0);
+        setPaymentMethod(o.אופן_תשלום || 'מזומן');
+        setPaymentStatus(o.סטטוס_תשלום || 'ממתין');
+        setGreetingText(o.ברכה_טקסט || '');
+        setNotes(o.הערות_להזמנה || '');
+        setDiscountType(o.סוג_הנחה || 'ללא');
+        setDiscountValue(o.ערך_הנחה || 0);
+        setOrderSource(o.מקור_ההזמנה || '');
+        setOrderType(o.סוג_הזמנה === 'סאטמר' ? 'סאטמר' : 'רגיל');
+
+        const productItems = (o.מוצרים_בהזמנה || [])
+          .filter((item: Record<string, unknown>) => item.סוג_שורה === 'מוצר')
+          .map((item: Record<string, unknown>) => ({
+            מוצר_id: (item.מוצר_id as string) || '',
+            שם_מוצר: (item.מוצרים_למכירה as Record<string, string>)?.שם_מוצר || '',
+            כמות: (item.כמות as number) || 1,
+            מחיר_ליחידה: (item.מחיר_ליחידה as number) || 0,
+            סהכ: (item.סהכ as number) || 0,
+            הערות_לשורה: (item.הערות_לשורה as string) || '',
+            missingPrice: false,
+          }));
+        setOrderItems(productItems);
+
+        const pkgItems = (o.מוצרים_בהזמנה || [])
+          .filter((item: Record<string, unknown>) => item.סוג_שורה === 'מארז')
+          .map((item: Record<string, unknown>) => {
+            const pfSelections = (item.בחירת_פטיפורים_בהזמנה as Record<string, unknown>[]) || [];
+            return {
+              מוצר_id: null as string | null,
+              שם_מארז: `מארז ${item.גודל_מארז || ''} יח׳`,
+              גודל_מארז: (item.גודל_מארז as number) || 0,
+              כמות: (item.כמות as number) || 1,
+              מחיר_ליחידה: (item.מחיר_ליחידה as number) || 0,
+              סהכ: (item.סהכ as number) || 0,
+              הערות_לשורה: (item.הערות_לשורה as string) || '',
+              פטיפורים: pfSelections.map(s => ({
+                פטיפור_id: s.פטיפור_id as string,
+                שם: (s.סוגי_פטיפורים as Record<string, string>)?.שם_פטיפור || '',
+                כמות: (s.כמות as number) || 1,
+              })),
+            };
+          });
+        setPackageItems(pkgItems);
+      }
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const selectedCustomerData = customers.find(c => c.id === selectedCustomer);
@@ -368,6 +449,124 @@ export default function NewOrderPage() {
     window.open(`https://wa.me/${phone}?text=${text}`, '_blank');
   };
 
+  const inferCategoryFromName = (name: string): string => {
+    const lower = name.toLowerCase();
+    if (lower.includes('עוגה') || lower.includes('עוגת')) return 'עוגה';
+    if (lower.includes('מארז')) return 'מארזים';
+    return 'אחר';
+  };
+
+  const openNewProductModal = (rowIdx: number) => {
+    setNewProductModal({ rowIdx });
+    setNewProductName('');
+    setNewProductSku('');
+    setNewProductType('מוצר רגיל');
+    setNewProductCategory('אחר');
+    setNewProductActive(true);
+  };
+
+  const handleCreateProduct = async () => {
+    const name = newProductName.trim();
+    if (!name) { toast.error('שם מוצר הוא שדה חובה'); return; }
+    // Check for duplicate in existing products
+    if (products.some(p => p.שם_מוצר.trim() === name)) {
+      toast.error(`מוצר "${name}" כבר קיים`);
+      return;
+    }
+    setNewProductSaving(true);
+    try {
+      const res = await fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          שם_מוצר: name,
+          sku: newProductSku.trim() || null,
+          סוג_מוצר: newProductType,
+          קטגוריית_מוצר: newProductCategory,
+          פעיל: newProductActive,
+          מחיר: 0,
+        }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error || 'שגיאה');
+      const { data: newProd } = await res.json();
+      setProducts(prev => [...prev, newProd]);
+      // Auto-select in the row
+      const rowIdx = newProductModal!.rowIdx;
+      updateProductItem(rowIdx, 'מוצר_id', newProd.id);
+      toast.success(`מוצר "${name}" נוצר`);
+      setNewProductModal(null);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'שגיאה ביצירת מוצר');
+    } finally {
+      setNewProductSaving(false);
+    }
+  };
+
+  const buildPayload = (status: 'חדשה' | 'טיוטה') => ({
+    לקוח: { id: selectedCustomer },
+    הזמנה: {
+      סטטוס_הזמנה: status,
+      הזמנה_דחופה: isUrgent,
+      תאריך_אספקה: deliveryDate || null,
+      שעת_אספקה: deliveryTime || null,
+      סוג_אספקה: deliveryType,
+      שם_מקבל: recipientName || null,
+      טלפון_מקבל: recipientPhone || null,
+      כתובת_מקבל_ההזמנה: recipientAddress || null,
+      עיר: recipientCity || null,
+      הוראות_משלוח: deliveryInstructions || null,
+      דמי_משלוח: deliveryFee,
+      delivery_recipient_type: deliveryType === 'משלוח' ? recipientType : null,
+      סוג_הזמנה: orderType,
+      אופן_תשלום: paymentMethod,
+      סטטוס_תשלום: paymentStatus,
+      סוג_הנחה: discountType,
+      ערך_הנחה: discountValue,
+      ברכה_טקסט: greetingText || null,
+      הערות_להזמנה: notes || null,
+      מקור_ההזמנה: orderSource || null,
+    },
+    מוצרים: orderItems.filter(i => i.מוצר_id).map(i => ({
+      מוצר_id: i.מוצר_id,
+      כמות: i.כמות,
+      מחיר_ליחידה: i.מחיר_ליחידה,
+      הערות_לשורה: i.הערות_לשורה || null,
+    })),
+    מארזי_פטיפורים: packageItems.map(p => ({
+      מוצר_id: p.מוצר_id,
+      גודל_מארז: p.גודל_מארז,
+      כמות: p.כמות,
+      מחיר_ליחידה: p.מחיר_ליחידה,
+      הערות_לשורה: p.הערות_לשורה || null,
+      פטיפורים: p.פטיפורים.map(pf => ({ פטיפור_id: pf.פטיפור_id, כמות: pf.כמות })),
+    })),
+    משלוח: deliveryType === 'משלוח'
+      ? { כתובת: recipientAddress, עיר: recipientCity, הוראות_משלוח: deliveryInstructions }
+      : null,
+  });
+
+  const handleSaveDraft = async () => {
+    if (savingDraft || loading) return;
+    if (!selectedCustomer) { toast.error('יש לבחור לקוח'); return; }
+    setSavingDraft(true);
+    try {
+      const payload = buildPayload('טיוטה');
+      const res = await fetch('/api/orders/create-full', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'שגיאה בשמירת טיוטה');
+      toast.success('הטיוטה נשמרה');
+      router.push(`/orders/${json.data.id}`);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'שגיאה בשמירת טיוטה');
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     // Synchronous guard — blocks any second call that arrives before setLoading re-renders
@@ -401,57 +600,28 @@ export default function NewOrderPage() {
       savedOrderId,
       loading,
       submittingRef: submittingRef.current,
+      editingDraft: draftOrderIdRef.current,
     });
     try {
-      const payload = {
-        clientRequestId: reqId,
-        לקוח: { id: selectedCustomer },
-        הזמנה: {
-          הזמנה_דחופה: isUrgent,
-          תאריך_אספקה: deliveryDate || null,
-          שעת_אספקה: deliveryTime || null,
-          סוג_אספקה: deliveryType,
-          שם_מקבל: recipientName || null,
-          טלפון_מקבל: recipientPhone || null,
-          כתובת_מקבל_ההזמנה: recipientAddress || null,
-          עיר: recipientCity || null,
-          הוראות_משלוח: deliveryInstructions || null,
-          דמי_משלוח: deliveryFee,
-          delivery_recipient_type: deliveryType === 'משלוח' ? recipientType : null,
-          סוג_הזמנה: orderType,
-          אופן_תשלום: paymentMethod,
-          סטטוס_תשלום: paymentStatus,
-          סוג_הנחה: discountType,
-          ערך_הנחה: discountValue,
-          ברכה_טקסט: greetingText || null,
-          הערות_להזמנה: notes || null,
-          מקור_ההזמנה: orderSource || null,
-        },
-        מוצרים: orderItems.filter(i => i.מוצר_id).map(i => ({
-          מוצר_id: i.מוצר_id,
-          כמות: i.כמות,
-          מחיר_ליחידה: i.מחיר_ליחידה,
-          הערות_לשורה: i.הערות_לשורה || null,
-        })),
-        מארזי_פטיפורים: packageItems.map(p => ({
-          מוצר_id: p.מוצר_id,
-          גודל_מארז: p.גודל_מארז,
-          כמות: p.כמות,
-          מחיר_ליחידה: p.מחיר_ליחידה,
-          הערות_לשורה: p.הערות_לשורה || null,
-          פטיפורים: p.פטיפורים.map(pf => ({ פטיפור_id: pf.פטיפור_id, כמות: pf.כמות })),
-        })),
-        משלוח: deliveryType === 'משלוח'
-          ? { כתובת: recipientAddress, עיר: recipientCity, הוראות_משלוח: deliveryInstructions }
-          : null,
-      };
+      const payload = { clientRequestId: reqId, ...buildPayload('חדשה') };
 
-      console.log('[new-order] calling fetch', { reqId, time: new Date().toISOString() });
-      const res = await fetch('/api/orders/create-full', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      let res: Response;
+      if (draftOrderIdRef.current) {
+        // Finalizing an existing draft — call finalize-draft instead of create-full
+        console.log('[new-order] finalizing draft', draftOrderIdRef.current);
+        res = await fetch(`/api/orders/${draftOrderIdRef.current}/finalize-draft`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(buildPayload('חדשה')),
+        });
+      } else {
+        console.log('[new-order] calling fetch', { reqId, time: new Date().toISOString() });
+        res = await fetch('/api/orders/create-full', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      }
       console.log('[new-order] fetch returned', { reqId, status: res.status, time: new Date().toISOString() });
 
       const json = await res.json();
@@ -652,14 +822,11 @@ export default function NewOrderPage() {
                   </div>
                 )}
               </div>
-              <Button type="button" variant="outline" size="sm" onClick={addProductItem}>
-                + הוסף מוצר
-              </Button>
             </CardHeader>
             {orderItems.length === 0 ? (
-              <p className="text-xs text-center py-4" style={{ color: '#9B7A5A' }}>
-                לחץ &quot;+ הוסף מוצר&quot; להוספת פריט
-              </p>
+              <div className="text-center py-4">
+                <Button type="button" variant="outline" size="sm" onClick={addProductItem}>+ הוסף מוצר</Button>
+              </div>
             ) : (
               <div className="space-y-2">
                 {orderItems.map((item, idx) => {
@@ -672,10 +839,12 @@ export default function NewOrderPage() {
                   <div
                     key={idx}
                     className="p-3 rounded-xl"
-                    style={{ backgroundColor: '#FAF7F0', border: (item.missingPrice || belowMin) ? '1px solid #FBBF24' : undefined }}
+                    style={{ backgroundColor: '#FAF7F0', border: item.missingPrice ? '1px solid #FBBF24' : belowMin ? '1px solid #EF4444' : undefined }}
                   >
                   <div className="grid grid-cols-12 gap-2 items-end">
                     <div className="col-span-4">
+                      <div className="flex items-end gap-1">
+                      <div className="flex-1">
                       <Select
                         label="מוצר"
                         value={item.מוצר_id}
@@ -705,6 +874,17 @@ export default function NewOrderPage() {
                           ));
                         })()}
                       </Select>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => openNewProductModal(idx)}
+                        className="w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 mb-0.5 transition-colors hover:bg-amber-50"
+                        style={{ border: '1px solid #DDD0BC', color: '#8B5E34', backgroundColor: '#FFF' }}
+                        title="הוסף מוצר חדש"
+                      >
+                        +
+                      </button>
+                      </div>
                     </div>
                     <div className="col-span-2">
                       <Input
@@ -749,7 +929,12 @@ export default function NewOrderPage() {
                     <p className="text-xs text-amber-600 mt-1.5">⚠ אין מחיר למוצר זה במחירון הפעיל</p>
                   )}
                   {belowMin && (
-                    <p className="text-xs text-amber-600 mt-0.5">⚠ מינימום להזמנת דגם במחירון אירוע/כמות הוא 20 יחידות</p>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: '#FEE2E2', color: '#991B1B', border: '1px solid #FECACA' }}>
+                        מינ׳ 20
+                      </span>
+                      <span className="text-xs" style={{ color: '#991B1B' }}>מינימום 20 יחידות לדגם במחירון אירוע/כמות</span>
+                    </div>
                   )}
                   </div>
                   );
@@ -1069,7 +1254,17 @@ export default function NewOrderPage() {
             {/* Action buttons */}
             <div className="space-y-2">
               <Button type="submit" loading={loading} className="w-full" size="lg">
-                צור הזמנה
+                {draftOrderIdRef.current ? 'אשר הזמנה' : 'צור הזמנה'}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                loading={savingDraft}
+                onClick={handleSaveDraft}
+                style={{ borderColor: '#DDD6FE', color: '#5B21B6' }}
+              >
+                שמור כטיוטה
               </Button>
               <Button
                 type="button"
@@ -1083,6 +1278,109 @@ export default function NewOrderPage() {
           </div>
         </div>
       </div>
+
+      {/* New product modal */}
+      {newProductModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ backgroundColor: 'rgba(43,26,16,0.45)', backdropFilter: 'blur(3px)' }}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden"
+            style={{ direction: 'rtl', border: '1px solid #EDE0CE' }}
+          >
+            <div className="px-6 pt-5 pb-2 border-b" style={{ borderColor: '#EDE0CE' }}>
+              <h3 className="text-base font-semibold" style={{ color: '#2B1A10' }}>הוסף מוצר חדש</h3>
+            </div>
+            <div className="px-6 py-4 space-y-3">
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>שם מוצר *</label>
+                <input
+                  type="text"
+                  value={newProductName}
+                  onChange={e => {
+                    setNewProductName(e.target.value);
+                    setNewProductCategory(inferCategoryFromName(e.target.value));
+                  }}
+                  className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-1"
+                  style={{ borderColor: '#DDD0BC', color: '#2B1A10' }}
+                  autoFocus
+                  placeholder="שם המוצר"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>SKU (אופציונלי)</label>
+                <input
+                  type="text"
+                  value={newProductSku}
+                  onChange={e => setNewProductSku(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-1"
+                  style={{ borderColor: '#DDD0BC', color: '#2B1A10' }}
+                  placeholder="קוד מוצר"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>סוג מוצר</label>
+                  <select
+                    value={newProductType}
+                    onChange={e => setNewProductType(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none"
+                    style={{ borderColor: '#DDD0BC', color: '#2B1A10' }}
+                  >
+                    <option value="מוצר רגיל">מוצר רגיל</option>
+                    <option value="מארז פטיפורים">מארז פטיפורים</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>קטגוריה</label>
+                  <select
+                    value={newProductCategory}
+                    onChange={e => setNewProductCategory(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none"
+                    style={{ borderColor: '#DDD0BC', color: '#2B1A10' }}
+                  >
+                    <option value="אחר">אחר</option>
+                    <option value="עוגה">עוגה</option>
+                    <option value="מארזים">מארזים</option>
+                    <option value="עוגיות">עוגיות</option>
+                    <option value="לחמים">לחמים</option>
+                  </select>
+                </div>
+              </div>
+              <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: '#6B4A2D' }}>
+                <input
+                  type="checkbox"
+                  checked={newProductActive}
+                  onChange={e => setNewProductActive(e.target.checked)}
+                  className="rounded"
+                  style={{ accentColor: '#8B5E34' }}
+                />
+                פעיל
+              </label>
+            </div>
+            <div className="px-6 pb-5 flex gap-2">
+              <button
+                type="button"
+                onClick={handleCreateProduct}
+                disabled={newProductSaving}
+                className="flex-1 py-2.5 text-sm font-semibold rounded-xl transition-all"
+                style={{ backgroundColor: '#8B5E34', color: '#FFFFFF', opacity: newProductSaving ? 0.7 : 1 }}
+              >
+                {newProductSaving ? 'יוצר...' : 'צור מוצר'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setNewProductModal(null)}
+                className="flex-1 py-2.5 text-sm font-medium rounded-xl border"
+                style={{ borderColor: '#DDD0BC', color: '#6B4A2D' }}
+              >
+                ביטול
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Post-save: payment link modal */}
       {showPostSaveModal && (
@@ -1209,7 +1507,8 @@ export default function NewOrderPage() {
         </div>
         <div className="flex gap-2">
           <Button type="button" variant="outline" onClick={() => router.back()}>ביטול</Button>
-          <Button type="submit" loading={loading}>צור הזמנה</Button>
+          <Button type="button" variant="outline" loading={savingDraft} onClick={handleSaveDraft} style={{ borderColor: '#DDD6FE', color: '#5B21B6' }}>טיוטה</Button>
+          <Button type="submit" loading={loading}>{draftOrderIdRef.current ? 'אשר' : 'צור הזמנה'}</Button>
         </div>
       </div>
     </form>

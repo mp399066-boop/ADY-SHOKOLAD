@@ -224,8 +224,10 @@ export async function POST(req: NextRequest) {
 
   console.log('[create-full] STEP 5: order lines created, creating delivery/payment records');
 
-  // 7. Create delivery record
-  if (משלוח) {
+  const isDraft = הזמנה?.סטטוס_הזמנה === 'טיוטה';
+
+  // 7. Create delivery record (skip for drafts)
+  if (!isDraft && משלוח) {
     await supabase.from('משלוחים').insert({
       הזמנה_id: order!.id,
       סטטוס_משלוח: 'נאסף',
@@ -237,8 +239,8 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // 8. Create payment record
-  if (תשלום) {
+  // 8. Create payment record (skip for drafts)
+  if (!isDraft && תשלום) {
     await supabase.from('תשלומים').insert({
       הזמנה_id: order!.id,
       סכום: תשלום.סכום || total,
@@ -259,7 +261,16 @@ export async function POST(req: NextRequest) {
     .select('*, מוצרים_למכירה(*), בחירת_פטיפורים_בהזמנה(*, סוגי_פטיפורים(*))')
     .eq('הזמנה_id', order!.id);
 
-  // Send order summary email — non-blocking, never fails the order
+  // Send order summary email — non-blocking, never fails the order (skip for drafts)
+  if (isDraft) {
+    console.log('[create-full] draft order — skipping email and admin alert');
+    const responseBody = { data: { ...fullOrder, מוצרים_בהזמנה: fullItems || [] } };
+    if (clientRequestId) {
+      idempotencyCache.set(clientRequestId, { orderId: order!.id, responseBody, expiresAt: Date.now() + IDEMPOTENCY_TTL_MS });
+    }
+    return NextResponse.json(responseBody, { status: 201 });
+  }
+
   const emailCustomer = (fullOrder as Record<string, unknown>)?.['לקוחות'] as Record<string, string> | null;
   const emailTo = emailCustomer?.['אימייל'];
   const emailName = emailCustomer ? `${emailCustomer['שם_פרטי'] || ''} ${emailCustomer['שם_משפחה'] || ''}`.trim() : '';
