@@ -319,9 +319,6 @@ export default function ProductsPage() {
               <IconExport className="w-3.5 h-3.5" />
               ייצוא לאקסל
             </button>
-            <div className="mr-auto">
-              <Button size="sm" onClick={openAdd}>+ הוסף</Button>
-            </div>
           </div>
 
           {loading ? (
@@ -633,6 +630,18 @@ export default function ProductsPage() {
           </div>
         </div>
       </Modal>
+
+      {/* Floating action button */}
+      <button
+        onClick={openAdd}
+        className="fixed bottom-6 left-6 z-30 flex items-center gap-2 px-5 py-3 rounded-2xl shadow-xl font-semibold text-sm transition-all hover:opacity-90 active:scale-95"
+        style={{ backgroundColor: '#8B5E34', color: '#FFFFFF' }}
+      >
+        <span className="text-xl leading-none font-light">+</span>
+        <span>
+          {tab === 'products' ? 'מוצר חדש' : tab === 'packages' ? 'מארז חדש' : 'פטיפור חדש'}
+        </span>
+      </button>
 
       {/* Add / Edit Modal */}
       <Modal

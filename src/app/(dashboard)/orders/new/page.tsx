@@ -490,9 +490,22 @@ export default function NewOrderPage() {
       if (!res.ok) throw new Error((await res.json()).error || 'שגיאה');
       const { data: newProd } = await res.json();
       setProducts(prev => [...prev, newProd]);
-      // Auto-select in the row
       const rowIdx = newProductModal!.rowIdx;
-      updateProductItem(rowIdx, 'מוצר_id', newProd.id);
+      if (rowIdx === -1) {
+        // Called from header — add a new row pre-filled with the new product
+        setOrderItems(prev => [...prev, {
+          מוצר_id: newProd.id,
+          שם_מוצר: newProd.שם_מוצר,
+          כמות: 1,
+          מחיר_ליחידה: newProd.מחיר || 0,
+          סהכ: newProd.מחיר || 0,
+          הערות_לשורה: '',
+          missingPrice: false,
+        }]);
+      } else {
+        // Called from row — auto-select in the existing row
+        updateProductItem(rowIdx, 'מוצר_id', newProd.id);
+      }
       toast.success(`מוצר "${name}" נוצר`);
       setNewProductModal(null);
     } catch (err: unknown) {
@@ -584,9 +597,10 @@ export default function NewOrderPage() {
 
     // Block on < 20 units per item in quantity tiers
     if (effectivePriceType === 'retail_quantity' || effectivePriceType === 'business_quantity') {
-      const underMin = orderItems.find(item => item.מוצר_id && item.כמות < 20);
-      if (underMin) {
-        toast.error(`מינימום להזמנת דגם במחירון אירוע/כמות הוא 20 יחידות (${underMin.שם_מוצר || ''})`);
+      const underMinItems = orderItems.filter(item => item.מוצר_id && item.כמות < 20);
+      if (underMinItems.length > 0) {
+        const names = underMinItems.map(i => i.שם_מוצר || 'ללא שם').join(', ');
+        toast.error(`מינימום 20 יחידות לדגם במחירון כמות — ${names}`);
         return;
       }
     }
@@ -806,7 +820,7 @@ export default function NewOrderPage() {
           {/* 4. Products */}
           <Card>
             <CardHeader>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-1 min-w-0">
                 <SectionHeader number={deliveryType === 'משלוח' ? 4 : 3} title="מוצרים" />
                 {selectedCustomer && (
                   <div className="flex flex-col gap-0.5">
@@ -822,6 +836,14 @@ export default function NewOrderPage() {
                   </div>
                 )}
               </div>
+              <button
+                type="button"
+                onClick={() => openNewProductModal(-1)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors hover:bg-amber-50 flex-shrink-0"
+                style={{ borderColor: '#C6A77D', color: '#8B5E34', backgroundColor: '#FFF' }}
+              >
+                + מוצר חדש לקטלוג
+              </button>
             </CardHeader>
             {orderItems.length === 0 ? (
               <div className="text-center py-4">
@@ -854,14 +876,19 @@ export default function NewOrderPage() {
                         {(() => {
                           const ct = customerType || '';
                           const regular = products.filter(p => p.סוג_מוצר === 'מוצר רגיל');
-                          // For business tiers: prefer price-list presence over price_availability field
+                          // Prefer price-list presence over price_availability field
                           // (auto-created/imported products may have price_availability=null)
+                          const retailIds = new Set(priceList.filter(pl => pl.price_type === 'retail').map(pl => pl.מוצר_id));
                           const bfIds = new Set(priceList.filter(pl => pl.price_type === 'business_fixed').map(pl => pl.מוצר_id));
                           const bqIds = new Set(priceList.filter(pl => pl.price_type === 'business_quantity').map(pl => pl.מוצר_id));
                           const visible = regular.filter(p => {
                             const avail = p.price_availability ?? (p.לקוחות_עסקיים_בלבד ? 'business_fixed' : 'retail');
                             if (!ct) return true;
-                            if (ct === 'פרטי' || ct === 'חוזר') return avail === 'retail';
+                            if (ct === 'פרטי' || ct === 'חוזר') {
+                              // If price list has retail entries, use it as the source of truth
+                              if (retailIds.size > 0) return retailIds.has(p.id);
+                              return avail === 'retail';
+                            }
                             if (ct === 'עסקי - קבוע' || ct === 'עסקי')
                               return bfIds.size > 0 ? bfIds.has(p.id) : avail === 'business_fixed';
                             if (ct === 'עסקי - כמות')
