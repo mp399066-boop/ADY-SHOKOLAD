@@ -231,7 +231,8 @@ export default function NewOrderPage() {
       ? Math.min(subtotal, discountValue)
       : 0;
   const total = Math.max(0, subtotal - discountAmount + deliveryFee);
-  const isBusiness = customerType === 'עסקי' || customerType === 'עסקי - קבוע' || customerType === 'עסקי - כמות';
+  // Satmar orders never show VAT, regardless of customer type
+  const isBusiness = orderType !== 'סאטמר' && (customerType === 'עסקי' || customerType === 'עסקי - קבוע' || customerType === 'עסקי - כמות');
   const VAT_RATE = 0.18;
   // VAT display only — סך_הכל_לתשלום stored in DB is always pre-VAT (server calculates it)
   const vatAmount = isBusiness ? +(total * VAT_RATE).toFixed(2) : 0;
@@ -684,12 +685,18 @@ export default function NewOrderPage() {
                         {(() => {
                           const ct = customerType || '';
                           const regular = products.filter(p => p.סוג_מוצר === 'מוצר רגיל');
+                          // For business tiers: prefer price-list presence over price_availability field
+                          // (auto-created/imported products may have price_availability=null)
+                          const bfIds = new Set(priceList.filter(pl => pl.price_type === 'business_fixed').map(pl => pl.מוצר_id));
+                          const bqIds = new Set(priceList.filter(pl => pl.price_type === 'business_quantity').map(pl => pl.מוצר_id));
                           const visible = regular.filter(p => {
                             const avail = p.price_availability ?? (p.לקוחות_עסקיים_בלבד ? 'business_fixed' : 'retail');
                             if (!ct) return true;
                             if (ct === 'פרטי' || ct === 'חוזר') return avail === 'retail';
-                            if (ct === 'עסקי - קבוע' || ct === 'עסקי') return avail === 'business_fixed';
-                            if (ct === 'עסקי - כמות') return avail === 'business_quantity';
+                            if (ct === 'עסקי - קבוע' || ct === 'עסקי')
+                              return bfIds.size > 0 ? bfIds.has(p.id) : avail === 'business_fixed';
+                            if (ct === 'עסקי - כמות')
+                              return bqIds.size > 0 ? bqIds.has(p.id) : avail === 'business_quantity';
                             return true;
                           });
                           console.log('[new-order] customer type:', customerType, '| filtered products:', visible.length);

@@ -10,6 +10,27 @@ export async function GET(req: NextRequest) {
   const supabase = createAdminClient();
   const { searchParams } = new URL(req.url);
   const manage = searchParams.get('manage') === '1';
+  const diagnostics = searchParams.get('diagnostics') === '1';
+
+  if (diagnostics) {
+    const [{ count: productCount }, { data: priceTypeCounts }] = await Promise.all([
+      supabase.from('מוצרים_למכירה').select('*', { count: 'exact', head: true }),
+      supabase.from('מחירון').select('price_type').eq('פעיל', true),
+    ]);
+    const byType: Record<string, number> = {};
+    for (const r of priceTypeCounts || []) {
+      const t = r.price_type ?? 'null';
+      byType[t] = (byType[t] ?? 0) + 1;
+    }
+    return NextResponse.json({
+      totalProducts: productCount ?? 0,
+      activePricesByType: byType,
+      business_quantity: byType['business_quantity'] ?? 0,
+      business_fixed: byType['business_fixed'] ?? 0,
+      retail: byType['retail'] ?? 0,
+      retail_quantity: byType['retail_quantity'] ?? 0,
+    });
+  }
 
   if (manage) {
     // Full management view — all records, all fields, with product name join
