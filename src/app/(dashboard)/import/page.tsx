@@ -138,8 +138,11 @@ function applyMapping(row: ParsedRow, mapping: Record<string, string>): ParsedRo
 
 // ─── General import tab ────────────────────────────────────────────────────
 
+type InventoryTarget = 'חומרי גלם' | 'מוצרים מוגמרים';
+
 function GeneralImportTab() {
   const [entity, setEntity] = useState<EntityType>('מוצרים למכירה');
+  const [inventoryTarget, setInventoryTarget] = useState<InventoryTarget>('חומרי גלם');
   const [previewRows, setPreviewRows] = useState<ParsedRow[]>([]);
   const [allRows, setAllRows] = useState<ParsedRow[]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
@@ -217,10 +220,14 @@ function GeneralImportTab() {
     setImporting(true);
     try {
       const mappedRows = allRows.map(row => applyMapping(row, columnMapping));
+      // Inventory subtype: route to either raw materials or finished products
+      const effectiveEntity = entity === 'מלאי' && inventoryTarget === 'מוצרים מוגמרים'
+        ? 'מלאי מוצרים מוגמרים'
+        : entity;
       const res = await fetch('/api/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ entity, rows: mappedRows }),
+        body: JSON.stringify({ entity: effectiveEntity, rows: mappedRows }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
@@ -285,6 +292,34 @@ function GeneralImportTab() {
             </button>
           </div>
         </div>
+
+        {entity === 'מלאי' && (
+          <div className="mb-4 p-3 rounded-lg border" style={{ backgroundColor: '#FAF7F0', borderColor: '#E7D2A6' }}>
+            <label className="block text-sm font-medium mb-2" style={{ color: '#2B1A10' }}>לאן לייבא?</label>
+            <div className="flex gap-2">
+              {(['חומרי גלם', 'מוצרים מוגמרים'] as InventoryTarget[]).map(t => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setInventoryTarget(t)}
+                  className="flex-1 py-2 text-sm rounded-lg border font-medium transition-colors"
+                  style={
+                    inventoryTarget === t
+                      ? { backgroundColor: '#8B5E34', color: '#FFF', borderColor: '#8B5E34' }
+                      : { backgroundColor: '#FFF', color: '#6B4A2D', borderColor: '#DDD0BC' }
+                  }
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] mt-2" style={{ color: '#9B7A5A' }}>
+              {inventoryTarget === 'חומרי גלם'
+                ? 'הקובץ ייכנס לטבלת מלאי חומרי גלם.'
+                : 'הקובץ יעדכן כמות במלאי במוצרים קיימים — מזהה לפי שם מוצר.'}
+            </p>
+          </div>
+        )}
         <div className="p-3 rounded-lg text-xs" style={{ backgroundColor: '#FAF7F0', color: '#6B4A2D' }}>
           המערכת מזהה סוג הנתונים ומפה עמודות אוטומטית — אין צורך בהגדרה ידנית
         </div>

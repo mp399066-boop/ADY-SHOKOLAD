@@ -195,6 +195,49 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'ישות ושורות הן חובה' }, { status: 400 });
   }
 
+  // Special handler: finished-product stock — match existing products by name and
+  // update כמות_במלאי. Does NOT insert new products.
+  if (entity === 'מלאי מוצרים מוגמרים') {
+    let updated = 0;
+    const failed: { row: number; error: string }[] = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const raw = rows[i] as Record<string, unknown>;
+      // Tolerate header variants
+      const normalized: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(raw)) {
+        normalized[k.trim().replace(/ /g, '_')] = v;
+      }
+      const name = String(
+        normalized['שם_מוצר'] ?? normalized['שם'] ?? normalized['name'] ?? '',
+      ).trim();
+      const qtyRaw =
+        normalized['כמות_במלאי'] ?? normalized['כמות'] ?? normalized['stock'] ?? normalized['quantity'];
+      const qty = typeof qtyRaw === 'number' ? qtyRaw : parseFloat(String(qtyRaw ?? '').replace(/[,\s]/g, ''));
+
+      if (!name) { failed.push({ row: i + 1, error: 'חסר שם מוצר' }); continue; }
+      if (isNaN(qty)) { failed.push({ row: i + 1, error: 'חסרה כמות תקינה' }); continue; }
+
+      const { data: prod } = await supabase
+        .from('מוצרים_למכירה')
+        .select('id')
+        .eq('שם_מוצר', name)
+        .maybeSingle();
+
+      if (!prod) { failed.push({ row: i + 1, error: `מוצר לא נמצא: "${name}"` }); continue; }
+
+      const { error: upErr } = await supabase
+        .from('מוצרים_למכירה')
+        .update({ כמות_במלאי: qty })
+        .eq('id', prod.id);
+
+      if (upErr) failed.push({ row: i + 1, error: upErr.message });
+      else updated++;
+    }
+
+    return NextResponse.json({ data: { added: 0, updated, failed: failed.length, errors: failed } });
+  }
+
   const tableName = TABLE_MAP[entity];
   if (!tableName) {
     return NextResponse.json({ error: `סוג ישות לא ידוע: "${entity}"` }, { status: 400 });

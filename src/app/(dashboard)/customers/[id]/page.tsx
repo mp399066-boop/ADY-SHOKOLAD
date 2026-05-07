@@ -390,7 +390,7 @@ export default function CustomerDetailPage() {
             <Input label="טלפון"       value={editForm.טלפון    || ''} onChange={e => setEditForm(p => ({ ...p, טלפון:    e.target.value }))} />
             <Input label="אימייל"      value={editForm.אימייל   || ''} onChange={e => setEditForm(p => ({ ...p, אימייל:   e.target.value }))} />
             <Select label="סוג לקוח"   value={editForm.סוג_לקוח || 'פרטי'} onChange={e => setEditForm(p => ({ ...p, סוג_לקוח: e.target.value as Customer['סוג_לקוח'] }))}>
-              {(['פרטי', 'חוזר', 'עסקי - קבוע', 'עסקי - כמות'] as const).map(t => <option key={t} value={t}>{t}</option>)}
+              {(['פרטי', 'חוזר', 'עסקי - קבוע', 'עסקי - כמות', 'בארטר'] as const).map(t => <option key={t} value={t}>{t}</option>)}
             </Select>
             <Input label="אחוז הנחה (%)" type="number" value={editForm.אחוז_הנחה ?? 0} onChange={e => setEditForm(p => ({ ...p, אחוז_הנחה: Number(e.target.value) }))} />
             <div className="col-span-2">

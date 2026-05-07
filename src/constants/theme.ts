@@ -58,6 +58,7 @@ export const PAYMENT_STATUS_COLORS: Record<string, StatusColor> = {
   שולם:  { bg: '#E4EEE8', text: '#2A5C38', border: '#B4D2BE' },
   חלקי:  { bg: '#FBF0E4', text: '#7A4820', border: '#EDC898' },
   בוטל:  { bg: '#F0EAE8', text: '#8A3228', border: '#D8BCB6' },
+  בארטר: { bg: '#EFEAF5', text: '#5B3F8B', border: '#D4C8E8' },
 };
 
 export const INVENTORY_STATUS_COLORS: Record<string, StatusColor> = {
@@ -76,4 +77,5 @@ export const CUSTOMER_TYPE_COLORS: Record<string, StatusColor> = {
   פרטי:  { bg: '#F5F1EB', text: '#6B4B32', border: '#E0D4C2' },
   חוזר:  { bg: '#EAF0F5', text: '#2A4C6A', border: '#B6CCDD' },
   עסקי:  { bg: '#EEEAF4', text: '#4A3868', border: '#CCC4D8' },
+  בארטר: { bg: '#EFEAF5', text: '#5B3F8B', border: '#D4C8E8' },
 };

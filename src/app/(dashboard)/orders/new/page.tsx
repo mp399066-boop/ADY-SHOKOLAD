@@ -132,7 +132,7 @@ export default function NewOrderPage() {
   const [deliveryInstructions, setDeliveryInstructions] = useState('');
   const [deliveryFee, setDeliveryFee] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState('מזומן');
-  const [paymentStatus, setPaymentStatus] = useState<'ממתין' | 'שולם' | 'חלקי'>('ממתין');
+  const [paymentStatus, setPaymentStatus] = useState<'ממתין' | 'שולם' | 'חלקי' | 'בארטר'>('ממתין');
   const [greetingText, setGreetingText] = useState('');
   const [notes, setNotes] = useState('');
   const [discountType, setDiscountType] = useState<'ללא' | 'אחוז' | 'סכום'>('ללא');
@@ -346,17 +346,18 @@ export default function NewOrderPage() {
     setSelectedCustomer(customerId);
     const cust = customers.find(c => c.id === customerId);
     const pct = Number(cust?.אחוז_הנחה ?? 0);
-    console.log('[discount debug] selected customer:', cust);
-    console.log('[discount debug] אחוז_הנחה field value:', cust?.אחוז_הנחה);
-    console.log('[discount debug] pct:', pct);
     if (pct > 0) {
       setDiscountType('אחוז');
       setDiscountValue(pct);
-      console.log('[discount debug] → set discountType=אחוז, discountValue=', pct);
     } else {
       setDiscountType('ללא');
       setDiscountValue(0);
-      console.log('[discount debug] → no discount');
+    }
+    // Barter customer: auto-set payment status to בארטר (no receipt/invoice will fire)
+    if (cust?.סוג_לקוח === 'בארטר') {
+      setPaymentStatus('בארטר');
+    } else if (paymentStatus === 'בארטר') {
+      setPaymentStatus('ממתין');
     }
     // Auto-fill recipient from customer when in "customer" mode
     if (deliveryType === 'משלוח' && recipientType === 'customer' && cust) {
@@ -911,24 +912,18 @@ export default function NewOrderPage() {
                       >
                         <option value="">בחר...</option>
                         {(() => {
-                          const ct = customerType || '';
-                          const regular = products.filter(p => p.סוג_מוצר === 'מוצר רגיל');
-                          const retailIds = new Set(priceList.filter(pl => pl.price_type === 'retail').map(pl => pl.מוצר_id));
-                          const bfIds = new Set(priceList.filter(pl => pl.price_type === 'business_fixed').map(pl => pl.מוצר_id));
-                          const bqIds = new Set(priceList.filter(pl => pl.price_type === 'business_quantity').map(pl => pl.מוצר_id));
-                          const visible = regular.filter(p => {
-                            const avail = p.price_availability ?? (p.לקוחות_עסקיים_בלבד ? 'business_fixed' : 'retail');
-                            if (!ct) return true;
-                            if (ct === 'פרטי' || ct === 'חוזר') {
-                              if (retailIds.size > 0) return retailIds.has(p.id);
-                              return avail === 'retail';
-                            }
-                            if (ct === 'עסקי - קבוע' || ct === 'עסקי')
-                              return bfIds.size > 0 ? bfIds.has(p.id) : avail === 'business_fixed';
-                            if (ct === 'עסקי - כמות')
-                              return bqIds.size > 0 ? bqIds.has(p.id) : avail === 'business_quantity';
-                            return true;
-                          });
+                          // Source of truth: price list. A product is visible if it's
+                          // active (not manually disabled) AND has a price entry for the
+                          // currently effective price type. We deliberately ignore
+                          // price_availability and לקוחות_עסקיים_בלבד on the product.
+                          const priceTypeIds = new Set(
+                            priceList
+                              .filter(pl => pl.price_type === effectivePriceType)
+                              .map(pl => pl.מוצר_id),
+                          );
+                          const visible = products
+                            .filter(p => p.פעיל && p.סוג_מוצר === 'מוצר רגיל')
+                            .filter(p => !customerType || priceTypeIds.has(p.id));
                           return visible.map(p => (
                             <option key={p.id} value={p.id}>{p.שם_מוצר}</option>
                           ));
@@ -1157,11 +1152,12 @@ export default function NewOrderPage() {
               <Select
                 label="סטטוס תשלום"
                 value={paymentStatus}
-                onChange={e => setPaymentStatus(e.target.value as 'ממתין' | 'שולם' | 'חלקי')}
+                onChange={e => setPaymentStatus(e.target.value as 'ממתין' | 'שולם' | 'חלקי' | 'בארטר')}
               >
                 <option value="ממתין">ממתין</option>
                 <option value="שולם">שולם</option>
                 <option value="חלקי">חלקי</option>
+                <option value="בארטר">בארטר</option>
               </Select>
             </div>
 

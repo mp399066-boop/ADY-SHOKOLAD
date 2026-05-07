@@ -671,14 +671,19 @@ export default function ProductsPage() {
                 <option value="מוצר רגיל">מוצר רגיל</option>
                 <option value="מארז פטיפורים">מארז פטיפורים</option>
               </Select>
-              <Input
-                label="מחיר (₪)"
-                type="number"
-                value={Number(form.מחיר || 0)}
-                onChange={e => setForm(p => ({ ...p, מחיר: Number(e.target.value) }))}
-                min={0}
-                step={0.01}
-              />
+              <div>
+                <Input
+                  label="מחיר ייחוס (₪)"
+                  type="number"
+                  value={Number(form.מחיר || 0)}
+                  onChange={e => setForm(p => ({ ...p, מחיר: Number(e.target.value) }))}
+                  min={0}
+                  step={0.01}
+                />
+                <p className="text-[10px] mt-1" style={{ color: '#9B7A5A' }}>
+                  לא בשימוש להזמנות — מקור המחיר להזמנות הוא טבלת המחירון.
+                </p>
+              </div>
               <Textarea
                 label="תיאור"
                 value={String(form.תיאור || '')}
