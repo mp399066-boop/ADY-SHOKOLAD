@@ -941,8 +941,6 @@ export default function NewOrderPage() {
                   >
                   <div className="grid grid-cols-12 gap-2 items-end">
                     <div className="col-span-4">
-                      <div className="flex items-end gap-1">
-                      <div className="flex-1">
                       <Select
                         label="מוצר"
                         value={item.מוצר_id}
@@ -952,8 +950,6 @@ export default function NewOrderPage() {
                         {(() => {
                           const ct = customerType || '';
                           const regular = products.filter(p => p.סוג_מוצר === 'מוצר רגיל');
-                          // Prefer price-list presence over price_availability field
-                          // (auto-created/imported products may have price_availability=null)
                           const retailIds = new Set(priceList.filter(pl => pl.price_type === 'retail').map(pl => pl.מוצר_id));
                           const bfIds = new Set(priceList.filter(pl => pl.price_type === 'business_fixed').map(pl => pl.מוצר_id));
                           const bqIds = new Set(priceList.filter(pl => pl.price_type === 'business_quantity').map(pl => pl.מוצר_id));
@@ -961,7 +957,6 @@ export default function NewOrderPage() {
                             const avail = p.price_availability ?? (p.לקוחות_עסקיים_בלבד ? 'business_fixed' : 'retail');
                             if (!ct) return true;
                             if (ct === 'פרטי' || ct === 'חוזר') {
-                              // If price list has retail entries, use it as the source of truth
                               if (retailIds.size > 0) return retailIds.has(p.id);
                               return avail === 'retail';
                             }
@@ -971,23 +966,11 @@ export default function NewOrderPage() {
                               return bqIds.size > 0 ? bqIds.has(p.id) : avail === 'business_quantity';
                             return true;
                           });
-                          console.log('[new-order] customer type:', customerType, '| filtered products:', visible.length);
                           return visible.map(p => (
                             <option key={p.id} value={p.id}>{p.שם_מוצר}</option>
                           ));
                         })()}
                       </Select>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => openNewProductModal(idx)}
-                        className="w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 mb-0.5 transition-colors hover:bg-amber-50"
-                        style={{ border: '1px solid #DDD0BC', color: '#8B5E34', backgroundColor: '#FFF' }}
-                        title="הוסף מוצר חדש"
-                      >
-                        +
-                      </button>
-                      </div>
                     </div>
                     <div className="col-span-2">
                       <Input
