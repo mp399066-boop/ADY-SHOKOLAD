@@ -72,13 +72,11 @@ export default function TopBar({ onMenuToggle }: TopBarProps) {
       </button>
 
       {/* Logo */}
-      {settings?.logo_url ? (
-        <img
-          src={settings.logo_url}
-          alt={settings.business_name || 'לוגו'}
-          className="h-8 w-8 object-contain rounded-lg flex-shrink-0 hidden sm:block"
-        />
-      ) : null}
+      <img
+        src={settings?.logo_url || '/logo.png'}
+        alt={settings?.business_name || 'עדי תכשיט שוקולד'}
+        className="h-8 w-8 object-contain flex-shrink-0 hidden sm:block"
+      />
 
       {/* Title */}
       <h1 className="text-base font-semibold flex-1" style={{ color: '#1C1008' }}>

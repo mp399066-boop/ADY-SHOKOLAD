@@ -96,20 +96,12 @@ export default function Sidebar({ open = true, onClose }: SidebarProps) {
           style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}
         >
           <div className="flex items-center gap-3 min-w-0">
-            {settings?.logo_url ? (
-              <img
-                src={settings.logo_url}
-                alt={settings.business_name || 'לוגו'}
-                className="h-8 w-8 max-w-[32px] object-contain rounded-lg flex-shrink-0"
-              />
-            ) : (
-              <div
-                className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 text-sm font-bold"
-                style={{ backgroundColor: 'rgba(139, 94, 52, 0.9)', color: '#FAF7F0' }}
-              >
-                {(settings?.business_name || 'פ').charAt(0)}
-              </div>
-            )}
+            <img
+              src={settings?.logo_url || '/logo.png'}
+              alt={settings?.business_name || 'עדי תכשיט שוקולד'}
+              className="h-9 w-9 max-w-[36px] object-contain flex-shrink-0"
+              style={{ filter: 'brightness(1.15)' }}
+            />
             <div className="min-w-0">
               <div className="text-sm font-semibold truncate" style={{ color: '#F0E8DC' }}>
                 {settings?.business_name || 'עדי תכשיט שוקולד'}

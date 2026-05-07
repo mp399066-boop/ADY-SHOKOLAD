@@ -57,20 +57,11 @@ export default function NavBar() {
       >
         {/* Brand */}
         <div className="flex items-center gap-2 flex-shrink-0" style={{ marginLeft: '16px' }}>
-          {settings?.logo_url ? (
-            <img
-              src={settings.logo_url}
-              alt={settings.business_name || 'לוגו'}
-              className="h-7 w-7 object-contain rounded-lg"
-            />
-          ) : (
-            <div
-              className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold"
-              style={{ backgroundColor: '#8B5E34', color: '#FEF8F0' }}
-            >
-              {(settings?.business_name || 'פ').charAt(0)}
-            </div>
-          )}
+          <img
+            src={settings?.logo_url || '/logo.png'}
+            alt={settings?.business_name || 'עדי תכשיט שוקולד'}
+            className="h-7 w-7 object-contain"
+          />
           <div className="hidden sm:flex flex-col" style={{ gap: '1px' }}>
             <span className="text-sm font-medium" style={{ color: '#3A2A1A', letterSpacing: '0.02em', lineHeight: 1.3 }}>
               {settings?.business_name || 'עדי תכשיט שוקולד'}

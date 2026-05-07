@@ -146,7 +146,6 @@ export default function NewOrderPage() {
   const searchParams = useSearchParams();
   const draftIdParam = searchParams.get('draft');
   const draftOrderIdRef = useRef<string | null>(draftIdParam);
-  const [savingDraft, setSavingDraft] = useState(false);
 
   // Auto-save
   const autoSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -619,42 +618,6 @@ export default function NewOrderPage() {
       : null,
   });
 
-  const handleSaveDraft = async () => {
-    if (savingDraft || loading) return;
-    if (!selectedCustomer) { toast.error('יש לבחור לקוח'); return; }
-    setSavingDraft(true);
-    try {
-      const payload = buildPayload('טיוטה');
-      let orderId: string;
-      if (draftOrderIdRef.current) {
-        // Draft already created by auto-save — update it in place
-        const res = await fetch(`/api/orders/${draftOrderIdRef.current}/save-draft`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        const json = await res.json();
-        if (!res.ok) throw new Error(json.error || 'שגיאה בשמירת טיוטה');
-        orderId = draftOrderIdRef.current;
-      } else {
-        const res = await fetch('/api/orders/create-full', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        const json = await res.json();
-        if (!res.ok) throw new Error(json.error || 'שגיאה בשמירת טיוטה');
-        orderId = json.data.id;
-        draftOrderIdRef.current = orderId;
-      }
-      toast.success('הטיוטה נשמרה');
-      router.push(`/orders/${orderId}`);
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'שגיאה בשמירת טיוטה');
-    } finally {
-      setSavingDraft(false);
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1346,16 +1309,6 @@ export default function NewOrderPage() {
                 type="button"
                 variant="outline"
                 className="w-full"
-                loading={savingDraft}
-                onClick={handleSaveDraft}
-                style={{ borderColor: '#DDD6FE', color: '#5B21B6' }}
-              >
-                שמור כטיוטה
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full"
                 onClick={() => router.back()}
               >
                 ביטול
@@ -1618,7 +1571,6 @@ export default function NewOrderPage() {
         </div>
         <div className="flex gap-2">
           <Button type="button" variant="outline" onClick={() => router.back()}>ביטול</Button>
-          <Button type="button" variant="outline" loading={savingDraft} onClick={handleSaveDraft} style={{ borderColor: '#DDD6FE', color: '#5B21B6' }}>טיוטה</Button>
           <Button type="submit" loading={loading}>{draftOrderIdRef.current ? 'אשר' : 'צור הזמנה'}</Button>
         </div>
       </div>
