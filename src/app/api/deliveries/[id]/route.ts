@@ -3,7 +3,6 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
-import sgMail from '@sendgrid/mail';
 import { randomBytes } from 'crypto';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -12,63 +11,24 @@ function buildOrigin(req: NextRequest): string {
   return req.headers.get('origin') || process.env.NEXT_PUBLIC_APP_URL || '';
 }
 
-function buildWaUrl(phone: string, courierName: string, recipientName: string, link: string): string {
-  let p = phone.replace(/[^0-9]/g, '');
-  if (p.startsWith('0')) p = '972' + p.slice(1);
-  const message =
-    `היי ${courierName},\nיש לך משלוח למסירה עבור ${recipientName}.\nלאחר המסירה, לחץ כאן כדי לעדכן:\n${link}\n\nתודה!`;
-  return `https://wa.me/${p}?text=${encodeURIComponent(message)}`;
-}
-
-async function sendEmailToCourier(
-  courierEmail: string,
+function buildWaUrl(
+  phone: string,
   courierName: string,
   recipientName: string,
+  address: string | null,
+  recipientPhone: string | null,
   link: string,
-): Promise<{ ok: boolean; error?: string }> {
-  const apiKey = process.env.SENDGRID_API_KEY;
-  const from   = process.env.FROM_EMAIL;
-
-  console.log('[delivery PATCH] sendEmail — SENDGRID_API_KEY:', apiKey ? `set (${apiKey.slice(0, 6)}...)` : 'MISSING');
-  console.log('[delivery PATCH] sendEmail — FROM_EMAIL:', from || 'MISSING');
-
-  if (!apiKey || !from) {
-    console.error('[delivery PATCH] email aborted — missing ENV vars');
-    return { ok: false, error: 'שירות המייל אינו מוגדר (חסר SENDGRID_API_KEY או FROM_EMAIL)' };
-  }
-
-  const subject = 'עדכון משלוח';
-  const text = `היי ${courierName},\nיש לך משלוח למסירה עבור ${recipientName}.\n\nלאחר המסירה, לחץ כאן:\n${link}\n\nתודה!`;
-  const html = `
-<html dir="rtl"><body style="font-family:Arial,sans-serif;direction:rtl;text-align:right;padding:32px 24px;color:#2B1A10;max-width:520px;margin:0 auto">
-  <p>היי <strong>${courierName}</strong>,</p>
-  <p>יש לך משלוח למסירה עבור <strong>${recipientName}</strong>.</p>
-  <p>לאחר המסירה, לחץ כאן כדי לעדכן:</p>
-  <p style="margin:28px 0">
-    <a href="${link}" style="display:inline-block;padding:14px 28px;background:#065F46;color:white;border-radius:10px;text-decoration:none;font-weight:bold;font-size:16px">
-      ✓ סמן כנמסר
-    </a>
-  </p>
-  <p>תודה!</p>
-</body></html>`;
-
-  try {
-    sgMail.setApiKey(apiKey);
-    const [sgResponse] = await sgMail.send({ to: courierEmail, from, subject, html, text });
-    console.log('[delivery PATCH] email sent to:', courierEmail, '| status:', sgResponse.statusCode);
-    return { ok: true };
-  } catch (err: unknown) {
-    let msg = err instanceof Error ? err.message : String(err);
-    if (err && typeof err === 'object' && 'response' in err) {
-      const sgErr = err as { response?: { statusCode?: number; body?: unknown } };
-      const body = sgErr.response?.body;
-      console.error('[delivery PATCH] SendGrid error:', sgErr.response?.statusCode, JSON.stringify(body));
-      msg += ` | ${JSON.stringify(body)}`;
-    } else {
-      console.error('[delivery PATCH] email failed:', msg);
-    }
-    return { ok: false, error: msg };
-  }
+): string {
+  let p = phone.replace(/[^0-9]/g, '');
+  if (p.startsWith('0')) p = '972' + p.slice(1);
+  const lines = [
+    `היי ${courierName},`,
+    `משלוח עבור ${recipientName}`,
+  ];
+  if (address) lines.push(`כתובת: ${address}`);
+  if (recipientPhone) lines.push(`טלפון: ${recipientPhone}`);
+  lines.push('', 'לעדכון "נמסר":', link);
+  return `https://wa.me/${p}?text=${encodeURIComponent(lines.join('\n'))}`;
 }
 
 // ─── PATCH ────────────────────────────────────────────────────────────────────
@@ -160,7 +120,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     .select(`
       id, סטטוס_משלוח, delivery_token,
       courier_id, whatsapp_sent_at, email_sent_at,
-      הזמנות(שם_מקבל, לקוחות(שם_פרטי, שם_משפחה)),
+      כתובת, עיר,
+      הזמנות(שם_מקבל, טלפון_מקבל, כתובת_מקבל_ההזמנה, עיר, לקוחות(שם_פרטי, שם_משפחה)),
       שליחים!courier_id(*)
     `)
     .eq('id', deliveryId)
@@ -188,13 +149,24 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const origin = buildOrigin(req);
   const deliveryLink = `${origin}/delivery-update/${token}`;
 
-  // 3. Resolve recipient name
-  type OrderJoin = { שם_מקבל?: string | null; לקוחות?: { שם_פרטי: string; שם_משפחה: string } | null };
+  // 3. Resolve recipient name + address + phone (delivery's own address takes precedence over the order's)
+  type OrderJoin = {
+    שם_מקבל?: string | null;
+    טלפון_מקבל?: string | null;
+    כתובת_מקבל_ההזמנה?: string | null;
+    עיר?: string | null;
+    לקוחות?: { שם_פרטי: string; שם_משפחה: string } | null;
+  };
   const order = existing.הזמנות as OrderJoin | null;
   const recipientName =
     order?.שם_מקבל ||
     (order?.לקוחות ? `${order.לקוחות.שם_פרטי} ${order.לקוחות.שם_משפחה}` : '') ||
     'לקוח';
+  const deliveryRow = existing as { כתובת?: string | null; עיר?: string | null };
+  const addrStreet = deliveryRow.כתובת || order?.כתובת_מקבל_ההזמנה || null;
+  const addrCity   = deliveryRow.עיר   || order?.עיר                  || null;
+  const fullAddress = [addrStreet, addrCity].filter(Boolean).join(', ') || null;
+  const recipientPhone = order?.טלפון_מקבל || null;
 
   // 4. Build update payload
   const updatePayload: Record<string, unknown> = {
@@ -203,48 +175,32 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   };
 
   // 5. Determine send channel
+  // Auto-email is intentionally OFF — email is manual only via /send-courier-email.
   type CourierRow = { שם_שליח: string; טלפון_שליח?: string | null; אימייל_שליח?: string | null } | null;
   const courier = existing.שליחים as CourierRow;
 
   let whatsappUrl: string | null = null;
-  let autoSentChannel: 'whatsapp' | 'email' | 'none' = 'none';
   let sendError: string | null = null;
 
   if (!courier) {
     console.log('[delivery PATCH] no courier assigned — skip auto-send');
+  } else if (courier.טלפון_שליח) {
+    // Always rebuild the URL on every status→נאסף transition. The "don't reopen
+    // on refresh" semantics is enforced on the frontend (only fires inside the
+    // PATCH callback of a real status change). whatsapp_sent_at is informational.
+    whatsappUrl = buildWaUrl(
+      courier.טלפון_שליח,
+      courier.שם_שליח,
+      recipientName,
+      fullAddress,
+      recipientPhone,
+      deliveryLink,
+    );
+    updatePayload.whatsapp_sent_at = new Date().toISOString();
+    console.log('[delivery PATCH] WhatsApp URL built for courier:', courier.שם_שליח);
   } else {
-    // Email: sent automatically server-side if courier has email address
-    if (courier.אימייל_שליח) {
-      if (!existing.email_sent_at) {
-        const result = await sendEmailToCourier(
-          courier.אימייל_שליח,
-          courier.שם_שליח,
-          recipientName,
-          deliveryLink,
-        );
-        if (result.ok) {
-          updatePayload.email_sent_at = new Date().toISOString();
-          autoSentChannel = 'email';
-        } else {
-          sendError = result.error || 'שגיאה בשליחת מייל';
-        }
-      } else {
-        console.log('[delivery PATCH] email already sent at', existing.email_sent_at, '— skip');
-        autoSentChannel = 'email';
-      }
-    }
-    // WhatsApp: build URL as helper only — frontend opens it, NOT automatic
-    if (courier.טלפון_שליח && !existing.whatsapp_sent_at) {
-      whatsappUrl = buildWaUrl(courier.טלפון_שליח, courier.שם_שליח, recipientName, deliveryLink);
-      updatePayload.whatsapp_sent_at = new Date().toISOString();
-      console.log('[delivery PATCH] WhatsApp URL built (helper, not automatic) for courier:', courier.שם_שליח);
-    } else if (courier.טלפון_שליח && existing.whatsapp_sent_at) {
-      console.log('[delivery PATCH] WhatsApp already opened at', existing.whatsapp_sent_at, '— skip');
-    }
-    if (!courier.אימייל_שליח && !courier.טלפון_שליח) {
-      console.warn('[delivery PATCH] courier has no phone or email:', courier.שם_שליח);
-      sendError = `לשליח ${courier.שם_שליח} אין טלפון ואימייל`;
-    }
+    sendError = 'חסר טלפון לשליח';
+    console.warn('[delivery PATCH] courier has no phone:', courier.שם_שליח);
   }
 
   // 6. Persist update
@@ -260,14 +216,13 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     return NextResponse.json({ error: updateErr.message }, { status: 500 });
   }
 
-  console.log('[delivery PATCH] update saved | autoSentChannel:', autoSentChannel);
+  console.log('[delivery PATCH] update saved | whatsapp_url:', !!whatsappUrl, '| send_error:', sendError);
 
   return NextResponse.json({
     data,
     token,
     delivery_link: deliveryLink,
     whatsapp_url: whatsappUrl,
-    auto_sent: autoSentChannel,
     send_error: sendError,
     was_created: wasCreated,
   });

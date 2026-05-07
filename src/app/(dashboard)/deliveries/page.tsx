@@ -161,7 +161,8 @@ function DeliveriesContent() {
   const [savingPlaced, setSavingPlaced] = useState(false);
   const [assigningCourier, setAssigningCourier] = useState<string | null>(null);
   const [generatingToken, setGeneratingToken] = useState<string | null>(null);
-  const [sendChoiceDelivery, setSendChoiceDelivery] = useState<DeliveryWithCourier | null>(null);
+  // Popup-blocked fallback: when window.open() returns null, surface a manual button
+  const [blockedWhatsApp, setBlockedWhatsApp] = useState<string | null>(null);
 
   // Load active couriers once
   useEffect(() => {
@@ -184,6 +185,12 @@ function DeliveriesContent() {
       })
       .finally(() => setLoading(false));
   }, [date, statusFilter]);
+
+  // Try to open WhatsApp; returns false if browser blocked the popup.
+  const openWhatsAppWithFallback = (url: string): boolean => {
+    const win = window.open(url, '_blank');
+    return !!(win && !win.closed);
+  };
 
   const updateDeliveryStatus = async (id: string, newStatus: string) => {
     const res = await fetch(`/api/deliveries/${id}`, {
@@ -214,21 +221,25 @@ function DeliveriesContent() {
     }));
 
     if (newStatus === 'נאסף') {
-      console.log('[deliveries] נאסף trigger — auto_sent:', json.auto_sent, '| whatsapp_url:', !!json.whatsapp_url, '| send_error:', json.send_error);
+      console.log('[deliveries] נאסף trigger — whatsapp_url:', !!json.whatsapp_url, '| send_error:', json.send_error);
 
-      const msgs: string[] = ['סטטוס עודכן ל"נאסף"'];
-
-      // Email was sent automatically by the server
-      if (json.auto_sent === 'email') msgs.push('מייל נשלח לשליח אוטומטית');
-
-      // WhatsApp URL: open as a manual helper — this is NOT automatic sending
-      if (json.whatsapp_url) {
-        window.open(json.whatsapp_url, '_blank');
-        msgs.push('WhatsApp נפתח לשליח (שליחה ידנית)');
+      if (json.send_error) {
+        // e.g. "חסר טלפון לשליח" — surface verbatim
+        toast.error(json.send_error);
+        return;
       }
 
-      toast.success(msgs.join(' — '));
-      if (json.send_error) toast.error(json.send_error);
+      if (json.whatsapp_url) {
+        const opened = openWhatsAppWithFallback(json.whatsapp_url);
+        if (opened) {
+          toast.success('וואטסאפ נפתח לשליח — יש ללחוץ שליחה');
+        } else {
+          setBlockedWhatsApp(json.whatsapp_url);
+          toast('הדפדפן חסם את הפתיחה — יש ללחוץ "פתח וואטסאפ לשליח"', { icon: '⚠️' });
+        }
+      } else {
+        toast.success('סטטוס עודכן ל"נאסף"');
+      }
     }
   };
 
@@ -321,20 +332,12 @@ function DeliveriesContent() {
     }
   };
 
+  // Manual "שלח לשליח" — always WhatsApp (per user spec). Email lives on a separate ✉️ button.
   const handleSendToCourier = (delivery: DeliveryWithCourier) => {
     const courier = delivery.courier_id ? couriers.find(c => c.id === delivery.courier_id) : null;
     if (!courier) { toast.error('לא שויך שליח'); return; }
-    if (!courier.טלפון_שליח && !courier.אימייל_שליח) {
-      toast.error('חסר טלפון ואימייל לשליח');
-      return;
-    }
-    // If both → open choice modal
-    if (courier.טלפון_שליח && courier.אימייל_שליח) {
-      setSendChoiceDelivery(delivery);
-      return;
-    }
-    // Single channel — send directly
-    sendToCourier(delivery, courier.טלפון_שליח ? 'whatsapp' : 'email');
+    if (!courier.טלפון_שליח) { toast.error('חסר טלפון לשליח'); return; }
+    sendToCourier(delivery, 'whatsapp');
   };
 
   const sendToCourier = async (delivery: DeliveryWithCourier, channel: 'whatsapp' | 'email') => {
@@ -342,7 +345,7 @@ function DeliveriesContent() {
     if (!courier) { toast.error('לא שויך שליח'); return; }
 
     if (channel === 'whatsapp') {
-      if (!courier.טלפון_שליח) { toast.error('אין טלפון לשליח'); return; }
+      if (!courier.טלפון_שליח) { toast.error('חסר טלפון לשליח'); return; }
 
       let link = '';
       let token = delivery.delivery_token;
@@ -365,10 +368,21 @@ function DeliveriesContent() {
         (order?.לקוחות ? `${order.לקוחות.שם_פרטי} ${order.לקוחות.שם_משפחה}` : '') ||
         'לקוח';
 
-      const message = `היי ${courier.שם_שליח},\nיש לך משלוח עבור ${recipientName}.\nלאחר המסירה, לחץ כאן:\n${link}`;
+      const lines = [
+        `היי ${courier.שם_שליח},`,
+        `משלוח עבור ${recipientName}`,
+      ];
+      const addrStreet = delivery.כתובת || null;
+      const addrCity   = delivery.עיר   || null;
+      const addr = [addrStreet, addrCity].filter(Boolean).join(', ');
+      if (addr) lines.push(`כתובת: ${addr}`);
+      lines.push('', 'לעדכון "נמסר":', link);
+      const message = lines.join('\n');
+
       let phone = courier.טלפון_שליח.replace(/[^0-9]/g, '');
       if (phone.startsWith('0')) phone = '972' + phone.slice(1);
-      window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank');
+      const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+      const opened = openWhatsAppWithFallback(url);
 
       await fetch(`/api/deliveries/${delivery.id}`, {
         method: 'PATCH',
@@ -378,11 +392,17 @@ function DeliveriesContent() {
       setDeliveries(prev => prev.map(d =>
         d.id === delivery.id ? { ...d, whatsapp_sent_at: new Date().toISOString() } : d,
       ));
-      toast.success('נפתח WhatsApp לשליחה');
+
+      if (opened) {
+        toast.success('וואטסאפ נפתח לשליח — יש ללחוץ שליחה');
+      } else {
+        setBlockedWhatsApp(url);
+        toast('הדפדפן חסם את הפתיחה — יש ללחוץ "פתח וואטסאפ לשליח"', { icon: '⚠️' });
+      }
       return;
     }
 
-    // Email
+    // Email — manual only, separate ✉️ button
     if (!courier.אימייל_שליח) { toast.error('אין אימייל לשליח'); return; }
     const res = await fetch(`/api/deliveries/${delivery.id}/send-courier-email`, { method: 'POST' });
     const data = await res.json();
@@ -568,18 +588,24 @@ function DeliveriesContent() {
                       </button>
                     )}
 
-                    {canSendToCourier && (
+                    {canSendToCourier && assignedCourier?.טלפון_שליח && (
                       <button
                         onClick={() => handleSendToCourier(d)}
-                        title="שלח לשליח"
+                        title="שלח לשליח בוואטסאפ"
                         className="text-xs px-2.5 py-1.5 rounded-lg font-medium transition-all whitespace-nowrap border flex items-center gap-1"
                         style={{ backgroundColor: '#F0FDF4', color: '#15803D', borderColor: '#86EFAC' }}
                       >
-                        {assignedCourier?.טלפון_שליח && assignedCourier?.אימייל_שליח
-                          ? <>📤 שלח לשליח</>
-                          : assignedCourier?.טלפון_שליח
-                            ? <><IconWhatsApp className="w-3 h-3" />שלח לשליח</>
-                            : <>✉️ שלח לשליח</>}
+                        <IconWhatsApp className="w-3 h-3" />שלח לשליח
+                      </button>
+                    )}
+                    {canSendToCourier && assignedCourier?.אימייל_שליח && (
+                      <button
+                        onClick={() => sendToCourier(d, 'email')}
+                        title="שלח אימייל לשליח"
+                        className="text-xs px-2 py-1.5 rounded-lg font-medium transition-all whitespace-nowrap border"
+                        style={{ backgroundColor: '#FFF', color: '#6B4A2D', borderColor: '#DDD0BC' }}
+                      >
+                        ✉️
                       </button>
                     )}
                   </div>
@@ -627,55 +653,44 @@ function DeliveriesContent() {
         </div>
       </Modal>
 
-      {/* Send channel choice modal */}
+      {/* Popup-blocked fallback: shows when window.open() was blocked by the browser */}
       <Modal
-        open={!!sendChoiceDelivery}
-        onClose={() => setSendChoiceDelivery(null)}
-        title="בחר אופן שליחה"
+        open={!!blockedWhatsApp}
+        onClose={() => setBlockedWhatsApp(null)}
+        title='פתיחת וואטסאפ נחסמה ע״י הדפדפן'
       >
-        {sendChoiceDelivery && (() => {
-          const courier = couriers.find(c => c.id === sendChoiceDelivery.courier_id);
-          return (
-            <div className="space-y-3">
-              <p className="text-sm" style={{ color: '#6B4A2D' }}>
-                שליח: <span className="font-semibold" style={{ color: '#1E120A' }}>{courier?.שם_שליח}</span>
-              </p>
-              <div className="flex flex-col gap-2">
-                <button
-                  onClick={() => {
-                    setSendChoiceDelivery(null);
-                    sendToCourier(sendChoiceDelivery, 'whatsapp');
-                  }}
-                  className="flex items-center gap-3 w-full px-4 py-3 rounded-xl border text-sm font-medium transition-all hover:bg-[#F0FDF4] text-right"
-                  style={{ borderColor: '#86EFAC', color: '#15803D' }}
-                >
-                  <IconWhatsApp className="w-5 h-5 flex-shrink-0" />
-                  <div>
-                    <div>שלח ב-WhatsApp</div>
-                    <div className="text-xs font-normal" style={{ color: '#6B9E7A' }}>{courier?.טלפון_שליח}</div>
-                  </div>
-                </button>
-                <button
-                  onClick={() => {
-                    setSendChoiceDelivery(null);
-                    sendToCourier(sendChoiceDelivery, 'email');
-                  }}
-                  className="flex items-center gap-3 w-full px-4 py-3 rounded-xl border text-sm font-medium transition-all hover:bg-[#EFF6FF] text-right"
-                  style={{ borderColor: '#BFDBFE', color: '#1D4ED8' }}
-                >
-                  <span className="text-lg flex-shrink-0">✉️</span>
-                  <div>
-                    <div>שלח במייל</div>
-                    <div className="text-xs font-normal" style={{ color: '#6B7FBD' }}>{courier?.אימייל_שליח}</div>
-                  </div>
-                </button>
-              </div>
-              <div className="flex justify-end pt-1">
-                <Button variant="outline" size="sm" onClick={() => setSendChoiceDelivery(null)}>ביטול</Button>
-              </div>
+        {blockedWhatsApp && (
+          <div className="space-y-4">
+            <p className="text-sm" style={{ color: '#6B4A2D' }}>
+              הדפדפן חסם את הפתיחה האוטומטית. לחצי על הכפתור כדי לפתוח את וואטסאפ עם ההודעה המוכנה.
+            </p>
+            <a
+              href={blockedWhatsApp}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => setBlockedWhatsApp(null)}
+              className="flex items-center justify-center gap-2 w-full px-4 py-4 rounded-xl text-base font-bold transition-all"
+              style={{ backgroundColor: '#15803D', color: '#FFF' }}
+            >
+              <IconWhatsApp className="w-5 h-5" />
+              פתח וואטסאפ לשליח
+            </a>
+            <button
+              type="button"
+              onClick={() => {
+                navigator.clipboard.writeText(blockedWhatsApp);
+                toast.success('הקישור הועתק');
+              }}
+              className="w-full py-2.5 text-sm font-medium rounded-xl border transition-all"
+              style={{ borderColor: '#DDD0BC', color: '#6B4A2D', backgroundColor: '#FFFFFF' }}
+            >
+              העתק קישור
+            </button>
+            <div className="flex justify-end">
+              <Button variant="outline" size="sm" onClick={() => setBlockedWhatsApp(null)}>ביטול</Button>
             </div>
-          );
-        })()}
+          </div>
+        )}
       </Modal>
     </div>
   );
