@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input, Select, Textarea } from '@/components/ui/Input';
+import { Combobox } from '@/components/ui/Combobox';
 import { PageLoading } from '@/components/ui/LoadingSpinner';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import toast from 'react-hot-toast';
@@ -905,30 +906,29 @@ export default function NewOrderPage() {
                   >
                   <div className="grid grid-cols-12 gap-2 items-end">
                     <div className="col-span-4">
-                      <Select
+                      <Combobox
                         label="מוצר"
                         value={item.מוצר_id}
-                        onChange={e => updateProductItem(idx, 'מוצר_id', e.target.value)}
-                      >
-                        <option value="">בחר...</option>
-                        {(() => {
+                        onChange={v => updateProductItem(idx, 'מוצר_id', v)}
+                        options={(() => {
                           // Source of truth: price list. A product is visible if it's
-                          // active (not manually disabled) AND has a price entry for the
-                          // currently effective price type. We deliberately ignore
-                          // price_availability and לקוחות_עסקיים_בלבד on the product.
+                          // active AND has a price entry for the currently effective
+                          // price type. We deliberately ignore price_availability and
+                          // לקוחות_עסקיים_בלבד on the product.
                           const priceTypeIds = new Set(
                             priceList
                               .filter(pl => pl.price_type === effectivePriceType)
                               .map(pl => pl.מוצר_id),
                           );
-                          const visible = products
+                          return products
                             .filter(p => p.פעיל && p.סוג_מוצר === 'מוצר רגיל')
-                            .filter(p => !customerType || priceTypeIds.has(p.id));
-                          return visible.map(p => (
-                            <option key={p.id} value={p.id}>{p.שם_מוצר}</option>
-                          ));
+                            .filter(p => !customerType || priceTypeIds.has(p.id))
+                            .map(p => ({ value: p.id, label: p.שם_מוצר }));
                         })()}
-                      </Select>
+                        placeholder="בחר..."
+                        searchPlaceholder="חיפוש מוצר..."
+                        emptyText="לא נמצאו מוצרים"
+                      />
                     </div>
                     <div className="col-span-2">
                       <Input

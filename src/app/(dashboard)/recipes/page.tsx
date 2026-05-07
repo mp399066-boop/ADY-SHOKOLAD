@@ -7,6 +7,7 @@ import { PageLoading } from '@/components/ui/LoadingSpinner';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Modal } from '@/components/ui/Modal';
 import { Input, Select, Textarea } from '@/components/ui/Input';
+import { Combobox } from '@/components/ui/Combobox';
 import toast from 'react-hot-toast';
 import { exportToCsv } from '@/lib/exportCsv';
 import { IconExport, IconTrash } from '@/components/icons';
@@ -242,10 +243,15 @@ export default function RecipesPage() {
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <Input label="שם מתכון *" value={recipeForm.שם_מתכון} onChange={e => setRecipeForm(p => ({ ...p, שם_מתכון: e.target.value }))} />
-            <Select label="מוצר משויך" value={recipeForm.מוצר_id} onChange={e => setRecipeForm(p => ({ ...p, מוצר_id: e.target.value }))}>
-              <option value="">ללא שיוך</option>
-              {products.map(p => <option key={p.id} value={p.id}>{p.שם_מוצר}</option>)}
-            </Select>
+            <Combobox
+              label="מוצר משויך"
+              value={recipeForm.מוצר_id}
+              onChange={v => setRecipeForm(p => ({ ...p, מוצר_id: v }))}
+              options={products.map(p => ({ value: p.id, label: p.שם_מוצר }))}
+              placeholder="ללא שיוך"
+              searchPlaceholder="חיפוש מוצר..."
+              emptyText="לא נמצאו מוצרים"
+            />
             <Input label="כמות תוצר" type="number" value={recipeForm.כמות_תוצר} onChange={e => setRecipeForm(p => ({ ...p, כמות_תוצר: Number(e.target.value) }))} min={1} />
             <Textarea label="הערות" value={recipeForm.הערות} onChange={e => setRecipeForm(p => ({ ...p, הערות: e.target.value }))} rows={1} />
           </div>
@@ -287,10 +293,15 @@ export default function RecipesPage() {
       {/* Production Modal */}
       <Modal open={showProductionModal} onClose={() => setShowProductionModal(false)} title="רישום ייצור">
         <div className="space-y-4">
-          <Select label="מוצר *" value={productionForm.מוצר_id} onChange={e => setProductionForm(p => ({ ...p, מוצר_id: e.target.value }))}>
-            <option value="">בחר מוצר...</option>
-            {products.map(p => <option key={p.id} value={p.id}>{p.שם_מוצר}</option>)}
-          </Select>
+          <Combobox
+            label="מוצר *"
+            value={productionForm.מוצר_id}
+            onChange={v => setProductionForm(p => ({ ...p, מוצר_id: v }))}
+            options={products.map(p => ({ value: p.id, label: p.שם_מוצר }))}
+            placeholder="בחר מוצר..."
+            searchPlaceholder="חיפוש מוצר..."
+            emptyText="לא נמצאו מוצרים"
+          />
           <Input label="כמות שיוצרה *" type="number" value={productionForm.כמות_שיוצרה} onChange={e => setProductionForm(p => ({ ...p, כמות_שיוצרה: Number(e.target.value) }))} min={0} step={0.1} />
           <Input label="תאריך ייצור" type="date" value={productionForm.תאריך_ייצור} onChange={e => setProductionForm(p => ({ ...p, תאריך_ייצור: e.target.value }))} />
           <Textarea label="הערות" value={productionForm.הערות} onChange={e => setProductionForm(p => ({ ...p, הערות: e.target.value }))} rows={2} />

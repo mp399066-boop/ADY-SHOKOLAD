@@ -7,6 +7,7 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { StatusBadge, UrgentBadge } from '@/components/ui/StatusBadge';
 import { PageLoading } from '@/components/ui/LoadingSpinner';
+import { Combobox } from '@/components/ui/Combobox';
 import { formatDate, formatCurrency } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import type { Order, OrderItem, Customer, Product, Package, PetitFourType } from '@/types/database';
@@ -1064,21 +1065,18 @@ export default function OrderDetailPage() {
                   {editItems.map((item, idx) => (
                     <div key={idx} className="grid grid-cols-12 gap-2 items-end p-3 rounded-xl" style={{ backgroundColor: '#FAF7F0' }}>
                       <div className="col-span-5">
-                        <label className="block text-xs mb-1" style={{ color: '#6B4A2D' }}>מוצר</label>
-                        <select
-                          value={item.מוצר_id}
-                          onChange={e => updateProductItem(idx, 'מוצר_id', e.target.value)}
-                          className="w-full border rounded-lg px-2 py-1.5 text-xs focus:outline-none"
-                          style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
-                        >
-                          <option value="">בחר מוצר...</option>
-                          {products
+                        <Combobox
+                          label="מוצר"
+                          value={item.מוצר_id || ''}
+                          onChange={v => updateProductItem(idx, 'מוצר_id', v)}
+                          options={products
                             .filter(p => p.סוג_מוצר === 'מוצר רגיל')
                             .filter(p => !p.לקוחות_עסקיים_בלבד || order.לקוחות?.סוג_לקוח === 'עסקי')
-                            .map(p => (
-                              <option key={p.id} value={p.id}>{p.שם_מוצר}</option>
-                            ))}
-                        </select>
+                            .map(p => ({ value: p.id, label: p.שם_מוצר }))}
+                          placeholder="בחר מוצר..."
+                          searchPlaceholder="חיפוש מוצר..."
+                          emptyText="לא נמצאו מוצרים"
+                        />
                       </div>
                       <div className="col-span-2">
                         <label className="block text-xs mb-1" style={{ color: '#6B4A2D' }}>כמות</label>
