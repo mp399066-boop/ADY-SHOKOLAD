@@ -2,6 +2,7 @@
 
 import NavBar from '@/components/layout/NavBar';
 import AssistantDrawer from '@/components/assistant/AssistantDrawer';
+import GlobalSearch from '@/components/search/GlobalSearch';
 import { Toaster } from 'react-hot-toast';
 
 export default function DashboardLayout({
@@ -18,6 +19,7 @@ export default function DashboardLayout({
         </div>
       </main>
 
+      <GlobalSearch />
       <AssistantDrawer />
 
       <Toaster

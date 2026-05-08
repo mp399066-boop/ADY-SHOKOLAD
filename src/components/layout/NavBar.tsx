@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/client';
 import {
   IconDashboard, IconOrders, IconCustomers, IconProducts,
   IconDeliveries, IconInventory, IconRecipes, IconInvoices,
-  IconImport, IconSettings, IconMenu, IconX, IconExport,
+  IconImport, IconSettings, IconMenu, IconX, IconExport, IconSearch,
 } from '@/components/icons';
 import type { BusinessSettings } from '@/types/database';
 
@@ -157,6 +157,33 @@ export default function NavBar() {
             );
           })}
         </nav>
+
+        {/* Global search trigger — desktop pill */}
+        <button
+          onClick={() => window.dispatchEvent(new Event('global-search:open'))}
+          className="hidden md:flex items-center"
+          style={{
+            height: '32px',
+            padding: '0 10px 0 12px',
+            fontSize: '12px',
+            color: '#8A7664',
+            backgroundColor: '#FAF7F0',
+            border: '1px solid #EAE0D4',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            minWidth: '180px',
+            gap: '8px',
+            flexShrink: 0,
+            marginInline: '8px',
+          }}
+          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#F2EBDD'; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#FAF7F0'; }}
+          aria-label="חיפוש גלובלי"
+        >
+          <IconSearch className="w-3.5 h-3.5" />
+          <span style={{ flex: 1, textAlign: 'right' }}>חיפוש...</span>
+          <kbd style={{ fontSize: '10px', padding: '1px 5px', border: '1px solid #E8DED2', borderRadius: '3px', backgroundColor: '#FFFFFF', color: '#5C4A38', fontFamily: 'inherit' }}>Ctrl K</kbd>
+        </button>
 
         {/* Mobile hamburger */}
         <button
