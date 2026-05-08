@@ -8,7 +8,6 @@ import { PageLoading } from '@/components/ui/LoadingSpinner';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Modal } from '@/components/ui/Modal';
 import { Input, Select, Textarea } from '@/components/ui/Input';
-import { formatCurrency } from '@/lib/utils';
 import { exportToCsv } from '@/lib/exportCsv';
 import { IconExport, IconEdit, IconTrash } from '@/components/icons';
 import { ActionBtn } from '@/components/ui/RowActions';
@@ -41,10 +40,6 @@ export default function ProductsPage() {
   const [showBulkConfirm, setShowBulkConfirm] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkToggling, setBulkToggling] = useState(false);
-  const [showPriceModal, setShowPriceModal] = useState(false);
-  const [priceMode, setPriceMode] = useState<'set' | 'add' | 'subtract' | 'percent'>('set');
-  const [priceValue, setPriceValue] = useState<number>(0);
-  const [bulkPricing, setBulkPricing] = useState(false);
 
   const currentSel = tab === 'products' ? selProducts : tab === 'packages' ? selPackages : selPF;
   const currentItems = tab === 'products' ? filteredProductsArr() : tab === 'packages' ? filteredPackagesArr() : filteredPFArr();
@@ -195,25 +190,6 @@ export default function ProductsPage() {
     finally { setBulkDeleting(false); }
   };
 
-  const handleBulkPrice = async () => {
-    setBulkPricing(true);
-    try {
-      const ids = Array.from(currentSel);
-      const res = await fetch('/api/products/bulk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'update_price', ids, mode: priceMode, value: priceValue }),
-      });
-      const { succeeded, failed } = await res.json();
-      if (succeeded > 0) toast.success(`המחיר עודכן ל-${succeeded} מוצרים`);
-      if (failed > 0) toast.error(`${failed} מוצרים לא עודכנו`);
-      clearSel();
-      setShowPriceModal(false);
-      fetchAll();
-    } catch { toast.error('שגיאה בעדכון מחיר'); }
-    finally { setBulkPricing(false); }
-  };
-
   const handleBulkToggle = async (activate: boolean) => {
     setBulkToggling(true);
     try {
@@ -244,13 +220,13 @@ export default function ProductsPage() {
     const fpf = filteredPFArr();
     if (tab === 'products') {
       exportToCsv('מוצרים.csv',
-        ['שם מוצר', 'סוג', 'מחיר', 'פעיל', 'כמות במלאי'],
-        fp.map(p => [p.שם_מוצר, p.סוג_מוצר, p.מחיר, p.פעיל ? 'כן' : 'לא', p.כמות_במלאי]),
+        ['שם מוצר', 'סוג', 'פעיל', 'כמות במלאי'],
+        fp.map(p => [p.שם_מוצר, p.סוג_מוצר, p.פעיל ? 'כן' : 'לא', p.כמות_במלאי]),
       );
     } else if (tab === 'packages') {
       exportToCsv('מארזים.csv',
-        ['שם מארז', 'גודל', 'מחיר', 'פעיל'],
-        fpkg.map(p => [p.שם_מארז, p.גודל_מארז, p.מחיר_מארז, p.פעיל ? 'כן' : 'לא']),
+        ['שם מארז', 'גודל', 'פעיל'],
+        fpkg.map(p => [p.שם_מארז, p.גודל_מארז, p.פעיל ? 'כן' : 'לא']),
       );
     } else {
       exportToCsv('פטיפורים.csv',
@@ -270,7 +246,6 @@ export default function ProductsPage() {
   // Bulk bar actions per tab
   const bulkActions = tab === 'products'
     ? [
-        { label: 'שינוי מחיר', onClick: () => { setPriceMode('set'); setPriceValue(0); setShowPriceModal(true); } },
         { label: 'הפעל', onClick: () => handleBulkToggle(true) },
         { label: 'השבת', onClick: () => handleBulkToggle(false) },
         { label: 'מחיקה', variant: 'danger' as const, icon: <IconTrash className="w-3.5 h-3.5" />, onClick: () => setShowBulkConfirm(true) },
@@ -437,7 +412,7 @@ export default function ProductsPage() {
                               onChange={toggleSelAll}
                             />
                           </th>
-                          {['שם מארז', 'גודל', 'מקסימום סוגים', 'מחיר', 'סטטוס', ''].map(h => (
+                          {['שם מארז', 'גודל', 'מקסימום סוגים', 'סטטוס', ''].map(h => (
                             <th key={h} className="px-4 py-3 text-right text-xs font-semibold" style={{ color: '#6B4A2D' }}>{h}</th>
                           ))}
                         </tr>
@@ -464,7 +439,6 @@ export default function ProductsPage() {
                               <td className="px-4 py-3 font-medium text-xs" style={{ color: '#2B1A10' }}>{pkg.שם_מארז}</td>
                               <td className="px-4 py-3 text-xs" style={{ color: '#6B4A2D' }}>{pkg.גודל_מארז} יח׳</td>
                               <td className="px-4 py-3 text-xs" style={{ color: '#6B4A2D' }}>{pkg.כמה_סוגים_מותר_לבחור} סוגים</td>
-                              <td className="px-4 py-3 text-xs font-semibold" style={{ color: '#8B5E34' }}>{formatCurrency(pkg.מחיר_מארז)}</td>
                               <td className="px-4 py-3">
                                 <span
                                   className="text-xs px-2 py-0.5 rounded-full"
@@ -572,64 +546,6 @@ export default function ProductsPage() {
         actions={bulkActions}
       />
 
-      {/* Bulk price modal */}
-      <Modal
-        open={showPriceModal}
-        onClose={() => setShowPriceModal(false)}
-        title={`שינוי מחיר ל-${currentSel.size} מוצרים`}
-        size="sm"
-      >
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-2">
-            {([
-              { key: 'set',      label: 'קביעת מחיר חדש' },
-              { key: 'add',      label: 'הוספה למחיר' },
-              { key: 'subtract', label: 'הפחתה מהמחיר' },
-              { key: 'percent',  label: 'שינוי באחוזים' },
-            ] as const).map(m => (
-              <button
-                key={m.key}
-                onClick={() => setPriceMode(m.key)}
-                className="px-3 py-2 text-xs rounded-lg border transition-all"
-                style={{
-                  borderColor: priceMode === m.key ? '#8B5E34' : '#E8DDD0',
-                  backgroundColor: priceMode === m.key ? '#FEF9EF' : '#FFFFFF',
-                  color: priceMode === m.key ? '#8B5E34' : '#6B4A2D',
-                  fontWeight: priceMode === m.key ? 600 : 400,
-                }}
-              >
-                {m.label}
-              </button>
-            ))}
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>
-              {priceMode === 'percent' ? 'אחוז שינוי (חיובי להעלאה, שלילי להורדה)' : 'סכום (₪)'}
-            </label>
-            <input
-              type="number"
-              value={priceValue}
-              onChange={e => setPriceValue(Number(e.target.value))}
-              min={priceMode === 'percent' ? -100 : 0}
-              step={priceMode === 'percent' ? 1 : 0.01}
-              className="w-full px-3 py-2 text-sm rounded-lg border focus:outline-none focus:ring-2 focus:ring-amber-100"
-              style={{ borderColor: '#DDD0BC', color: '#2B1A10' }}
-              placeholder={priceMode === 'percent' ? 'לדוגמה: 10 להעלאה, -5 להורדה' : '0.00'}
-            />
-          </div>
-
-          <div className="text-xs px-3 py-2 rounded-lg" style={{ backgroundColor: '#FEF9EF', color: '#8B5E34', border: '1px solid #F0E0C0' }}>
-            הפעולה תשפיע על {currentSel.size} מוצרים
-          </div>
-
-          <div className="flex gap-3 justify-end pt-1">
-            <Button variant="outline" onClick={() => setShowPriceModal(false)}>ביטול</Button>
-            <Button onClick={handleBulkPrice} loading={bulkPricing}>עדכן מחיר</Button>
-          </div>
-        </div>
-      </Modal>
-
       {/* Floating action button */}
       <button
         onClick={openAdd}
@@ -670,34 +586,12 @@ export default function ProductsPage() {
                 <option value="מוצר רגיל">מוצר רגיל</option>
                 <option value="מארז פטיפורים">מארז פטיפורים</option>
               </Select>
-              <div>
-                <Input
-                  label="מחיר ייחוס (₪)"
-                  type="number"
-                  value={Number(form.מחיר || 0)}
-                  onChange={e => setForm(p => ({ ...p, מחיר: Number(e.target.value) }))}
-                  min={0}
-                  step={0.01}
-                />
-                <p className="text-[10px] mt-1" style={{ color: '#9B7A5A' }}>
-                  לא בשימוש להזמנות — מקור המחיר להזמנות הוא טבלת המחירון.
-                </p>
-              </div>
               <Textarea
                 label="תיאור"
                 value={String(form.תיאור || '')}
                 onChange={e => setForm(p => ({ ...p, תיאור: e.target.value }))}
                 rows={2}
               />
-              <Select
-                label="זמינות מחירון"
-                value={String(form.price_availability ?? 'retail')}
-                onChange={e => setForm(p => ({ ...p, price_availability: e.target.value }))}
-              >
-                <option value="retail">זמין לכולם (מחיר קמעונאי)</option>
-                <option value="business_fixed">לקוחות עסקיים קבועים (מחיר עסקי קבוע)</option>
-                <option value="business_quantity">לקוחות עסקיים לפי כמות (מחיר כמות)</option>
-              </Select>
             </>
           )}
           {tab === 'packages' && (
@@ -724,14 +618,6 @@ export default function ProductsPage() {
                   min={1}
                 />
               </div>
-              <Input
-                label="מחיר מארז (₪)"
-                type="number"
-                value={Number(form.מחיר_מארז || 0)}
-                onChange={e => setForm(p => ({ ...p, מחיר_מארז: Number(e.target.value) }))}
-                min={0}
-                step={0.01}
-              />
               <Textarea
                 label="הערות"
                 value={String(form.הערות || '')}
