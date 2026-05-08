@@ -386,19 +386,18 @@ export default function ProductsPage() {
                             </div>
                             <p className="text-xs mb-2" style={{ color: '#9B7A5A' }}>
                               {p.סוג_מוצר}
-                              {(p.price_availability === 'business_fixed' || p.price_availability === 'business_quantity' || (!p.price_availability && p.לקוחות_עסקיים_בלבד)) && (
-                                <span className="mr-2 text-xs px-1.5 py-0.5 rounded-full" style={{ backgroundColor: '#EFF6FF', color: '#1D4ED8' }}>
-                                  {p.price_availability === 'business_quantity' ? 'כמות' : 'עסקי בלבד'}
-                                </span>
-                              )}
                             </p>
                             {p.תיאור && (
                               <p className="text-xs mb-2 line-clamp-2" style={{ color: '#6B4A2D' }}>{p.תיאור}</p>
                             )}
                             <div className="flex items-center justify-between mt-2">
-                              <span className="font-bold text-sm" style={{ color: '#8B5E34' }}>
-                                {formatCurrency(p.מחיר)}
-                              </span>
+                              {p.כמות_במלאי > 0 ? (
+                                <span className="text-xs" style={{ color: '#9B7A5A' }}>
+                                  מלאי: {p.כמות_במלאי}
+                                </span>
+                              ) : (
+                                <span />
+                              )}
                               <div className="flex items-center gap-0.5">
                                 <ActionBtn title="עריכה" onClick={() => openEdit(p)} icon={<IconEdit className="w-4 h-4" />} />
                                 <button
