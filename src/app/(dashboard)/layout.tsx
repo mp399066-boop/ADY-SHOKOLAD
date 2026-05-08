@@ -1,6 +1,7 @@
 'use client';
 
 import NavBar from '@/components/layout/NavBar';
+import AssistantDrawer from '@/components/assistant/AssistantDrawer';
 import { Toaster } from 'react-hot-toast';
 
 export default function DashboardLayout({
@@ -16,6 +17,8 @@ export default function DashboardLayout({
           {children}
         </div>
       </main>
+
+      <AssistantDrawer />
 
       <Toaster
         position="bottom-left"
