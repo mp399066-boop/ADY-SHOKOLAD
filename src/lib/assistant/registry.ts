@@ -10,10 +10,12 @@ import type {
 } from './types';
 
 const SUGGESTIONS = [
-  { label: 'כמה הזמנות יש היום?',     text: 'כמה הזמנות יש היום?' },
-  { label: 'איזה הזמנות יש למחר?',     text: 'איזה הזמנות יש למחר?' },
-  { label: 'מה במלאי נמוך?',            text: 'מה במלאי נמוך?' },
-  { label: 'הזמנות דחופות להיום',      text: 'תראי הזמנות דחופות להיום' },
+  { label: 'כמה הזמנות יש היום?',           text: 'כמה הזמנות יש היום?' },
+  { label: 'איזה סוגי פטיפורים קיימים?',    text: 'איזה סוגי פטיפורים קיימים?' },
+  { label: 'איזה מארזים יש?',                text: 'איזה מארזים יש?' },
+  { label: 'איזה פטיפורים הוזמנו היום?',    text: 'איזה פטיפורים הוזמנו היום?' },
+  { label: 'מה במלאי נמוך?',                 text: 'מה במלאי נמוך?' },
+  { label: 'הזמנות דחופות להיום',            text: 'תראי הזמנות דחופות להיום' },
 ];
 
 // ───── Helpers ─────────────────────────────────────────────────────────────
@@ -145,40 +147,182 @@ async function actionListLowStock(): Promise<AssistantResponse> {
 
 async function actionFindPackage(rawQuery: string): Promise<AssistantResponse> {
   const q = sanitizeQuery(rawQuery);
-  if (!q) {
-    return { kind: 'clarify', message: 'איזה מארז תרצי לחפש? למשל: מארז של 24' };
-  }
-
   const supabase = createAdminClient();
   const asNumber = Number(q);
-  const isSize = Number.isFinite(asNumber) && asNumber > 0 && /^\d+$/.test(q);
+  const isSize = q && Number.isFinite(asNumber) && asNumber > 0 && /^\d+$/.test(q);
 
   const builder = supabase.from('מארזים')
     .select('שם_מארז, גודל_מארז, מחיר_מארז, כמה_סוגים_מותר_לבחור, פעיל')
     .eq('פעיל', true)
+    .order('גודל_מארז', { ascending: true })
     .limit(20);
 
-  const { data, error } = isSize
-    ? await builder.eq('גודל_מארז', asNumber)
-    : await builder.ilike('שם_מארז', `%${q}%`);
+  const { data, error } = !q
+    ? await builder
+    : isSize
+      ? await builder.eq('גודל_מארז', asNumber)
+      : await builder.ilike('שם_מארז', `%${q}%`);
 
   if (error) throw new Error(error.message);
   const rows = (data || []) as Record<string, unknown>[];
 
   if (rows.length === 0) {
-    return { kind: 'answer', blocks: [{ type: 'text', text: `לא מצאתי מארזים תואמים ל-"${q}"` }] };
+    const msg = q ? `לא מצאתי מארזים תואמים ל-"${q}"` : 'לא מצאתי מארזים פעילים במערכת';
+    return { kind: 'answer', blocks: [{ type: 'text', text: msg }] };
   }
 
   const items: ListItem[] = rows.map((r: Record<string, unknown>) => ({
     label: String(r['שם_מארז']),
     value: `${r['גודל_מארז']} יח׳`,
-    sublabel: r['כמה_סוגים_מותר_לבחור'] != null ? `עד ${r['כמה_סוגים_מותר_לבחור']} סוגים` : undefined,
+    sublabel: r['כמה_סוגים_מותר_לבחור'] != null ? `עד ${r['כמה_סוגים_מותר_לבחור']} סוגי פטיפורים` : undefined,
     emoji: '📦',
   }));
 
+  const title = q ? `${rows.length} מארזים נמצאו` : `${rows.length} מארזים פעילים`;
   return {
     kind: 'answer',
-    blocks: [{ type: 'list', title: `${rows.length} מארזים נמצאו`, items }],
+    blocks: [{ type: 'list', title, items }],
+  };
+}
+
+async function actionListPetitFourTypes(): Promise<AssistantResponse> {
+  const supabase = createAdminClient();
+  const { data, error } = await supabase
+    .from('סוגי_פטיפורים')
+    .select('שם_פטיפור, כמות_במלאי, פעיל')
+    .eq('פעיל', true)
+    .order('שם_פטיפור', { ascending: true })
+    .limit(60);
+
+  if (error) throw new Error(error.message);
+  const rows = (data || []) as Record<string, unknown>[];
+
+  if (rows.length === 0) {
+    return { kind: 'answer', blocks: [{ type: 'text', text: 'לא מצאתי סוגי פטיפורים פעילים במערכת' }] };
+  }
+
+  const items: ListItem[] = rows.map((r: Record<string, unknown>) => {
+    const qty = Number(r['כמות_במלאי']) || 0;
+    const tone: Tone = qty === 0 ? 'bad' : qty <= 3 ? 'warn' : 'good';
+    return {
+      label: String(r['שם_פטיפור']),
+      value: `${qty} יח׳`,
+      tone,
+      emoji: toneToEmoji(tone),
+    };
+  });
+
+  return {
+    kind: 'answer',
+    blocks: [{ type: 'list', title: `${rows.length} סוגי פטיפורים`, items }],
+  };
+}
+
+async function actionOrderPetitFourSummary(range: Range): Promise<AssistantResponse> {
+  const { startDate, endDate } = resolveReportRange(rangeToReportInput(range));
+  const supabase = createAdminClient();
+
+  const { data: orders, error: ordersErr } = await supabase
+    .from('הזמנות')
+    .select('id')
+    .gte('תאריך_אספקה', startDate)
+    .lte('תאריך_אספקה', endDate)
+    .neq('סטטוס_הזמנה', 'בוטלה')
+    .neq('סטטוס_הזמנה', 'טיוטה');
+  if (ordersErr) throw new Error(ordersErr.message);
+
+  const orderIds = ((orders || []) as Record<string, unknown>[]).map(o => String(o['id']));
+  if (orderIds.length === 0) {
+    return { kind: 'answer', blocks: [{ type: 'text', text: `אין הזמנות ${rangeLabel(range)}` }] };
+  }
+
+  const { data: items, error: itemsErr } = await supabase
+    .from('מוצרים_בהזמנה')
+    .select('id')
+    .in('הזמנה_id', orderIds)
+    .eq('סוג_שורה', 'מארז');
+  if (itemsErr) throw new Error(itemsErr.message);
+
+  const itemIds = ((items || []) as Record<string, unknown>[]).map(i => String(i['id']));
+  if (itemIds.length === 0) {
+    return { kind: 'answer', blocks: [{ type: 'text', text: `אין מארזי פטיפורים בהזמנות ${rangeLabel(range)}` }] };
+  }
+
+  const { data: selections, error: selErr } = await supabase
+    .from('בחירת_פטיפורים_בהזמנה')
+    .select('כמות, סוגי_פטיפורים(שם_פטיפור)')
+    .in('שורת_הזמנה_id', itemIds);
+  if (selErr) throw new Error(selErr.message);
+
+  const totals = new Map<string, number>();
+  for (const sel of ((selections || []) as Record<string, unknown>[])) {
+    const pf = sel['סוגי_פטיפורים'] as { שם_פטיפור?: string | null } | null;
+    const name = pf?.['שם_פטיפור'] || 'לא ידוע';
+    const qty = Number(sel['כמות']) || 0;
+    totals.set(name, (totals.get(name) || 0) + qty);
+  }
+
+  if (totals.size === 0) {
+    return { kind: 'answer', blocks: [{ type: 'text', text: `לא נבחרו פטיפורים בהזמנות ${rangeLabel(range)}` }] };
+  }
+
+  const sorted = Array.from(totals.entries()).sort((a, b) => b[1] - a[1]).slice(0, 30);
+  const grandTotal = sorted.reduce((s, [, q]) => s + q, 0);
+
+  return {
+    kind: 'answer',
+    blocks: [
+      { type: 'stat', label: `סה"כ פטיפורים שהוזמנו ${rangeLabel(range)}`, value: `${grandTotal} יח׳`, emoji: '🍬', tone: 'neutral' },
+      {
+        type: 'list',
+        title: 'פירוט לפי סוג',
+        items: sorted.map(([name, qty]) => ({
+          label: name,
+          value: `${qty} יח׳`,
+          emoji: '🍬',
+        })),
+      },
+    ],
+  };
+}
+
+async function actionCountOrderItemsByKind(range: Range, kind: 'מארז' | 'מוצר'): Promise<AssistantResponse> {
+  const { startDate, endDate } = resolveReportRange(rangeToReportInput(range));
+  const supabase = createAdminClient();
+
+  const { data: orders, error: ordersErr } = await supabase
+    .from('הזמנות')
+    .select('id')
+    .gte('תאריך_אספקה', startDate)
+    .lte('תאריך_אספקה', endDate)
+    .neq('סטטוס_הזמנה', 'בוטלה')
+    .neq('סטטוס_הזמנה', 'טיוטה');
+  if (ordersErr) throw new Error(ordersErr.message);
+
+  const orderIds = ((orders || []) as Record<string, unknown>[]).map(o => String(o['id']));
+  if (orderIds.length === 0) {
+    return { kind: 'answer', blocks: [{ type: 'text', text: `אין הזמנות ${rangeLabel(range)}` }] };
+  }
+
+  const { data: items, error: itemsErr } = await supabase
+    .from('מוצרים_בהזמנה')
+    .select('כמות')
+    .in('הזמנה_id', orderIds)
+    .eq('סוג_שורה', kind);
+  if (itemsErr) throw new Error(itemsErr.message);
+
+  const total = ((items || []) as Record<string, unknown>[])
+    .reduce((sum, it) => sum + (Number(it['כמות']) || 0), 0);
+
+  const lineCount = ((items || []) as unknown[]).length;
+  const label = kind === 'מארז' ? 'מארזי פטיפורים' : 'מוצרים';
+  const emoji = kind === 'מארז' ? '📦' : '🍰';
+
+  return {
+    kind: 'answer',
+    blocks: [
+      { type: 'stat', label: `${label} ${rangeLabel(range)}`, value: `${total} יח׳`, sublabel: `${lineCount} שורות`, emoji, tone: 'neutral' },
+    ],
   };
 }
 
@@ -189,7 +333,7 @@ async function actionStockQuery(rawQuery: string): Promise<AssistantResponse> {
   }
 
   const supabase = createAdminClient();
-  const [finishedRes, rawRes] = await Promise.all([
+  const [finishedRes, rawRes, petitFourRes] = await Promise.all([
     supabase.from('מוצרים_למכירה')
       .select('id, שם_מוצר, כמות_במלאי, פעיל')
       .ilike('שם_מוצר', `%${q}%`)
@@ -199,19 +343,40 @@ async function actionStockQuery(rawQuery: string): Promise<AssistantResponse> {
       .select('שם_חומר_גלם, כמות_במלאי, יחידת_מידה, סטטוס_מלאי')
       .ilike('שם_חומר_גלם', `%${q}%`)
       .limit(8),
+    supabase.from('סוגי_פטיפורים')
+      .select('שם_פטיפור, כמות_במלאי, פעיל')
+      .ilike('שם_פטיפור', `%${q}%`)
+      .eq('פעיל', true)
+      .limit(8),
   ]);
 
-  if (finishedRes.error) throw new Error(finishedRes.error.message);
-  if (rawRes.error)      throw new Error(rawRes.error.message);
+  if (finishedRes.error)  throw new Error(finishedRes.error.message);
+  if (rawRes.error)       throw new Error(rawRes.error.message);
+  if (petitFourRes.error) throw new Error(petitFourRes.error.message);
 
-  const finished = (finishedRes.data || []) as Record<string, unknown>[];
-  const rawMats  = (rawRes.data || []) as Record<string, unknown>[];
+  const finished   = (finishedRes.data || []) as Record<string, unknown>[];
+  const rawMats    = (rawRes.data || []) as Record<string, unknown>[];
+  const petitFours = (petitFourRes.data || []) as Record<string, unknown>[];
 
-  if (finished.length === 0 && rawMats.length === 0) {
+  if (finished.length === 0 && rawMats.length === 0 && petitFours.length === 0) {
     return { kind: 'answer', blocks: [{ type: 'text', text: `לא מצאתי "${q}" במלאי` }] };
   }
 
   const blocks: Block[] = [];
+
+  if (petitFours.length > 0) {
+    const items: ListItem[] = petitFours.map((r: Record<string, unknown>) => {
+      const qty = Number(r['כמות_במלאי']) || 0;
+      const tone: Tone = qty === 0 ? 'bad' : qty <= 3 ? 'warn' : 'good';
+      return {
+        label: String(r['שם_פטיפור']),
+        value: `${qty} יח׳`,
+        tone,
+        emoji: toneToEmoji(tone),
+      };
+    });
+    blocks.push({ type: 'list', title: 'פטיפורים', items });
+  }
 
   if (finished.length > 0) {
     const items: ListItem[] = finished.map((r: Record<string, unknown>) => {
@@ -251,11 +416,14 @@ async function actionStockQuery(rawQuery: string): Promise<AssistantResponse> {
 
 export async function runIntent(intent: ParsedIntent): Promise<AssistantResponse> {
   switch (intent.type) {
-    case 'count_orders':   return actionCountOrders(intent.range, intent.filters);
-    case 'find_orders':    return actionFindOrders(intent.range, intent.filters);
-    case 'list_low_stock': return actionListLowStock();
-    case 'find_package':   return actionFindPackage(intent.query);
-    case 'stock_query':    return actionStockQuery(intent.query);
+    case 'count_orders':              return actionCountOrders(intent.range, intent.filters);
+    case 'find_orders':               return actionFindOrders(intent.range, intent.filters);
+    case 'list_low_stock':            return actionListLowStock();
+    case 'find_package':              return actionFindPackage(intent.query);
+    case 'stock_query':               return actionStockQuery(intent.query);
+    case 'list_petit_four_types':     return actionListPetitFourTypes();
+    case 'order_petit_four_summary':  return actionOrderPetitFourSummary(intent.range);
+    case 'count_order_items_by_kind': return actionCountOrderItemsByKind(intent.range, intent.kind);
     case 'unknown':
       return {
         kind: 'clarify',

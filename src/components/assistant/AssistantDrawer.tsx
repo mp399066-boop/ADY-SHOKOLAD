@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef, FormEvent } from 'react';
+import { useRouter } from 'next/navigation';
+import { createClient } from '@/lib/supabase/client';
 import type { AssistantResponse, Block, ListItem, OrderSummary, Tone } from '@/lib/assistant/types';
 
 const STORAGE_KEY = 'assistant-history-v1';
@@ -30,10 +32,12 @@ const TONE_FG: Record<Tone, string> = {
 };
 
 export default function AssistantDrawer() {
+  const router = useRouter();
   const [open, setOpen]         = useState(false);
   const [input, setInput]       = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [pending, setPending]   = useState(false);
+  const [logoUrl, setLogoUrl]   = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef  = useRef<HTMLInputElement>(null);
 
@@ -43,6 +47,20 @@ export default function AssistantDrawer() {
       if (raw) setMessages(JSON.parse(raw));
     } catch { /* ignore */ }
   }, []);
+
+  // Fetch brand logo from business_settings (same source as NavBar)
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.from('business_settings').select('logo_url').single()
+      .then(({ data }: { data: { logo_url: string | null } | null }) => {
+        if (data?.logo_url) setLogoUrl(data.logo_url);
+      });
+  }, []);
+
+  const openOrder = (id: string) => {
+    setOpen(false);
+    router.push(`/orders/${id}`);
+  };
 
   useEffect(() => {
     try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(messages)); } catch { /* ignore */ }
@@ -83,26 +101,57 @@ export default function AssistantDrawer() {
 
   return (
     <>
-      {/* Floating button */}
+      {/* Floating button — bottom-left, brand logo, premium 3D feel */}
       <button
         onClick={() => setOpen(o => !o)}
         aria-label="עוזרת מערכת"
-        className="fixed z-40 transition-transform hover:scale-105"
+        className="fixed z-40"
         style={{
           bottom: '20px',
-          right: '20px',
-          width: '52px',
-          height: '52px',
+          left: '20px',
+          width: '56px',
+          height: '56px',
           borderRadius: '50%',
-          backgroundColor: '#8B5E34',
-          color: '#FFFFFF',
-          fontSize: '22px',
-          border: 'none',
-          boxShadow: '0 4px 14px rgba(58,42,26,0.22)',
+          backgroundColor: '#FFFFFF',
+          border: '1.5px solid #C9A46A',
+          padding: 0,
+          overflow: 'hidden',
           cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          boxShadow: '0 6px 16px rgba(58,42,26,0.20), 0 2px 4px rgba(58,42,26,0.10), inset 0 1px 0 rgba(255,255,255,0.7)',
+          transition: 'transform 150ms ease, box-shadow 150ms ease',
+        }}
+        onMouseEnter={e => {
+          (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1.05)';
+          (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 8px 22px rgba(58,42,26,0.26), 0 3px 6px rgba(58,42,26,0.12), inset 0 1px 0 rgba(255,255,255,0.7)';
+        }}
+        onMouseLeave={e => {
+          (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1)';
+          (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 6px 16px rgba(58,42,26,0.20), 0 2px 4px rgba(58,42,26,0.10), inset 0 1px 0 rgba(255,255,255,0.7)';
         }}
       >
-        💬
+        {logoUrl ? (
+          <img
+            src={logoUrl}
+            alt="עוזרת"
+            style={{ width: '38px', height: '38px', objectFit: 'contain' }}
+            onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+          />
+        ) : (
+          <img
+            src="/logo.png"
+            alt="עוזרת"
+            style={{ width: '38px', height: '38px', objectFit: 'contain' }}
+            onError={e => {
+              const span = document.createElement('span');
+              span.style.cssText = 'font-size:22px;font-weight:700;color:#8B5E34';
+              span.textContent = 'ע';
+              e.currentTarget.replaceWith(span);
+            }}
+          />
+        )}
       </button>
 
       {open && (
@@ -159,7 +208,7 @@ export default function AssistantDrawer() {
               {messages.length === 0 && <EmptyState onPick={send} />}
               {messages.map((m, i) => (
                 <div key={i} style={{ marginBottom: '12px' }}>
-                  {m.role === 'user' ? <UserBubble text={m.text} /> : <AssistantReply response={m.response} onPick={send} />}
+                  {m.role === 'user' ? <UserBubble text={m.text} /> : <AssistantReply response={m.response} onPick={send} onOpenOrder={openOrder} />}
                 </div>
               ))}
               {pending && <PendingBubble />}
@@ -273,7 +322,7 @@ function PendingBubble() {
   );
 }
 
-function AssistantReply({ response, onPick }: { response: AssistantResponse; onPick: (t: string) => void }) {
+function AssistantReply({ response, onPick, onOpenOrder }: { response: AssistantResponse; onPick: (t: string) => void; onOpenOrder: (id: string) => void }) {
   if (response.kind === 'error') {
     return <Card><div style={{ fontSize: '13px', color: '#A03C2C' }}>{response.message}</div></Card>;
   }
@@ -309,7 +358,7 @@ function AssistantReply({ response, onPick }: { response: AssistantResponse; onP
   }
   return (
     <Card>
-      {response.blocks.map((b, i) => <BlockView key={i} block={b} />)}
+      {response.blocks.map((b, i) => <BlockView key={i} block={b} onOpenOrder={onOpenOrder} />)}
     </Card>
   );
 }
@@ -331,7 +380,7 @@ function Card({ children }: { children: React.ReactNode }) {
   );
 }
 
-function BlockView({ block }: { block: Block }) {
+function BlockView({ block, onOpenOrder }: { block: Block; onOpenOrder: (id: string) => void }) {
   if (block.type === 'text') {
     return <div style={{ fontSize: '13px', color: '#2B1A10', lineHeight: 1.5, padding: '4px 0' }}>{block.text}</div>;
   }
@@ -386,7 +435,7 @@ function BlockView({ block }: { block: Block }) {
           </div>
         )}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          {block.orders.map(o => <OrderRow key={o.id} order={o} />)}
+          {block.orders.map(o => <OrderRow key={o.id} order={o} onClick={() => onOpenOrder(o.id)} />)}
         </div>
       </div>
     );
@@ -423,32 +472,48 @@ function ListRow({ item }: { item: ListItem }) {
   );
 }
 
-function OrderRow({ order }: { order: OrderSummary }) {
+function OrderRow({ order, onClick }: { order: OrderSummary; onClick: () => void }) {
   const paid     = order.paymentStatus === 'שולם';
   const pending  = order.paymentStatus === 'ממתין';
   const payEmoji = paid ? '✅' : pending ? '⏳' : '•';
+  const baseBg   = order.urgent ? '#FBE9E7' : '#FAF7F0';
+  const hoverBg  = order.urgent ? '#F8DDD7' : '#F2EBDD';
   return (
-    <div
+    <button
+      onClick={onClick}
+      onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = hoverBg; }}
+      onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = baseBg; }}
       style={{
+        width: '100%',
+        textAlign: 'right',
         padding: '9px 11px',
-        backgroundColor: order.urgent ? '#FBE9E7' : '#FAF7F0',
+        backgroundColor: baseBg,
         border: order.urgent ? '1px solid #E8B5A8' : '1px solid #EDE0CE',
         borderRadius: '8px',
         fontSize: '12px',
+        cursor: 'pointer',
+        fontFamily: 'inherit',
+        transition: 'background-color 120ms',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '3px',
       }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', width: '100%' }}>
         <div style={{ fontWeight: 700, color: '#2B1A10' }}>
           {order.urgent && <span style={{ color: '#A03C2C', marginLeft: '4px' }}>⚡</span>}
           #{order.number}
         </div>
         <div style={{ color: '#8A7664', fontSize: '11px' }}>{order.customer}</div>
       </div>
-      <div style={{ display: 'flex', gap: '8px', marginTop: '3px', color: '#5C4A38', fontSize: '11px' }}>
+      <div style={{ display: 'flex', gap: '8px', color: '#5C4A38', fontSize: '11px' }}>
         {order.time && <span>🕐 {order.time}</span>}
         <span>{order.deliveryType === 'משלוח' ? '🚚' : '🏬'} {order.deliveryType}</span>
         <span>{payEmoji} {order.paymentStatus}</span>
       </div>
-    </div>
+      <div style={{ marginTop: '2px', textAlign: 'left', fontSize: '11px', color: '#8B5E34', fontWeight: 600, letterSpacing: '0.02em' }}>
+        פתחי הזמנה ←
+      </div>
+    </button>
   );
 }

@@ -57,4 +57,7 @@ export type ParsedIntent =
   | { type: 'list_low_stock' }
   | { type: 'find_package'; query: string }
   | { type: 'stock_query'; query: string }
+  | { type: 'list_petit_four_types' }
+  | { type: 'order_petit_four_summary'; range: Range }
+  | { type: 'count_order_items_by_kind'; range: Range; kind: 'מארז' | 'מוצר' }
   | { type: 'unknown' };

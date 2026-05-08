@@ -19,6 +19,11 @@ const STOCK_HINT   = ['יש', 'נשאר', 'במלאי', 'מלאי', 'איפה'];
 const ORDERS_NOUN     = ['הזמנות', 'הזמנה'];
 const PACKAGE_NOUN    = ['מארז', 'מארזים', 'חבילה', 'חבילות'];
 const DELIVERIES_NOUN = ['משלוחים'];
+const PETIT_FOUR_NOUN = ['פטיפורים', 'פטיפור'];
+const TRAY_NOUN       = ['מגש', 'מגשי'];
+
+const TYPES_HINT       = ['סוגי', 'אילו סוגי', 'איזה סוגי', 'אלו סוגי'];
+const FROM_ORDERS_HINT = ['בהזמנ', 'הוזמנ', 'מההזמנ', 'בהזמנות', 'בהזמנה'];
 
 const LOW_STOCK_PHRASES = [
   'מלאי נמוך', 'מלאי קריטי', 'נמוך במלאי', 'אזל', 'נגמר',
@@ -31,6 +36,7 @@ const STRIP_WORDS = [
   ...RANGE_TODAY, ...RANGE_TOMORROW, ...RANGE_WEEK,
   ...URGENT, ...UNPAID, ...DELIVERY, ...PICKUP,
   'לי', 'את', 'אני', 'רוצה', 'צריכה', 'בבקשה', 'תוכלי',
+  'מסוג', 'סוגי', 'סוג',
 ];
 
 function normalize(text: string): string {
@@ -78,7 +84,9 @@ function detectFilters(text: string): Filters {
 function extractSubject(text: string): string {
   let q = ` ${text} `;
   for (const w of STRIP_WORDS) q = q.split(w).join(' ');
-  for (const w of [...ORDERS_NOUN, ...PACKAGE_NOUN, ...DELIVERIES_NOUN]) q = q.split(w).join(' ');
+  for (const w of [...ORDERS_NOUN, ...PACKAGE_NOUN, ...DELIVERIES_NOUN, ...PETIT_FOUR_NOUN, ...TRAY_NOUN]) {
+    q = q.split(w).join(' ');
+  }
   return q.replace(/\s+/g, ' ').trim();
 }
 
@@ -91,12 +99,33 @@ export function parseIntent(rawText: string): ParsedIntent {
     return { type: 'list_low_stock' };
   }
 
-  const hasOrdersNoun  = includesAny(text, ORDERS_NOUN);
-  const hasPackageNoun = includesAny(text, PACKAGE_NOUN);
-  const hasCount       = includesAny(text, COUNT_VERB);
-  const hasShow        = includesAny(text, SHOW_VERB);
+  const hasOrdersNoun    = includesAny(text, ORDERS_NOUN);
+  const hasPackageNoun   = includesAny(text, PACKAGE_NOUN);
+  const hasPetitFourNoun = includesAny(text, PETIT_FOUR_NOUN);
+  const hasTrayNoun      = includesAny(text, TRAY_NOUN);
+  const hasFromOrders    = includesAny(text, FROM_ORDERS_HINT);
+  const hasCount         = includesAny(text, COUNT_VERB);
+  const hasShow          = includesAny(text, SHOW_VERB);
 
-  // 2. Orders intents
+  // 2. Petit-four intents (catalog / search / from-orders)
+  if (hasPetitFourNoun) {
+    if (includesAny(text, TYPES_HINT)) {
+      return { type: 'list_petit_four_types' };
+    }
+    if (hasFromOrders) {
+      return { type: 'order_petit_four_summary', range: detectRange(text) };
+    }
+    const subject = extractSubject(text);
+    if (subject.length >= 2) return { type: 'stock_query', query: subject };
+    return { type: 'list_petit_four_types' };
+  }
+
+  // 3. Trays / packages-in-orders → count items by kind
+  if (hasTrayNoun || (hasPackageNoun && hasFromOrders)) {
+    return { type: 'count_order_items_by_kind', range: detectRange(text), kind: 'מארז' };
+  }
+
+  // 4. Orders intents
   if (hasOrdersNoun) {
     const range = detectRange(text);
     const filters = detectFilters(text);
@@ -104,14 +133,14 @@ export function parseIntent(rawText: string): ParsedIntent {
     return { type: 'find_orders', range, filters };
   }
 
-  // 3. Packages — extract size or name
+  // 5. Packages — extract size or name (or list all when query empty)
   if (hasPackageNoun) {
     const numMatch = text.match(/\b(\d{1,3})\b/);
     const query = numMatch ? numMatch[1] : extractSubject(text);
     return { type: 'find_package', query };
   }
 
-  // 4. Stock query — "כמה X" / "יש X" / "X במלאי" / "איפה X"
+  // 6. Stock query — "כמה X" / "יש X" / "X במלאי" / "איפה X"
   const hasStockHint = includesAny(text, STOCK_HINT) || hasCount;
   if (hasStockHint) {
     const subject = extractSubject(text);
