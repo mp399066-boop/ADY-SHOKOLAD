@@ -26,7 +26,8 @@ export type Block =
   | { type: 'text'; text: string }
   | { type: 'stat'; label: string; value: string; sublabel?: string; tone?: Tone; emoji?: string }
   | { type: 'list'; title?: string; items: ListItem[] }
-  | { type: 'orders'; title?: string; orders: OrderSummary[] };
+  | { type: 'orders'; title?: string; orders: OrderSummary[] }
+  | { type: 'download_button'; label: string; endpoint: string; payload: Record<string, unknown>; filenameHeader?: string };
 
 export interface ClarifyOption {
   label: string;
@@ -51,6 +52,8 @@ export interface Filters {
   pickupOnly?: boolean;
 }
 
+export type UnknownHint = 'report' | 'orders' | 'stock' | 'petit_four' | 'package' | undefined;
+
 export type ParsedIntent =
   | { type: 'count_orders'; range: Range; filters: Filters }
   | { type: 'find_orders'; range: Range; filters: Filters }
@@ -60,4 +63,6 @@ export type ParsedIntent =
   | { type: 'list_petit_four_types' }
   | { type: 'order_petit_four_summary'; range: Range }
   | { type: 'count_order_items_by_kind'; range: Range; kind: 'מארז' | 'מוצר' }
-  | { type: 'unknown' };
+  | { type: 'download_orders_report'; range: Range }
+  | { type: 'request_report_range' }
+  | { type: 'unknown'; hint?: UnknownHint };

@@ -426,6 +426,10 @@ function BlockView({ block, onOpenOrder }: { block: Block; onOpenOrder: (id: str
     );
   }
 
+  if (block.type === 'download_button') {
+    return <DownloadBlockButton block={block} />;
+  }
+
   if (block.type === 'orders') {
     return (
       <div style={{ marginBottom: '6px' }}>
@@ -467,6 +471,70 @@ function ListRow({ item }: { item: ListItem }) {
       </div>
       {item.value && (
         <div style={{ fontWeight: 700, color: TONE_FG[tone] }}>{item.value}</div>
+      )}
+    </div>
+  );
+}
+
+function DownloadBlockButton({ block }: { block: Extract<Block, { type: 'download_button' }> }) {
+  const [downloading, setDownloading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleClick = async () => {
+    setDownloading(true);
+    setError(null);
+    try {
+      const res = await fetch(block.endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(block.payload),
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json.error || 'שגיאה בהורדה');
+      }
+      const filename = (block.filenameHeader && res.headers.get(block.filenameHeader))
+        || 'orders-report.html';
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'שגיאה');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  return (
+    <div style={{ marginTop: '6px' }}>
+      <button
+        onClick={handleClick}
+        disabled={downloading}
+        style={{
+          width: '100%',
+          padding: '10px 14px',
+          fontSize: '13px',
+          fontWeight: 600,
+          borderRadius: '10px',
+          backgroundColor: downloading ? '#D9CDBC' : '#8B5E34',
+          color: '#FFFFFF',
+          border: 'none',
+          cursor: downloading ? 'wait' : 'pointer',
+          fontFamily: 'inherit',
+          letterSpacing: '0.02em',
+          transition: 'background-color 120ms',
+        }}
+      >
+        {downloading ? '...מוריד' : `⬇ ${block.label}`}
+      </button>
+      {error && (
+        <div style={{ marginTop: '6px', fontSize: '12px', color: '#A03C2C' }}>{error}</div>
       )}
     </div>
   );

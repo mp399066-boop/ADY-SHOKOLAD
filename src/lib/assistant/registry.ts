@@ -5,18 +5,47 @@
 import { createAdminClient } from '@/lib/supabase/server';
 import { fetchOrdersForReport, resolveRange as resolveReportRange } from '@/lib/orders-report-email';
 import type {
-  AssistantResponse, Block, ListItem, OrderSummary,
-  ParsedIntent, Range, Filters, Tone,
+  AssistantResponse, Block, ClarifyOption, ListItem, OrderSummary,
+  ParsedIntent, Range, Filters, Tone, UnknownHint,
 } from './types';
 
-const SUGGESTIONS = [
+const DEFAULT_SUGGESTIONS: ClarifyOption[] = [
   { label: 'כמה הזמנות יש היום?',           text: 'כמה הזמנות יש היום?' },
   { label: 'איזה סוגי פטיפורים קיימים?',    text: 'איזה סוגי פטיפורים קיימים?' },
   { label: 'איזה מארזים יש?',                text: 'איזה מארזים יש?' },
-  { label: 'איזה פטיפורים הוזמנו היום?',    text: 'איזה פטיפורים הוזמנו היום?' },
   { label: 'מה במלאי נמוך?',                 text: 'מה במלאי נמוך?' },
-  { label: 'הזמנות דחופות להיום',            text: 'תראי הזמנות דחופות להיום' },
+  { label: 'דוח הזמנות להיום',               text: 'דוח הזמנות להיום' },
 ];
+
+function suggestionsFor(hint: UnknownHint): ClarifyOption[] {
+  if (hint === 'report') return [
+    { label: 'דוח הזמנות להיום',  text: 'דוח הזמנות להיום' },
+    { label: 'דוח הזמנות למחר',   text: 'דוח הזמנות למחר' },
+    { label: 'דוח הזמנות לשבוע',  text: 'דוח הזמנות לשבוע הקרוב' },
+  ];
+  if (hint === 'orders') return [
+    { label: 'הזמנות להיום',           text: 'איזה הזמנות יש היום?' },
+    { label: 'הזמנות למחר',            text: 'איזה הזמנות יש למחר?' },
+    { label: 'הזמנות דחופות',          text: 'תראי הזמנות דחופות להיום' },
+    { label: 'הזמנות שלא שולמו',       text: 'תראי הזמנות שלא שולמו' },
+  ];
+  if (hint === 'stock') return [
+    { label: 'מה במלאי נמוך?',          text: 'מה במלאי נמוך?' },
+    { label: 'סוגי פטיפורים',           text: 'איזה סוגי פטיפורים קיימים?' },
+    { label: 'כמה עוגת גבינה יש?',      text: 'כמה עוגת גבינה יש במלאי?' },
+  ];
+  if (hint === 'petit_four') return [
+    { label: 'סוגי פטיפורים',           text: 'איזה סוגי פטיפורים קיימים?' },
+    { label: 'פטיפורים שהוזמנו היום',   text: 'איזה פטיפורים הוזמנו היום?' },
+    { label: 'פטיפורים שהוזמנו השבוע',  text: 'איזה פטיפורים הוזמנו השבוע?' },
+  ];
+  if (hint === 'package') return [
+    { label: 'כל המארזים',              text: 'איזה מארזים יש?' },
+    { label: 'מארז של 24',              text: 'מארז של 24' },
+    { label: 'מגשי פטיפורים בהזמנות',   text: 'כמה מגשי פטיפורים בהזמנות היום?' },
+  ];
+  return DEFAULT_SUGGESTIONS;
+}
 
 // ───── Helpers ─────────────────────────────────────────────────────────────
 
@@ -412,6 +441,40 @@ async function actionStockQuery(rawQuery: string): Promise<AssistantResponse> {
   return { kind: 'answer', blocks };
 }
 
+// Returns a download_button block — actual download happens client-side
+// via /api/reports/orders/download (existing endpoint, no email side-effects).
+async function actionDownloadOrdersReport(range: Range): Promise<AssistantResponse> {
+  const reportRange = rangeToReportInput(range);
+  const payload: Record<string, unknown> = { range: reportRange.range };
+  if (reportRange.date) payload.date = reportRange.date;
+
+  return {
+    kind: 'answer',
+    blocks: [
+      { type: 'text', text: `דוח הזמנות ${rangeLabel(range)} מוכן להורדה.` },
+      {
+        type: 'download_button',
+        label: 'הורידי דוח הזמנות',
+        endpoint: '/api/reports/orders/download',
+        payload,
+        filenameHeader: 'X-Report-Filename',
+      },
+    ],
+  };
+}
+
+async function actionRequestReportRange(): Promise<AssistantResponse> {
+  return {
+    kind: 'clarify',
+    message: 'איזה דוח תרצי להוריד?',
+    options: [
+      { label: 'דוח הזמנות להיום',  text: 'דוח הזמנות להיום' },
+      { label: 'דוח הזמנות למחר',   text: 'דוח הזמנות למחר' },
+      { label: 'דוח הזמנות לשבוע',  text: 'דוח הזמנות לשבוע הקרוב' },
+    ],
+  };
+}
+
 // ───── Dispatcher ──────────────────────────────────────────────────────────
 
 export async function runIntent(intent: ParsedIntent): Promise<AssistantResponse> {
@@ -424,13 +487,15 @@ export async function runIntent(intent: ParsedIntent): Promise<AssistantResponse
     case 'list_petit_four_types':     return actionListPetitFourTypes();
     case 'order_petit_four_summary':  return actionOrderPetitFourSummary(intent.range);
     case 'count_order_items_by_kind': return actionCountOrderItemsByKind(intent.range, intent.kind);
+    case 'download_orders_report':    return actionDownloadOrdersReport(intent.range);
+    case 'request_report_range':      return actionRequestReportRange();
     case 'unknown':
       return {
         kind: 'clarify',
-        message: 'לא הבנתי. תוכלי לנסות:',
-        options: SUGGESTIONS,
+        message: 'לא הבנתי. אולי אחת מאלה?',
+        options: suggestionsFor(intent.hint),
       };
   }
 }
 
-export const ASSISTANT_SUGGESTIONS = SUGGESTIONS;
+export const ASSISTANT_SUGGESTIONS = DEFAULT_SUGGESTIONS;
