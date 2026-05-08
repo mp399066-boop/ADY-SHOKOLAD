@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/client';
 import {
   IconDashboard, IconOrders, IconCustomers, IconProducts,
   IconDeliveries, IconInventory, IconRecipes, IconInvoices,
-  IconImport, IconSettings, IconMenu, IconX,
+  IconImport, IconSettings, IconMenu, IconX, IconExport,
 } from '@/components/icons';
 import type { BusinessSettings } from '@/types/database';
 
@@ -23,8 +23,9 @@ const NAV_MAIN = [
 ];
 
 const NAV_SYSTEM = [
-  { href: '/import',   label: 'ייבוא',   Icon: IconImport   },
-  { href: '/settings', label: 'הגדרות',  Icon: IconSettings },
+  { href: '/reports/orders', label: 'דוחות',   Icon: IconExport   },
+  { href: '/import',         label: 'ייבוא',   Icon: IconImport   },
+  { href: '/settings',       label: 'הגדרות',  Icon: IconSettings },
 ];
 
 const ALL_NAV = [...NAV_MAIN, ...NAV_SYSTEM];
