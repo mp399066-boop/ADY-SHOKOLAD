@@ -1,6 +1,7 @@
 // Builds and sends a styled HTML report of orders within a date range.
 // Read-only: never updates DB, never creates invoices, never changes statuses.
 
+import sgMail from '@sendgrid/mail';
 import { createAdminClient } from '@/lib/supabase/server';
 
 export type ReportRange = 'today' | 'tomorrow' | 'week' | 'custom';
@@ -360,23 +361,19 @@ export async function sendOrdersReport(
 ): Promise<{ summary: ReportSummary; subject: string }> {
   const { html, summary, subject } = await generateOrdersReport(input);
 
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) {
-    throw new Error('RESEND_API_KEY לא מוגדר — לא ניתן לשלוח דוח');
+  const apiKey = process.env.SENDGRID_API_KEY;
+  const from = process.env.FROM_EMAIL;
+  if (!apiKey || !from) {
+    throw new Error('שירות המייל אינו מוגדר בשרת (חסר SENDGRID_API_KEY או FROM_EMAIL)');
   }
 
-  const { Resend } = await import('resend');
-  const resend = new Resend(apiKey);
-  const fromAddress = process.env.EMAIL_FROM || 'adi@adi-shokolad.co.il';
-
-  const { error: sendError } = await resend.emails.send({
-    from: `${BUSINESS} <${fromAddress}>`,
+  sgMail.setApiKey(apiKey);
+  await sgMail.send({
     to: recipientEmail,
+    from: { email: from, name: BUSINESS },
     subject,
     html,
   });
-
-  if (sendError) throw new Error(sendError.message);
 
   return { summary, subject };
 }
