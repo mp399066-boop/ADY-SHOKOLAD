@@ -9,6 +9,7 @@ import { StatusBadge, UrgentBadge } from '@/components/ui/StatusBadge';
 import { PageLoading } from '@/components/ui/LoadingSpinner';
 import { Combobox } from '@/components/ui/Combobox';
 import { normalizeSearchText } from '@/lib/normalize';
+import { sumPetitFours, getCapacityInfo } from '@/lib/packageCapacity';
 import { formatDate, formatCurrency } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import type { Order, OrderItem, Customer, Product, Package, PetitFourType } from '@/types/database';
@@ -123,6 +124,112 @@ function FieldSelect({ label, value, onChange, children }: {
   );
 }
 
+// ─── Detail-page UI helpers (presentation only — no business logic) ──────────
+
+// Tiny inline icon set — keeps bundle slim and matches the brand stroke weight.
+function Icon({ name, className = 'w-4 h-4' }: { name: string; className?: string }) {
+  const props = {
+    className,
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 1.6,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+    viewBox: '0 0 24 24',
+    'aria-hidden': true,
+  };
+  switch (name) {
+    case 'user':     return <svg {...props}><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>;
+    case 'phone':    return <svg {...props}><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/></svg>;
+    case 'mail':     return <svg {...props}><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>;
+    case 'truck':    return <svg {...props}><path d="M3 7h11v9H3z"/><path d="M14 10h4l3 3v3h-7"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></svg>;
+    case 'pin':      return <svg {...props}><path d="M12 22s7-7.5 7-13a7 7 0 1 0-14 0c0 5.5 7 13 7 13z"/><circle cx="12" cy="9" r="2.5"/></svg>;
+    case 'calendar': return <svg {...props}><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4M16 3v4"/></svg>;
+    case 'clock':    return <svg {...props}><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>;
+    case 'note':     return <svg {...props}><path d="M5 4h11l4 4v12a1 1 0 0 1-1 1H5z"/><path d="M16 4v4h4M9 12h6M9 16h4"/></svg>;
+    case 'gift':     return <svg {...props}><path d="M3 12h18v9H3z"/><path d="M12 7v14M3 7h18v5H3z"/><path d="M12 7c-2 0-4-1-4-3s2-2 3-1 1 4 1 4zM12 7c2 0 4-1 4-3s-2-2-3-1-1 4-1 4z"/></svg>;
+    case 'edit':     return <svg {...props}><path d="M4 20h4l11-11-4-4L4 16v4z"/><path d="M14 5l4 4"/></svg>;
+    case 'chevron':  return <svg {...props}><path d="m6 9 6 6 6-6"/></svg>;
+    case 'check':    return <svg {...props}><path d="m5 13 4 4 10-10"/></svg>;
+    case 'plus':     return <svg {...props}><path d="M12 5v14M5 12h14"/></svg>;
+    case 'arrow':    return <svg {...props}><path d="m15 6-6 6 6 6"/></svg>;
+    default:         return null;
+  }
+}
+
+// One field of an info card: tiny muted icon, tiny muted label, prominent value.
+function InfoField({
+  icon, label, children,
+}: { icon: string; label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-start gap-2.5 min-w-0">
+      <span className="flex-shrink-0 mt-0.5" style={{ color: '#9B7A5A' }}><Icon name={icon} /></span>
+      <div className="min-w-0 flex-1">
+        <p className="text-[11px] uppercase tracking-wider mb-0.5" style={{ color: '#9B7A5A' }}>{label}</p>
+        <div className="text-sm leading-snug" style={{ color: '#2B1A10' }}>{children}</div>
+      </div>
+    </div>
+  );
+}
+
+// Vertical timeline of order statuses — current step is filled, prior steps are
+// muted-filled (done), upcoming are hollow. Click any step to update.
+function StatusTimeline({
+  statuses, current, disabled, onPick,
+}: {
+  statuses: string[]; current: string; disabled: boolean; onPick: (s: string) => void;
+}) {
+  const currentIdx = statuses.indexOf(current);
+  return (
+    <ol className="relative" dir="rtl">
+      {statuses.map((s, i) => {
+        const isDone = currentIdx >= 0 && i < currentIdx;
+        const isCurrent = i === currentIdx;
+        const isLast = i === statuses.length - 1;
+        const dotBg = isCurrent ? '#8B5E34' : isDone ? '#C7A46B' : '#FFFFFF';
+        const dotBorder = isCurrent ? '#8B5E34' : isDone ? '#C7A46B' : '#DDD0BC';
+        const labelColor = isCurrent ? '#2B1A10' : isDone ? '#6B4A2D' : '#9B7A5A';
+        const lineColor = isDone ? '#C7A46B' : '#EDE0CE';
+        return (
+          <li key={s} className="relative flex items-start gap-3 pb-4 last:pb-0">
+            {!isLast && (
+              <span
+                aria-hidden
+                className="absolute top-5 right-[9px] w-px"
+                style={{ height: 'calc(100% - 12px)', background: lineColor }}
+              />
+            )}
+            <span
+              aria-hidden
+              className="flex-shrink-0 w-5 h-5 rounded-full mt-0.5 transition-colors flex items-center justify-center"
+              style={{ background: dotBg, border: `2px solid ${dotBorder}` }}
+            >
+              {isDone && <Icon name="check" className="w-3 h-3" />}
+            </span>
+            <button
+              type="button"
+              onClick={() => onPick(s)}
+              disabled={disabled || isCurrent}
+              className="flex-1 text-right text-sm font-medium px-2 py-1 -mx-2 rounded-md transition-colors hover:bg-stone-50 disabled:cursor-default disabled:hover:bg-transparent"
+              style={{ color: labelColor, fontWeight: isCurrent ? 700 : 500 }}
+            >
+              {s}
+              {isCurrent && (
+                <span
+                  className="mr-2 text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                  style={{ backgroundColor: '#EFE4D3', color: '#6B4A2D' }}
+                >
+                  עכשיו
+                </span>
+              )}
+            </button>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function OrderDetailPage() {
@@ -133,6 +240,14 @@ export default function OrderDetailPage() {
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [saving, setSaving] = useState(false);
+  // UI-only: tracks which package rows are expanded to show their petit-fours
+  const [expandedPackages, setExpandedPackages] = useState<Set<string>>(new Set());
+  const togglePackage = (lineId: string) =>
+    setExpandedPackages(prev => {
+      const next = new Set(prev);
+      if (next.has(lineId)) next.delete(lineId); else next.add(lineId);
+      return next;
+    });
   const [showEditItems, setShowEditItems] = useState(false);
 
   // Catalogue data for dropdowns in the edit modal
@@ -371,6 +486,16 @@ export default function OrderDetailPage() {
   // ── Save items only ──────────────────────────────────────────────────────────
 
   const saveItems = async () => {
+    // Block when any package's petit-four selection exceeds the package size.
+    // Packages with size 0 are skipped — those show only a soft warning.
+    for (let i = 0; i < editPackages.length; i++) {
+      const pkg = editPackages[i];
+      const info = getCapacityInfo(sumPetitFours(pkg.פטיפורים), pkg.גודל_מארז);
+      if (info.blocking) {
+        toast.error(`מארז ${i + 1} (${pkg.שם_מארז || 'ללא שם'}): ${info.message} — יש להפחית ${info.overage} יחידות`);
+        return;
+      }
+    }
     setSaving(true);
     try {
       const itemsPayload = {
@@ -486,7 +611,15 @@ export default function OrderDetailPage() {
     setEditPackages(prev => {
       const items = [...prev];
       const pkg = { ...items[pkgIdx] };
-      pkg.פטיפורים = pkg.פטיפורים.map((pf, i) => i === pfIdx ? { ...pf, כמות: qty } : pf);
+      const safeQty = Math.max(1, Math.floor(Number(qty) || 1));
+      const cap = Number(pkg.גודל_מארז) || 0;
+      let nextQty = safeQty;
+      if (cap > 0) {
+        const others = pkg.פטיפורים.reduce((sum, pf, i) => i === pfIdx ? sum : sum + (Number(pf.כמות) || 0), 0);
+        const max = Math.max(1, cap - others);
+        if (safeQty > max) nextQty = max;
+      }
+      pkg.פטיפורים = pkg.פטיפורים.map((pf, i) => i === pfIdx ? { ...pf, כמות: nextQty } : pf);
       items[pkgIdx] = pkg;
       return items;
     });
@@ -521,323 +654,466 @@ export default function OrderDetailPage() {
   if (!order) return <div className="text-center py-16" style={{ color: '#6B4A2D' }}>הזמנה לא נמצאה</div>;
 
   const customer = order.לקוחות;
+  const custFullName = `${customer?.שם_פרטי || ''} ${customer?.שם_משפחה || ''}`.trim();
+  const recipientIsCustomer =
+    order.שם_מקבל === custFullName && (!order.טלפון_מקבל || order.טלפון_מקבל === customer?.טלפון);
 
   return (
-    <div className="grid grid-cols-3 gap-5 max-w-6xl">
-      {/* Main content - 2/3 */}
-      <div className="col-span-2 space-y-5">
-
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button onClick={() => router.back()} className="text-sm hover:underline" style={{ color: '#8B5E34' }}>← חזרה</button>
-            <h2 className="text-lg font-bold" style={{ color: '#2B1A10' }}>{order.מספר_הזמנה}</h2>
-            {order.הזמנה_דחופה && <UrgentBadge />}
-            <StatusBadge status={order.סטטוס_הזמנה} type="order" />
-            {(order.סוג_הזמנה as string) === 'סאטמר' && (
-              <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: '#EDE9FE', color: '#6D28D9' }}>
-                סאטמר
-              </span>
-            )}
-          </div>
-          {order.סטטוס_הזמנה === 'טיוטה' ? (
-            <Link
-              href={`/orders/new?draft=${order.id}`}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors"
-              style={{ backgroundColor: '#F5F0FA', color: '#5B21B6', border: '1px solid #DDD6FE' }}
-            >
-              ✏️ ערוך טיוטה
-            </Link>
-          ) : (
-            <Button variant="secondary" size="sm" onClick={openEdit}>עריכת הזמנה</Button>
-          )}
-        </div>
-
-        {/* Draft notice */}
-        {order.סטטוס_הזמנה === 'טיוטה' && (
-          <div
-            className="flex items-start gap-3 px-4 py-3 rounded-xl text-sm"
-            style={{ backgroundColor: '#F5F0FA', border: '1px solid #DDD6FE', color: '#5B21B6' }}
+    <div dir="rtl" className="max-w-6xl mx-auto space-y-5">
+      {/* ════════ HEADER BAR ════════ */}
+      <header
+        className="rounded-2xl p-4 sm:p-5 flex flex-wrap items-start justify-between gap-4"
+        style={{
+          background: 'linear-gradient(180deg,#FFFDF8 0%,#FBF5EA 100%)',
+          border: '1px solid #EAE0D4',
+          boxShadow: '0 1px 6px rgba(58,42,26,0.05)',
+        }}
+      >
+        {/* Identity cluster */}
+        <div className="flex items-start gap-3 min-w-0">
+          <button
+            onClick={() => router.back()}
+            className="flex-shrink-0 mt-1 w-8 h-8 rounded-full flex items-center justify-center transition-colors hover:bg-stone-100"
+            style={{ color: '#8B5E34' }}
+            aria-label="חזרה"
+            title="חזרה"
           >
-            <span className="text-base">📝</span>
-            <div>
-              <span className="font-semibold">טיוטה — ההזמנה לא אושרה עדיין.</span>
-              <span className="mr-1">לחץ &quot;ערוך טיוטה&quot; כדי לסיים ולאשר.</span>
-            </div>
-          </div>
-        )}
-
-        {/* Customer */}
-        <Card>
-          <CardHeader><CardTitle>פרטי לקוח</CardTitle></CardHeader>
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <div>
-              <span style={{ color: '#6B4A2D' }}>שם: </span>
-              {customer?.id ? (
-                <Link
-                  href={`/customers/${customer.id}`}
-                  className="font-semibold hover:underline"
-                  style={{ color: '#8B5E34', textUnderlineOffset: '2px' }}
-                >
-                  {customer.שם_פרטי} {customer.שם_משפחה}
-                </Link>
-              ) : (
-                <span className="font-medium" style={{ color: '#2B1A10' }}>{customer?.שם_פרטי} {customer?.שם_משפחה}</span>
+            <Icon name="arrow" className="w-4 h-4" />
+          </button>
+          <div className="min-w-0">
+            <p className="text-[11px] uppercase tracking-wider mb-1" style={{ color: '#9B7A5A' }}>הזמנה</p>
+            <h1
+              className="text-xl sm:text-2xl font-bold leading-none truncate"
+              style={{ color: '#2B1A10', letterSpacing: '0.5px' }}
+            >
+              {order.מספר_הזמנה}
+            </h1>
+            <div className="flex flex-wrap items-center gap-1.5 mt-2">
+              {order.הזמנה_דחופה && <UrgentBadge />}
+              <StatusBadge status={order.סטטוס_הזמנה} type="order" />
+              <StatusBadge status={order.סטטוס_תשלום} type="payment" />
+              {(order.סוג_הזמנה as string) === 'סאטמר' && (
+                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: '#EDE9FE', color: '#6D28D9' }}>
+                  סאטמר
+                </span>
               )}
             </div>
-            <div>
-              <span style={{ color: '#6B4A2D' }}>טלפון: </span>
-              <span>{customer?.טלפון || '-'}</span>
-            </div>
-            <div>
-              <span style={{ color: '#6B4A2D' }}>אימייל: </span>
-              <span>{customer?.אימייל || '-'}</span>
-            </div>
-            <div>
-              <span style={{ color: '#6B4A2D' }}>סוג: </span>
-              <StatusBadge status={customer?.סוג_לקוח || '-'} type="customer" />
-            </div>
           </div>
-        </Card>
+        </div>
 
-        {/* Order details */}
-        <Card>
-          <CardHeader><CardTitle>פרטי הזמנה</CardTitle></CardHeader>
-          <div className="grid grid-cols-3 gap-3 text-sm">
-            <div><span style={{ color: '#6B4A2D' }}>תאריך הזמנה: </span><span>{formatDate(order.תאריך_הזמנה)}</span></div>
-            <div><span style={{ color: '#6B4A2D' }}>תאריך אספקה: </span><span className="font-medium">{formatDate(order.תאריך_אספקה)}</span></div>
-            <div><span style={{ color: '#6B4A2D' }}>שעה: </span><span>{order.שעת_אספקה || '-'}</span></div>
-            <div><span style={{ color: '#6B4A2D' }}>אספקה: </span><span>{order.סוג_אספקה}</span></div>
-            <div><span style={{ color: '#6B4A2D' }}>מקור: </span><span>{order.מקור_ההזמנה || '-'}</span></div>
-            {order.סוג_אספקה === 'משלוח' && (() => {
-              const custFullName = `${customer?.שם_פרטי || ''} ${customer?.שם_משפחה || ''}`.trim();
-              const isForCustomer = order.שם_מקבל === custFullName && (!order.טלפון_מקבל || order.טלפון_מקבל === customer?.טלפון);
-              return (
-                <div>
-                  <span style={{ color: '#6B4A2D' }}>משלוח אל: </span>
-                  <span className="font-medium text-xs px-2 py-0.5 rounded-full"
-                    style={isForCustomer
-                      ? { backgroundColor: '#DBEAFE', color: '#1E40AF' }
-                      : { backgroundColor: '#FEF3C7', color: '#92400E' }}>
-                    {isForCustomer ? 'הלקוח המזמין' : 'מישהו אחר'}
-                  </span>
-                </div>
-              );
-            })()}
-            {order.שם_מקבל && <div><span style={{ color: '#6B4A2D' }}>מקבל: </span><span>{order.שם_מקבל}</span></div>}
-            {order.טלפון_מקבל && <div><span style={{ color: '#6B4A2D' }}>טלפון מקבל: </span><span>{order.טלפון_מקבל}</span></div>}
-            {order.כתובת_מקבל_ההזמנה && <div className="col-span-2"><span style={{ color: '#6B4A2D' }}>כתובת: </span><span>{order.כתובת_מקבל_ההזמנה}{order.עיר ? `, ${order.עיר}` : ''}</span></div>}
-            {order.הוראות_משלוח && <div className="col-span-3"><span style={{ color: '#6B4A2D' }}>הוראות: </span><span>{order.הוראות_משלוח}</span></div>}
+        {/* Total + delivery + actions */}
+        <div className="flex items-start gap-4 sm:gap-6 ms-auto">
+          <div className="text-right">
+            <p className="text-[11px] uppercase tracking-wider mb-1" style={{ color: '#9B7A5A' }}>אספקה</p>
+            <div className="flex items-center gap-1.5 text-sm font-medium" style={{ color: '#2B1A10' }}>
+              <Icon name="calendar" className="w-3.5 h-3.5" />
+              <span>{formatDate(order.תאריך_אספקה)}</span>
+            </div>
+            {order.שעת_אספקה && (
+              <div className="flex items-center gap-1.5 text-xs mt-1" style={{ color: '#6B4A2D' }}>
+                <Icon name="clock" className="w-3 h-3" />
+                <span>{order.שעת_אספקה}</span>
+              </div>
+            )}
           </div>
-        </Card>
-
-        {/* Greeting */}
-        {order.ברכה_טקסט && (
-          <Card>
-            <CardHeader><CardTitle>ברכה</CardTitle></CardHeader>
-            <p className="text-sm p-3 rounded-lg italic" style={{ backgroundColor: '#FAF7F0', color: '#2B1A10' }}>
-              {order.ברכה_טקסט}
+          <div className="text-right">
+            <p className="text-[11px] uppercase tracking-wider mb-1" style={{ color: '#9B7A5A' }}>סכום</p>
+            <p className="text-2xl sm:text-3xl font-bold leading-none" style={{ color: '#8B5E34', letterSpacing: '0.3px' }}>
+              {formatCurrency(order.סך_הכל_לתשלום)}
             </p>
-          </Card>
-        )}
+          </div>
+          <div className="self-center">
+            {order.סטטוס_הזמנה === 'טיוטה' ? (
+              <Link
+                href={`/orders/new?draft=${order.id}`}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium rounded-full transition-colors"
+                style={{ backgroundColor: '#F5F0FA', color: '#5B21B6', border: '1px solid #DDD6FE' }}
+              >
+                <Icon name="edit" className="w-3.5 h-3.5" /> ערוך טיוטה
+              </Link>
+            ) : (
+              <button
+                type="button"
+                onClick={openEdit}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium rounded-full transition-colors hover:bg-amber-50"
+                style={{ border: '1px solid #C6A77D', color: '#8B5E34' }}
+              >
+                <Icon name="edit" className="w-3.5 h-3.5" /> עריכת הזמנה
+              </button>
+            )}
+          </div>
+        </div>
+      </header>
 
-        {/* Notes */}
-        {order.הערות_להזמנה && (
+      {/* Draft notice */}
+      {order.סטטוס_הזמנה === 'טיוטה' && (
+        <div
+          className="flex items-start gap-3 px-4 py-3 rounded-xl text-sm"
+          style={{ backgroundColor: '#F5F0FA', border: '1px solid #DDD6FE', color: '#5B21B6' }}
+        >
+          <span className="text-base">📝</span>
+          <div>
+            <span className="font-semibold">טיוטה — ההזמנה לא אושרה עדיין.</span>
+            <span className="mr-1">לחץ &quot;ערוך טיוטה&quot; כדי לסיים ולאשר.</span>
+          </div>
+        </div>
+      )}
+
+      {/* ════════ MAIN GRID ════════ */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        {/* Main column */}
+        <div className="lg:col-span-2 space-y-5">
+
+          {/* Greeting (highlighted card if set) */}
+          {order.ברכה_טקסט && (
+            <Card style={{ background: 'linear-gradient(180deg,#FFFDF8 0%,#FAF1E0 100%)' }}>
+              <div className="flex items-start gap-3">
+                <span className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: '#EFE4D3', color: '#8B5E34' }}>
+                  <Icon name="gift" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] uppercase tracking-wider mb-1" style={{ color: '#9B7A5A' }}>ברכה</p>
+                  <p className="text-sm italic leading-relaxed" style={{ color: '#2B1A10' }}>
+                    {order.ברכה_טקסט}
+                  </p>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {/* Combined: customer + delivery */}
           <Card>
-            <CardHeader><CardTitle>הערות</CardTitle></CardHeader>
-            <p className="text-sm" style={{ color: '#2B1A10' }}>{order.הערות_להזמנה}</p>
-          </Card>
-        )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+              {/* Customer column */}
+              <div className="space-y-4">
+                <p className="text-[11px] uppercase tracking-wider font-semibold" style={{ color: '#8B5E34' }}>לקוח</p>
+                <InfoField icon="user" label="שם">
+                  {customer?.id ? (
+                    <Link
+                      href={`/customers/${customer.id}`}
+                      className="font-semibold hover:underline"
+                      style={{ color: '#8B5E34', textUnderlineOffset: '2px' }}
+                    >
+                      {customer.שם_פרטי} {customer.שם_משפחה}
+                    </Link>
+                  ) : (
+                    <span className="font-semibold" style={{ color: '#2B1A10' }}>{customer?.שם_פרטי} {customer?.שם_משפחה}</span>
+                  )}
+                  {customer?.סוג_לקוח && (
+                    <span className="ms-2"><StatusBadge status={customer.סוג_לקוח} type="customer" /></span>
+                  )}
+                </InfoField>
+                <InfoField icon="phone" label="טלפון">
+                  {customer?.טלפון ? (
+                    <a href={`tel:${customer.טלפון}`} className="hover:underline" style={{ color: '#2B1A10' }}>{customer.טלפון}</a>
+                  ) : <span style={{ color: '#9B7A5A' }}>—</span>}
+                </InfoField>
+                <InfoField icon="mail" label="אימייל">
+                  {customer?.אימייל ? (
+                    <a href={`mailto:${customer.אימייל}`} className="hover:underline break-all" style={{ color: '#2B1A10' }}>{customer.אימייל}</a>
+                  ) : <span style={{ color: '#9B7A5A' }}>—</span>}
+                </InfoField>
+              </div>
 
-        {/* Order items */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle>פריטי הזמנה</CardTitle>
+              {/* Delivery column */}
+              <div className="space-y-4 sm:border-r sm:pr-6" style={{ borderColor: '#EDE0CE' }}>
+                <p className="text-[11px] uppercase tracking-wider font-semibold" style={{ color: '#8B5E34' }}>אספקה</p>
+                <InfoField icon="truck" label="סוג">
+                  <span className="font-medium">{order.סוג_אספקה}</span>
+                  {order.מקור_ההזמנה && (
+                    <span className="ms-2 text-xs" style={{ color: '#6B4A2D' }}>· מקור: {order.מקור_ההזמנה}</span>
+                  )}
+                </InfoField>
+                {order.סוג_אספקה === 'משלוח' ? (
+                  <>
+                    <InfoField icon="user" label="מקבל">
+                      <span className="font-medium">{order.שם_מקבל || '—'}</span>
+                      <span
+                        className="ms-2 text-[11px] font-medium px-2 py-0.5 rounded-full"
+                        style={recipientIsCustomer
+                          ? { backgroundColor: '#DBEAFE', color: '#1E40AF' }
+                          : { backgroundColor: '#FEF3C7', color: '#92400E' }}
+                      >
+                        {recipientIsCustomer ? 'הלקוח המזמין' : 'מישהו אחר'}
+                      </span>
+                      {order.טלפון_מקבל && (
+                        <div className="mt-1 text-xs" style={{ color: '#6B4A2D' }}>
+                          <a href={`tel:${order.טלפון_מקבל}`} className="hover:underline">{order.טלפון_מקבל}</a>
+                        </div>
+                      )}
+                    </InfoField>
+                    {(order.כתובת_מקבל_ההזמנה || order.עיר) && (
+                      <InfoField icon="pin" label="כתובת">
+                        <span>{order.כתובת_מקבל_ההזמנה}{order.עיר ? `, ${order.עיר}` : ''}</span>
+                      </InfoField>
+                    )}
+                    {order.הוראות_משלוח && (
+                      <InfoField icon="note" label="הוראות">
+                        <span className="text-xs leading-snug" style={{ color: '#4A2F1B' }}>{order.הוראות_משלוח}</span>
+                      </InfoField>
+                    )}
+                  </>
+                ) : (
+                  <InfoField icon="note" label="פרטים">
+                    <span className="text-xs" style={{ color: '#6B4A2D' }}>איסוף עצמי — ללא משלוח</span>
+                  </InfoField>
+                )}
+              </div>
+            </div>
+          </Card>
+
+          {/* Notes */}
+          {order.הערות_להזמנה && (
+            <Card>
+              <div className="flex items-start gap-3">
+                <span className="flex-shrink-0 mt-0.5" style={{ color: '#9B7A5A' }}><Icon name="note" /></span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] uppercase tracking-wider mb-1" style={{ color: '#9B7A5A' }}>הערות</p>
+                  <p className="text-sm leading-relaxed" style={{ color: '#2B1A10' }}>{order.הערות_להזמנה}</p>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {/* Items list */}
+          <Card>
+            <CardHeader>
+              <CardTitle>פריטים</CardTitle>
               <button
                 onClick={openEditItems}
                 title="עריכת מוצרים"
-                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border font-medium hover:bg-stone-50 transition-colors"
-                style={{ borderColor: '#8B5E34', color: '#8B5E34' }}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border font-medium transition-colors hover:bg-amber-50"
+                style={{ borderColor: '#C6A77D', color: '#8B5E34' }}
               >
-                ✏️ עריכת מוצרים
+                <Icon name="edit" className="w-3 h-3" /> עריכה
               </button>
-            </div>
-          </CardHeader>
-          {(!order.מוצרים_בהזמנה || order.מוצרים_בהזמנה.length === 0) ? (
-            <p className="text-sm" style={{ color: '#6B4A2D' }}>אין פריטים</p>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr style={{ borderBottom: '1px solid #E7D2A6' }}>
-                  {['מוצר', 'סוג', 'כמות', 'מחיר', 'סה״כ', 'הערות'].map(h => (
-                    <th key={h} className="py-2 px-2 text-right text-xs font-semibold" style={{ color: '#6B4A2D' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {order.מוצרים_בהזמנה.map((item) => (
-                  <>
-                    <tr key={item.id} className="border-b" style={{ borderColor: '#F5ECD8' }}>
-                      <td className="py-2 px-2 font-medium">
-                        {item.סוג_שורה === 'מארז'
-                          ? (() => {
-                              const pkg = packages.find(p => p.גודל_מארז === item.גודל_מארז);
-                              const base = pkg?.שם_מארז || 'מארז פטיפורים';
-                              const size = item.גודל_מארז ?? pkg?.גודל_מארז ?? '?';
-                              return `${base} ${size}`;
-                            })()
-                          : ((item as OrderItem & { מוצרים_למכירה?: { שם_מוצר: string } }).מוצרים_למכירה?.שם_מוצר || '-')}
-                      </td>
-                      <td className="py-2 px-2">
-                        <span className={`text-xs px-1.5 py-0.5 rounded ${item.סוג_שורה === 'מארז' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>
-                          {item.סוג_שורה}
-                        </span>
-                      </td>
-                      <td className="py-2 px-2">{item.כמות}</td>
-                      <td className="py-2 px-2">{formatCurrency(item.מחיר_ליחידה)}</td>
-                      <td className="py-2 px-2 font-semibold">{formatCurrency(item.סהכ)}</td>
-                      <td className="py-2 px-2 text-xs" style={{ color: '#6B4A2D' }}>{item.הערות_לשורה || '-'}</td>
-                    </tr>
-                    {item.סוג_שורה === 'מארז' && item.בחירת_פטיפורים_בהזמנה && item.בחירת_פטיפורים_בהזמנה.length > 0 && (
-                      <tr key={`${item.id}-pf`} style={{ backgroundColor: '#FAF7F0' }}>
-                        <td colSpan={6} className="py-2 px-4">
-                          <div className="flex flex-wrap gap-2">
-                            <span className="text-xs font-medium" style={{ color: '#6B4A2D' }}>פטיפורים: </span>
-                            {item.בחירת_פטיפורים_בהזמנה.map(sel => (
-                              <span key={sel.id} className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#E7D2A6', color: '#4A2F1B' }}>
-                                {sel.סוגי_פטיפורים?.שם_פטיפור} ×{sel.כמות}
+            </CardHeader>
+            {(!order.מוצרים_בהזמנה || order.מוצרים_בהזמנה.length === 0) ? (
+              <p className="text-sm text-center py-6" style={{ color: '#9B7A5A' }}>אין פריטים בהזמנה</p>
+            ) : (
+              <ul className="space-y-2">
+                {order.מוצרים_בהזמנה.map(item => {
+                  const isPackage = item.סוג_שורה === 'מארז';
+                  const pfList = item.בחירת_פטיפורים_בהזמנה || [];
+                  const isExpanded = expandedPackages.has(item.id);
+                  const name = isPackage
+                    ? (() => {
+                        const pkg = packages.find(p => p.גודל_מארז === item.גודל_מארז);
+                        const base = pkg?.שם_מארז || 'מארז פטיפורים';
+                        const size = item.גודל_מארז ?? pkg?.גודל_מארז ?? '?';
+                        return `${base} · ${size} יח׳`;
+                      })()
+                    : ((item as OrderItem & { מוצרים_למכירה?: { שם_מוצר: string } }).מוצרים_למכירה?.שם_מוצר || '—');
+                  return (
+                    <li
+                      key={item.id}
+                      className="rounded-xl border transition-colors"
+                      style={{ borderColor: '#EAE0D4', backgroundColor: '#FFFFFF' }}
+                    >
+                      <div className="flex items-center gap-3 p-3 sm:p-4">
+                        {isPackage ? (
+                          <button
+                            type="button"
+                            onClick={() => togglePackage(item.id)}
+                            className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center transition-all hover:bg-stone-100"
+                            style={{ color: '#8B5E34' }}
+                            aria-label={isExpanded ? 'סגור פטיפורים' : 'פתח פטיפורים'}
+                          >
+                            <Icon
+                              name="chevron"
+                              className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                            />
+                          </button>
+                        ) : (
+                          <span className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center" style={{ backgroundColor: '#FAF7F0', color: '#9B7A5A' }}>
+                            ●
+                          </span>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-semibold truncate" style={{ color: '#2B1A10' }} title={name}>
+                              {name}
+                            </span>
+                            {isPackage && (
+                              <span className="text-[10px] font-medium px-2 py-0.5 rounded-full" style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}>
+                                מארז
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 mt-1 text-xs" style={{ color: '#6B4A2D' }}>
+                            <span>{item.כמות} × {formatCurrency(item.מחיר_ליחידה)}</span>
+                            {item.הערות_לשורה && (
+                              <span className="truncate" title={item.הערות_לשורה}>· {item.הערות_לשורה}</span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex-shrink-0 text-left">
+                          <span className="text-sm font-bold tabular-nums" style={{ color: '#8B5E34' }}>
+                            {formatCurrency(item.סהכ)}
+                          </span>
+                        </div>
+                      </div>
+                      {isPackage && isExpanded && pfList.length > 0 && (
+                        <div className="px-4 pb-3 pt-1 border-t" style={{ borderColor: '#F5ECD8' }}>
+                          <p className="text-[11px] uppercase tracking-wider mb-2" style={{ color: '#9B7A5A' }}>סוגי פטיפורים</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {pfList.map(sel => (
+                              <span
+                                key={sel.id}
+                                className="text-xs px-2.5 py-1 rounded-full font-medium"
+                                style={{ backgroundColor: '#EFE4D3', color: '#4A2F1B' }}
+                              >
+                                {sel.סוגי_פטיפורים?.שם_פטיפור} <span className="opacity-60">×{sel.כמות}</span>
                               </span>
                             ))}
                           </div>
-                        </td>
-                      </tr>
-                    )}
-                  </>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </Card>
-      </div>
-
-      {/* Sidebar - 1/3 */}
-      <div className="space-y-5">
-
-        {/* Status update */}
-        <Card>
-          <CardHeader><CardTitle>עדכון סטטוס</CardTitle></CardHeader>
-          <div className="space-y-2">
-            {ORDER_STATUSES.map(status => {
-              const isActive = order.סטטוס_הזמנה === status;
-              return (
-                <button
-                  key={status}
-                  onClick={() => updateStatus(status)}
-                  disabled={updatingStatus || isActive}
-                  className={`w-full text-right px-3 py-2 rounded-full text-sm font-medium transition-all ${
-                    isActive
-                      ? STATUS_PILL[status] || 'bg-stone-200 text-stone-800 ring-1 ring-stone-300'
-                      : 'bg-white text-stone-500 ring-1 ring-stone-200 hover:bg-stone-50'
-                  }`}
-                >
-                  {status}
-                </button>
-              );
-            })}
-          </div>
-        </Card>
-
-        {/* Payment status */}
-        <Card>
-          <CardHeader><CardTitle>סטטוס תשלום</CardTitle></CardHeader>
-          <div className="mb-3"><StatusBadge status={order.סטטוס_תשלום} type="payment" /></div>
-          <div className="space-y-2">
-            {(['ממתין', 'שולם', 'חלקי', 'בוטל'] as const).map(s => {
-              const isActive = order.סטטוס_תשלום === s;
-              return (
-                <button
-                  key={s}
-                  onClick={() => updatePaymentStatus(s)}
-                  disabled={isActive}
-                  className={`w-full text-right px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
-                    isActive
-                      ? PAYMENT_PILL[s] || 'bg-stone-200 text-stone-800 ring-1 ring-stone-300'
-                      : 'bg-white text-stone-500 ring-1 ring-stone-200 hover:bg-stone-50'
-                  }`}
-                >
-                  {s}
-                </button>
-              );
-            })}
-          </div>
-        </Card>
-
-        {/* Financial summary */}
-        <Card>
-          <CardHeader><CardTitle>סיכום כספי</CardTitle></CardHeader>
-          <div className="space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span style={{ color: '#6B4A2D' }}>לפני הנחה</span>
-              <span>{formatCurrency(order.סכום_לפני_הנחה)}</span>
-            </div>
-            {(order.סכום_הנחה || 0) > 0 && (
-              <div className="flex justify-between text-red-600">
-                <span>
-                  הנחה{order.סוג_הנחה === 'אחוז' ? ` (${order.ערך_הנחה}%)` : ''}
-                </span>
-                <span>-{formatCurrency(order.סכום_הנחה)}</span>
-              </div>
+                        </div>
+                      )}
+                      {isPackage && isExpanded && pfList.length === 0 && (
+                        <div className="px-4 pb-3 pt-1 border-t text-xs" style={{ borderColor: '#F5ECD8', color: '#9B7A5A' }}>
+                          לא נבחרו סוגי פטיפורים למארז זה
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
             )}
-            {(order.דמי_משלוח || 0) > 0 && (
+          </Card>
+        </div>
+
+        {/* ════════ SIDEBAR ════════ */}
+        <aside className="space-y-5 lg:sticky lg:top-5 lg:self-start">
+
+          {/* Financial summary — hero card */}
+          <Card style={{ background: 'linear-gradient(180deg,#FFFDF8 0%,#FBF5EA 100%)' }}>
+            <p className="text-[11px] uppercase tracking-wider mb-3 font-semibold" style={{ color: '#8B5E34' }}>סיכום כספי</p>
+            <dl className="space-y-2 text-sm">
               <div className="flex justify-between">
-                <span style={{ color: '#6B4A2D' }}>דמי משלוח</span>
-                <span>{formatCurrency(order.דמי_משלוח)}</span>
+                <dt style={{ color: '#6B4A2D' }}>לפני הנחה</dt>
+                <dd className="tabular-nums" style={{ color: '#2B1A10' }}>{formatCurrency(order.סכום_לפני_הנחה)}</dd>
               </div>
+              {(order.סכום_הנחה || 0) > 0 && (
+                <div className="flex justify-between" style={{ color: '#B91C1C' }}>
+                  <dt>הנחה{order.סוג_הנחה === 'אחוז' ? ` (${order.ערך_הנחה}%)` : ''}</dt>
+                  <dd className="tabular-nums">−{formatCurrency(order.סכום_הנחה)}</dd>
+                </div>
+              )}
+              {(order.דמי_משלוח || 0) > 0 && (
+                <div className="flex justify-between">
+                  <dt style={{ color: '#6B4A2D' }}>דמי משלוח</dt>
+                  <dd className="tabular-nums" style={{ color: '#2B1A10' }}>{formatCurrency(order.דמי_משלוח)}</dd>
+                </div>
+              )}
+            </dl>
+            <div
+              className="mt-4 pt-3 flex items-baseline justify-between"
+              style={{ borderTop: '1px solid #E7D2A6' }}
+            >
+              <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: '#6B4A2D' }}>סך הכל</span>
+              <span className="text-2xl font-bold tabular-nums" style={{ color: '#8B5E34' }}>
+                {formatCurrency(order.סך_הכל_לתשלום)}
+              </span>
+            </div>
+            {order.אופן_תשלום && (
+              <p className="text-[11px] mt-2" style={{ color: '#9B7A5A' }}>
+                אמצעי תשלום: <span style={{ color: '#6B4A2D' }}>{order.אופן_תשלום}</span>
+              </p>
             )}
-            <div className="flex justify-between font-bold pt-2 border-t" style={{ borderColor: '#E7D2A6' }}>
-              <span style={{ color: '#2B1A10' }}>סך הכל</span>
-              <span style={{ color: '#8B5E34' }}>{formatCurrency(order.סך_הכל_לתשלום)}</span>
-            </div>
-            <div className="pt-1 text-xs" style={{ color: '#6B4A2D' }}>
-              אמצעי תשלום: {order.אופן_תשלום || '-'}
-            </div>
-          </div>
-        </Card>
+          </Card>
 
-        {/* Payments list */}
-        {order.תשלומים && order.תשלומים.length > 0 && (
+          {/* Order status timeline */}
           <Card>
-            <CardHeader><CardTitle>תשלומים</CardTitle></CardHeader>
-            <div className="space-y-2">
-              {order.תשלומים.map(p => (
-                <div key={p.id} className="flex justify-between text-sm p-2 rounded" style={{ backgroundColor: '#FAF7F0' }}>
-                  <span style={{ color: '#6B4A2D' }}>{p.אמצעי_תשלום} · {formatDate(p.תאריך_תשלום)}</span>
-                  <span className="font-medium">{formatCurrency(p.סכום)}</span>
-                </div>
-              ))}
+            <p className="text-[11px] uppercase tracking-wider mb-4 font-semibold" style={{ color: '#8B5E34' }}>סטטוס הזמנה</p>
+            <StatusTimeline
+              statuses={ORDER_STATUSES}
+              current={order.סטטוס_הזמנה}
+              disabled={updatingStatus}
+              onPick={updateStatus}
+            />
+          </Card>
+
+          {/* Payment status — horizontal pills */}
+          <Card>
+            <p className="text-[11px] uppercase tracking-wider mb-3 font-semibold" style={{ color: '#8B5E34' }}>סטטוס תשלום</p>
+            <div className="flex flex-wrap gap-1.5">
+              {(['ממתין', 'שולם', 'חלקי', 'בוטל'] as const).map(s => {
+                const isActive = order.סטטוס_תשלום === s;
+                return (
+                  <button
+                    key={s}
+                    onClick={() => updatePaymentStatus(s)}
+                    disabled={isActive}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                      isActive
+                        ? PAYMENT_PILL[s] || 'bg-stone-200 text-stone-800 ring-1 ring-stone-300'
+                        : 'bg-white text-stone-500 ring-1 ring-stone-200 hover:bg-stone-50 hover:text-stone-700'
+                    }`}
+                  >
+                    {s}
+                  </button>
+                );
+              })}
             </div>
           </Card>
-        )}
 
-        {/* Invoices */}
-        {order.חשבוניות && order.חשבוניות.length > 0 && (
-          <Card>
-            <CardHeader><CardTitle>חשבוניות</CardTitle></CardHeader>
-            <div className="space-y-2">
-              {order.חשבוניות.map(inv => (
-                <div key={inv.id} className="flex justify-between text-sm p-2 rounded" style={{ backgroundColor: '#FAF7F0' }}>
-                  {inv.קישור_חשבונית ? (
-                    <a href={inv.קישור_חשבונית} target="_blank" rel="noopener noreferrer" style={{ color: '#8B5E34', textDecoration: 'underline', textUnderlineOffset: '2px' }}>#{inv.מספר_חשבונית}</a>
-                  ) : (
-                    <span style={{ color: '#6B4A2D' }}>#{inv.מספר_חשבונית}</span>
-                  )}
-                  <span className="font-medium">{formatCurrency(inv.סכום)}</span>
-                </div>
-              ))}
-            </div>
-          </Card>
-        )}
+          {/* Payments */}
+          {order.תשלומים && order.תשלומים.length > 0 && (
+            <Card>
+              <p className="text-[11px] uppercase tracking-wider mb-3 font-semibold" style={{ color: '#8B5E34' }}>תשלומים</p>
+              <ul className="space-y-1.5">
+                {order.תשלומים.map(p => (
+                  <li
+                    key={p.id}
+                    className="flex justify-between items-center text-sm px-3 py-2 rounded-lg"
+                    style={{ backgroundColor: '#FAF7F0' }}
+                  >
+                    <div className="min-w-0">
+                      <div className="font-medium truncate" style={{ color: '#2B1A10' }}>{p.אמצעי_תשלום}</div>
+                      <div className="text-[11px]" style={{ color: '#9B7A5A' }}>{formatDate(p.תאריך_תשלום)}</div>
+                    </div>
+                    <span className="font-semibold tabular-nums flex-shrink-0" style={{ color: '#8B5E34' }}>
+                      {formatCurrency(p.סכום)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
+
+          {/* Invoices */}
+          {order.חשבוניות && order.חשבוניות.length > 0 && (
+            <Card>
+              <p className="text-[11px] uppercase tracking-wider mb-3 font-semibold" style={{ color: '#8B5E34' }}>חשבוניות</p>
+              <ul className="space-y-1.5">
+                {order.חשבוניות.map(inv => (
+                  <li
+                    key={inv.id}
+                    className="flex justify-between items-center text-sm px-3 py-2 rounded-lg"
+                    style={{ backgroundColor: '#FAF7F0' }}
+                  >
+                    {inv.קישור_חשבונית ? (
+                      <a
+                        href={inv.קישור_חשבונית}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-medium hover:underline"
+                        style={{ color: '#8B5E34', textUnderlineOffset: '2px' }}
+                      >
+                        #{inv.מספר_חשבונית}
+                      </a>
+                    ) : (
+                      <span className="font-medium" style={{ color: '#2B1A10' }}>#{inv.מספר_חשבונית}</span>
+                    )}
+                    <span className="font-semibold tabular-nums" style={{ color: '#8B5E34' }}>
+                      {formatCurrency(inv.סכום)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
+        </aside>
       </div>
 
       {/* ══════════════════════════════════════════════════════════════════════
@@ -1184,38 +1460,91 @@ export default function OrderDetailPage() {
                         </div>
                       </div>
 
-                      {/* Petit-four selector */}
-                      <div className="border-t pt-3 space-y-2" style={{ borderColor: '#DDD0BC' }}>
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-medium" style={{ color: '#4A2F1B' }}>פטיפורים</span>
-                          <select
-                            className="text-xs border rounded px-2 py-1 w-44"
-                            style={{ borderColor: '#DDD0BC', color: '#2B1A10' }}
-                            value=""
-                            onChange={e => { if (e.target.value) addPetitFour(pkgIdx, e.target.value); }}
-                          >
-                            <option value="">＋ הוסף סוג פטיפור</option>
-                            {petitFourTypes.filter(pf => pf.פעיל).map(pf => (
-                              <option key={pf.id} value={pf.id}>{pf.שם_פטיפור}</option>
-                            ))}
-                          </select>
-                        </div>
-                        {pkg.פטיפורים.length > 0 && (
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                            {pkg.פטיפורים.map((pf, pfIdx) => (
-                              <div key={pfIdx} className="flex items-center gap-2 p-2 bg-white rounded-lg border" style={{ borderColor: '#DDD0BC' }}>
-                                <span className="flex-1 text-xs font-medium truncate" style={{ color: '#2B1A10' }}>{pf.שם}</span>
-                                <input type="number" min={1} value={pf.כמות}
-                                  onChange={e => updatePetitFourQty(pkgIdx, pfIdx, Number(e.target.value))}
-                                  className="w-10 px-1 py-1 text-xs border rounded text-center focus:outline-none"
-                                  style={{ borderColor: '#DDD0BC', color: '#2B1A10' }} />
-                                <button type="button" onClick={() => removePetitFour(pkgIdx, pfIdx)}
-                                  className="text-red-400 hover:text-red-600 text-sm leading-none">×</button>
+                      {/* Petit-four selector — capacity-aware */}
+                      {(() => {
+                        const cap = pkg.גודל_מארז;
+                        const info = getCapacityInfo(sumPetitFours(pkg.פטיפורים), cap);
+                        const counterStyle = info.state === 'over'
+                          ? { backgroundColor: '#FEE2E2', color: '#991B1B', border: '1px solid #FECACA' }
+                          : info.state === 'full'
+                          ? { backgroundColor: '#D5F0E3', color: '#1D6A3D', border: '1px solid #A8DCC0' }
+                          : info.state === 'under'
+                          ? { backgroundColor: '#FEF3C7', color: '#7C5A1E', border: '1px solid #FCD9A6' }
+                          : { backgroundColor: '#EFE4D3', color: '#6B4A2D', border: '1px solid #DDD0BC' };
+                        const availableTypes = petitFourTypes.filter(pf =>
+                          pf.פעיל && !pkg.פטיפורים.find(x => x.פטיפור_id === pf.id),
+                        );
+                        return (
+                          <div className="border-t pt-3" style={{ borderColor: '#EDE0CE' }}>
+                            <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-semibold" style={{ color: '#4A2F1B' }}>פטיפורים</span>
+                                <span
+                                  className="text-[11px] font-medium px-2.5 py-1 rounded-full whitespace-nowrap"
+                                  style={counterStyle}
+                                >
+                                  {info.message}
+                                </span>
                               </div>
-                            ))}
+                              <select
+                                value=""
+                                onChange={e => { if (e.target.value) addPetitFour(pkgIdx, e.target.value); }}
+                                disabled={availableTypes.length === 0 || info.state === 'over'}
+                                className="text-xs px-3 py-1.5 rounded-full border bg-white transition-colors hover:bg-amber-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                                style={{ borderColor: '#C6A77D', color: '#8B5E34' }}
+                              >
+                                <option value="">＋ הוסף סוג פטיפור</option>
+                                {availableTypes.map(pf => (
+                                  <option key={pf.id} value={pf.id}>{pf.שם_פטיפור}</option>
+                                ))}
+                              </select>
+                            </div>
+                            {pkg.פטיפורים.length === 0 ? (
+                              <p className="text-xs text-center py-3" style={{ color: '#9B7A5A' }}>
+                                עדיין לא נבחרו סוגי פטיפורים
+                              </p>
+                            ) : (
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2" dir="rtl">
+                                {pkg.פטיפורים.map((pf, pfIdx) => {
+                                  const others = info.selected - (Number(pf.כמות) || 0);
+                                  const maxForThis = cap > 0 ? Math.max(1, cap - others) : undefined;
+                                  return (
+                                    <div
+                                      key={pfIdx}
+                                      className="group flex items-center gap-2 px-3 py-2 bg-white rounded-xl border transition-all hover:shadow-sm"
+                                      style={{ borderColor: '#E7D2A6' }}
+                                    >
+                                      <span className="flex-1 text-xs font-medium truncate" style={{ color: '#2B1A10' }} title={pf.שם}>
+                                        {pf.שם}
+                                      </span>
+                                      <input
+                                        type="number"
+                                        value={pf.כמות}
+                                        onChange={e => updatePetitFourQty(pkgIdx, pfIdx, Number(e.target.value))}
+                                        className="w-14 px-2 py-1 text-xs border rounded-lg text-center focus:outline-none focus:ring-1"
+                                        style={{ borderColor: '#DDD0BC', color: '#2B1A10' }}
+                                        min={1}
+                                        max={maxForThis}
+                                        aria-label={`כמות עבור ${pf.שם}`}
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => removePetitFour(pkgIdx, pfIdx)}
+                                        className="w-6 h-6 rounded-full flex items-center justify-center transition-colors text-base leading-none opacity-50 group-hover:opacity-100 hover:bg-stone-100"
+                                        style={{ color: '#9B7A5A' }}
+                                        title="הסר"
+                                        aria-label={`הסר ${pf.שם}`}
+                                      >
+                                        ×
+                                      </button>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
+                        );
+                      })()}
 
                       <div className="flex items-center justify-between mt-3 pt-2 border-t" style={{ borderColor: '#DDD0BC' }}>
                         <span className="text-xs font-semibold" style={{ color: '#2B1A10' }}>

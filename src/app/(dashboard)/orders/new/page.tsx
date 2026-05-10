@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Input, Select, Textarea } from '@/components/ui/Input';
 import { Combobox } from '@/components/ui/Combobox';
 import { normalizeSearchText } from '@/lib/normalize';
+import { sumPetitFours, getCapacityInfo } from '@/lib/packageCapacity';
 import { PageLoading } from '@/components/ui/LoadingSpinner';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import toast from 'react-hot-toast';
@@ -471,7 +472,17 @@ export default function NewOrderPage() {
     setPackageItems(prev => {
       const items = [...prev];
       const pkg = { ...items[pkgIdx] };
-      pkg.פטיפורים = pkg.פטיפורים.map((pf, i) => i === pfIdx ? { ...pf, כמות: qty } : pf);
+      // Clamp the new qty so the package never exceeds its capacity.
+      // When capacity is unknown (size 0) we leave the user free.
+      const safeQty = Math.max(1, Math.floor(Number(qty) || 1));
+      const cap = Number(pkg.גודל_מארז) || 0;
+      let nextQty = safeQty;
+      if (cap > 0) {
+        const others = pkg.פטיפורים.reduce((sum, pf, i) => i === pfIdx ? sum : sum + (Number(pf.כמות) || 0), 0);
+        const max = Math.max(1, cap - others);
+        if (safeQty > max) nextQty = max;
+      }
+      pkg.פטיפורים = pkg.פטיפורים.map((pf, i) => i === pfIdx ? { ...pf, כמות: nextQty } : pf);
       items[pkgIdx] = pkg;
       return items;
     });
@@ -640,6 +651,18 @@ export default function NewOrderPage() {
       if (underMinItems.length > 0) {
         const names = underMinItems.map(i => i.שם_מוצר || 'ללא שם').join(', ');
         toast.error(`מינימום 20 יחידות לדגם במחירון כמות — ${names}`);
+        return;
+      }
+    }
+
+    // Block when any package's petit-four selection exceeds the package size.
+    // Packages whose size is unknown (גודל_מארז = 0) are skipped — the UI
+    // shows a soft warning for those rather than blocking save.
+    for (let i = 0; i < packageItems.length; i++) {
+      const pkg = packageItems[i];
+      const info = getCapacityInfo(sumPetitFours(pkg.פטיפורים), pkg.גודל_מארז);
+      if (info.blocking) {
+        toast.error(`מארז ${i + 1} (${pkg.שם_מארז || 'ללא שם'}): ${info.message} — יש להפחית ${info.overage} יחידות`);
         return;
       }
     }
@@ -1054,56 +1077,91 @@ export default function NewOrderPage() {
                       />
                     </div>
 
-                    {/* Petit four selector */}
-                    <div className="border-t pt-3" style={{ borderColor: '#DDD0BC' }}>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-medium" style={{ color: '#4A2F1B' }}>
-                          בחירת פטיפורים
-                        </span>
-                        <Select
-                          className="w-44 text-xs"
-                          value=""
-                          onChange={e => { if (e.target.value) addPetitFour(pkgIdx, e.target.value); }}
-                        >
-                          <option value="">+ הוסף סוג פטיפור</option>
-                          {petitFourTypes.filter(pf => pf.פעיל).map(pf => (
-                            <option key={pf.id} value={pf.id}>{pf.שם_פטיפור}</option>
-                          ))}
-                        </Select>
-                      </div>
-                      {pkg.פטיפורים.length > 0 ? (
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2">
-                          {pkg.פטיפורים.map((pf, pfIdx) => (
-                            <div
-                              key={pfIdx}
-                              className="flex items-center gap-2 p-2 bg-white rounded-lg border"
-                              style={{ borderColor: '#DDD0BC' }}
-                            >
-                              <span className="flex-1 text-xs font-medium truncate" style={{ color: '#2B1A10' }}>
-                                {pf.שם}
-                              </span>
-                              <input
-                                type="number"
-                                value={pf.כמות}
-                                onChange={e => updatePetitFourQty(pkgIdx, pfIdx, Number(e.target.value))}
-                                className="w-12 px-1.5 py-1 text-xs border rounded text-center focus:outline-none"
-                                style={{ borderColor: '#DDD0BC', color: '#2B1A10' }}
-                                min={1}
-                              />
-                              <button
-                                type="button"
-                                onClick={() => removePetitFour(pkgIdx, pfIdx)}
-                                className="text-red-400 hover:text-red-600 text-base leading-none flex-shrink-0"
+                    {/* Petit-four selector — capacity-aware */}
+                    {(() => {
+                      const cap = pkg.גודל_מארז;
+                      const info = getCapacityInfo(sumPetitFours(pkg.פטיפורים), cap);
+                      const counterStyle = info.state === 'over'
+                        ? { backgroundColor: '#FEE2E2', color: '#991B1B', border: '1px solid #FECACA' }
+                        : info.state === 'full'
+                        ? { backgroundColor: '#D5F0E3', color: '#1D6A3D', border: '1px solid #A8DCC0' }
+                        : info.state === 'under'
+                        ? { backgroundColor: '#FEF3C7', color: '#7C5A1E', border: '1px solid #FCD9A6' }
+                        : { backgroundColor: '#EFE4D3', color: '#6B4A2D', border: '1px solid #DDD0BC' };
+                      const availableTypes = petitFourTypes.filter(pf =>
+                        pf.פעיל && !pkg.פטיפורים.find(x => x.פטיפור_id === pf.id),
+                      );
+                      return (
+                        <div className="border-t pt-3" style={{ borderColor: '#EDE0CE' }}>
+                          <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-semibold" style={{ color: '#4A2F1B' }}>פטיפורים</span>
+                              <span
+                                className="text-[11px] font-medium px-2.5 py-1 rounded-full whitespace-nowrap"
+                                style={counterStyle}
                               >
-                                ×
-                              </button>
+                                {info.message}
+                              </span>
                             </div>
-                          ))}
+                            <select
+                              value=""
+                              onChange={e => { if (e.target.value) addPetitFour(pkgIdx, e.target.value); }}
+                              disabled={availableTypes.length === 0 || info.state === 'over'}
+                              className="text-xs px-3 py-1.5 rounded-full border bg-white transition-colors hover:bg-amber-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                              style={{ borderColor: '#C6A77D', color: '#8B5E34' }}
+                            >
+                              <option value="">＋ הוסף סוג פטיפור</option>
+                              {availableTypes.map(pf => (
+                                <option key={pf.id} value={pf.id}>{pf.שם_פטיפור}</option>
+                              ))}
+                            </select>
+                          </div>
+                          {pkg.פטיפורים.length === 0 ? (
+                            <p className="text-xs text-center py-3" style={{ color: '#9B7A5A' }}>
+                              עדיין לא נבחרו סוגי פטיפורים
+                            </p>
+                          ) : (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2" dir="rtl">
+                              {pkg.פטיפורים.map((pf, pfIdx) => {
+                                const others = info.selected - (Number(pf.כמות) || 0);
+                                const maxForThis = cap > 0 ? Math.max(1, cap - others) : undefined;
+                                return (
+                                  <div
+                                    key={pfIdx}
+                                    className="group flex items-center gap-2 px-3 py-2 bg-white rounded-xl border transition-all hover:shadow-sm"
+                                    style={{ borderColor: '#E7D2A6' }}
+                                  >
+                                    <span className="flex-1 text-xs font-medium truncate" style={{ color: '#2B1A10' }} title={pf.שם}>
+                                      {pf.שם}
+                                    </span>
+                                    <input
+                                      type="number"
+                                      value={pf.כמות}
+                                      onChange={e => updatePetitFourQty(pkgIdx, pfIdx, Number(e.target.value))}
+                                      className="w-14 px-2 py-1 text-xs border rounded-lg text-center focus:outline-none focus:ring-1"
+                                      style={{ borderColor: '#DDD0BC', color: '#2B1A10' }}
+                                      min={1}
+                                      max={maxForThis}
+                                      aria-label={`כמות עבור ${pf.שם}`}
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => removePetitFour(pkgIdx, pfIdx)}
+                                      className="w-6 h-6 rounded-full flex items-center justify-center transition-colors text-base leading-none opacity-50 group-hover:opacity-100 hover:bg-stone-100"
+                                      style={{ color: '#9B7A5A' }}
+                                      title="הסר"
+                                      aria-label={`הסר ${pf.שם}`}
+                                    >
+                                      ×
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
-                      ) : (
-                        <p className="text-xs" style={{ color: '#9B7A5A' }}>בחר סוגי פטיפורים למארז</p>
-                      )}
-                    </div>
+                      );
+                    })()}
 
                     <div className="flex items-center justify-between mt-3">
                       <span className="text-xs font-semibold" style={{ color: '#2B1A10' }}>
