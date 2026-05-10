@@ -638,10 +638,17 @@ export default function NewOrderPage() {
     if (savedOrderId) return;
     if (!selectedCustomer) { toast.error('יש לבחור לקוח'); return; }
 
-    // Block on missing price in active tier
-    const missingPriceItem = orderItems.find(item => item.מוצר_id && item.missingPrice);
-    if (missingPriceItem) {
-      toast.error(`אין מחיר למוצר "${missingPriceItem.שם_מוצר || ''}" במחירון הפעיל — לא ניתן לשמור`);
+    // When the active tier has no price-list entry for an item, allow the user
+    // to type a manual price instead of blocking outright. We only refuse to
+    // save when the price field was left empty/zero — otherwise the manual
+    // value is what gets persisted to "מחיר_ליחידה" and used everywhere
+    // downstream (line totals, invoice, email — none of those recompute
+    // against the price list).
+    const noPriceItem = orderItems.find(
+      item => item.מוצר_id && item.missingPrice && (!item.מחיר_ליחידה || item.מחיר_ליחידה <= 0),
+    );
+    if (noPriceItem) {
+      toast.error(`יש להזין מחיר ידני למוצר "${noPriceItem.שם_מוצר || ''}" — אין מחירון פעיל`);
       return;
     }
 
@@ -977,6 +984,9 @@ export default function NewOrderPage() {
                         onChange={e => updateProductItem(idx, 'מחיר_ליחידה', Number(e.target.value))}
                         min={0}
                         step={0.01}
+                        // Highlight the field when there's no price-list entry —
+                        // this is exactly where the user must type a manual price.
+                        className={item.missingPrice ? 'border-amber-400 focus:border-amber-500 focus:ring-amber-200 bg-amber-50' : undefined}
                       />
                     </div>
                     <div className="col-span-3">
@@ -1000,7 +1010,9 @@ export default function NewOrderPage() {
                     </div>
                   )}
                   {item.missingPrice && (
-                    <p className="text-xs text-amber-600 mt-1.5">⚠ אין מחיר למוצר זה במחירון הפעיל</p>
+                    <p className="text-xs text-amber-700 mt-1.5">
+                      ⚠ אין מחיר במחירון הפעיל — ניתן להזין מחיר ידנית
+                    </p>
                   )}
                   {belowMin && (
                     <div className="flex items-center gap-1.5 mt-1">

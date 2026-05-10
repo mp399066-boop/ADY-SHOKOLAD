@@ -496,6 +496,15 @@ export default function OrderDetailPage() {
         return;
       }
     }
+    // Block save when any selected product line has no price. The price field
+    // is editable here, so a 0/empty value is almost always an unfilled manual
+    // entry — not an intentional zero. Same intent as the new-order guard for
+    // products with no price-list entry.
+    const noPriceItem = editItems.find(i => i.מוצר_id && (!i.מחיר_ליחידה || i.מחיר_ליחידה <= 0));
+    if (noPriceItem) {
+      toast.error(`יש להזין מחיר למוצר "${noPriceItem.שם_מוצר || ''}"`);
+      return;
+    }
     setSaving(true);
     try {
       const itemsPayload = {
