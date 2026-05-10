@@ -1,10 +1,15 @@
 'use client';
 
 import { useState, useRef, useEffect, useMemo } from 'react';
+import { matchesSearch } from '@/lib/normalize';
 
 export interface ComboboxOption {
   value: string;
   label: string;
+  // Optional richer text to match against (e.g. "name + sku + aliases").
+  // When provided, the user's query is matched against this instead of `label`.
+  // When absent, `label` is used — so existing call sites keep working.
+  searchText?: string;
 }
 
 interface ComboboxProps {
@@ -41,9 +46,8 @@ export function Combobox({
   const selected = options.find(o => o.value === value);
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return options;
-    return options.filter(o => o.label.toLowerCase().includes(q));
+    if (!query.trim()) return options;
+    return options.filter(o => matchesSearch(o.searchText ?? o.label, query));
   }, [options, query]);
 
   useEffect(() => {

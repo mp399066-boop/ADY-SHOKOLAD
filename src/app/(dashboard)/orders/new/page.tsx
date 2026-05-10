@@ -7,6 +7,7 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input, Select, Textarea } from '@/components/ui/Input';
 import { Combobox } from '@/components/ui/Combobox';
+import { normalizeSearchText } from '@/lib/normalize';
 import { PageLoading } from '@/components/ui/LoadingSpinner';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import toast from 'react-hot-toast';
@@ -185,9 +186,6 @@ export default function NewOrderPage() {
       draftFetch,
     ]).then(([c, p, pf, pkg, prices, draftResp]) => {
       const allProducts = p.data || [];
-      console.log('[new-order] products loaded:', allProducts.length,
-        '| business-only count:', allProducts.filter((x: { לקוחות_עסקיים_בלבד?: boolean }) => x.לקוחות_עסקיים_בלבד).length,
-        '| sample:', allProducts.slice(0, 3).map((x: { שם_מוצר: string; לקוחות_עסקיים_בלבד?: boolean }) => `${x.שם_מוצר}=${x.לקוחות_עסקיים_בלבד}`));
       setCustomers(c.data || []);
       setProducts(allProducts);
       setPetitFourTypes(pf.data || []);
@@ -911,19 +909,28 @@ export default function NewOrderPage() {
                         value={item.מוצר_id}
                         onChange={v => updateProductItem(idx, 'מוצר_id', v)}
                         options={(() => {
-                          // Source of truth: price list. A product is visible if it's
-                          // active AND has a price entry for the currently effective
-                          // price type. We deliberately ignore price_availability and
-                          // לקוחות_עסקיים_בלבד on the product.
-                          const priceTypeIds = new Set(
-                            priceList
-                              .filter(pl => pl.price_type === effectivePriceType)
-                              .map(pl => pl.מוצר_id),
-                          );
+                          // Show all active regular products that the customer is
+                          // allowed to purchase. We deliberately do NOT hide products
+                          // that lack a price-list entry for the active tier — those
+                          // still surface, with the existing missingPrice warning to
+                          // block save until a price exists. Hiding them silently
+                          // caused legitimate items (e.g. mini magnum) to be invisible
+                          // in the create form even though they were present in edit.
+                          const isBusinessCustomer = !!customerType && customerType.startsWith('עסקי');
+                          // searchText holds a Hebrew-normalized version of the
+                          // product name so the Combobox matches on stable text:
+                          // strips geresh ׳/' / gershayim ״/", asterisks, hyphens,
+                          // collapses whitespace, and applies NFC. Without this,
+                          // a query like "מג" can fail to find "מיני מג'" and
+                          // "מיני-מגנום" can fail to find "מיני מגנום".
                           return products
                             .filter(p => p.פעיל && p.סוג_מוצר === 'מוצר רגיל')
-                            .filter(p => !customerType || priceTypeIds.has(p.id))
-                            .map(p => ({ value: p.id, label: p.שם_מוצר }));
+                            .filter(p => !p.לקוחות_עסקיים_בלבד || isBusinessCustomer)
+                            .map(p => ({
+                              value: p.id,
+                              label: p.שם_מוצר,
+                              searchText: normalizeSearchText(p.שם_מוצר),
+                            }));
                         })()}
                         placeholder="בחר..."
                         searchPlaceholder="חיפוש מוצר..."

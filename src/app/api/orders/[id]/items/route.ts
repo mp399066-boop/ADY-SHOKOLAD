@@ -26,7 +26,10 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   console.log('[items PUT] orderId:', params.id);
   console.log('[items PUT] מוצרים:', מוצרים.length, 'מארזים:', מארזים.length, 'הנחה:', סוג_הנחה, ערך_הנחה);
 
-  // 1. Get existing item IDs to delete petit-four selections first
+  // 1. Fetch existing items first — needed for safety checks AND to know what we'd
+  //    be wiping. We do NOT delete anything until validation has fully passed,
+  //    because Supabase has no SQL transaction wrapper from the JS client and a
+  //    mid-flight failure would leave the order with zero items but stale totals.
   const { data: existingItems, error: fetchExistingError } = await supabase
     .from('מוצרים_בהזמנה')
     .select('id')
@@ -38,7 +41,75 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   }
 
   const existingIds = (existingItems || []).map((i: { id: string }) => i.id);
-  console.log('[items PUT] existing item ids:', existingIds.length);
+  console.log('[items PUT] existing item count:', existingIds.length);
+
+  // 1a. Refuse to silently wipe an order with items when the client sent an empty
+  //     payload. This is almost always a UI/state bug rather than an explicit
+  //     "remove every item" intent. Callers that genuinely want an empty order
+  //     must remove rows individually or send { allow_empty: true }.
+  const incomingTotal = (מוצרים?.length || 0) + (מארזים?.length || 0);
+  const allowEmpty = (body as { allow_empty?: boolean }).allow_empty === true;
+  if (incomingTotal === 0 && existingIds.length > 0 && !allowEmpty) {
+    console.warn('[items PUT] BLOCKED wipe — payload empty but order has', existingIds.length, 'existing items');
+    return NextResponse.json(
+      { error: 'בקשת שמירה ריקה — לא ניתן למחוק את כל פריטי ההזמנה ללא אישור מפורש' },
+      { status: 400 },
+    );
+  }
+
+  // 2. Validate product IDs + business-only check BEFORE any destructive action.
+  const incomingProductIds = מוצרים.map(i => i.מוצר_id).filter(Boolean);
+  let validProductIds = new Set<string>(incomingProductIds);
+
+  if (incomingProductIds.length > 0) {
+    // Fetch order → customer type for business-only check
+    const { data: orderRow } = await supabase
+      .from('הזמנות')
+      .select('לקוח_id, לקוחות(סוג_לקוח)')
+      .eq('id', params.id)
+      .single();
+    const customerType: string =
+      (orderRow?.לקוחות as { סוג_לקוח?: string } | null)?.סוג_לקוח || '';
+    const isBusinessCustomer = customerType.startsWith('עסקי');
+
+    const { data: existingProds, error: prodsError } = await supabase
+      .from('מוצרים_למכירה')
+      .select('id, שם_מוצר, לקוחות_עסקיים_בלבד')
+      .in('id', incomingProductIds);
+
+    if (prodsError) {
+      console.error('[items PUT] product validation query failed:', prodsError);
+      return NextResponse.json({ error: `ולידציית מוצרים נכשלה: ${prodsError.message}` }, { status: 500 });
+    }
+
+    for (const prod of existingProds || []) {
+      const p = prod as { id: string; שם_מוצר: string; לקוחות_עסקיים_בלבד: boolean };
+      // Match any business customer type ('עסקי', 'עסקי - קבוע', 'עסקי - כמות'),
+      // not just strict 'עסקי'. Strict equality previously rejected legitimate orders.
+      if (p.לקוחות_עסקיים_בלבד && !isBusinessCustomer) {
+        console.warn('[items PUT] business-only check failed BEFORE wipe — order intact:', p.שם_מוצר, 'customerType:', customerType);
+        return NextResponse.json(
+          { error: `מוצר "${p.שם_מוצר}" זמין ללקוחות עסקיים בלבד` },
+          { status: 403 },
+        );
+      }
+    }
+
+    validProductIds = new Set((existingProds || []).map((p: { id: string }) => p.id));
+    const missing = incomingProductIds.filter(id => !validProductIds.has(id));
+    if (missing.length > 0) {
+      console.warn('[items PUT] BLOCKED wipe — incoming refers to unknown product ids:', missing);
+      return NextResponse.json(
+        { error: `מזהי מוצר לא קיימים: ${missing.join(', ')}` },
+        { status: 400 },
+      );
+    }
+    console.log('[items PUT] valid product ids:', validProductIds.size, '/', incomingProductIds.length);
+  }
+
+  // 3. Validation passed — now perform the destructive replace-all.
+  console.log('[items PUT] REPLACE-ALL starting — wiping', existingIds.length, 'existing items, inserting',
+    מוצרים.length, 'products and', מארזים.length, 'packages');
 
   // Delete petit-four selections first (FK dependency)
   if (existingIds.length > 0) {
@@ -54,7 +125,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     console.log('[items PUT] deleted petit-four selections for', existingIds.length, 'items');
   }
 
-  // 2. Delete all existing order items
+  // Delete all existing order items
   const { error: deleteError } = await supabase
     .from('מוצרים_בהזמנה')
     .delete()
@@ -65,44 +136,6 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     return NextResponse.json({ error: `מחיקת פריטי הזמנה נכשלה: ${deleteError.message}` }, { status: 500 });
   }
   console.log('[items PUT] deleted existing order items');
-
-  // 3. Validate product IDs + business-only check
-  const incomingProductIds = מוצרים.map(i => i.מוצר_id).filter(Boolean);
-  let validProductIds = new Set<string>(incomingProductIds);
-
-  if (incomingProductIds.length > 0) {
-    // Fetch order → customer type for business-only check
-    const { data: orderRow } = await supabase
-      .from('הזמנות')
-      .select('לקוח_id, לקוחות(סוג_לקוח)')
-      .eq('id', params.id)
-      .single();
-    const customerType: string =
-      (orderRow?.לקוחות as { סוג_לקוח?: string } | null)?.סוג_לקוח || '';
-
-    const { data: existingProds, error: prodsError } = await supabase
-      .from('מוצרים_למכירה')
-      .select('id, שם_מוצר, לקוחות_עסקיים_בלבד')
-      .in('id', incomingProductIds);
-
-    if (prodsError) {
-      console.error('[items PUT] product validation query failed:', prodsError);
-      return NextResponse.json({ error: `ולידציית מוצרים נכשלה: ${prodsError.message}` }, { status: 500 });
-    }
-
-    for (const prod of existingProds || []) {
-      const p = prod as { id: string; שם_מוצר: string; לקוחות_עסקיים_בלבד: boolean };
-      if (p.לקוחות_עסקיים_בלבד && customerType !== 'עסקי') {
-        return NextResponse.json(
-          { error: `מוצר "${p.שם_מוצר}" זמין ללקוחות עסקיים בלבד` },
-          { status: 403 },
-        );
-      }
-    }
-
-    validProductIds = new Set((existingProds || []).map((p: { id: string }) => p.id));
-    console.log('[items PUT] valid product ids:', validProductIds.size, '/', incomingProductIds.length);
-  }
 
   // 4. Insert new product rows
   let subtotal = 0;

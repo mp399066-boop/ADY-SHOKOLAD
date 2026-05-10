@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { StatusBadge, UrgentBadge } from '@/components/ui/StatusBadge';
 import { PageLoading } from '@/components/ui/LoadingSpinner';
 import { Combobox } from '@/components/ui/Combobox';
+import { normalizeSearchText } from '@/lib/normalize';
 import { formatDate, formatCurrency } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import type { Order, OrderItem, Customer, Product, Package, PetitFourType } from '@/types/database';
@@ -1070,9 +1071,20 @@ export default function OrderDetailPage() {
                           value={item.מוצר_id || ''}
                           onChange={v => updateProductItem(idx, 'מוצר_id', v)}
                           options={products
-                            .filter(p => p.סוג_מוצר === 'מוצר רגיל')
-                            .filter(p => !p.לקוחות_עסקיים_בלבד || order.לקוחות?.סוג_לקוח === 'עסקי')
-                            .map(p => ({ value: p.id, label: p.שם_מוצר }))}
+                            .filter(p => p.פעיל && p.סוג_מוצר === 'מוצר רגיל')
+                            .filter(p => {
+                              // Business-only products require any business customer type
+                              // ('עסקי', 'עסקי - קבוע', 'עסקי - כמות'). Strict equality
+                              // to 'עסקי' missed the compound types.
+                              if (!p.לקוחות_עסקיים_בלבד) return true;
+                              const t = order.לקוחות?.סוג_לקוח || '';
+                              return t.startsWith('עסקי');
+                            })
+                            .map(p => ({
+                              value: p.id,
+                              label: p.שם_מוצר,
+                              searchText: normalizeSearchText(p.שם_מוצר),
+                            }))}
                           placeholder="בחר מוצר..."
                           searchPlaceholder="חיפוש מוצר..."
                           emptyText="לא נמצאו מוצרים"
