@@ -953,14 +953,30 @@ export default function NewOrderPage() {
                           // collapses whitespace, and applies NFC. Without this,
                           // a query like "מג" can fail to find "מיני מג'" and
                           // "מיני-מגנום" can fail to find "מיני מגנום".
-                          return products
+                          const visible = products
                             .filter(p => p.פעיל && p.סוג_מוצר === 'מוצר רגיל')
-                            .filter(p => !p.לקוחות_עסקיים_בלבד || isBusinessCustomer)
-                            .map(p => ({
+                            .filter(p => !p.לקוחות_עסקיים_בלבד || isBusinessCustomer);
+                          // Detect names that appear on more than one active row,
+                          // so we can attach a base-price hint (e.g. "₪14") to the
+                          // dropdown label and the user can pick the right one.
+                          // Catalog duplicates are a known data issue (e.g. two
+                          // "טארטלט פיצוחים" rows) — this surfaces them in the UI
+                          // without any DB change.
+                          const nameCounts = visible.reduce<Record<string, number>>((acc, p) => {
+                            const k = String(p.שם_מוצר ?? '').trim();
+                            acc[k] = (acc[k] || 0) + 1;
+                            return acc;
+                          }, {});
+                          return visible.map(p => {
+                            const k = String(p.שם_מוצר ?? '').trim();
+                            const isDup = (nameCounts[k] ?? 0) > 1;
+                            return {
                               value: p.id,
                               label: p.שם_מוצר,
                               searchText: normalizeSearchText(p.שם_מוצר),
-                            }));
+                              hint: isDup ? `₪${(p.מחיר ?? 0).toFixed(2)}` : undefined,
+                            };
+                          });
                         })()}
                         placeholder="בחר..."
                         searchPlaceholder="חיפוש מוצר..."

@@ -10,6 +10,10 @@ export interface ComboboxOption {
   // When provided, the user's query is matched against this instead of `label`.
   // When absent, `label` is used — so existing call sites keep working.
   searchText?: string;
+  // Optional muted hint shown next to the label (e.g. "₪14" or SKU). Useful
+  // when two options share the same label and the user needs to distinguish.
+  // Display-only — not used for search.
+  hint?: string;
 }
 
 interface ComboboxProps {
@@ -135,7 +139,12 @@ export function Combobox({
         aria-haspopup="listbox"
         aria-expanded={open}
       >
-        <span className="truncate flex-1 min-w-0">{selected?.label || placeholder}</span>
+        <span className="truncate flex-1 min-w-0">
+          {selected?.label || placeholder}
+          {selected?.hint && (
+            <span className="ms-1.5 text-xs" style={{ color: '#9B7A5A' }}>· {selected.hint}</span>
+          )}
+        </span>
         <svg
           className="w-4 h-4 flex-shrink-0 transition-transform"
           style={{ color: '#9B7A5A', transform: open ? 'rotate(180deg)' : undefined }}
@@ -198,7 +207,14 @@ export function Combobox({
                     role="option"
                     aria-selected={isSelected}
                   >
-                    <span className="truncate flex-1 min-w-0">{opt.label}</span>
+                    <span className="truncate flex-1 min-w-0">
+                      {opt.label}
+                      {opt.hint && (
+                        <span className="ms-1.5 text-xs" style={{ color: '#9B7A5A' }}>
+                          · {opt.hint}
+                        </span>
+                      )}
+                    </span>
                     {isSelected && (
                       <svg className="w-3.5 h-3.5 flex-shrink-0" viewBox="0 0 20 20" fill="#8B5E34">
                         <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />

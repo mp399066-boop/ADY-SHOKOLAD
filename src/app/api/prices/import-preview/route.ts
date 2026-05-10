@@ -198,17 +198,12 @@ export async function POST(req: NextRequest) {
   const supabase = createAdminClient();
 
   const [{ data: products }, { data: existingEntries }] = await Promise.all([
-    supabase.from('מוצרים_למכירה').select('id, שם_מוצר'), // include inactive so we don't re-create them
+    supabase.from('מוצרים_למכירה').select('id, שם_מוצר, פעיל'), // include inactive so we don't re-create them
     supabase.from('מחירון').select('מוצר_id, price_type, min_quantity, sku'),
   ]);
 
-  // name → product_id (primary lookup)
-  const productMap = new Map<string, string>();
-  for (const p of products || []) {
-    productMap.set(String(p['שם_מוצר']).toLowerCase().trim(), p.id as string);
-  }
-
-  // sku → product_id (fallback lookup via existing price list entries)
+  // sku → product_id (PRIMARY lookup — strongest identity in the file).
+  // Built from existing price-list rows since מוצרים_למכירה has no SKU column.
   const skuMap = new Map<string, string>();
   for (const e of existingEntries || []) {
     if (e.sku && e['מוצר_id']) {
@@ -216,6 +211,22 @@ export async function POST(req: NextRequest) {
       if (key && !skuMap.has(key)) skuMap.set(key, e['מוצר_id'] as string);
     }
   }
+
+  // name → product_ids[] (SECONDARY lookup; many-valued so we can detect when
+  // the same שם_מוצר exists on more than one active row in the catalog and
+  // refuse to silently pick one — that's exactly how the "טארטלט פיצוחים"
+  // duplicate slipped through earlier).
+  const productIdsByName = new Map<string, string[]>();
+  for (const p of products || []) {
+    if (!p['פעיל']) continue;
+    const k = String(p['שם_מוצר']).toLowerCase().trim();
+    if (!productIdsByName.has(k)) productIdsByName.set(k, []);
+    productIdsByName.get(k)!.push(p.id as string);
+  }
+  const duplicateActiveNames = new Set<string>();
+  productIdsByName.forEach((ids, k) => {
+    if (ids.length > 1) duplicateActiveNames.add(k);
+  });
 
   const existingSet = new Set<string>();
   for (const e of existingEntries || []) {
@@ -259,12 +270,27 @@ export async function POST(req: NextRequest) {
         ? minQuantityRaw : 20;
     }
 
-    // Primary lookup: by product name; fallback: by SKU via existing price list entries
-    let productId = productName ? (productMap.get(productName.toLowerCase()) ?? null) : null;
-    if (!productId && sku) {
-      productId = skuMap.get(sku.toLowerCase()) ?? null;
+    // Resolve product:
+    //   1. PRIMARY — match by SKU (it's the immutable identity).
+    //   2. FALLBACK — match by name, but only when the name is unambiguous in
+    //      the catalog. If two active products share the name, refuse to pick
+    //      arbitrarily and surface the conflict as a row error.
+    let productId: string | null = null;
+    if (sku) {
+      productId = skuMap.get(sku.toLowerCase().trim()) ?? null;
     }
-    const isNewProduct = !!(productName && !productId);
+    if (!productId && productName) {
+      const nameKey = productName.toLowerCase().trim();
+      if (duplicateActiveNames.has(nameKey)) {
+        rowErrors.push(
+          `שני מוצרים פעילים בשם "${productName}" בקטלוג — נא לאחד או להוסיף SKU כדי להבחין לפני הייבוא`,
+        );
+      } else {
+        const ids = productIdsByName.get(nameKey);
+        if (ids && ids.length === 1) productId = ids[0];
+      }
+    }
+    const isNewProduct = !!(productName && !productId && rowErrors.length === 0);
 
     if (rowErrors.length > 0) {
       errors.push({ rowNumber, sku, productName, errors: rowErrors });

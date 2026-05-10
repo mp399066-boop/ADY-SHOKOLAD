@@ -1355,21 +1355,35 @@ export default function OrderDetailPage() {
                           label="מוצר"
                           value={item.מוצר_id || ''}
                           onChange={v => updateProductItem(idx, 'מוצר_id', v)}
-                          options={products
-                            .filter(p => p.פעיל && p.סוג_מוצר === 'מוצר רגיל')
-                            .filter(p => {
-                              // Business-only products require any business customer type
-                              // ('עסקי', 'עסקי - קבוע', 'עסקי - כמות'). Strict equality
-                              // to 'עסקי' missed the compound types.
-                              if (!p.לקוחות_עסקיים_בלבד) return true;
-                              const t = order.לקוחות?.סוג_לקוח || '';
-                              return t.startsWith('עסקי');
-                            })
-                            .map(p => ({
-                              value: p.id,
-                              label: p.שם_מוצר,
-                              searchText: normalizeSearchText(p.שם_מוצר),
-                            }))}
+                          options={(() => {
+                            const visible = products
+                              .filter(p => p.פעיל && p.סוג_מוצר === 'מוצר רגיל')
+                              .filter(p => {
+                                // Business-only products require any business customer type
+                                // ('עסקי', 'עסקי - קבוע', 'עסקי - כמות'). Strict equality
+                                // to 'עסקי' missed the compound types.
+                                if (!p.לקוחות_עסקיים_בלבד) return true;
+                                const t = order.לקוחות?.סוג_לקוח || '';
+                                return t.startsWith('עסקי');
+                              });
+                            // Surface base-price hint when a name appears more than
+                            // once — same disambiguation as the new-order combobox.
+                            const nameCounts = visible.reduce<Record<string, number>>((acc, p) => {
+                              const k = String(p.שם_מוצר ?? '').trim();
+                              acc[k] = (acc[k] || 0) + 1;
+                              return acc;
+                            }, {});
+                            return visible.map(p => {
+                              const k = String(p.שם_מוצר ?? '').trim();
+                              const isDup = (nameCounts[k] ?? 0) > 1;
+                              return {
+                                value: p.id,
+                                label: p.שם_מוצר,
+                                searchText: normalizeSearchText(p.שם_מוצר),
+                                hint: isDup ? `₪${(p.מחיר ?? 0).toFixed(2)}` : undefined,
+                              };
+                            });
+                          })()}
                           placeholder="בחר מוצר..."
                           searchPlaceholder="חיפוש מוצר..."
                           emptyText="לא נמצאו מוצרים"
