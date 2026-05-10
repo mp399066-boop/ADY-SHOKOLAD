@@ -80,7 +80,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   </p>
   <p style="font-size:15px">תודה!</p>
   <hr style="border:none;border-top:1px solid #E5DDD3;margin:24px 0">
-  <p style="color:#9B7A5A;font-size:12px">עדי שוקולד</p>
+  <p style="color:#9B7A5A;font-size:12px">עדי תכשיט שוקולד</p>
 </body>
 </html>`;
 

@@ -20,7 +20,7 @@ export interface OrderEmailData {
 }
 
 const EMAIL_ADDR = 'adi548419927@gmail.com';
-const BUSINESS = 'עדי שוקולד';
+const BUSINESS = 'עדי תכשיט שוקולד';
 const VAT_RATE = 0.18;
 
 function fmt(n: number) {

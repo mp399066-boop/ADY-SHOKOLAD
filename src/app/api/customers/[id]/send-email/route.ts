@@ -28,9 +28,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       const [response] = await sgMail.send({
         to,
         from,
-        subject: subject || 'הודעה מעדי שוקולד',
-        html: `<html dir="rtl"><body style="font-family:Arial,Helvetica,sans-serif;direction:rtl;text-align:right;padding:24px;color:#2B1A10">${content.replace(/\n/g, '<br>')}<br><br><p style="color:#9B7A5A;font-size:12px;border-top:1px solid #eee;padding-top:12px">עדי שוקולד | adi548419927@gmail.com</p></body></html>`,
-        text: `${content}\n\nעדי שוקולד | adi548419927@gmail.com`,
+        subject: subject || 'הודעה מעדי תכשיט שוקולד',
+        html: `<html dir="rtl"><body style="font-family:Arial,Helvetica,sans-serif;direction:rtl;text-align:right;padding:24px;color:#2B1A10">${content.replace(/\n/g, '<br>')}<br><br><p style="color:#9B7A5A;font-size:12px;border-top:1px solid #eee;padding-top:12px">עדי תכשיט שוקולד | adi548419927@gmail.com</p></body></html>`,
+        text: `${content}\n\nעדי תכשיט שוקולד | adi548419927@gmail.com`,
       });
       messageId = response?.headers?.['x-message-id'] as string | undefined;
     } catch (err) {
