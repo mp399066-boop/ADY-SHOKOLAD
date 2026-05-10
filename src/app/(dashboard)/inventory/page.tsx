@@ -37,6 +37,10 @@ export default function InventoryPage() {
   const [savingStock, setSavingStock] = useState(false);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  // Separate confirm state for finished-product deletes — keeps the raw-material
+  // delete flow untouched and lets us show a product-specific confirm message.
+  const [confirmProduct, setConfirmProduct] = useState<{ id: string; name: string } | null>(null);
+  const [deletingProduct, setDeletingProduct] = useState(false);
 
   // Bulk state
   const [selRaw, setSelRaw] = useState<Set<string>>(new Set());
@@ -142,6 +146,26 @@ export default function InventoryPage() {
       fetchInventory();
     } catch { toast.error('שגיאה במחיקה'); }
     finally { setDeleting(false); }
+  };
+
+  const handleDeleteProduct = async (id: string) => {
+    setDeletingProduct(true);
+    try {
+      const res = await fetch(`/api/products/${id}`, { method: 'DELETE' });
+      const json = await res.json();
+      if (!res.ok) {
+        // Same FK fallback shape as raw-material delete — products that already
+        // appear in past orders / recipes / price-list rows can't be hard-deleted.
+        const isFK = (json.error || '').includes('foreign key') || (json.error || '').includes('violates');
+        toast.error(isFK ? 'לא ניתן למחוק כי קיימות הזמנות/מתכונים/מחירונים שמקושרים למוצר' : (json.error || 'שגיאה במחיקה'));
+        return;
+      }
+      toast.success('מוצר נמחק');
+      setStockProducts(prev => prev.filter(p => p.id !== id));
+      setSelProducts(prev => { const next = new Set(prev); next.delete(id); return next; });
+      setConfirmProduct(null);
+    } catch { toast.error('שגיאה במחיקה'); }
+    finally { setDeletingProduct(false); }
   };
 
   const handleBulkDeleteRaw = async () => {
@@ -470,9 +494,21 @@ export default function InventoryPage() {
                           </td>
                           <td className="px-4 py-3">
                             {editStockId !== p.id && (
-                              <button className="text-xs hover:underline" style={{ color: '#8B5E34' }} onClick={() => { setEditStockId(p.id); setEditStockQty(p.כמות_במלאי ?? 0); }}>
-                                עדכן מלאי
-                              </button>
+                              <div className="flex items-center gap-3">
+                                <button className="text-xs hover:underline" style={{ color: '#8B5E34' }} onClick={() => { setEditStockId(p.id); setEditStockQty(p.כמות_במלאי ?? 0); }}>
+                                  עדכן מלאי
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmProduct({ id: p.id, name: p.שם_מוצר })}
+                                  title="מחק מוצר"
+                                  aria-label={`מחק ${p.שם_מוצר}`}
+                                  className="w-7 h-7 rounded-full flex items-center justify-center transition-colors hover:bg-red-50"
+                                  style={{ color: '#B91C1C' }}
+                                >
+                                  <IconTrash className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
                             )}
                           </td>
                         </tr>
@@ -630,6 +666,17 @@ export default function InventoryPage() {
         onClose={() => setConfirmId(null)}
         onConfirm={() => handleDeleteMaterial(confirmId!)}
         loading={deleting}
+      />
+
+      {/* Product delete confirm */}
+      <ConfirmModal
+        open={!!confirmProduct}
+        title={confirmProduct ? `מחיקת ${confirmProduct.name}` : 'מחיקת מוצר'}
+        description="המוצר יוסר לצמיתות. אם קיימות הזמנות/מתכונים/מחירונים שמקושרים אליו — המחיקה תיחסם והמערכת תציג הודעה."
+        confirmLabel="מחק מוצר"
+        onClose={() => setConfirmProduct(null)}
+        onConfirm={() => handleDeleteProduct(confirmProduct!.id)}
+        loading={deletingProduct}
       />
 
       {/* Bulk delete confirm */}
