@@ -136,8 +136,14 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // Deduct product inventory only on FIRST transition from "חדשה" → "בהכנה"
+  // Deduct product inventory only on FIRST transition from "חדשה" → "בהכנה".
+  // Same guard for both finished products and package petit-fours below.
+  // Limitation: a manual revert to "חדשה" followed by another "בהכנה" will
+  // re-trigger this block (the guard only checks the immediate transition).
+  // Acceptable trade-off — fixing it properly needs a new boolean column or a
+  // movements table; out of scope for this slice.
   if (body.סטטוס_הזמנה === 'בהכנה' && prevOrderStatus === 'חדשה') {
+    // ── 1. Finished products (סוג_שורה = 'מוצר') ────────────────────────────
     const { data: items } = await supabase
       .from('מוצרים_בהזמנה')
       .select('מוצר_id, כמות')
@@ -158,6 +164,62 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
             .update({ כמות_במלאי: Math.max(0, (product.כמות_במלאי || 0) - item.כמות) })
             .eq('id', item.מוצר_id);
         }
+      }
+    }
+
+    // ── 2. Package petit-fours (סוג_שורה = 'מארז') ──────────────────────────
+    // For each package line, fetch its בחירת_פטיפורים_בהזמנה rows and deduct
+    // (selection.כמות × packageLine.כמות) from סוגי_פטיפורים.כמות_במלאי for
+    // each פטיפור_id. Aggregated first so the same type used across multiple
+    // packages results in one UPDATE (and one Math.max guard).
+    const { data: packageLines } = await supabase
+      .from('מוצרים_בהזמנה')
+      .select('id, כמות')
+      .eq('הזמנה_id', params.id)
+      .eq('סוג_שורה', 'מארז');
+
+    type PackageLineRow = { id: string; כמות: number | null };
+    type PFSelectionRow = { שורת_הזמנה_id: string; פטיפור_id: string | null; כמות: number | null };
+    const packageLineRows = (packageLines ?? []) as PackageLineRow[];
+    if (packageLineRows.length > 0) {
+      const packageIds = packageLineRows.map((p: PackageLineRow) => p.id);
+      const packageQtyByLine: Record<string, number> = {};
+      for (const pl of packageLineRows) packageQtyByLine[pl.id] = pl.כמות || 1;
+
+      const { data: selections } = await supabase
+        .from('בחירת_פטיפורים_בהזמנה')
+        .select('שורת_הזמנה_id, פטיפור_id, כמות')
+        .in('שורת_הזמנה_id', packageIds);
+
+      const selectionRows = (selections ?? []) as PFSelectionRow[];
+      if (selectionRows.length > 0) {
+        const totalsByPF: Record<string, number> = {};
+        for (const sel of selectionRows) {
+          const pkgQty = packageQtyByLine[sel.שורת_הזמנה_id] || 1;
+          const total = (sel.כמות || 0) * pkgQty;
+          if (!sel.פטיפור_id || total <= 0) continue;
+          totalsByPF[sel.פטיפור_id] = (totalsByPF[sel.פטיפור_id] || 0) + total;
+        }
+
+        const pfIds = Object.keys(totalsByPF);
+        for (const pfId of pfIds) {
+          const qtyToDeduct = totalsByPF[pfId];
+          const { data: pf } = await supabase
+            .from('סוגי_פטיפורים')
+            .select('כמות_במלאי')
+            .eq('id', pfId)
+            .single();
+          if (pf) {
+            await supabase
+              .from('סוגי_פטיפורים')
+              .update({ כמות_במלאי: Math.max(0, (pf.כמות_במלאי || 0) - qtyToDeduct) })
+              .eq('id', pfId);
+          }
+        }
+        console.log('[order-status] deducted petit-fours from packages:',
+          'lines:', packageLineRows.length,
+          '| selections:', selectionRows.length,
+          '| distinct types:', pfIds.length);
       }
     }
   }
