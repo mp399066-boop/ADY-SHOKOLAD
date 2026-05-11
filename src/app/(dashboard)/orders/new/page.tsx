@@ -342,6 +342,34 @@ export default function NewOrderPage() {
       deliveryFee, paymentMethod, paymentStatus, greetingText, notes, discountType,
       discountValue, orderSource, orderType, isUrgent, savedOrderId]);
 
+  // Recipient autofill — keeps the delivery section in sync with the chosen
+  // customer's saved address (migration 022). Only fills fields that are
+  // currently empty, so any manual edit the user makes is preserved. Runs
+  // when:
+  //   • The picked customer changes
+  //   • The customer list reloads (e.g. after a fresh page load with newly
+  //     edited address) — selectedCustomerData identity changes
+  //   • Delivery type flips to משלוח
+  //   • Recipient mode flips to customer
+  // Each of those is the moment the user expects autofill to kick in. The
+  // explicit handleCustomerChange / toggle-button code below still runs first
+  // for backwards compatibility — this effect simply fills anything those
+  // paths missed.
+  useEffect(() => {
+    if (deliveryType !== 'משלוח') return;
+    if (recipientType !== 'customer') return;
+    const c = customers.find(x => x.id === selectedCustomer);
+    if (!c) return;
+
+    const fullName = `${c.שם_פרטי} ${c.שם_משפחה}`.trim();
+    if (!recipientName.trim()    && fullName)         setRecipientName(fullName);
+    if (!recipientPhone.trim()   && c.טלפון)          setRecipientPhone(c.טלפון);
+    if (!recipientAddress.trim() && c.כתובת)         setRecipientAddress(c.כתובת);
+    if (!recipientCity.trim()    && c.עיר)           setRecipientCity(c.עיר);
+    if (!deliveryInstructions.trim() && c.הערות_כתובת) setDeliveryInstructions(c.הערות_כתובת);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCustomer, customers, deliveryType, recipientType]);
+
   const handleCustomerChange = (customerId: string) => {
     setSelectedCustomer(customerId);
     const cust = customers.find(c => c.id === customerId);
