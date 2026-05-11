@@ -13,7 +13,7 @@ import {
 import type { BusinessSettings } from '@/types/database';
 
 const NAV_MAIN = [
-  { href: '/dashboard',  label: 'לוח בקרה',         Icon: IconDashboard  },
+  { href: '/dashboard',  label: 'דשבורד',         Icon: IconDashboard  },
   { href: '/orders',     label: 'הזמנות',             Icon: IconOrders     },
   { href: '/customers',  label: 'לקוחות',             Icon: IconCustomers  },
   { href: '/products',   label: 'מוצרים',             Icon: IconProducts   },

@@ -7,7 +7,7 @@ import { IconMenu } from '@/components/icons';
 import type { BusinessSettings } from '@/types/database';
 
 const PAGE_TITLES: Record<string, string> = {
-  '/dashboard':  'לוח בקרה',
+  '/dashboard':  'דשבורד',
   '/orders':     'הזמנות',
   '/orders/new': 'הזמנה חדשה',
   '/customers':  'לקוחות',
