@@ -1,0 +1,20 @@
+# Per-function deploy configuration for Supabase Edge Functions.
+#
+# Until this file existed, every Edge Function inherited the platform default
+# `verify_jwt = true`, which makes the Supabase gateway require a JWT-shaped
+# bearer token on every request. After Supabase rolled out the new
+# `sb_secret_*` API key format the service-role key stopped looking like a
+# JWT, so the gateway started rejecting calls from `callMorning()` with
+# `UNAUTHORIZED_INVALID_JWT_FORMAT` before the function even ran — which is
+# why no חשבונית/קבלה rows were being created since the key rotation.
+#
+# `create-morning-invoice` already authenticates incoming requests against its
+# own WEBHOOK_SECRET (see supabase/functions/create-morning-invoice/index.ts),
+# so the gateway-level JWT check is redundant for this function. Disabling it
+# here unblocks the call without weakening the actual auth boundary.
+#
+# Other functions are intentionally left at the platform default — only this
+# one is opted out.
+
+[functions.create-morning-invoice]
+verify_jwt = false
