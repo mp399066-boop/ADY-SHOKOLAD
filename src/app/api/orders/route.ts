@@ -37,7 +37,10 @@ export async function GET(req: NextRequest) {
       if (filter === 'today') query = query.eq('תאריך_אספקה', today);
       else if (filter === 'tomorrow') query = query.eq('תאריך_אספקה', tomorrow);
       else if (filter === 'urgent') query = query.eq('הזמנה_דחופה', true).neq('סטטוס_הזמנה', 'בוטלה');
-      else if (filter === 'unpaid') query = query.eq('סטטוס_תשלום', 'ממתין').neq('סטטוס_הזמנה', 'בוטלה');
+      // "Unpaid" = pay status in (ממתין, חלקי). Order-level draft/completed
+       // exclusions already applied above; we only add the cancelled guard.
+       // Must stay in lock-step with the dashboard's unpaid count.
+      else if (filter === 'unpaid') query = query.in('סטטוס_תשלום', ['ממתין', 'חלקי']).neq('סטטוס_הזמנה', 'בוטלה');
       else if (filter === 'preparation') query = query.eq('סטטוס_הזמנה', 'בהכנה');
       else if (filter === 'ready') query = query.eq('סטטוס_הזמנה', 'מוכנה למשלוח');
       else if (filter === 'shipped') query = query.eq('סטטוס_הזמנה', 'נשלחה');

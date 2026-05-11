@@ -51,13 +51,29 @@ export async function GET() {
       supabase.from('הזמנות').select('*', { count: 'exact', head: true }).eq('תאריך_אספקה', today).neq('סטטוס_הזמנה', 'בוטלה'),
       supabase.from('הזמנות').select('*', { count: 'exact', head: true }).eq('תאריך_אספקה', tomorrow).neq('סטטוס_הזמנה', 'בוטלה'),
       supabase.from('הזמנות').select('*', { count: 'exact', head: true }).eq('הזמנה_דחופה', true).neq('סטטוס_הזמנה', 'הושלמה בהצלחה').neq('סטטוס_הזמנה', 'בוטלה'),
-      supabase.from('הזמנות').select('*', { count: 'exact', head: true }).eq('סטטוס_תשלום', 'ממתין').neq('סטטוס_הזמנה', 'בוטלה'),
+      // Unpaid order count — must match the orders page filter exactly so the
+      // "X הזמנות לא שולמו" pill on the dashboard navigates to a list with the
+      // same X rows. Earlier this counted drafts too (סטטוס_הזמנה='טיוטה' get
+      // created with default 'ממתין'), but the orders page hides drafts and
+      // archived/completed rows for every non-archive view, so the click would
+      // open an empty page.
+      supabase.from('הזמנות').select('*', { count: 'exact', head: true })
+        .in('סטטוס_תשלום', ['ממתין', 'חלקי'])
+        .neq('סטטוס_הזמנה', 'בוטלה')
+        .neq('סטטוס_הזמנה', 'טיוטה')
+        .neq('סטטוס_הזמנה', 'הושלמה בהצלחה'),
       supabase.from('הזמנות').select('*', { count: 'exact', head: true }).eq('סטטוס_הזמנה', 'בהכנה'),
       supabase.from('הזמנות').select('*', { count: 'exact', head: true }).eq('סטטוס_הזמנה', 'מוכנה למשלוח'),
       supabase.from('הזמנות').select('*', { count: 'exact', head: true }).eq('סטטוס_הזמנה', 'נשלחה'),
       supabase.from('מלאי_חומרי_גלם').select('*', { count: 'exact', head: true }).in('סטטוס_מלאי', ['מלאי נמוך', 'קריטי', 'אזל מהמלאי']),
       supabase.from('משלוחים').select('*', { count: 'exact', head: true }).eq('תאריך_משלוח', today),
-      supabase.from('הזמנות').select('סך_הכל_לתשלום').eq('סטטוס_תשלום', 'ממתין').neq('סטטוס_הזמנה', 'בוטלה'),
+      // Unpaid amount — same predicate as the count above. Without alignment
+      // the headline ₪ figure could include drafts that the user can't reach.
+      supabase.from('הזמנות').select('סך_הכל_לתשלום')
+        .in('סטטוס_תשלום', ['ממתין', 'חלקי'])
+        .neq('סטטוס_הזמנה', 'בוטלה')
+        .neq('סטטוס_הזמנה', 'טיוטה')
+        .neq('סטטוס_הזמנה', 'הושלמה בהצלחה'),
       // deliveries by status — filtered to today only (תאריך_משלוח = today)
       supabase.from('משלוחים').select('*', { count: 'exact', head: true }).eq('תאריך_משלוח', today).eq('סטטוס_משלוח', 'נאסף'),
       supabase.from('משלוחים').select('*', { count: 'exact', head: true }).eq('תאריך_משלוח', today).eq('סטטוס_משלוח', 'נמסר'),
