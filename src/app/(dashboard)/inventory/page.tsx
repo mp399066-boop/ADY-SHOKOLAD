@@ -68,7 +68,13 @@ export default function InventoryPage() {
   };
   const clearSel = () => setCurrentSel(() => new Set());
 
-  useEffect(() => { clearSel(); }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    clearSel();
+    // Stale inline-editor ids carry over otherwise; tab-change implies a
+    // fresh context, no editor should be hanging open on the previous tab.
+    setEditStockId(null);
+    setEditThresholdId(null);
+  }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggleSel = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -89,7 +95,14 @@ export default function InventoryPage() {
   };
 
   const fetchProductStock = () => {
-    fetch('/api/products').then(r => r.json()).then(({ data }) => setStockProducts(data || []));
+    // Restrict the "מוצרים מוגמרים" tab to actual finished products. The
+    // catalog also stores 'מארז פטיפורים' rows (umbrella package SKUs that
+    // share a name across sizes) — those don't belong here, and petit fours
+    // live in their own table altogether. Defensive filter so no future
+    // package row leaks in even if someone re-activates one.
+    fetch('/api/products?type=' + encodeURIComponent('מוצר רגיל'))
+      .then(r => r.json())
+      .then(({ data }) => setStockProducts(data || []));
   };
 
   const fetchPetitFourStock = () => {
@@ -160,12 +173,41 @@ export default function InventoryPage() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || 'שגיאה בשמירה');
-      setStockPetitFours(prev => prev.map(p => p.id === pfId ? { ...p, כמות_במלאי: qty } : p));
+      // Use the row returned by the API — carries the trigger-computed
+      // סטטוס_מלאי (migration 023) so the badge updates without a refetch.
+      const updated = json.data as PetitFourType | undefined;
+      setStockPetitFours(prev => prev.map(p => p.id === pfId
+        ? (updated ? { ...p, ...updated } : { ...p, כמות_במלאי: qty })
+        : p,
+      ));
       setEditStockId(null);
       toast.success('מלאי עודכן');
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'שגיאה בשמירה');
     } finally { setSavingStock(false); }
+  };
+
+  const savePetitFourThresholds = async (pfId: string, low: number, critical: number) => {
+    setSavingThreshold(true);
+    try {
+      const res = await fetch(`/api/petit-four-types/${pfId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ סף_מלאי_נמוך: low, סף_מלאי_קריטי: critical }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || 'שגיאה בשמירה');
+      // The migration-023 trigger recomputes סטטוס_מלאי when thresholds change,
+      // so we rely on the returned row instead of guessing the new status here.
+      const updated = json.data as PetitFourType | undefined;
+      if (updated) {
+        setStockPetitFours(prev => prev.map(p => p.id === pfId ? { ...p, ...updated } : p));
+      }
+      setEditThresholdId(null);
+      toast.success('ספי התראה עודכנו');
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'שגיאה בשמירה');
+    } finally { setSavingThreshold(false); }
   };
 
   const handleDeleteMaterial = async (id: string) => {
@@ -631,7 +673,7 @@ export default function InventoryPage() {
                           onChange={() => setSelPF(prev => prev.size === stockPetitFours.length ? new Set() : new Set(stockPetitFours.map(p => p.id)))}
                         />
                       </th>
-                      {['שם פטיפור', 'פעיל', 'כמות במלאי', ''].map(h => (
+                      {['שם פטיפור', 'פעיל', 'כמות במלאי', 'ספים (נמוך / קריטי)', 'סטטוס', ''].map(h => (
                         <th key={h} className="px-4 py-3 text-right text-xs font-semibold" style={{ color: '#6B4A2D' }}>{h}</th>
                       ))}
                     </tr>
@@ -671,10 +713,56 @@ export default function InventoryPage() {
                             )}
                           </td>
                           <td className="px-4 py-3">
-                            {editStockId !== pf.id && (
-                              <button className="text-xs hover:underline" style={{ color: '#8B5E34' }} onClick={() => { setEditStockId(pf.id); setEditStockQty(pf.כמות_במלאי ?? 0); }}>
-                                עדכן מלאי
-                              </button>
+                            {editThresholdId === pf.id ? (
+                              <div className="flex items-center gap-1.5">
+                                <input
+                                  type="number" min={0} value={editLow}
+                                  onChange={e => setEditLow(Number(e.target.value))}
+                                  className="w-14 px-1.5 py-1 text-xs border rounded text-center"
+                                  style={{ borderColor: '#FDE68A' }}
+                                  title="סף נמוך"
+                                />
+                                <span className="text-xs" style={{ color: '#9B7A5A' }}>/</span>
+                                <input
+                                  type="number" min={0} value={editCritical}
+                                  onChange={e => setEditCritical(Number(e.target.value))}
+                                  className="w-14 px-1.5 py-1 text-xs border rounded text-center"
+                                  style={{ borderColor: '#FECACA' }}
+                                  title="סף קריטי"
+                                />
+                                <button className="text-xs px-2 py-1 rounded" style={{ backgroundColor: '#8B5E34', color: '#FFF' }} onClick={() => savePetitFourThresholds(pf.id, editLow, editCritical)} disabled={savingThreshold}>שמור</button>
+                                <button className="text-xs" style={{ color: '#9B7A5A' }} onClick={() => setEditThresholdId(null)}>ביטול</button>
+                              </div>
+                            ) : (
+                              <span className="text-xs tabular-nums" style={{ color: '#6B4A2D' }}>
+                                {(pf.סף_מלאי_נמוך ?? 0) === 0 && (pf.סף_מלאי_קריטי ?? 0) === 0
+                                  ? <span style={{ color: '#9B7A5A' }}>לא הוגדרו</span>
+                                  : `${pf.סף_מלאי_נמוך ?? 0} / ${pf.סף_מלאי_קריטי ?? 0}`}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            <StatusBadge status={pf.סטטוס_מלאי || 'תקין'} type="inventory" />
+                          </td>
+                          <td className="px-4 py-3">
+                            {editStockId !== pf.id && editThresholdId !== pf.id && (
+                              <div className="flex items-center gap-2">
+                                <button className="text-xs hover:underline" style={{ color: '#8B5E34' }} onClick={() => { setEditStockId(pf.id); setEditStockQty(pf.כמות_במלאי ?? 0); }}>
+                                  עדכן מלאי
+                                </button>
+                                <button
+                                  className="text-xs hover:underline"
+                                  style={{ color: '#8B5E34' }}
+                                  onClick={() => {
+                                    setEditThresholdId(pf.id);
+                                    setEditLow(pf.סף_מלאי_נמוך ?? 0);
+                                    setEditCritical(pf.סף_מלאי_קריטי ?? 0);
+                                  }}
+                                  title="ערוך ספי התראה"
+                                >
+                                  ספים
+                                </button>
+                              </div>
                             )}
                           </td>
                         </tr>

@@ -222,6 +222,12 @@ export interface PetitFourType {
   שם_פטיפור: string;
   פעיל: boolean;
   כמות_במלאי: number;
+  // Stock-alert thresholds — added in migration 023. Status is recomputed by
+  // the shared update_inventory_status() trigger function that also runs on
+  // מלאי_חומרי_גלם and מוצרים_למכירה.
+  סף_מלאי_נמוך: number;
+  סף_מלאי_קריטי: number;
+  סטטוס_מלאי: 'תקין' | 'מלאי נמוך' | 'קריטי' | 'אזל מהמלאי';
   הערות: string | null;
   תאריך_יצירה: string;
   תאריך_עדכון: string;
