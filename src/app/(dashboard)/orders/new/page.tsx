@@ -1506,14 +1506,14 @@ export default function NewOrderPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>SKU (אופציונלי)</label>
+                <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>SKU (השאירי ריק ליצירה אוטומטית)</label>
                 <input
                   type="text"
                   value={newProductSku}
                   onChange={e => setNewProductSku(e.target.value)}
                   className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-1"
                   style={{ borderColor: '#DDD0BC', color: '#2B1A10' }}
-                  placeholder="קוד מוצר"
+                  placeholder="PRD101"
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">

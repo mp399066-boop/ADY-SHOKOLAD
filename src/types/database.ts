@@ -186,6 +186,10 @@ export interface Product {
   סף_מלאי_נמוך: number;
   סף_מלאי_קריטי: number;
   סטטוס_מלאי: 'תקין' | 'מלאי נמוך' | 'קריטי' | 'אזל מהמלאי';
+  // Optional product code, added in migration 024. Auto-generated as PRD101+
+  // when the user creates a product without supplying one. Partial unique
+  // index on the column rejects collisions while still allowing many NULLs.
+  sku: string | null;
   תיאור: string | null;
   תמונה_url: string | null;
   price_availability: 'retail' | 'business_fixed' | 'business_quantity' | null;
