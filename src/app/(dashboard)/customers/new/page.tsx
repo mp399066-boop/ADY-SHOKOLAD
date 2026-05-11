@@ -19,6 +19,11 @@ export default function NewCustomerPage() {
     מקור_הגעה: '',
     אחוז_הנחה: 0,
     הערות: '',
+    // Saved address — optional. When set, future delivery orders for this
+    // customer will autofill recipient address/city/instructions.
+    כתובת: '',
+    עיר: '',
+    הערות_כתובת: '',
   });
 
   const set = (field: string, value: string | number) => setForm(prev => ({ ...prev, [field]: value }));
@@ -61,6 +66,13 @@ export default function NewCustomerPage() {
             {['המלצה', 'אינסטגרם', 'פייסבוק', 'WhatsApp', 'גוגל', 'אחר'].map(s => <option key={s} value={s}>{s}</option>)}
           </Select>
           <Input label="אחוז הנחה (%)" type="number" value={form.אחוז_הנחה} onChange={e => set('אחוז_הנחה', Number(e.target.value))} min={0} max={100} step={0.5} />
+          <Input label="עיר" value={form.עיר} onChange={e => set('עיר', e.target.value)} />
+          <div className="col-span-2">
+            <Textarea label="כתובת" value={form.כתובת} onChange={e => set('כתובת', e.target.value)} rows={2} />
+          </div>
+          <div className="col-span-2">
+            <Input label="הערות לכתובת (קומה, דלת, קוד שער…)" value={form.הערות_כתובת} onChange={e => set('הערות_כתובת', e.target.value)} />
+          </div>
           <div className="col-span-2">
             <Textarea label="הערות" value={form.הערות} onChange={e => set('הערות', e.target.value)} rows={3} />
           </div>

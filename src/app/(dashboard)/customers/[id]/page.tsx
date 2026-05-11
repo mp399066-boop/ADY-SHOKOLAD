@@ -297,15 +297,20 @@ export default function CustomerDetailPage() {
     setSaving(true);
     try {
       const payload: Partial<Customer> = {
-        שם_פרטי:    editForm.שם_פרטי,
-        שם_משפחה:   editForm.שם_משפחה,
-        טלפון:      editForm.טלפון,
-        אימייל:     editForm.אימייל,
-        סוג_לקוח:   editForm.סוג_לקוח,
-        סטטוס_לקוח: editForm.סטטוס_לקוח,
-        מקור_הגעה:  editForm.מקור_הגעה,
-        אחוז_הנחה:  editForm.אחוז_הנחה,
-        הערות:      editForm.הערות,
+        שם_פרטי:     editForm.שם_פרטי,
+        שם_משפחה:    editForm.שם_משפחה,
+        טלפון:       editForm.טלפון,
+        אימייל:      editForm.אימייל,
+        סוג_לקוח:    editForm.סוג_לקוח,
+        סטטוס_לקוח:  editForm.סטטוס_לקוח,
+        מקור_הגעה:   editForm.מקור_הגעה,
+        אחוז_הנחה:   editForm.אחוז_הנחה,
+        הערות:       editForm.הערות,
+        // Saved address (migration 022). Empty strings normalize to null so
+        // an emptied field clears the saved address rather than storing "".
+        כתובת:       editForm.כתובת?.trim()       || null,
+        עיר:         editForm.עיר?.trim()         || null,
+        הערות_כתובת: editForm.הערות_כתובת?.trim() || null,
       };
       const res = await fetch(`/api/customers/${id}`, {
         method: 'PATCH',
@@ -395,6 +400,15 @@ export default function CustomerDetailPage() {
             <Input label="אחוז הנחה (%)" type="number" value={editForm.אחוז_הנחה ?? 0} onChange={e => setEditForm(p => ({ ...p, אחוז_הנחה: Number(e.target.value) }))} />
             <div className="col-span-2">
               <Input label="מקור הגעה" value={editForm.מקור_הגעה || ''} onChange={e => setEditForm(p => ({ ...p, מקור_הגעה: e.target.value }))} />
+            </div>
+            {/* Saved address (migration 022). When set, fills delivery orders automatically. */}
+            <Input label="עיר" value={editForm.עיר || ''} onChange={e => setEditForm(p => ({ ...p, עיר: e.target.value }))} />
+            <div /> {/* spacer to keep the grid aligned */}
+            <div className="col-span-2">
+              <Textarea label="כתובת" value={editForm.כתובת || ''} onChange={e => setEditForm(p => ({ ...p, כתובת: e.target.value }))} rows={2} />
+            </div>
+            <div className="col-span-2">
+              <Input label="הערות לכתובת (קומה, דלת, קוד שער…)" value={editForm.הערות_כתובת || ''} onChange={e => setEditForm(p => ({ ...p, הערות_כתובת: e.target.value }))} />
             </div>
             <div className="col-span-2">
               <Textarea label="הערות" value={editForm.הערות || ''} onChange={e => setEditForm(p => ({ ...p, הערות: e.target.value }))} rows={2} />
@@ -686,6 +700,18 @@ export default function CustomerDetailPage() {
               </div>
             ))}
           </dl>
+          {/* Saved address (migration 022). Only rendered when at least one
+              field is set — silent absence for customers without an address. */}
+          {(customer.כתובת || customer.עיר || customer.הערות_כתובת) && (
+            <div className="mt-3 pt-3" style={{ borderTop: '1px solid #F0EAE0' }}>
+              <p className="text-[11px] uppercase tracking-wider mb-1.5" style={{ color: '#8A7664' }}>כתובת שמורה</p>
+              <div className="text-xs leading-relaxed space-y-0.5" style={{ color: '#3A2A1A' }}>
+                {customer.כתובת && <div>{customer.כתובת}{customer.עיר ? `, ${customer.עיר}` : ''}</div>}
+                {!customer.כתובת && customer.עיר && <div>{customer.עיר}</div>}
+                {customer.הערות_כתובת && <div style={{ color: '#8A7664' }}>{customer.הערות_כתובת}</div>}
+              </div>
+            </div>
+          )}
         </Card>
 
         {/* right: orders */}

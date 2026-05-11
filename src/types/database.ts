@@ -126,6 +126,11 @@ export interface Customer {
   מקור_הגעה: string | null;
   אחוז_הנחה: number | null;
   הערות: string | null;
+  // Saved address — added in migration 022 so delivery orders can autofill
+  // recipient details from the customer record. Optional everywhere.
+  כתובת: string | null;
+  עיר: string | null;
+  הערות_כתובת: string | null;
   תאריך_יצירה: string;
   תאריך_עדכון: string;
 }

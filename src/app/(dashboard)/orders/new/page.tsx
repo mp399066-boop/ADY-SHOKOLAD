@@ -359,10 +359,18 @@ export default function NewOrderPage() {
     } else if (paymentStatus === 'בארטר') {
       setPaymentStatus('ממתין');
     }
-    // Auto-fill recipient from customer when in "customer" mode
+    // Auto-fill recipient from customer when in "customer" mode.
+    // Address/city/instructions populate from the customer's saved address
+    // (migration 022) — fills only when the field is currently empty so a
+    // manual edit on a previously-typed value isn't overwritten when the
+    // user re-picks the same customer.
     if (deliveryType === 'משלוח' && recipientType === 'customer' && cust) {
       setRecipientName(`${cust.שם_פרטי} ${cust.שם_משפחה}`.trim());
       setRecipientPhone(cust.טלפון || '');
+      const c = cust as Customer;
+      if (!recipientAddress.trim() && c.כתובת)        setRecipientAddress(c.כתובת);
+      if (!recipientCity.trim()    && c.עיר)          setRecipientCity(c.עיר);
+      if (!deliveryInstructions.trim() && c.הערות_כתובת) setDeliveryInstructions(c.הערות_כתובת);
     }
   };
 
@@ -841,15 +849,23 @@ export default function NewOrderPage() {
                     onClick={() => {
                       setRecipientType(opt.key);
                       if (opt.key === 'customer' && selectedCustomerData) {
-                        setRecipientName(`${selectedCustomerData.שם_פרטי} ${selectedCustomerData.שם_משפחה}`.trim());
-                        setRecipientPhone(selectedCustomerData.טלפון || '');
-                        setRecipientAddress('');
-                        setRecipientCity('');
+                        // Switching to "customer" means deliberately replacing
+                        // any prior recipient data, so we don't preserve typed
+                        // values here — that matches the existing behavior for
+                        // name/phone. Saved address (migration 022) populates
+                        // when present; absent values just stay empty.
+                        const c = selectedCustomerData as Customer;
+                        setRecipientName(`${c.שם_פרטי} ${c.שם_משפחה}`.trim());
+                        setRecipientPhone(c.טלפון || '');
+                        setRecipientAddress(c.כתובת || '');
+                        setRecipientCity(c.עיר || '');
+                        setDeliveryInstructions(c.הערות_כתובת || '');
                       } else if (opt.key === 'other') {
                         setRecipientName('');
                         setRecipientPhone('');
                         setRecipientAddress('');
                         setRecipientCity('');
+                        setDeliveryInstructions('');
                       }
                     }}
                     className="px-3 py-1.5 text-xs font-medium rounded-full border transition-colors"

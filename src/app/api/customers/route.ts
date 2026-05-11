@@ -50,6 +50,11 @@ export async function POST(req: NextRequest) {
     מקור_הגעה: body.מקור_הגעה || null,
     אחוז_הנחה: body.אחוז_הנחה || 0,
     הערות: body.הערות || null,
+    // Saved address (migration 022). Empty string normalizes to null so we
+    // don't write "" rows that would later evaluate as truthy on autofill.
+    כתובת: typeof body.כתובת === 'string' && body.כתובת.trim() ? body.כתובת.trim() : null,
+    עיר: typeof body.עיר === 'string' && body.עיר.trim() ? body.עיר.trim() : null,
+    הערות_כתובת: typeof body.הערות_כתובת === 'string' && body.הערות_כתובת.trim() ? body.הערות_כתובת.trim() : null,
   };
 
   if (!customer.שם_פרטי) {
