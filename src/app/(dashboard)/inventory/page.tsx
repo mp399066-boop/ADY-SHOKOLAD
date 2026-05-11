@@ -41,6 +41,13 @@ export default function InventoryPage() {
   // delete flow untouched and lets us show a product-specific confirm message.
   const [confirmProduct, setConfirmProduct] = useState<{ id: string; name: string } | null>(null);
   const [deletingProduct, setDeletingProduct] = useState(false);
+  // Inline threshold editor for finished products. The trigger added in
+  // migration 021 recomputes סטטוס_מלאי from these values, so saving them
+  // immediately reflects in the alerts tab and dashboard count.
+  const [editThresholdId, setEditThresholdId] = useState<string | null>(null);
+  const [editLow, setEditLow] = useState(0);
+  const [editCritical, setEditCritical] = useState(0);
+  const [savingThreshold, setSavingThreshold] = useState(false);
 
   // Bulk state
   const [selRaw, setSelRaw] = useState<Set<string>>(new Set());
@@ -91,7 +98,8 @@ export default function InventoryPage() {
 
   useEffect(() => { fetchInventory(); }, [statusFilter]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (tab === 'products') fetchProductStock();
+    // Alerts tab also needs the product list — productAlerts is derived from it.
+    if (tab === 'products' || tab === 'alerts') fetchProductStock();
     if (tab === 'petitfours') fetchPetitFourStock();
   }, [tab]);
 
@@ -105,12 +113,41 @@ export default function InventoryPage() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || 'שגיאה בשמירה');
-      setStockProducts(prev => prev.map(p => p.id === productId ? { ...p, כמות_במלאי: qty } : p));
+      // Use the row returned by the API — it carries the trigger-computed
+      // סטטוס_מלאי so the badge updates without a separate refetch.
+      const updated = json.data as Product | undefined;
+      setStockProducts(prev => prev.map(p => p.id === productId
+        ? (updated ? { ...p, ...updated } : { ...p, כמות_במלאי: qty })
+        : p,
+      ));
       setEditStockId(null);
       toast.success('מלאי עודכן');
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'שגיאה בשמירה');
     } finally { setSavingStock(false); }
+  };
+
+  const saveProductThresholds = async (productId: string, low: number, critical: number) => {
+    setSavingThreshold(true);
+    try {
+      const res = await fetch(`/api/products/${productId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ סף_מלאי_נמוך: low, סף_מלאי_קריטי: critical }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || 'שגיאה בשמירה');
+      // Re-fetch the row so we get the trigger-recomputed סטטוס_מלאי. Avoids
+      // any drift between client guess and the value Postgres just set.
+      const updated = json.data as Product | undefined;
+      if (updated) {
+        setStockProducts(prev => prev.map(p => p.id === productId ? { ...p, ...updated } : p));
+      }
+      setEditThresholdId(null);
+      toast.success('ספי התראה עודכנו');
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'שגיאה בשמירה');
+    } finally { setSavingThreshold(false); }
   };
 
   const savePetitFourStock = async (pfId: string, qty: number) => {
@@ -270,6 +307,13 @@ export default function InventoryPage() {
   const alerts = materials.filter(m => m.סטטוס_מלאי !== 'תקין');
   const criticals = materials.filter(m => m.סטטוס_מלאי === 'קריטי' || m.סטטוס_מלאי === 'אזל מהמלאי');
 
+  // Finished-product alerts — populated from the trigger added in migration 021.
+  // Inactive products are excluded so an archived item never raises a flag.
+  const productAlerts = stockProducts.filter(p => p.פעיל && p.סטטוס_מלאי && p.סטטוס_מלאי !== 'תקין');
+  const productCriticals = productAlerts.filter(p => p.סטטוס_מלאי === 'קריטי' || p.סטטוס_מלאי === 'אזל מהמלאי');
+  const productLow = productAlerts.filter(p => p.סטטוס_מלאי === 'מלאי נמוך');
+  const totalAlertsCount = alerts.length + productAlerts.length;
+
   const filtered = materials.filter(m => {
     const matchSearch = !search || m.שם_חומר_גלם.includes(search);
     const matchStatus = !statusFilter || m.סטטוס_מלאי === statusFilter;
@@ -280,7 +324,7 @@ export default function InventoryPage() {
     { key: 'raw',        label: 'חומרי גלם',      count: materials.length },
     { key: 'products',   label: 'מוצרים מוגמרים', count: stockProducts.length },
     { key: 'petitfours', label: 'פטיפורים',        count: stockPetitFours.length },
-    { key: 'alerts',     label: 'התראות מלאי',     count: alerts.length },
+    { key: 'alerts',     label: 'התראות מלאי',     count: totalAlertsCount },
     { key: 'movements',  label: 'תנועות מלאי' },
   ];
 
@@ -456,7 +500,7 @@ export default function InventoryPage() {
                           onChange={() => setSelProducts(prev => prev.size === stockProducts.length ? new Set() : new Set(stockProducts.map(p => p.id)))}
                         />
                       </th>
-                      {['שם מוצר', 'סוג', 'מחיר ליח׳', 'כמות במלאי', ''].map(h => (
+                      {['שם מוצר', 'סוג', 'מחיר ליח׳', 'כמות במלאי', 'ספים (נמוך / קריטי)', 'סטטוס', ''].map(h => (
                         <th key={h} className="px-4 py-3 text-right text-xs font-semibold" style={{ color: '#6B4A2D' }}>{h}</th>
                       ))}
                     </tr>
@@ -493,10 +537,54 @@ export default function InventoryPage() {
                             )}
                           </td>
                           <td className="px-4 py-3">
-                            {editStockId !== p.id && (
-                              <div className="flex items-center gap-3">
+                            {editThresholdId === p.id ? (
+                              <div className="flex items-center gap-1.5">
+                                <input
+                                  type="number" min={0} value={editLow}
+                                  onChange={e => setEditLow(Number(e.target.value))}
+                                  className="w-14 px-1.5 py-1 text-xs border rounded text-center"
+                                  style={{ borderColor: '#FDE68A' }}
+                                  title="סף נמוך"
+                                />
+                                <span className="text-xs" style={{ color: '#9B7A5A' }}>/</span>
+                                <input
+                                  type="number" min={0} value={editCritical}
+                                  onChange={e => setEditCritical(Number(e.target.value))}
+                                  className="w-14 px-1.5 py-1 text-xs border rounded text-center"
+                                  style={{ borderColor: '#FECACA' }}
+                                  title="סף קריטי"
+                                />
+                                <button className="text-xs px-2 py-1 rounded" style={{ backgroundColor: '#8B5E34', color: '#FFF' }} onClick={() => saveProductThresholds(p.id, editLow, editCritical)} disabled={savingThreshold}>שמור</button>
+                                <button className="text-xs" style={{ color: '#9B7A5A' }} onClick={() => setEditThresholdId(null)}>ביטול</button>
+                              </div>
+                            ) : (
+                              <span className="text-xs tabular-nums" style={{ color: '#6B4A2D' }}>
+                                {(p.סף_מלאי_נמוך ?? 0) === 0 && (p.סף_מלאי_קריטי ?? 0) === 0
+                                  ? <span style={{ color: '#9B7A5A' }}>לא הוגדרו</span>
+                                  : `${p.סף_מלאי_נמוך ?? 0} / ${p.סף_מלאי_קריטי ?? 0}`}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            <StatusBadge status={p.סטטוס_מלאי || 'תקין'} type="inventory" />
+                          </td>
+                          <td className="px-4 py-3">
+                            {editStockId !== p.id && editThresholdId !== p.id && (
+                              <div className="flex items-center gap-2">
                                 <button className="text-xs hover:underline" style={{ color: '#8B5E34' }} onClick={() => { setEditStockId(p.id); setEditStockQty(p.כמות_במלאי ?? 0); }}>
                                   עדכן מלאי
+                                </button>
+                                <button
+                                  className="text-xs hover:underline"
+                                  style={{ color: '#8B5E34' }}
+                                  onClick={() => {
+                                    setEditThresholdId(p.id);
+                                    setEditLow(p.סף_מלאי_נמוך ?? 0);
+                                    setEditCritical(p.סף_מלאי_קריטי ?? 0);
+                                  }}
+                                  title="ערוך ספי התראה"
+                                >
+                                  ספים
                                 </button>
                                 <button
                                   type="button"
@@ -599,16 +687,17 @@ export default function InventoryPage() {
             </>
           )}
 
-          {/* Alerts tab */}
+          {/* Alerts tab — combines raw materials AND finished products */}
           {tab === 'alerts' && (
             <>
-              {alerts.length === 0 ? (
-                <EmptyState title="אין התראות מלאי" description="כל חומרי הגלם במצב תקין" />
+              {totalAlertsCount === 0 ? (
+                <EmptyState title="אין התראות מלאי" description="כל הפריטים — חומרי גלם ומוצרים מוכנים — במצב תקין" />
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-5">
+                  {/* RAW MATERIALS — critical */}
                   {criticals.length > 0 && (
                     <div>
-                      <h3 className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: '#DC2626' }}>קריטי / אזל מהמלאי</h3>
+                      <h3 className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: '#DC2626' }}>חומרי גלם · קריטי / אזל</h3>
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                         {criticals.map(m => (
                           <div key={m.id} className="rounded-xl border p-4" style={{ borderColor: '#FECACA', backgroundColor: '#FFF5F5' }}>
@@ -626,11 +715,12 @@ export default function InventoryPage() {
                       </div>
                     </div>
                   )}
+                  {/* RAW MATERIALS — low */}
                   {(() => {
                     const low = alerts.filter(m => m.סטטוס_מלאי === 'מלאי נמוך');
                     return low.length > 0 ? (
                       <div>
-                        <h3 className="text-xs font-semibold uppercase tracking-wide mb-2 mt-4" style={{ color: '#D97706' }}>מלאי נמוך</h3>
+                        <h3 className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: '#D97706' }}>חומרי גלם · מלאי נמוך</h3>
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                           {low.map(m => (
                             <div key={m.id} className="rounded-xl border p-4" style={{ borderColor: '#FDE68A', backgroundColor: '#FFFBEB' }}>
@@ -649,6 +739,60 @@ export default function InventoryPage() {
                       </div>
                     ) : null;
                   })()}
+                  {/* FINISHED PRODUCTS — critical */}
+                  {productCriticals.length > 0 && (
+                    <div>
+                      <h3 className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: '#DC2626' }}>מוצרים מוכנים · קריטי / אזל</h3>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {productCriticals.map(p => (
+                          <div key={p.id} className="rounded-xl border p-4" style={{ borderColor: '#FECACA', backgroundColor: '#FFF5F5' }}>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="font-semibold text-sm" style={{ color: '#2B1A10' }}>{p.שם_מוצר}</span>
+                              <StatusBadge status={p.סטטוס_מלאי || 'תקין'} type="inventory" />
+                            </div>
+                            <div className="text-xs space-y-1" style={{ color: '#6B4A2D' }}>
+                              <div>כמות: <span className="font-bold text-red-600">{p.כמות_במלאי || 0} יח׳</span></div>
+                              <div>סף קריטי: {p.סף_מלאי_קריטי ?? 0} יח׳</div>
+                            </div>
+                            <button
+                              onClick={() => { setTab('products'); setEditStockId(p.id); setEditStockQty(p.כמות_במלאי ?? 0); }}
+                              className="mt-3 text-xs hover:underline"
+                              style={{ color: '#8B5E34' }}
+                            >
+                              עדכן כמות
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {/* FINISHED PRODUCTS — low */}
+                  {productLow.length > 0 && (
+                    <div>
+                      <h3 className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: '#D97706' }}>מוצרים מוכנים · מלאי נמוך</h3>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {productLow.map(p => (
+                          <div key={p.id} className="rounded-xl border p-4" style={{ borderColor: '#FDE68A', backgroundColor: '#FFFBEB' }}>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="font-semibold text-sm" style={{ color: '#2B1A10' }}>{p.שם_מוצר}</span>
+                              <StatusBadge status={p.סטטוס_מלאי || 'תקין'} type="inventory" />
+                            </div>
+                            <div className="text-xs space-y-1" style={{ color: '#6B4A2D' }}>
+                              <div>כמות: <span className="font-bold text-amber-600">{p.כמות_במלאי || 0} יח׳</span></div>
+                              <div>סף נמוך: {p.סף_מלאי_נמוך ?? 0} יח׳</div>
+                            </div>
+                            <button
+                              onClick={() => { setTab('products'); setEditStockId(p.id); setEditStockQty(p.כמות_במלאי ?? 0); }}
+                              className="mt-3 text-xs hover:underline"
+                              style={{ color: '#8B5E34' }}
+                            >
+                              עדכן כמות
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </>

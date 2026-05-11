@@ -175,6 +175,12 @@ export interface Product {
   לקוחות_עסקיים_בלבד: boolean;
   כמות_במארז: number | null;
   כמות_במלאי: number;
+  // Stock-alert thresholds — added in migration 021. Status is computed by a
+  // BEFORE INSERT/UPDATE trigger reusing the same update_inventory_status()
+  // function that already runs on מלאי_חומרי_גלם.
+  סף_מלאי_נמוך: number;
+  סף_מלאי_קריטי: number;
+  סטטוס_מלאי: 'תקין' | 'מלאי נמוך' | 'קריטי' | 'אזל מהמלאי';
   תיאור: string | null;
   תמונה_url: string | null;
   price_availability: 'retail' | 'business_fixed' | 'business_quantity' | null;
@@ -388,7 +394,8 @@ export interface DashboardStats {
   inPreparation: number;
   readyForDelivery: number;
   shipped: number;
-  lowInventory: number;
+  lowInventory: number;            // raw materials in non-תקין status
+  lowProductStock: number;         // finished products in non-תקין status
   deliveriesToday: number;
   unpaidAmount: number;
   deliveriesCollected: number;

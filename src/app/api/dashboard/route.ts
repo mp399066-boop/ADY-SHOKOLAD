@@ -46,6 +46,7 @@ export async function GET() {
       { count: deliveriesCollected, error: e11 },
       { count: deliveriesDelivered, error: e12 },
       { data: revenueTodayRows,    error: e13 },
+      { count: lowProductStock,    error: e14 },
     ] = await Promise.all([
       supabase.from('הזמנות').select('*', { count: 'exact', head: true }).eq('תאריך_אספקה', today).neq('סטטוס_הזמנה', 'בוטלה'),
       supabase.from('הזמנות').select('*', { count: 'exact', head: true }).eq('תאריך_אספקה', tomorrow).neq('סטטוס_הזמנה', 'בוטלה'),
@@ -62,6 +63,9 @@ export async function GET() {
       supabase.from('משלוחים').select('*', { count: 'exact', head: true }).eq('תאריך_משלוח', today).eq('סטטוס_משלוח', 'נמסר'),
       // revenue: paid orders with delivery date = today
       supabase.from('הזמנות').select('סך_הכל_לתשלום').eq('תאריך_אספקה', today).eq('סטטוס_תשלום', 'שולם'),
+      // Finished-product alerts — added in migration 021. Counts active products
+      // whose trigger-computed status is below 'תקין'.
+      supabase.from('מוצרים_למכירה').select('*', { count: 'exact', head: true }).eq('פעיל', true).in('סטטוס_מלאי', ['מלאי נמוך', 'קריטי', 'אזל מהמלאי']),
     ]);
 
     // Diagnostic logs — visible in Vercel Function Logs
@@ -70,11 +74,11 @@ export async function GET() {
     console.log('[dashboard] pipeline — inPrep:', inPreparation, '| ready:', readyForDelivery, '| shipped:', shipped);
     console.log('[dashboard] deliveries (table=משלוחים, field=תאריך_משלוח, date=' + today + ') — total today:', deliveriesToday, '| collected (נאסף):', deliveriesCollected, '| delivered (נמסר):', deliveriesDelivered);
     console.log('[dashboard] revenue rows (paid+today):', revenueTodayRows?.length ?? 'null', '| unpaid rows:', unpaidRows?.length ?? 'null');
-    const errMap = { e1: e1?.message, e2: e2?.message, e3: e3?.message, e4: e4?.message, e5: e5?.message, e6: e6?.message, e7: e7?.message, e8: e8?.message, e9: e9?.message, e10: e10?.message, e11: e11?.message, e12: e12?.message, e13: e13?.message };
+    const errMap = { e1: e1?.message, e2: e2?.message, e3: e3?.message, e4: e4?.message, e5: e5?.message, e6: e6?.message, e7: e7?.message, e8: e8?.message, e9: e9?.message, e10: e10?.message, e11: e11?.message, e12: e12?.message, e13: e13?.message, e14: e14?.message };
     const anyErr = Object.values(errMap).find(Boolean);
     if (anyErr) console.error('[dashboard] query errors:', JSON.stringify(errMap));
 
-    const firstError = e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || e10 || e11 || e12 || e13;
+    const firstError = e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || e10 || e11 || e12 || e13 || e14;
     if (firstError) {
       const msg = firstError.message || firstError.details || firstError.hint || 'שגיאה בטעינת הנתונים';
       console.error('[dashboard] query error:', msg);
@@ -106,6 +110,7 @@ export async function GET() {
         deliveriesCollected:  deliveriesCollected  ?? 0,
         deliveriesDelivered:  deliveriesDelivered  ?? 0,
         revenueToday,
+        lowProductStock:      lowProductStock      ?? 0,
       },
     });
   } catch (err: any) {

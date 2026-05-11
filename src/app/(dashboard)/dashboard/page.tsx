@@ -187,16 +187,22 @@ export default function DashboardPage() {
   const s: DashboardStats = stats || {
     ordersToday: 0, ordersTomorrow: 0, urgentOrders: 0, unpaidOrders: 0,
     inPreparation: 0, readyForDelivery: 0, shipped: 0, lowInventory: 0,
+    lowProductStock: 0,
     deliveriesToday: 0, unpaidAmount: 0,
     deliveriesCollected: 0, deliveriesDelivered: 0, revenueToday: 0,
   };
+  // Combined "stock attention" — both raw materials and finished products that
+  // dropped below 'תקין'. Dashboard surfaces this as one number; the inventory
+  // page breaks it down per group.
+  const totalLowStock = s.lowInventory + s.lowProductStock;
 
   // Itemized attention list — only items with value > 0 land here.
   type AttItem = { key: string; icon: string; text: string; href: string; tone: 'red' | 'amber' | 'plum' | 'sky' };
   const attention: AttItem[] = [];
   if (s.urgentOrders > 0) attention.push({ key: 'urgent',  icon: 'flame',    text: `${s.urgentOrders} הזמנות דחופות`,           href: '/orders?filter=urgent',      tone: 'red'   });
   if (s.unpaidOrders > 0) attention.push({ key: 'unpaid',  icon: 'wallet',   text: `${s.unpaidOrders} הזמנות לא שולמו`,         href: '/orders?filter=unpaid',      tone: 'amber' });
-  if (s.lowInventory > 0) attention.push({ key: 'lowInv',  icon: 'box',      text: `${s.lowInventory} פריטי מלאי נמוכים`,       href: '/inventory',                 tone: 'red'   });
+  if (s.lowProductStock > 0) attention.push({ key: 'lowProd', icon: 'bag',  text: `${s.lowProductStock} מוצרים מוכנים נמוכים`,  href: '/inventory',                 tone: 'red'   });
+  if (s.lowInventory > 0) attention.push({ key: 'lowInv',  icon: 'box',      text: `${s.lowInventory} חומרי גלם נמוכים`,         href: '/inventory',                 tone: 'red'   });
   if (s.inPreparation > 0) attention.push({ key: 'prep',   icon: 'clock',    text: `${s.inPreparation} הזמנות בהכנה`,            href: '/orders?filter=preparation', tone: 'plum'  });
   if (s.readyForDelivery > 0) attention.push({ key: 'rdy', icon: 'check',    text: `${s.readyForDelivery} מוכנות למשלוח`,        href: '/orders?filter=ready',       tone: 'amber' });
   if (s.ordersTomorrow > 0) attention.push({ key: 'tom',   icon: 'calendar', text: `${s.ordersTomorrow} הזמנות מחר`,             href: '/orders?filter=tomorrow',    tone: 'sky'   });
@@ -430,7 +436,7 @@ export default function DashboardPage() {
             <KpiDivider />
             <KpiRow label="נמסר היום" value={`${s.deliveriesDelivered}/${s.deliveriesToday || '—'}`} />
             <KpiDivider />
-            <KpiRow label="מלאי" value={s.lowInventory === 0 ? '✓ תקין' : `${s.lowInventory} נמוכים`} accent={s.lowInventory === 0 ? '#065F46' : '#B45309'} />
+            <KpiRow label="מלאי" value={totalLowStock === 0 ? '✓ תקין' : `${totalLowStock} פריטים נמוכים`} accent={totalLowStock === 0 ? '#065F46' : '#B45309'} />
           </div>
 
           {/* Quick actions */}
