@@ -9,14 +9,40 @@ const DOC_TYPE: Record<string, number> = {
   receipt: 400,     // קבלה — income lines + payment section
 };
 
-const PAYMENT_TYPE_MAP: Record<string, number> = {
-  מזומן: 1,
-  המחאה: 2,
-  'העברה בנקאית': 3,
-  'כרטיס אשראי': 4,
-  bit: 4,
-  PayBox: 4,
-  PayPal: 4,
+// Payment builders for Morning's documents API. Each entry returns the full
+// payment object (not just a type code) because Morning needs the matching
+// extra fields per type — sending a bare {type, price, date} for credit card
+// caused the document to display the wrong method (the "כרטיס אשראי שיצא
+// כהעברה" bug). The previous version had a `?? 4` fallback that silently
+// labelled any unknown method as credit card; that fallback is gone — see
+// the lookup site for what happens when the method is unknown/empty.
+//
+// Field meanings (Morning v1 /documents):
+//   subType  — credit-card sub-type: 0=normal, 1=installments, 2=credit
+//   cardType — card brand: 1=Isracard 2=Visa 3=Mastercard 4=Diners 5=Amex 6=Other
+//   cardNum  — last 4 digits (we don't capture them, sent as empty string)
+//   bankName — required for type 3 to render readably; placeholder is fine
+type MorningPayment = {
+  type: number;
+  price: number;
+  date: string;
+  subType?: number;
+  cardType?: number;
+  cardNum?: string;
+  bankName?: string;
+};
+
+const PAYMENT_BUILDERS: Record<string, (price: number, date: string) => MorningPayment> = {
+  'מזומן':         (price, date) => ({ type: 1, price, date }),
+  'המחאה':         (price, date) => ({ type: 2, price, date }),
+  'העברה בנקאית':  (price, date) => ({ type: 3, price, date, bankName: 'לא צוין' }),
+  'כרטיס אשראי':   (price, date) => ({ type: 4, price, date, subType: 0, cardType: 6, cardNum: '' }),
+  // bit/PayBox/PayPal go on type 4 (credit card) too — Morning v1 doesn't
+  // have dedicated codes for them. Same brand:6 (other) so the document
+  // doesn't claim a brand we don't actually know.
+  'bit':           (price, date) => ({ type: 4, price, date, subType: 0, cardType: 6, cardNum: '' }),
+  'PayBox':        (price, date) => ({ type: 4, price, date, subType: 0, cardType: 6, cardNum: '' }),
+  'PayPal':        (price, date) => ({ type: 4, price, date, subType: 0, cardType: 6, cardNum: '' }),
 };
 
 // Business customer types require exclusive VAT (vatType 1 at document level)
@@ -173,15 +199,22 @@ serve(async (req: Request) => {
       income: incomeLines,
     };
 
-    // Receipt includes payment section; tax invoice does not
+    // Receipt includes payment section; tax invoice does not.
+    // Build the payment block from PAYMENT_BUILDERS — refuse to invent a
+    // method when אופן_תשלום is missing/unknown. Without a valid builder we
+    // skip the payment block entirely; Morning will reject the document with
+    // a clear error rather than issuing a receipt under the wrong method,
+    // which is the safer failure mode (visible error vs silently mislabelled
+    // receipt that the customer sees).
     if (documentType === 'receipt') {
-      const paymentMethod = order.אופן_תשלום ?? '';
-      const morningPaymentType = PAYMENT_TYPE_MAP[paymentMethod] ?? 4;
-      documentBody.payment = [{
-        type: morningPaymentType,
-        price: paymentAmount,
-        date: new Date().toISOString().slice(0, 10),
-      }];
+      const paymentMethod = (order.אופן_תשלום ?? '').trim();
+      const builder = PAYMENT_BUILDERS[paymentMethod];
+      if (builder) {
+        documentBody.payment = [builder(paymentAmount, new Date().toISOString().slice(0, 10))];
+      } else {
+        console.warn('[morning] Unknown / missing אופן_תשלום:', JSON.stringify(paymentMethod),
+          '— skipping payment block. Morning will reject and the order needs to be fixed.');
+      }
     }
 
     console.log('[morning] Calling Morning API — docType:', morningDocType, '| order:', order.מספר_הזמנה);
