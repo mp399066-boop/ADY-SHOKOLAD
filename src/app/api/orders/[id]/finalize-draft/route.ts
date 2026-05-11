@@ -156,6 +156,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       subtotal: Number(o['סכום_לפני_הנחה'] || 0),
       discount: Number(o['סכום_הנחה'] || 0),
       total: Number(o['סך_הכל_לתשלום'] || 0),
+      // Drives the show-VAT block in the email — same rule as the new-order
+      // form. Pulled from the joined customer record on the order.
+      customerType: (emailCustomer?.['סוג_לקוח'] as string) || null,
+      orderType: (o['סוג_הזמנה'] as string) || null,
       items: (fullItems || []).map((item: Record<string, unknown>) => {
         const prod = item['מוצרים_למכירה'] as Record<string, unknown> | null;
         const pfSelections = item['בחירת_פטיפורים_בהזמנה'] as Record<string, unknown>[] | null;

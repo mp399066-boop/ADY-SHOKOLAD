@@ -17,6 +17,24 @@ export interface OrderEmailData {
   discount: number;
   total: number;
   customerPhone?: string | null;
+  // Optional — when set, the email shows VAT rows iff the customer is business
+  // and the order isn't satmar. Without these, the email omits VAT lines
+  // entirely (safer than the previous behaviour, which always added 18% VAT
+  // to the displayed total even for private customers whose prices already
+  // included it).
+  customerType?: string | null;
+  orderType?: string | null;
+}
+
+// Mirrors the new-order form rule: business customer + not satmar → prices
+// are pre-VAT and we should display an explicit "+ מע״מ → כולל מע״מ" block.
+function shouldShowVat(customerType?: string | null, orderType?: string | null): boolean {
+  if (orderType === 'סאטמר') return false;
+  return (
+    customerType === 'עסקי' ||
+    customerType === 'עסקי - קבוע' ||
+    customerType === 'עסקי - כמות'
+  );
 }
 
 const EMAIL_ADDR = 'adi548419927@gmail.com';
@@ -125,18 +143,38 @@ function buildHtml(customerName: string, d: OrderEmailData, logoUrl?: string): s
               ${itemRows || `<tr><td style="padding:14px 0;text-align:center;color:#B0A090;font-size:13px">אין פריטים</td></tr>`}
             </table>
 
-            <!-- Summary -->
+            <!-- Summary — VAT lines only for business + non-satmar.
+                 d.total comes from the DB pre-VAT for business; we add 18%
+                 here for display so the total matches what Morning will
+                 actually charge in the receipt. Private customers see prices
+                 inclusive of VAT throughout, so no extra line is needed. -->
             <table width="100%" cellpadding="0" cellspacing="0"
                    style="border-top:1px solid #E8DED2;padding-top:4px;margin-bottom:28px">
               ${summaryPreDiscount}
+              ${(() => {
+                const showVat = shouldShowVat(d.customerType, d.orderType);
+                const vat = showVat ? +(d.total * VAT_RATE).toFixed(2) : 0;
+                const finalTotal = showVat ? +(d.total + vat).toFixed(2) : d.total;
+                const vatRows = showVat ? `
               <tr>
-                <td style="padding:${d.discount > 0 ? '14px 0 4px' : '12px 0 4px'};font-size:16px;font-weight:700;color:#2A1C12;text-align:right;${d.discount > 0 ? 'border-top:1px solid #E8DED2;' : ''}">
-                  סה&quot;כ לתשלום
-                </td>
-                <td style="padding:${d.discount > 0 ? '14px 0 4px' : '12px 0 4px'};font-size:19px;font-weight:700;color:#8B5E34;text-align:left;direction:ltr;${d.discount > 0 ? 'border-top:1px solid #E8DED2;' : ''}">
-                  ${fmt(d.total)}
-                </td>
+                <td style="padding:6px 0;font-size:13px;color:#8E7D6A;text-align:right;border-top:1px dashed #EDE0CE">סה&quot;כ לפני מע&quot;מ</td>
+                <td style="padding:6px 0;font-size:13px;color:#5C4A38;text-align:left;direction:ltr;border-top:1px dashed #EDE0CE">${fmt(d.total)}</td>
               </tr>
+              <tr>
+                <td style="padding:4px 0;font-size:13px;color:#8E7D6A;text-align:right">מע&quot;מ 18%</td>
+                <td style="padding:4px 0;font-size:13px;color:#5C4A38;text-align:left;direction:ltr">${fmt(vat)}</td>
+              </tr>` : '';
+                const totalLabel = showVat ? 'סה&quot;כ כולל מע&quot;מ' : 'סה&quot;כ לתשלום';
+                return `${vatRows}
+              <tr>
+                <td style="padding:14px 0 4px;font-size:16px;font-weight:700;color:#2A1C12;text-align:right;border-top:1px solid #E8DED2">
+                  ${totalLabel}
+                </td>
+                <td style="padding:14px 0 4px;font-size:19px;font-weight:700;color:#8B5E34;text-align:left;direction:ltr;border-top:1px solid #E8DED2">
+                  ${fmt(finalTotal)}
+                </td>
+              </tr>`;
+              })()}
             </table>
 
             <!-- Closing -->
@@ -169,7 +207,9 @@ function buildHtml(customerName: string, d: OrderEmailData, logoUrl?: string): s
 
 function buildText(customerName: string, d: OrderEmailData): string {
   const afterDiscount = d.subtotal - d.discount;
-  const vat = afterDiscount * VAT_RATE;
+  const showVat = shouldShowVat(d.customerType, d.orderType);
+  const vat = showVat ? +(d.total * VAT_RATE).toFixed(2) : 0;
+  const finalTotal = showVat ? +(d.total + vat).toFixed(2) : d.total;
   const line = '-'.repeat(40);
 
   const itemLines = d.items.map(item =>
@@ -193,8 +233,9 @@ function buildText(customerName: string, d: OrderEmailData): string {
     `סכום לפני הנחה: ${fmt(d.subtotal)}`,
     d.discount > 0 ? `הנחה: -${fmt(d.discount)}` : '',
     d.discount > 0 ? `סכום אחרי הנחה: ${fmt(afterDiscount)}` : '',
-    `מע"מ (18%): ${fmt(vat)}`,
-    `סה"כ לתשלום: ${fmt(d.total)}`,
+    showVat ? `סה"כ לפני מע"מ: ${fmt(d.total)}` : '',
+    showVat ? `מע"מ (18%): ${fmt(vat)}` : '',
+    showVat ? `סה"כ כולל מע"מ: ${fmt(finalTotal)}` : `סה"כ לתשלום: ${fmt(d.total)}`,
     line,
     '',
     'תודה על ההזמנה. אנו מטפלים בה ונעדכן אותך בהמשך.',

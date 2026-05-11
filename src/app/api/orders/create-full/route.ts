@@ -286,6 +286,10 @@ export async function POST(req: NextRequest) {
       subtotal: Number(o['סכום_לפני_הנחה'] || 0),
       discount: Number(o['סכום_הנחה'] || 0),
       total: Number(o['סך_הכל_לתשלום'] || 0),
+      // Drives the show-VAT block in the email: business + non-satmar gets
+      // pre-VAT/VAT/with-VAT rows; everything else hides them.
+      customerType: customerType || null,
+      orderType: (o['סוג_הזמנה'] as string) || null,
       items: (fullItems || []).map((item: Record<string, unknown>) => {
         const prod = item['מוצרים_למכירה'] as Record<string, unknown> | null;
         const pfSelections = item['בחירת_פטיפורים_בהזמנה'] as Record<string, unknown>[] | null;

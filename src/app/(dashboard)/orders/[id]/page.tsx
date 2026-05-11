@@ -667,6 +667,21 @@ export default function OrderDetailPage() {
   const recipientIsCustomer =
     order.שם_מקבל === custFullName && (!order.טלפון_מקבל || order.טלפון_מקבל === customer?.טלפון);
 
+  // VAT display logic — same rule as the new-order form: business customers
+  // get an explicit VAT row + headline-with-VAT, because their סך_הכל_לתשלום
+  // is stored pre-VAT (Morning adds 18% in the document). Private customers
+  // already see VAT-inclusive prices throughout, so nothing to compute.
+  // Satmar orders never show VAT regardless of customer type.
+  const isBusinessForVat =
+    (order.סוג_הזמנה as string | undefined) !== 'סאטמר' &&
+    (customer?.סוג_לקוח === 'עסקי' ||
+     customer?.סוג_לקוח === 'עסקי - קבוע' ||
+     customer?.סוג_לקוח === 'עסקי - כמות');
+  const VAT_RATE = 0.18;
+  const baseTotal = order.סך_הכל_לתשלום || 0;
+  const vatAmount = isBusinessForVat ? +(baseTotal * VAT_RATE).toFixed(2) : 0;
+  const displayedTotal = isBusinessForVat ? +(baseTotal * (1 + VAT_RATE)).toFixed(2) : baseTotal;
+
   return (
     <div dir="rtl" className="max-w-6xl mx-auto space-y-5">
       {/* ════════ HEADER BAR ════════ */}
@@ -728,8 +743,11 @@ export default function OrderDetailPage() {
           <div className="text-right">
             <p className="text-[11px] uppercase tracking-wider mb-1" style={{ color: '#9B7A5A' }}>סכום</p>
             <p className="text-2xl sm:text-3xl font-bold leading-none" style={{ color: '#8B5E34', letterSpacing: '0.3px' }}>
-              {formatCurrency(order.סך_הכל_לתשלום)}
+              {formatCurrency(displayedTotal)}
             </p>
+            {isBusinessForVat && (
+              <p className="text-[10px] mt-1" style={{ color: '#9B7A5A' }}>כולל מע״מ</p>
+            )}
           </div>
           <div className="self-center">
             {order.סטטוס_הזמנה === 'טיוטה' ? (
@@ -1014,14 +1032,28 @@ export default function OrderDetailPage() {
                   <dd className="tabular-nums" style={{ color: '#2B1A10' }}>{formatCurrency(order.דמי_משלוח)}</dd>
                 </div>
               )}
+              {isBusinessForVat && (
+                <>
+                  <div className="flex justify-between pt-2" style={{ borderTop: '1px dashed #EDE0CE' }}>
+                    <dt style={{ color: '#6B4A2D' }}>סה״כ לפני מע״מ</dt>
+                    <dd className="tabular-nums" style={{ color: '#2B1A10' }}>{formatCurrency(baseTotal)}</dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt style={{ color: '#6B4A2D' }}>מע״מ 18%</dt>
+                    <dd className="tabular-nums" style={{ color: '#2B1A10' }}>{formatCurrency(vatAmount)}</dd>
+                  </div>
+                </>
+              )}
             </dl>
             <div
               className="mt-4 pt-3 flex items-baseline justify-between"
               style={{ borderTop: '1px solid #E7D2A6' }}
             >
-              <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: '#6B4A2D' }}>סך הכל</span>
+              <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: '#6B4A2D' }}>
+                {isBusinessForVat ? 'סה״כ כולל מע״מ' : 'סך הכל'}
+              </span>
               <span className="text-2xl font-bold tabular-nums" style={{ color: '#8B5E34' }}>
-                {formatCurrency(order.סך_הכל_לתשלום)}
+                {formatCurrency(displayedTotal)}
               </span>
             </div>
             {order.אופן_תשלום && (
