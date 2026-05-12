@@ -13,7 +13,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { PageLoading } from '@/components/ui/LoadingSpinner';
-import { StatusBadge, UrgentBadge } from '@/components/ui/StatusBadge';
+import { UrgentBadge } from '@/components/ui/StatusBadge';
 import { Modal } from '@/components/ui/Modal';
 import { formatCurrency } from '@/lib/utils';
 import type { DashboardStats, Order } from '@/types/database';
@@ -62,8 +62,16 @@ type Mode = 'work' | 'management';
 // kitchen and is waiting to be handed off / completed.
 type Filter = 'all' | 'start' | 'mark_ready' | 'ready_to_go' | 'unpaid' | 'urgent';
 
+// PAYMENT_METHODS — values must match the PAYMENT_BUILDERS keys in the
+// Morning Edge Function (supabase/functions/create-morning-invoice/index.ts).
+// Adding a method here without updating the Edge Function would mean the
+// receipt is sent without a payment block (Morning will reject). Current
+// builder coverage: מזומן / המחאה / העברה בנקאית / כרטיס אשראי / bit /
+// PayBox / PayPal. 'אחר' is a deliberate UI-only escape hatch — Morning
+// will reject those documents with a visible error rather than silently
+// label them under the wrong method.
 const PAYMENT_METHODS = [
-  'מזומן', 'כרטיס אשראי', 'העברה בנקאית', 'bit', 'PayBox', 'PayPal', 'אחר',
+  'מזומן', 'כרטיס אשראי', 'העברה בנקאית', 'bit', 'PayBox', 'PayPal', 'המחאה', 'אחר',
 ] as const;
 const STOCK_ALERT_STATES = ['מלאי נמוך', 'קריטי', 'אזל מהמלאי'];
 
@@ -87,6 +95,36 @@ const PAYMENT_STATUS_OPTIONS: { value: 'ממתין' | 'שולם' | 'חלקי' | 
   { value: 'בוטל' },
   { value: 'בארטר' },
 ];
+
+// ─── Premium status palette ───────────────────────────────────────────────
+// Tones intentionally restrained — all backgrounds are <12% saturation, all
+// foregrounds are deep enough to read against the bg. Borders share the
+// same hue as the text to keep each pill tonally cohesive.
+
+type Tone = { bg: string; text: string; border: string };
+const FALLBACK_TONE: Tone = { bg: '#F5F1EB', text: '#8A7664', border: '#E0D4C2' };
+
+const ORDER_STATUS_TONES: Record<string, Tone> = {
+  'חדשה':           { bg: '#FAF5E9', text: '#6B4B32', border: '#E8D9BF' },
+  'בהכנה':          { bg: '#FBF1DC', text: '#92602A', border: '#EAC78C' },
+  'מוכנה למשלוח':   { bg: '#E0F2FE', text: '#075985', border: '#BAE0F4' },
+  'נשלחה':          { bg: '#EEEAF4', text: '#4A3868', border: '#D4C8E8' },
+  'הושלמה בהצלחה':  { bg: '#DCFAE6', text: '#065F46', border: '#A8E5C0' },
+  'בוטלה':          { bg: '#FEE4E2', text: '#991B1B', border: '#F5BFC0' },
+  'טיוטה':          { bg: '#F5F0FA', text: '#5B21B6', border: '#DDD6FE' },
+};
+const PAYMENT_STATUS_TONES: Record<string, Tone> = {
+  'ממתין': { bg: '#FBF1DC', text: '#92602A', border: '#EAC78C' },
+  'שולם':  { bg: '#DCFAE6', text: '#065F46', border: '#A8E5C0' },
+  'חלקי':  { bg: '#FEF3C7', text: '#854D0E', border: '#F2D88A' },
+  'בוטל':  { bg: '#FEE4E2', text: '#991B1B', border: '#F5BFC0' },
+  'בארטר': { bg: '#EEEAF4', text: '#4A3868', border: '#D4C8E8' },
+};
+const DELIVERY_STATUS_TONES: Record<string, Tone> = {
+  'ממתין': { bg: '#FBF1DC', text: '#92602A', border: '#EAC78C' },
+  'נאסף':  { bg: '#DBEAFE', text: '#1E40AF', border: '#BFD2F2' },
+  'נמסר':  { bg: '#DCFAE6', text: '#065F46', border: '#A8E5C0' },
+};
 
 // ─── Theme tokens (centralized for consistency) ───────────────────────────
 const C = {
@@ -159,14 +197,14 @@ function nextOrderAction(o: TodayOrder): { label: string; newStatus: OrderStatus
   const isPickup = (o.סוג_אספקה ?? '') === 'איסוף עצמי';
   switch (status) {
     case 'חדשה':
-      return { label: 'התחילי הכנה', newStatus: 'בהכנה', confirmText: 'מעבר ל"בהכנה" יוריד מלאי לפי הלוגיקה הקיימת. להמשיך?' };
+      return { label: 'התחילי הכנה', newStatus: 'בהכנה', confirmText: 'מעבר להכנה עשוי להוריד מלאי. להמשיך?' };
     case 'בהכנה':
       return { label: isPickup ? 'סמני מוכנה לאיסוף' : 'סמני מוכנה למשלוח', newStatus: 'מוכנה למשלוח' };
     case 'מוכנה למשלוח':
-      if (isPickup) return { label: 'סמני הושלמה', newStatus: 'הושלמה בהצלחה', confirmText: 'סימון כ"הושלמה בהצלחה" עשוי להפיק חשבונית מס לפי הלוגיקה הקיימת. להמשיך?' };
+      if (isPickup) return { label: 'סמני הושלמה', newStatus: 'הושלמה בהצלחה', confirmText: 'סימון כהושלמה עשוי להפיק חשבונית מס. להמשיך?' };
       return { label: 'סמני נשלחה', newStatus: 'נשלחה' };
     case 'נשלחה':
-      return { label: 'סמני הושלמה', newStatus: 'הושלמה בהצלחה', confirmText: 'סימון כ"הושלמה בהצלחה" עשוי להפיק חשבונית מס לפי הלוגיקה הקיימת. להמשיך?' };
+      return { label: 'סמני הושלמה', newStatus: 'הושלמה בהצלחה', confirmText: 'סימון כהושלמה עשוי להפיק חשבונית מס. להמשיך?' };
     default:
       return null;
   }
@@ -371,13 +409,13 @@ export default function DashboardPage() {
     const exec = () => patchOrder(o.id, { סטטוס_הזמנה: newStatus }, { סטטוס_הזמנה: o.סטטוס_הזמנה });
     if (newStatus === 'בהכנה' && o.סטטוס_הזמנה !== 'בהכנה') {
       setConfirmAction({
-        text: 'מעבר ל"בהכנה" יוריד מלאי לפי הלוגיקה הקיימת. להמשיך?',
+        text: 'מעבר להכנה עשוי להוריד מלאי. להמשיך?',
         cta: 'אישור — בהכנה',
         onConfirm: async () => { await exec(); setConfirmAction(null); },
       });
     } else if (newStatus === 'הושלמה בהצלחה' && o.סטטוס_הזמנה !== 'הושלמה בהצלחה') {
       setConfirmAction({
-        text: 'סימון כ"הושלמה בהצלחה" עשוי להפיק חשבונית מס לפי הלוגיקה הקיימת. להמשיך?',
+        text: 'סימון כהושלמה עשוי להפיק חשבונית מס. להמשיך?',
         cta: 'אישור — הושלמה',
         onConfirm: async () => { await exec(); setConfirmAction(null); },
       });
@@ -515,8 +553,10 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      {/* ════════ KPI STRIP — clickable, scrolls + filters the relevant section ═══ */}
-      <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+      {/* ════════ KPI STRIP — compact, clickable ═══════════════════════════ */}
+      {/* Work mode shows 4 action-oriented KPIs (no revenue card); management
+          mode adds the revenue card for an oversight angle. */}
+      <section className={`grid gap-2 ${mode === 'work' ? 'grid-cols-2 md:grid-cols-4' : 'grid-cols-2 md:grid-cols-3 lg:grid-cols-5'}`}>
         <KpiCard
           icon="bag"
           label="הזמנות היום"
@@ -525,16 +565,19 @@ export default function DashboardPage() {
           sub={`${liveOrders.length} פעילות${stats?.ordersTomorrow ? ` · ${stats.ordersTomorrow} מחר` : ''}`}
           active={activeKpi === 'orders'}
           onClick={() => onKpiClick('orders')}
+          compact={mode === 'work'}
         />
-        <KpiCard
-          icon="wallet"
-          label="הכנסה צפויה היום"
-          value={formatCurrency(expectedRevenue)}
-          accent={C.green}
-          sub={liveOrders.length > 0 ? `ממוצע ${formatCurrency(expectedRevenue / liveOrders.length)}` : 'אין הזמנות פעילות'}
-          active={activeKpi === 'revenue'}
-          onClick={() => onKpiClick('revenue')}
-        />
+        {mode === 'management' && (
+          <KpiCard
+            icon="wallet"
+            label="הכנסה צפויה היום"
+            value={formatCurrency(expectedRevenue)}
+            accent={C.green}
+            sub={liveOrders.length > 0 ? `ממוצע ${formatCurrency(expectedRevenue / liveOrders.length)}` : 'אין הזמנות פעילות'}
+            active={activeKpi === 'revenue'}
+            onClick={() => onKpiClick('revenue')}
+          />
+        )}
         <KpiCard
           icon="clock"
           label="ממתין לתשלום"
@@ -543,6 +586,7 @@ export default function DashboardPage() {
           sub={(stats?.unpaidOrders ?? 0) > 0 ? `${stats?.unpaidOrders} הזמנות פתוחות` : 'הכל סגור'}
           active={activeKpi === 'unpaid'}
           onClick={() => onKpiClick('unpaid')}
+          compact={mode === 'work'}
         />
         <KpiCard
           icon="truck"
@@ -552,6 +596,7 @@ export default function DashboardPage() {
           sub={`${stats?.deliveriesDelivered ?? 0} נמסרו · ${stats?.deliveriesCollected ?? 0} נאספו`}
           active={activeKpi === 'deliveries'}
           onClick={() => onKpiClick('deliveries')}
+          compact={mode === 'work'}
         />
         <KpiCard
           icon="alert"
@@ -561,6 +606,7 @@ export default function DashboardPage() {
           sub={stockTotal === 0 ? 'הכל תקין' : `${stock.raw.length} גלם · ${stock.products.length} מוצר · ${stock.petitFours.length} פטיפור`}
           active={activeKpi === 'inventory'}
           onClick={() => onKpiClick('inventory')}
+          compact={mode === 'work'}
         />
       </section>
 
@@ -696,7 +742,7 @@ export default function DashboardPage() {
                       <span className="text-[13px] font-medium truncate flex-1" style={{ color: C.text }}>
                         {name}
                       </span>
-                      <StatusBadge status={o.סטטוס_הזמנה} type="order" />
+                      <PremiumBadge status={o.סטטוס_הזמנה} kind="order" />
                       <span className="text-[12px] tabular-nums font-semibold w-20 text-left flex-shrink-0" style={{ color: C.text }}>
                         {formatCurrency(o.סך_הכל_לתשלום)}
                       </span>
@@ -766,6 +812,39 @@ export default function DashboardPage() {
 // ═══════════════════════════════════════════════════════════════════════════
 // Sub-components
 // ═══════════════════════════════════════════════════════════════════════════
+
+// ─── PremiumBadge — local replacement for the global StatusBadge ──────────
+// Identical API to components/ui/StatusBadge but uses the dashboard-local
+// premium palette so the rest of the app keeps its existing tones unchanged.
+
+function PremiumBadge({
+  status, kind, size = 'md',
+}: {
+  status: string;
+  kind: 'order' | 'payment' | 'delivery';
+  size?: 'sm' | 'md';
+}) {
+  const map =
+    kind === 'payment'  ? PAYMENT_STATUS_TONES :
+    kind === 'delivery' ? DELIVERY_STATUS_TONES :
+                          ORDER_STATUS_TONES;
+  const tone = map[status] ?? FALLBACK_TONE;
+  const padding = size === 'sm' ? 'px-1.5 py-px' : 'px-2 py-0.5';
+  const text    = size === 'sm' ? 'text-[10px]'  : 'text-[11px]';
+  return (
+    <span
+      className={`inline-flex items-center ${padding} ${text} font-semibold rounded-md whitespace-nowrap`}
+      style={{
+        backgroundColor: tone.bg,
+        color: tone.text,
+        border: `1px solid ${tone.border}`,
+        letterSpacing: '0.01em',
+      }}
+    >
+      {status}
+    </span>
+  );
+}
 
 // ─── ModeToggle ───────────────────────────────────────────────────────────
 
@@ -865,7 +944,7 @@ function FilterChip({
 // ─── KpiCard ──────────────────────────────────────────────────────────────
 
 function KpiCard({
-  icon, label, value, accent, sub, active, onClick,
+  icon, label, value, accent, sub, active, onClick, compact,
 }: {
   icon: string;
   label: string;
@@ -874,13 +953,19 @@ function KpiCard({
   sub?: string;
   active?: boolean;
   onClick?: () => void;
+  // Compact = smaller padding, smaller value text, no sub line, no hint label.
+  // Used in work mode where the KPI strip is navigation only and the action
+  // surface is the orders area below.
+  compact?: boolean;
 }) {
   const interactive = !!onClick;
   const Tag: 'button' | 'div' = interactive ? 'button' : 'div';
+  const padCls = compact ? 'px-3 py-2.5' : 'px-4 py-3.5';
+  const valueCls = compact ? 'text-lg' : 'text-2xl';
   return (
     <Tag
       onClick={onClick}
-      className={`rounded-2xl px-4 py-3.5 transition-all w-full text-right ${interactive ? 'cursor-pointer hover:-translate-y-px hover:shadow-sm' : ''}`}
+      className={`rounded-xl ${padCls} transition-all w-full text-right ${interactive ? 'cursor-pointer hover:-translate-y-px hover:shadow-sm' : ''}`}
       style={{
         backgroundColor: active ? `${accent}08` : C.card,
         border: `1px solid ${active ? accent : C.border}`,
@@ -889,30 +974,30 @@ function KpiCard({
           : '0 1px 0 rgba(255,255,255,0.6)',
       }}
     >
-      <div className="flex items-center justify-between mb-2">
+      <div className={`flex items-center justify-between ${compact ? 'mb-1' : 'mb-2'}`}>
         <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: C.textSoft, letterSpacing: '0.08em' }}>
           {label}
         </p>
         <span
-          className="w-7 h-7 rounded-lg flex items-center justify-center"
+          className={`${compact ? 'w-6 h-6' : 'w-7 h-7'} rounded-lg flex items-center justify-center`}
           style={{ backgroundColor: `${accent}14`, color: accent }}
         >
-          <Icon name={icon} className="w-3.5 h-3.5" />
+          <Icon name={icon} className={compact ? 'w-3 h-3' : 'w-3.5 h-3.5'} />
         </span>
       </div>
-      <p className="text-2xl font-semibold tabular-nums leading-none" style={{ color: C.text, letterSpacing: '-0.01em' }}>
+      <p className={`${valueCls} font-semibold tabular-nums leading-none`} style={{ color: C.text, letterSpacing: '-0.01em' }}>
         {value}
       </p>
-      {sub && <p className="text-[11px] mt-2 truncate" style={{ color: C.textSoft }}>{sub}</p>}
+      {sub && !compact && <p className="text-[11px] mt-2 truncate" style={{ color: C.textSoft }}>{sub}</p>}
       {/* Bottom accent rule — thicker when active */}
       <div
-        className="mt-3 rounded-full transition-all"
+        className={`${compact ? 'mt-2' : 'mt-3'} rounded-full transition-all`}
         style={{
           backgroundColor: active ? accent : `${accent}22`,
           height: active ? 3 : 2,
         }}
       />
-      {interactive && (
+      {interactive && !compact && (
         <p className="text-[10px] mt-1.5 inline-flex items-center gap-1" style={{ color: active ? accent : C.textSoft }}>
           <span>{active ? '↓ הוצג למטה' : 'לחצי לפירוט'}</span>
         </p>
@@ -921,7 +1006,12 @@ function KpiCard({
   );
 }
 
-// ─── OrderActionCard — the centerpiece ────────────────────────────────────
+// ─── OrderActionCard — compact 3-row work card ────────────────────────────
+// Three rows, ~88px tall: identification (number + name + badges), metadata
+// (time / type / amount / phone / note in one line), and the action row with
+// primary CTA + secondary mark-paid + small "עוד" / "פרטים" links. Replaces
+// the previous tall card with the inline payment alert strip — payment status
+// is now a top-row badge, mark-paid a sibling button to the primary CTA.
 
 function OrderActionCard({
   order, updating, onPrimary, onMarkPaid, onOpen, onMoreActions,
@@ -940,155 +1030,120 @@ function OrderActionCard({
   const paid = order.סטטוס_תשלום === 'שולם' || order.סטטוס_תשלום === 'בארטר';
   const note = (order.הערות_להזמנה ?? '').trim();
 
-  // Subtle left accent strip for urgent
-  const leftAccent = order.הזמנה_דחופה ? C.red : null;
-
   return (
     <div
-      className="rounded-2xl bg-white relative overflow-hidden transition-shadow hover:shadow-sm"
+      className="rounded-xl px-4 py-3 transition-shadow hover:shadow-sm"
       style={{
         backgroundColor: C.card,
         border: `1px solid ${C.border}`,
-        boxShadow: '0 1px 2px rgba(58,42,26,0.04)',
+        boxShadow: '0 1px 2px rgba(58,42,26,0.03)',
       }}
     >
-      {leftAccent && (
-        <div
-          className="absolute top-0 right-0 bottom-0 w-[3px]"
-          style={{ backgroundColor: leftAccent }}
-          aria-hidden
-        />
-      )}
+      {/* ── Row 1: number + name + badges ───────────────────────────────── */}
+      <div className="flex items-center gap-2 mb-1.5">
+        <span className="font-mono text-[11px] font-semibold tracking-wide flex-shrink-0" style={{ color: C.brand }}>
+          {order.מספר_הזמנה}
+        </span>
+        <span className="text-[15px] font-semibold truncate flex-1" style={{ color: C.text, letterSpacing: '-0.01em' }}>
+          {customerName}
+        </span>
+        {order.הזמנה_דחופה && <UrgentBadge />}
+        <PremiumBadge status={order.סטטוס_הזמנה} kind="order" />
+        <PremiumBadge status={order.סטטוס_תשלום} kind="payment" />
+      </div>
 
-      <div className="px-5 py-4">
-        {/* ── Top row: order number + status badges + open link ─────────── */}
-        <div className="flex items-start justify-between gap-3 mb-2">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 mb-1">
-              <span className="font-mono text-[11px] font-semibold tracking-wide" style={{ color: C.brand }}>
-                {order.מספר_הזמנה}
-              </span>
-              {order.הזמנה_דחופה && <UrgentBadge />}
-            </div>
-            <p className="text-[17px] font-semibold leading-tight truncate" style={{ color: C.text, letterSpacing: '-0.01em' }}>
-              {customerName}
-            </p>
-          </div>
-          <div className="flex items-center gap-1.5 flex-shrink-0">
-            <StatusBadge status={order.סטטוס_הזמנה} type="order" />
-          </div>
-        </div>
-
-        {/* ── Meta row: time / type / amount / phone ────────────────────── */}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] mb-3" style={{ color: C.textSoft }}>
-          <Meta icon="clock" text={order.שעת_אספקה || '—'} mono />
-          <span style={{ color: C.borderSoft }}>·</span>
-          <Meta icon={isDelivery ? 'truck' : 'box'} text={isDelivery ? 'משלוח' : 'איסוף'} />
-          <span style={{ color: C.borderSoft }}>·</span>
-          <span className="tabular-nums font-semibold" style={{ color: C.text }}>
-            {formatCurrency(order.סך_הכל_לתשלום)}
-          </span>
-          {order.טלפון_מקבל && (
-            <>
-              <span style={{ color: C.borderSoft }}>·</span>
-              <a
-                href={`tel:${order.טלפון_מקבל}`}
-                onClick={(e) => e.stopPropagation()}
-                className="inline-flex items-center gap-1 hover:underline tabular-nums"
-                style={{ color: C.blue }}
-              >
-                <Icon name="phone" className="w-3 h-3" />
-                {order.טלפון_מקבל}
-              </a>
-            </>
-          )}
-        </div>
-
-        {/* ── Note ──────────────────────────────────────────────────────── */}
+      {/* ── Row 2: meta line (time · type · amount · phone · note) ─────── */}
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[12px] mb-2.5" style={{ color: C.textSoft }}>
+        <Meta icon="clock" text={order.שעת_אספקה || '—'} mono />
+        <Sep />
+        <Meta icon={isDelivery ? 'truck' : 'box'} text={isDelivery ? 'משלוח' : 'איסוף'} />
+        <Sep />
+        <span className="tabular-nums font-semibold" style={{ color: C.text }}>
+          {formatCurrency(order.סך_הכל_לתשלום)}
+        </span>
+        {order.טלפון_מקבל && (
+          <>
+            <Sep />
+            <a
+              href={`tel:${order.טלפון_מקבל}`}
+              onClick={e => e.stopPropagation()}
+              className="inline-flex items-center gap-1 hover:underline tabular-nums"
+              style={{ color: C.blue }}
+            >
+              <Icon name="phone" className="w-3 h-3" />
+              {order.טלפון_מקבל}
+            </a>
+          </>
+        )}
         {note && (
-          <div
-            className="flex items-start gap-1.5 px-2.5 py-1.5 rounded-lg mb-3 text-[12px]"
-            style={{ backgroundColor: C.amberSoft, color: C.amber }}
+          <>
+            <Sep />
+            <span className="inline-flex items-center gap-1 max-w-[28ch] truncate" style={{ color: C.amber }} title={note}>
+              <Icon name="note" className="w-3 h-3" />
+              <span className="truncate">{note}</span>
+            </span>
+          </>
+        )}
+      </div>
+
+      {/* ── Row 3: action row — primary CTA + mark-paid + עוד · פרטים ──── */}
+      <div className="flex items-center gap-2">
+        {action ? (
+          <button
+            onClick={onPrimary}
+            disabled={updating}
+            className="inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-lg text-[13px] font-semibold text-white transition-colors disabled:opacity-60"
+            style={{ backgroundColor: C.brand }}
           >
-            <Icon name="note" className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-            <span className="line-clamp-2">{note}</span>
-          </div>
+            <span>{updating ? '...' : action.label}</span>
+            <Icon name="arrow" className="w-3 h-3 rtl-flip" />
+          </button>
+        ) : (
+          <span
+            className="inline-flex items-center gap-1.5 h-10 px-3 rounded-lg text-[12px] font-medium"
+            style={{ backgroundColor: C.brandSoft, color: C.brand }}
+          >
+            <Icon name="check" className="w-3.5 h-3.5" />
+            {order.סטטוס_הזמנה === 'בוטלה' ? 'בוטלה' : 'הושלמה'}
+          </span>
         )}
 
-        {/* ── Inline payment alert (only when unpaid) ───────────────────── */}
         {!paid && (
-          <div
-            className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg mb-3"
-            style={{ backgroundColor: C.amberSoft, border: `1px solid #FCD9A8` }}
+          <button
+            onClick={onMarkPaid}
+            disabled={updating}
+            className="inline-flex items-center gap-1.5 h-10 px-3 rounded-lg text-[12px] font-semibold transition-colors disabled:opacity-60 border"
+            style={{ backgroundColor: C.greenSoft, color: C.green, borderColor: '#B5E5DD' }}
           >
-            <div className="flex items-center gap-2 min-w-0">
-              <Icon name="alert" className="w-3.5 h-3.5 flex-shrink-0" style={{ color: C.amber }} />
-              <span className="text-[12px] font-medium truncate" style={{ color: C.amber }}>
-                ממתין לתשלום
-              </span>
-              <span className="text-[12px] tabular-nums font-semibold" style={{ color: C.amber }}>
-                · {formatCurrency(order.סך_הכל_לתשלום)}
-              </span>
-              {order.אופן_תשלום && (
-                <span className="text-[11px] truncate" style={{ color: C.amber, opacity: 0.85 }}>
-                  · {order.אופן_תשלום}
-                </span>
-              )}
-            </div>
-            <button
-              onClick={onMarkPaid}
-              disabled={updating}
-              className="text-[11px] font-semibold px-2.5 h-7 rounded-md transition-colors flex-shrink-0 disabled:opacity-60"
-              style={{ backgroundColor: C.green, color: '#FFFFFF' }}
-            >
-              סמני שולם
-            </button>
-          </div>
+            <Icon name="wallet" className="w-3.5 h-3.5" />
+            סמני שולם
+          </button>
         )}
 
-        {/* ── Action row: PRIMARY (big) + tertiary text links ───────────── */}
-        <div className="flex items-center gap-3">
-          <div className="flex-1">
-            {action ? (
-              <button
-                onClick={onPrimary}
-                disabled={updating}
-                className="inline-flex items-center justify-center gap-2 w-full h-11 rounded-xl text-sm font-semibold text-white transition-colors disabled:opacity-60"
-                style={{ backgroundColor: C.brand }}
-              >
-                <span>{updating ? '...' : action.label}</span>
-                <Icon name="arrow" className="w-3.5 h-3.5 rtl-flip" />
-              </button>
-            ) : (
-              <div
-                className="inline-flex items-center justify-center gap-2 w-full h-11 rounded-xl text-sm font-medium"
-                style={{ backgroundColor: C.brandSoft, color: C.brand }}
-              >
-                <Icon name="check" className="w-4 h-4" />
-                <span>בוצעו כל השלבים</span>
-              </div>
-            )}
-          </div>
-          <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
-            <button
-              onClick={onOpen}
-              className="text-[12px] font-medium hover:underline transition-colors"
-              style={{ color: C.textSoft }}
-            >
-              פתיחת הזמנה →
-            </button>
-            <button
-              onClick={onMoreActions}
-              className="text-[11px] hover:underline transition-colors"
-              style={{ color: C.textSoft, opacity: 0.85 }}
-            >
-              עוד פעולות
-            </button>
-          </div>
-        </div>
+        <div className="flex-1" />
+
+        <button
+          onClick={onMoreActions}
+          className="text-[11px] font-medium hover:underline transition-colors px-1"
+          style={{ color: C.textSoft }}
+        >
+          עוד
+        </button>
+        <span className="text-[11px]" style={{ color: C.borderSoft }}>·</span>
+        <button
+          onClick={onOpen}
+          className="text-[11px] font-medium hover:underline transition-colors px-1"
+          style={{ color: C.textSoft }}
+        >
+          פרטים
+        </button>
       </div>
     </div>
   );
+}
+
+function Sep() {
+  return <span style={{ color: C.borderSoft }}>·</span>;
 }
 
 function Meta({ icon, text, mono }: { icon: string; text: string; mono?: boolean }) {
@@ -1132,7 +1187,7 @@ function DeliveryActionCard({
             </span>
           )}
         </div>
-        <StatusBadge status={delivery.סטטוס_משלוח} type="delivery" />
+        <PremiumBadge status={delivery.סטטוס_משלוח} kind="delivery" />
       </div>
 
       <div className="space-y-1 mb-2.5 text-[11px]" style={{ color: C.textSoft }}>
@@ -1402,8 +1457,7 @@ function MarkPaidModal({
         <span className="font-mono text-xs">{order.מספר_הזמנה}</span>
       </div>
       <p className="text-sm mb-4" style={{ color: C.textSoft }}>
-        סימון כ&quot;שולם&quot; עשוי להפיק קבלה לפי הלוגיקה הקיימת.
-        בחרי את אמצעי התשלום שיופיע על הקבלה:
+        סימון כשולם עשוי להפיק קבלה. בחרי את אמצעי התשלום שיופיע על הקבלה:
       </p>
 
       <div className="grid grid-cols-2 gap-2 mb-5">
@@ -1513,7 +1567,7 @@ function OrderRow({
         </span>
       </div>
       {/* status */}
-      <StatusBadge status={order.סטטוס_הזמנה} type="order" />
+      <PremiumBadge status={order.סטטוס_הזמנה} kind="order" />
       {/* actions */}
       <div className="flex items-center gap-2 flex-shrink-0">
         <button
