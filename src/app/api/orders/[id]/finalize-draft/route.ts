@@ -3,7 +3,6 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
-import sgMail from '@sendgrid/mail';
 import { sendOrderEmail, isInternalEmail, type OrderEmailData, type EmailContext } from '@/lib/email';
 
 // Converts a draft order (status=טיוטה) to a real order (status=חדשה).
@@ -180,28 +179,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     })();
   }
 
-  // 7. Admin alert (fire-and-forget)
-  void (async () => {
-    try {
-      const apiKey = process.env.SENDGRID_API_KEY;
-      const from = process.env.FROM_EMAIL;
-      if (!apiKey || !from) return;
-      sgMail.setApiKey(apiKey);
-      const o = fullOrder as Record<string, unknown>;
-      const cust = (o['לקוחות'] as Record<string, string>) || {};
-      const custName = `${cust['שם_פרטי'] || ''} ${cust['שם_משפחה'] || ''}`.trim();
-      const orderNum = (o['מספר_הזמנה'] as string) || '';
-      await sgMail.send({
-        to: 'adi548419927@gmail.com',
-        from,
-        subject: `הזמנה ${orderNum} אושרה — ${custName || 'לקוח'}`,
-        text: `טיוטה הפכה להזמנה: ${orderNum}\nלקוח: ${custName}\nסה"כ: ${Number(o['סך_הכל_לתשלום'] || 0).toFixed(2)} ₪`,
-        html: `<div dir="rtl">טיוטה הפכה להזמנה: ${orderNum}<br>לקוח: ${custName}<br>סה"כ: ₪${Number(o['סך_הכל_לתשלום'] || 0).toFixed(2)}</div>`,
-      });
-    } catch (err) {
-      console.error('[finalize-draft] admin alert failed:', err);
-    }
-  })();
+  // 7. NO admin alert here. The owner already received a "התקבלה הזמנה חדשה
+  // במערכת" email when the draft was originally created (or earlier auto-saved
+  // as draft and then materialised — but the WC webhook / new-order flow that
+  // produces those drafts hits create-full's path). Sending a second alert
+  // when the draft is finalised was redundant and noisy. The customer-facing
+  // email above still fires here, since it represents new contact going out.
 
   return NextResponse.json({ data: { ...fullOrder, מוצרים_בהזמנה: fullItems || [] } }, { status: 200 });
 }
