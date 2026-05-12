@@ -34,7 +34,23 @@ export type Block =
   // and asks the user to approve before posting to /api/reports/orders/send.
   // No email is sent until the user clicks "אשרי שליחה" — the server-side
   // action that produced this block did not call the send endpoint.
-  | { type: 'confirm_send_report'; recipientEmail: string; rangeLabel: string; filtersLabel: string; payload: Record<string, unknown> };
+  | { type: 'confirm_send_report'; recipientEmail: string; rangeLabel: string; filtersLabel: string; payload: Record<string, unknown> }
+  // Pre-action preview card. Single block that replaces the old "either
+  // download_button or confirm_send_report" pair — the user always sees a
+  // summary + first 5 orders before deciding. Both download and send
+  // buttons live inside this block. Optional preferredAction hints the UI
+  // which CTA to emphasise (e.g. user said "שלחי במייל" → highlight send).
+  | {
+      type: 'report_preview';
+      rangeLabel: string;
+      filtersLabel: string;
+      // Optional — when present, the send-by-email button is enabled and
+      // pre-filled with this address.
+      recipientEmail?: string;
+      // Body for the same-shape POSTs to /preview, /download, /send.
+      query: { range: 'today' | 'tomorrow' | 'week' | 'custom'; date?: string; filters?: Record<string, boolean> };
+      preferredAction?: 'download' | 'send';
+    };
 
 export interface ClarifyOption {
   label: string;

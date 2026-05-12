@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { Modal } from '@/components/ui/Modal';
 import toast from 'react-hot-toast';
 
 type Range = 'today' | 'tomorrow' | 'week' | 'custom';
@@ -26,6 +27,36 @@ function todayISO(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
 }
 
+// Preview payload returned by /api/reports/orders/preview. Same shape we
+// hand to the assistant's ReportPreviewCard — so the rendering logic feels
+// identical between the two surfaces.
+interface PreviewData {
+  summary: {
+    total: number;
+    urgent: number;
+    delivery: number;
+    pickup: number;
+    unpaid: number;
+    rangeLabel: string;
+    startDate: string;
+    endDate: string;
+    totalAmount: number;
+    sampleSize: number;
+    truncated: boolean;
+  };
+  sample: Array<{
+    id: string;
+    orderNumber: string;
+    customerName: string;
+    deliveryDate: string | null;
+    deliveryTime: string | null;
+    deliveryType: string | null;
+    paymentStatus: string | null;
+    urgent: boolean;
+    total: number;
+  }>;
+}
+
 export default function OrdersReportPage() {
   const [range, setRange] = useState<Range>('today');
   const [date, setDate] = useState<string>(todayISO());
@@ -33,8 +64,10 @@ export default function OrdersReportPage() {
   const [filters, setFilters] = useState<{ urgentOnly: boolean; unpaidOnly: boolean; deliveryOnly: boolean; pickupOnly: boolean }>({
     urgentOnly: false, unpaidOnly: false, deliveryOnly: false, pickupOnly: false,
   });
-  const [sending, setSending] = useState(false);
-  const [downloading, setDownloading] = useState(false);
+  // Preview modal state.
+  const [previewing, setPreviewing] = useState(false);   // currently fetching the preview
+  const [preview, setPreview]       = useState<PreviewData | null>(null);
+  const [acting, setActing]         = useState(false);   // download/send in flight from inside the modal
 
   const toggleFilter = (k: keyof typeof filters) => {
     setFilters(prev => {
@@ -60,32 +93,34 @@ export default function OrdersReportPage() {
     ...extra,
   });
 
-  const handleSend = async () => {
-    if (!recipientEmail.trim()) {
-      toast.error('יש להזין כתובת מייל לנמען');
-      return;
-    }
+  // Open the preview modal — fetches a summary + first 5 orders so the user
+  // can see what they're about to download/send before committing. Uses
+  // /api/reports/orders/preview which shares fetchOrdersForReport with the
+  // real download/send endpoints (no logic duplication).
+  const openPreview = async () => {
     if (!validateRange()) return;
-    setSending(true);
+    setPreviewing(true);
+    setPreview(null);
     try {
-      const res = await fetch('/api/reports/orders/send', {
+      const res = await fetch('/api/reports/orders/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(buildBody({ recipientEmail: recipientEmail.trim() })),
+        body: JSON.stringify(buildBody()),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'שגיאה בשליחה');
-      toast.success(`נשלח! ${json.summary?.total ?? 0} הזמנות בדוח`);
+      if (!res.ok) throw new Error(json.error || 'שגיאה בתצוגה מוקדמת');
+      setPreview({ summary: json.summary, sample: json.sample });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'שגיאה');
     } finally {
-      setSending(false);
+      setPreviewing(false);
     }
   };
 
-  const handleDownload = async () => {
-    if (!validateRange()) return;
-    setDownloading(true);
+  // Confirmed download — fires only from inside the preview modal after the
+  // user has seen the numbers.
+  const confirmDownload = async () => {
+    setActing(true);
     try {
       const res = await fetch('/api/reports/orders/download', {
         method: 'POST',
@@ -101,17 +136,39 @@ export default function OrdersReportPage() {
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
       toast.success(`הדוח הורד (${total} הזמנות) — פתחי את הקובץ ולחצי "הדפס" לשמירה כ-PDF`);
+      setPreview(null);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'שגיאה');
     } finally {
-      setDownloading(false);
+      setActing(false);
+    }
+  };
+
+  // Confirmed send — same gate.
+  const confirmSend = async () => {
+    if (!recipientEmail.trim()) {
+      toast.error('יש להזין כתובת מייל לנמען');
+      return;
+    }
+    setActing(true);
+    try {
+      const res = await fetch('/api/reports/orders/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildBody({ recipientEmail: recipientEmail.trim() })),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'שגיאה בשליחה');
+      toast.success(`נשלח! ${json.summary?.total ?? 0} הזמנות בדוח`);
+      setPreview(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'שגיאה');
+    } finally {
+      setActing(false);
     }
   };
 
@@ -202,13 +259,104 @@ export default function OrdersReportPage() {
       </Card>
 
       <div className="flex justify-end gap-3 pt-2 flex-wrap">
-        <Button onClick={handleDownload} loading={downloading} size="lg" variant="outline">
-          ⬇ הורידי דוח
-        </Button>
-        <Button onClick={handleSend} loading={sending} size="lg">
-          ✉ שלחי במייל
+        <Button onClick={openPreview} loading={previewing} size="lg">
+          👁 תצוגה מוקדמת
         </Button>
       </div>
+
+      {/* Preview-then-confirm modal. The download/send buttons inside it
+          are the ONLY way to actually run the report from this screen — the
+          page-level buttons only open the modal. */}
+      <Modal open={!!preview} onClose={() => setPreview(null)} title="תצוגה מוקדמת — דוח הזמנות" size="lg">
+        {preview && (
+          <div dir="rtl" className="space-y-4">
+            <div className="text-sm" style={{ color: '#5C4A38' }}>
+              {preview.summary.rangeLabel}
+            </div>
+
+            {/* Summary stats */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              <PreviewStat label="סה״כ הזמנות" value={String(preview.summary.total)} />
+              <PreviewStat label="סכום כולל" value={`₪${preview.summary.totalAmount.toFixed(2)}`} />
+              {preview.summary.urgent > 0 && <PreviewStat label="דחופות" value={String(preview.summary.urgent)} tone="warn" />}
+              {preview.summary.unpaid > 0 && <PreviewStat label="לא שולמו" value={String(preview.summary.unpaid)} tone="warn" />}
+              {preview.summary.delivery > 0 && <PreviewStat label="משלוחים" value={String(preview.summary.delivery)} />}
+              {preview.summary.pickup > 0 && <PreviewStat label="איסוף עצמי" value={String(preview.summary.pickup)} />}
+            </div>
+
+            {/* Sample orders */}
+            {preview.summary.total === 0 ? (
+              <div className="rounded-lg p-6 text-center text-sm" style={{ backgroundColor: '#FAF7F0', color: '#9B7A5A' }}>
+                אין הזמנות בטווח שנבחר.<br/>
+                ניתן עדיין להוריד או לשלוח דוח ריק לתיעוד.
+              </div>
+            ) : (
+              <div>
+                <div className="text-[11px] uppercase tracking-wider mb-2" style={{ color: '#9B7A5A' }}>
+                  {preview.summary.truncated ? `5 הראשונות מתוך ${preview.summary.total}` : 'כל ההזמנות'}
+                </div>
+                <div className="rounded-lg overflow-hidden border" style={{ borderColor: '#EDE0CE' }}>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr style={{ backgroundColor: '#FAF7F0', borderBottom: '1px solid #EDE0CE' }}>
+                        {['תאריך/שעה', 'לקוח', 'אספקה', 'תשלום', 'סכום'].map(h => (
+                          <th key={h} className="px-3 py-2 text-right text-[11px] font-semibold" style={{ color: '#6B4A2D' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {preview.sample.map(o => (
+                        <tr key={o.id} className="border-b" style={{ borderColor: '#F5ECD8', backgroundColor: o.urgent ? '#FFF5F2' : undefined }}>
+                          <td className="px-3 py-2 text-xs" style={{ color: '#5C4A38' }}>
+                            {o.deliveryDate || '—'}
+                            {o.deliveryTime && <span className="ms-1.5" style={{ color: '#9B7A5A' }}>{o.deliveryTime}</span>}
+                          </td>
+                          <td className="px-3 py-2 text-xs font-medium" style={{ color: '#2B1A10' }}>
+                            {o.customerName}
+                            {o.urgent && <span className="ms-1.5 text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: '#FEE2E2', color: '#991B1B' }}>דחוף</span>}
+                          </td>
+                          <td className="px-3 py-2 text-xs" style={{ color: '#6B4A2D' }}>{o.deliveryType || '—'}</td>
+                          <td className="px-3 py-2 text-xs" style={{ color: '#6B4A2D' }}>{o.paymentStatus || '—'}</td>
+                          <td className="px-3 py-2 text-xs font-semibold tabular-nums" style={{ color: '#8B5E34' }}>₪{o.total.toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Send-recipient hint when an email was typed on the page */}
+            {recipientEmail.trim() && (
+              <div className="text-xs" style={{ color: '#6B4A2D' }}>
+                שליחה תלך לכתובת: <span dir="ltr" className="font-semibold" style={{ color: '#8B5E34' }}>{recipientEmail.trim()}</span>
+              </div>
+            )}
+
+            {/* Action buttons */}
+            <div className="flex justify-end gap-2 flex-wrap pt-2 border-t" style={{ borderColor: '#EDE0CE' }}>
+              <Button onClick={() => setPreview(null)} variant="outline" disabled={acting}>
+                ביטול
+              </Button>
+              <Button onClick={confirmDownload} variant="outline" loading={acting}>
+                ⬇ הורידי דוח
+              </Button>
+              <Button onClick={confirmSend} loading={acting} disabled={!recipientEmail.trim()}>
+                ✉ שלחי במייל
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}
+
+function PreviewStat({ label, value, tone }: { label: string; value: string; tone?: 'warn' }) {
+  return (
+    <div className="rounded-lg p-3" style={{ backgroundColor: tone === 'warn' ? '#FFF8E1' : '#FAF7F0' }}>
+      <div className="text-[10px] uppercase tracking-wider" style={{ color: '#9B7A5A' }}>{label}</div>
+      <div className="text-lg font-bold tabular-nums" style={{ color: tone === 'warn' ? '#92400E' : '#2B1A10' }}>{value}</div>
     </div>
   );
 }

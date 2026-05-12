@@ -600,6 +600,10 @@ function BlockView({ block, onOpenOrder, onPick }: { block: Block; onOpenOrder: 
     return <ConfirmSendReportCard block={block} />;
   }
 
+  if (block.type === 'report_preview') {
+    return <ReportPreviewCard block={block} />;
+  }
+
   if (block.type === 'orders') {
     return (
       <div style={{ marginBottom: '6px' }}>
@@ -812,6 +816,279 @@ function ConfirmSendReportCard({ block }: { block: Extract<Block, { type: 'confi
       {error && (
         <div style={{ marginTop: '8px', fontSize: '12px', color: '#A03C2C' }}>{error}</div>
       )}
+    </div>
+  );
+}
+
+// Inline preview card used inside the assistant chat. Replaces the older
+// download_button + confirm_send_report blocks for report flows — both
+// download and send-by-email decisions are made INSIDE this card after the
+// user has seen the actual numbers + first 5 orders. No DB write, no email,
+// no file download happens until the user clicks one of the CTAs here.
+type PreviewBlock = Extract<Block, { type: 'report_preview' }>;
+type PreviewData = {
+  summary: {
+    total: number;
+    urgent: number;
+    delivery: number;
+    pickup: number;
+    unpaid: number;
+    rangeLabel: string;
+    startDate: string;
+    endDate: string;
+    totalAmount: number;
+    sampleSize: number;
+    truncated: boolean;
+  };
+  sample: Array<{
+    id: string;
+    orderNumber: string;
+    customerName: string;
+    deliveryDate: string | null;
+    deliveryTime: string | null;
+    deliveryType: string | null;
+    paymentStatus: string | null;
+    urgent: boolean;
+    total: number;
+  }>;
+};
+
+function ReportPreviewCard({ block }: { block: PreviewBlock }) {
+  const [phase, setPhase] = useState<'loading' | 'ready' | 'error' | 'downloading' | 'sending' | 'sent' | 'cancelled'>('loading');
+  const [data, setData] = useState<PreviewData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [emailInput, setEmailInput] = useState(block.recipientEmail ?? '');
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/reports/orders/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(block.query),
+    })
+      .then(r => r.json())
+      .then(json => {
+        if (cancelled) return;
+        if (json.error) { setError(json.error); setPhase('error'); return; }
+        setData({ summary: json.summary, sample: json.sample });
+        setPhase('ready');
+      })
+      .catch(() => { if (!cancelled) { setError('שגיאה בטעינת תצוגה'); setPhase('error'); } });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const onDownload = async () => {
+    setPhase('downloading');
+    setError(null);
+    try {
+      const res = await fetch('/api/reports/orders/download', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(block.query),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.error || 'שגיאה בהורדה');
+      }
+      const filename = res.headers.get('X-Report-Filename') || 'orders-report.html';
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setPhase('ready'); // back to ready so user can also send if they want
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'שגיאה');
+      setPhase('error');
+    }
+  };
+
+  const onSend = async () => {
+    const to = emailInput.trim();
+    if (!to) { setError('יש להזין כתובת מייל'); return; }
+    setPhase('sending');
+    setError(null);
+    try {
+      const res = await fetch('/api/reports/orders/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...block.query, recipientEmail: to }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error || 'שגיאה בשליחה');
+      setPhase('sent');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'שגיאה');
+      setPhase('error');
+    }
+  };
+
+  if (phase === 'sent') {
+    return (
+      <div style={{ marginTop: '6px', padding: '12px 14px', borderRadius: '10px', backgroundColor: '#E8F5EE', border: '1px solid #B7DBC4', fontSize: '13px', color: '#1F6B43' }}>
+        ✓ הדוח נשלח ל-<span dir="ltr">{emailInput.trim()}</span>
+      </div>
+    );
+  }
+  if (phase === 'cancelled') {
+    return (
+      <div style={{ marginTop: '6px', padding: '10px 14px', borderRadius: '10px', backgroundColor: '#F2EBDD', fontSize: '12px', color: '#6B4A2D' }}>
+        בוטל — לא נשלח דבר.
+      </div>
+    );
+  }
+  if (phase === 'loading') {
+    return (
+      <div style={{ marginTop: '6px', padding: '14px', borderRadius: '12px', backgroundColor: '#FFFDF8', border: '1px solid #E8DED2', fontSize: '12px', color: '#9B7A5A', textAlign: 'center' }}>
+        טוען תצוגה מוקדמת…
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        marginTop: '6px', padding: '14px 16px',
+        borderRadius: '12px', backgroundColor: '#FFFDF8',
+        border: '1px solid #E8DED2', boxShadow: '0 1px 4px rgba(58,42,26,0.04)',
+      }}
+    >
+      <div style={{ fontSize: '11px', color: '#9B7A5A', marginBottom: '4px', fontWeight: 600, letterSpacing: '0.04em' }}>
+        תצוגה מוקדמת — דוח הזמנות
+      </div>
+      <div style={{ fontSize: '13px', color: '#2B1A10', marginBottom: '10px' }}>
+        {block.filtersLabel ? `${block.filtersLabel} ` : ''}{block.rangeLabel}
+      </div>
+
+      {data && (
+        <>
+          {/* Stats grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '6px', marginBottom: '10px' }}>
+            <Stat label="סה״כ הזמנות" value={String(data.summary.total)} />
+            <Stat label="סכום כולל" value={`₪${data.summary.totalAmount.toFixed(2)}`} />
+            {data.summary.urgent > 0 && <Stat label="דחופות" value={String(data.summary.urgent)} tone="warn" />}
+            {data.summary.unpaid > 0 && <Stat label="לא שולמו" value={String(data.summary.unpaid)} tone="warn" />}
+            {data.summary.delivery > 0 && <Stat label="משלוחים" value={String(data.summary.delivery)} />}
+            {data.summary.pickup > 0 && <Stat label="איסוף" value={String(data.summary.pickup)} />}
+          </div>
+
+          {/* Sample orders */}
+          {data.summary.total === 0 ? (
+            <div style={{ padding: '14px', textAlign: 'center', backgroundColor: '#FAF7F0', borderRadius: '8px', fontSize: '12px', color: '#9B7A5A', marginBottom: '10px' }}>
+              אין הזמנות בטווח הזה — דוח יישלח/יורד ריק.
+            </div>
+          ) : (
+            <div style={{ marginBottom: '10px' }}>
+              <div style={{ fontSize: '10px', color: '#9B7A5A', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                {data.summary.truncated ? `5 הראשונות מתוך ${data.summary.total}` : `כל ההזמנות בדוח`}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                {data.sample.map(o => (
+                  <div key={o.id} style={{ padding: '7px 10px', backgroundColor: o.urgent ? '#FBE9E7' : '#FAF7F0', borderRadius: '6px', fontSize: '11px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '6px' }}>
+                      <span style={{ fontWeight: 600, color: '#2B1A10' }}>{o.customerName}</span>
+                      <span style={{ fontWeight: 700, color: '#8B5E34', direction: 'ltr' }}>₪{o.total.toFixed(2)}</span>
+                    </div>
+                    <div style={{ fontSize: '10px', color: '#9B7A5A', marginTop: '2px' }}>
+                      {o.orderNumber}
+                      {o.deliveryDate && ` · ${o.deliveryDate}${o.deliveryTime ? ' ' + o.deliveryTime : ''}`}
+                      {o.deliveryType && ` · ${o.deliveryType}`}
+                      {o.paymentStatus && ` · ${o.paymentStatus}`}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Email field — shown when send is the preferred action OR when an
+              email already came down from the action (DAILY_ORDERS_REPORT_EMAIL). */}
+          {(block.preferredAction === 'send' || block.recipientEmail) && (
+            <div style={{ marginBottom: '10px' }}>
+              <label style={{ fontSize: '11px', color: '#9B7A5A', display: 'block', marginBottom: '3px' }}>נשלח אל</label>
+              <input
+                type="email"
+                dir="ltr"
+                value={emailInput}
+                onChange={e => setEmailInput(e.target.value)}
+                placeholder="example@domain.com"
+                style={{
+                  width: '100%', padding: '7px 10px', fontSize: '12px',
+                  borderRadius: '6px', border: '1px solid #DDD0BC',
+                  backgroundColor: '#FFFFFF', color: '#2B1A10',
+                  fontFamily: 'inherit', textAlign: 'left',
+                }}
+              />
+            </div>
+          )}
+
+          {/* Buttons */}
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+            <button
+              onClick={onDownload}
+              disabled={phase === 'downloading' || phase === 'sending'}
+              style={{
+                flex: '1 1 auto', minWidth: '120px',
+                padding: '9px 12px', fontSize: '12px', fontWeight: 600,
+                borderRadius: '8px',
+                backgroundColor: block.preferredAction === 'download' ? '#8B5E34' : '#FFFFFF',
+                color: block.preferredAction === 'download' ? '#FFFFFF' : '#6B4A2D',
+                border: block.preferredAction === 'download' ? 'none' : '1px solid #DDD0BC',
+                cursor: 'pointer', fontFamily: 'inherit',
+              }}
+            >
+              {phase === 'downloading' ? '...מוריד' : '⬇ הורידי דוח'}
+            </button>
+            <button
+              onClick={onSend}
+              disabled={phase === 'downloading' || phase === 'sending' || !emailInput.trim()}
+              style={{
+                flex: '1 1 auto', minWidth: '120px',
+                padding: '9px 12px', fontSize: '12px', fontWeight: 600,
+                borderRadius: '8px',
+                backgroundColor: block.preferredAction === 'send' ? '#8B5E34' : '#FFFFFF',
+                color: block.preferredAction === 'send' ? '#FFFFFF' : '#6B4A2D',
+                border: block.preferredAction === 'send' ? 'none' : '1px solid #DDD0BC',
+                cursor: !emailInput.trim() ? 'not-allowed' : 'pointer',
+                opacity: !emailInput.trim() ? 0.5 : 1,
+                fontFamily: 'inherit',
+              }}
+            >
+              {phase === 'sending' ? '...שולח' : '✉ שלחי במייל'}
+            </button>
+            <button
+              onClick={() => setPhase('cancelled')}
+              disabled={phase === 'downloading' || phase === 'sending'}
+              style={{
+                padding: '9px 14px', fontSize: '12px', fontWeight: 500,
+                borderRadius: '8px', backgroundColor: '#FFFFFF',
+                color: '#6B4A2D', border: '1px solid #DDD0BC',
+                cursor: 'pointer', fontFamily: 'inherit',
+              }}
+            >
+              ביטול
+            </button>
+          </div>
+        </>
+      )}
+
+      {error && (
+        <div style={{ marginTop: '8px', fontSize: '12px', color: '#A03C2C' }}>{error}</div>
+      )}
+    </div>
+  );
+}
+
+function Stat({ label, value, tone }: { label: string; value: string; tone?: 'warn' }) {
+  return (
+    <div style={{
+      padding: '6px 10px', borderRadius: '6px',
+      backgroundColor: tone === 'warn' ? '#FFF8E1' : '#FAF7F0',
+    }}>
+      <div style={{ fontSize: '10px', color: '#9B7A5A', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
+      <div style={{ fontSize: '14px', fontWeight: 700, color: tone === 'warn' ? '#92400E' : '#2B1A10', fontVariantNumeric: 'tabular-nums' }}>{value}</div>
     </div>
   );
 }

@@ -596,74 +596,60 @@ async function actionStockQuery(rawQuery: string): Promise<AssistantResponse> {
   return { kind: 'answer', blocks };
 }
 
-// Returns a download_button block — actual download happens client-side
-// via /api/reports/orders/download (existing endpoint, no email side-effects).
-// Filters flow through verbatim so "תורידי דוח דחופות למחר" works.
+// Both download and send go through the SAME preview-first flow now: the
+// action returns a `report_preview` block which the UI uses to fetch a
+// summary + sample orders, render them in a card, and then POST to the
+// real /download or /send endpoint only after the user confirms inside
+// the card. No download starts and no email leaves until the confirm.
+
 async function actionDownloadOrdersReport(range: Range, filters: Filters): Promise<AssistantResponse> {
   const reportRange = rangeToReportInput(range);
-  const payload: Record<string, unknown> = { range: reportRange.range };
-  if (reportRange.date) payload.date = reportRange.date;
   const cleaned = sanitizeFiltersForApi(filters);
-  if (cleaned) payload.filters = cleaned;
-
-  const filtersText = filtersLabel(filters);
-  const headline = filtersText
-    ? `דוח הזמנות ${filtersText} ${rangeLabel(range)} מוכן להורדה.`
-    : `דוח הזמנות ${rangeLabel(range)} מוכן להורדה.`;
-
   return {
     kind: 'answer',
     blocks: [
-      { type: 'text', text: headline },
       {
-        type: 'download_button',
-        label: 'הורידי דוח הזמנות',
-        endpoint: '/api/reports/orders/download',
-        payload,
-        filenameHeader: 'X-Report-Filename',
+        type: 'report_preview',
+        rangeLabel: rangeLabel(range),
+        filtersLabel: filtersLabel(filters),
+        query: {
+          range: reportRange.range,
+          ...(reportRange.date ? { date: reportRange.date } : {}),
+          ...(cleaned ? { filters: cleaned } : {}),
+        },
+        preferredAction: 'download',
       },
     ],
   };
 }
 
-// Returns a confirmation card. The actual send happens only when the user
-// clicks the confirm button in the UI, which POSTs to /api/reports/orders/send.
-// If no email was given in the request and no DAILY_ORDERS_REPORT_EMAIL env
-// is set, returns a clarify asking the user to type the recipient address.
 async function actionSendOrdersReport(
   range: Range,
   filters: Filters,
   recipientEmail?: string,
 ): Promise<AssistantResponse> {
+  // Email is still optional at this stage — the preview card itself will
+  // surface the recipient field. We do try to fill in DAILY_ORDERS_REPORT_EMAIL
+  // so the user only has to confirm, not type.
   const fallback = process.env.DAILY_ORDERS_REPORT_EMAIL?.trim();
   const email = recipientEmail || fallback;
 
-  if (!email) {
-    return {
-      kind: 'clarify',
-      message: 'לאיזה מייל לשלוח את הדוח? כתבי לי את הכתובת.',
-      options: [],
-    };
-  }
-
   const reportRange = rangeToReportInput(range);
-  const payload: Record<string, unknown> = {
-    range: reportRange.range,
-    recipientEmail: email,
-  };
-  if (reportRange.date) payload.date = reportRange.date;
   const cleaned = sanitizeFiltersForApi(filters);
-  if (cleaned) payload.filters = cleaned;
-
   return {
     kind: 'answer',
     blocks: [
       {
-        type: 'confirm_send_report',
-        recipientEmail: email,
+        type: 'report_preview',
         rangeLabel: rangeLabel(range),
         filtersLabel: filtersLabel(filters),
-        payload,
+        recipientEmail: email,
+        query: {
+          range: reportRange.range,
+          ...(reportRange.date ? { date: reportRange.date } : {}),
+          ...(cleaned ? { filters: cleaned } : {}),
+        },
+        preferredAction: 'send',
       },
     ],
   };
