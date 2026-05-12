@@ -200,6 +200,19 @@ export default function DashboardPage() {
   const [markPaidOrder, setMarkPaidOrder] = useState<TodayOrder | null>(null);
   const [moreActionsOrder, setMoreActionsOrder] = useState<TodayOrder | null>(null);
 
+  // Recent activity feed — populated only when mode=management. Same shape
+  // as the orders today list, just sliced to the last 8 across all dates.
+  const [recentOrders, setRecentOrders] = useState<TodayOrder[]>([]);
+
+  // Tracks which KPI was last clicked so we can highlight it. Cleared when
+  // the user changes the chip filter manually so the highlight doesn't lie.
+  const [activeKpi, setActiveKpi] = useState<'orders' | 'revenue' | 'unpaid' | 'deliveries' | 'inventory' | null>(null);
+
+  // Section refs for the click-to-scroll KPIs.
+  const ordersRef     = useRef<HTMLDivElement>(null);
+  const deliveriesRef = useRef<HTMLDivElement>(null);
+  const inventoryRef  = useRef<HTMLDivElement>(null);
+
   // In-flight write counter — auto-refresh skips ticks while > 0 so optimistic
   // updates aren't clobbered by a stale GET response.
   const inflightRef = useRef(0);
@@ -220,18 +233,20 @@ export default function DashboardPage() {
     if (!silent) setLoading(true);
     try {
       const today = todayIsraelISO();
-      const [dash, ordersRes, deliveriesRes, rawRes, prodsRes, pfRes] = await Promise.all([
+      const [dash, ordersRes, deliveriesRes, rawRes, prodsRes, pfRes, recentRes] = await Promise.all([
         fetch('/api/dashboard').then(r => r.json()),
         fetch('/api/orders?filter=today&limit=100').then(r => r.json()),
         fetch(`/api/deliveries?date=${today}`).then(r => r.json()),
         fetch('/api/inventory').then(r => r.json()),
         fetch('/api/products?active=true').then(r => r.json()),
         fetch('/api/petit-four-types').then(r => r.json()),
+        fetch('/api/orders?limit=8').then(r => r.json()),
       ]);
 
       if (dash?.data) setStats(dash.data);
       setTodayOrders((ordersRes?.data || []) as TodayOrder[]);
       setTodayDeliveries((deliveriesRes?.data || []) as Delivery[]);
+      setRecentOrders((recentRes?.data || []) as TodayOrder[]);
 
       type RawRow = Record<string, unknown>;
       const filterAlerts = (rows: RawRow[], nameKey: string): StockRow[] =>
@@ -392,6 +407,31 @@ export default function DashboardPage() {
     void patchOrder(o.id, { סטטוס_תשלום: newStatus }, { סטטוס_תשלום: o.סטטוס_תשלום });
   };
 
+  // KPI click → smooth-scroll to the matching section + (when relevant) set
+  // the chip filter so the section opens already filtered to what the KPI
+  // counted. The activeKpi state drives the visual highlight on the card.
+  const onKpiClick = (kpi: 'orders' | 'revenue' | 'unpaid' | 'deliveries' | 'inventory') => {
+    setActiveKpi(kpi);
+    if (kpi === 'unpaid') {
+      setFilter('unpaid');
+      ordersRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else if (kpi === 'orders' || kpi === 'revenue') {
+      setFilter('all');
+      ordersRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else if (kpi === 'deliveries') {
+      deliveriesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else if (kpi === 'inventory') {
+      inventoryRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
+  // Wrap setFilter so manual chip clicks clear the KPI highlight (otherwise
+  // the highlighted card would lie about what's currently shown).
+  const setFilterFromChip = (f: Filter) => {
+    setFilter(f);
+    setActiveKpi(null);
+  };
+
   // ─── Derived data ───────────────────────────────────────────────────────
 
   const liveOrders = useMemo(
@@ -453,12 +493,14 @@ export default function DashboardPage() {
       <header className="flex items-center justify-between gap-4 flex-wrap">
         <div className="min-w-0">
           <h1 className="text-lg sm:text-xl font-semibold leading-tight" style={{ color: C.text, letterSpacing: '-0.01em' }}>
-            {greeting}, מה על הפרק היום?
+            {mode === 'work'
+              ? `${greeting}, מה צריך לבצע היום?`
+              : 'סקירת פעילות יומית'}
           </h1>
           <p className="text-[11px] mt-1" style={{ color: C.textSoft }}>
             <span>{dateStr}</span>
             <span className="mx-1.5">·</span>
-            <span>{mode === 'work' ? 'תצוגת עבודה' : 'תצוגת ניהול'}</span>
+            <span>{mode === 'work' ? 'תצוגת עבודה — מותאם לטאבלט במטבח' : 'תצוגת ניהול — מבט עסקי'}</span>
           </p>
         </div>
         <div className="flex items-center gap-2.5">
@@ -473,14 +515,16 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      {/* ════════ KPI STRIP (always visible — mode-agnostic) ════════ */}
-      <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      {/* ════════ KPI STRIP — clickable, scrolls + filters the relevant section ═══ */}
+      <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
         <KpiCard
           icon="bag"
           label="הזמנות היום"
           value={String(stats?.ordersToday ?? liveOrders.length)}
           accent={C.brand}
           sub={`${liveOrders.length} פעילות${stats?.ordersTomorrow ? ` · ${stats.ordersTomorrow} מחר` : ''}`}
+          active={activeKpi === 'orders'}
+          onClick={() => onKpiClick('orders')}
         />
         <KpiCard
           icon="wallet"
@@ -488,6 +532,8 @@ export default function DashboardPage() {
           value={formatCurrency(expectedRevenue)}
           accent={C.green}
           sub={liveOrders.length > 0 ? `ממוצע ${formatCurrency(expectedRevenue / liveOrders.length)}` : 'אין הזמנות פעילות'}
+          active={activeKpi === 'revenue'}
+          onClick={() => onKpiClick('revenue')}
         />
         <KpiCard
           icon="clock"
@@ -495,6 +541,8 @@ export default function DashboardPage() {
           value={formatCurrency(stats?.unpaidAmount ?? 0)}
           accent={(stats?.unpaidOrders ?? 0) > 0 ? C.amber : C.textSoft}
           sub={(stats?.unpaidOrders ?? 0) > 0 ? `${stats?.unpaidOrders} הזמנות פתוחות` : 'הכל סגור'}
+          active={activeKpi === 'unpaid'}
+          onClick={() => onKpiClick('unpaid')}
         />
         <KpiCard
           icon="truck"
@@ -502,6 +550,17 @@ export default function DashboardPage() {
           value={String(stats?.deliveriesToday ?? todayDeliveries.length)}
           accent={C.blue}
           sub={`${stats?.deliveriesDelivered ?? 0} נמסרו · ${stats?.deliveriesCollected ?? 0} נאספו`}
+          active={activeKpi === 'deliveries'}
+          onClick={() => onKpiClick('deliveries')}
+        />
+        <KpiCard
+          icon="alert"
+          label="מלאי דורש טיפול"
+          value={String(stockTotal)}
+          accent={stockTotal > 0 ? C.red : C.textSoft}
+          sub={stockTotal === 0 ? 'הכל תקין' : `${stock.raw.length} גלם · ${stock.products.length} מוצר · ${stock.petitFours.length} פטיפור`}
+          active={activeKpi === 'inventory'}
+          onClick={() => onKpiClick('inventory')}
         />
       </section>
 
@@ -509,7 +568,7 @@ export default function DashboardPage() {
       <section className="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
         {/* ── PRIMARY COLUMN: Today orders (lg: 2/3) ────────────────────── */}
-        <div className="lg:col-span-2 space-y-3">
+        <div ref={ordersRef} className="lg:col-span-2 space-y-3 scroll-mt-4">
           <SectionHeader
             title="הזמנות לטיפול היום"
             count={visibleOrders.length}
@@ -524,12 +583,12 @@ export default function DashboardPage() {
               מה דורש טיפול עכשיו?
             </p>
             <div className="flex flex-wrap items-center gap-1.5">
-              <FilterChip label="הכל"             count={filterCounts.all}         active={filter === 'all'}         onClick={() => setFilter('all')} />
-              <FilterChip label="להתחיל הכנה"     count={filterCounts.start}       active={filter === 'start'}       onClick={() => setFilter('start')}       tone="amber" />
-              <FilterChip label="לסמן מוכנות"     count={filterCounts.mark_ready}  active={filter === 'mark_ready'}  onClick={() => setFilter('mark_ready')}  tone="amber" />
-              <FilterChip label="מוכנות לאספקה"   count={filterCounts.ready_to_go} active={filter === 'ready_to_go'} onClick={() => setFilter('ready_to_go')} />
-              <FilterChip label="ממתינות לתשלום"  count={filterCounts.unpaid}      active={filter === 'unpaid'}      onClick={() => setFilter('unpaid')}      tone="amber" />
-              <FilterChip label="דחופות"          count={filterCounts.urgent}      active={filter === 'urgent'}      onClick={() => setFilter('urgent')}      tone="red" />
+              <FilterChip label="הכל"             count={filterCounts.all}         active={filter === 'all'}         onClick={() => setFilterFromChip('all')} />
+              <FilterChip label="להתחיל הכנה"     count={filterCounts.start}       active={filter === 'start'}       onClick={() => setFilterFromChip('start')}       tone="amber" />
+              <FilterChip label="לסמן מוכנות"     count={filterCounts.mark_ready}  active={filter === 'mark_ready'}  onClick={() => setFilterFromChip('mark_ready')}  tone="amber" />
+              <FilterChip label="מוכנות לאספקה"   count={filterCounts.ready_to_go} active={filter === 'ready_to_go'} onClick={() => setFilterFromChip('ready_to_go')} />
+              <FilterChip label="ממתינות לתשלום"  count={filterCounts.unpaid}      active={filter === 'unpaid'}      onClick={() => setFilterFromChip('unpaid')}      tone="amber" />
+              <FilterChip label="דחופות"          count={filterCounts.urgent}      active={filter === 'urgent'}      onClick={() => setFilterFromChip('urgent')}      tone="red" />
             </div>
           </div>
 
@@ -542,7 +601,7 @@ export default function DashboardPage() {
               hintHref={filter === 'all' ? '/orders' : undefined}
               hintOnClick={filter !== 'all' ? () => setFilter('all') : undefined}
             />
-          ) : (
+          ) : mode === 'work' ? (
             <div className="space-y-3">
               {visibleOrders.map(o => (
                 <OrderActionCard
@@ -556,13 +615,27 @@ export default function DashboardPage() {
                 />
               ))}
             </div>
+          ) : (
+            // Management mode — compact one-line rows. No big primary CTA;
+            // actions live in the existing מצמן modal accessible via "עוד".
+            <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: C.card, border: `1px solid ${C.border}` }}>
+              {visibleOrders.map((o, idx) => (
+                <OrderRow
+                  key={o.id}
+                  order={o}
+                  isLast={idx === visibleOrders.length - 1}
+                  onOpen={() => router.push(`/orders/${o.id}`)}
+                  onMoreActions={() => setMoreActionsOrder(o)}
+                />
+              ))}
+            </div>
           )}
         </div>
 
         {/* ── SECONDARY COLUMN: Deliveries + Stock (lg: 1/3) ───────────── */}
         <aside className="space-y-5">
           {/* Today deliveries */}
-          <div className="space-y-3">
+          <div ref={deliveriesRef} className="space-y-3 scroll-mt-4">
             <SectionHeader
               title="משלוחים היום"
               count={todayDeliveries.length}
@@ -586,16 +659,68 @@ export default function DashboardPage() {
           </div>
 
           {/* Stock attention — single card, three internal sections */}
-          <div className="space-y-3">
+          <div ref={inventoryRef} className="space-y-3 scroll-mt-4">
             <SectionHeader
               title="מלאי דורש טיפול"
               count={stockTotal}
               href="/inventory"
             />
-            <StockAttentionCard stock={stock} total={stockTotal} />
+            <StockAttentionCard stock={stock} total={stockTotal} expanded={activeKpi === 'inventory'} />
           </div>
         </aside>
       </section>
+
+      {/* ════════ MANAGEMENT-ONLY: Recent activity + admin links ════════ */}
+      {mode === 'management' && (
+        <section className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          <div className="lg:col-span-2 space-y-3">
+            <SectionHeader title="פעילות אחרונה" count={recentOrders.length} href="/orders" />
+            {recentOrders.length === 0 ? (
+              <EmptyInline icon="clock" title="אין פעילות אחרונה" />
+            ) : (
+              <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: C.card, border: `1px solid ${C.border}` }}>
+                {recentOrders.slice(0, 8).map((o, idx) => {
+                  const c = o.לקוחות;
+                  const name = c ? `${c.שם_פרטי} ${c.שם_משפחה}` : (o.שם_מקבל || 'לקוח');
+                  const isLast = idx === Math.min(7, recentOrders.length - 1);
+                  return (
+                    <Link
+                      key={o.id}
+                      href={`/orders/${o.id}`}
+                      className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-amber-50/40"
+                      style={{ borderBottom: isLast ? 'none' : `1px solid ${C.borderSoft}` }}
+                    >
+                      <span className="font-mono text-[11px] font-semibold flex-shrink-0" style={{ color: C.brand, width: 92 }}>
+                        {o.מספר_הזמנה}
+                      </span>
+                      <span className="text-[13px] font-medium truncate flex-1" style={{ color: C.text }}>
+                        {name}
+                      </span>
+                      <StatusBadge status={o.סטטוס_הזמנה} type="order" />
+                      <span className="text-[12px] tabular-nums font-semibold w-20 text-left flex-shrink-0" style={{ color: C.text }}>
+                        {formatCurrency(o.סך_הכל_לתשלום)}
+                      </span>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <aside className="space-y-3">
+            <SectionHeader title="קישורים מהירים" />
+            <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: C.card, border: `1px solid ${C.border}` }}>
+              <AdminLink href="/orders"     icon="bag"    label="ניהול הזמנות" />
+              <AdminLink href="/customers"  icon="check"  label="לקוחות" />
+              <AdminLink href="/invoices"   icon="wallet" label="חשבוניות וקבלות" />
+              <AdminLink href="/inventory"  icon="box"    label="ניהול מלאי" />
+              <AdminLink href="/products"   icon="bag"    label="קטלוג מוצרים" />
+              <AdminLink href="/reports/orders" icon="note" label="דוחות הזמנות" />
+              <AdminLink href="/settings"   icon="tag"    label="הגדרות" last />
+            </div>
+          </aside>
+        </section>
+      )}
 
       {/* ════════ Modals ════════ */}
       {confirmAction && (
@@ -651,7 +776,7 @@ function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => voi
       <button
         key={val}
         onClick={() => onChange(val)}
-        className="px-3 h-8 text-[11px] font-medium rounded-lg transition-colors"
+        className="px-3.5 h-9 text-[12px] font-semibold rounded-lg transition-colors whitespace-nowrap"
         style={{
           backgroundColor: active ? C.card : 'transparent',
           color: active ? C.text : C.textSoft,
@@ -669,8 +794,8 @@ function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => voi
       role="group"
       aria-label="מצב תצוגה"
     >
-      {opt('work', 'עבודה')}
-      {opt('management', 'ניהול')}
+      {opt('work', 'תצוגת עבודה')}
+      {opt('management', 'תצוגת ניהול')}
     </div>
   );
 }
@@ -740,21 +865,28 @@ function FilterChip({
 // ─── KpiCard ──────────────────────────────────────────────────────────────
 
 function KpiCard({
-  icon, label, value, accent, sub,
+  icon, label, value, accent, sub, active, onClick,
 }: {
   icon: string;
   label: string;
   value: string;
   accent: string;
   sub?: string;
+  active?: boolean;
+  onClick?: () => void;
 }) {
+  const interactive = !!onClick;
+  const Tag: 'button' | 'div' = interactive ? 'button' : 'div';
   return (
-    <div
-      className="rounded-2xl px-4 py-3.5 transition-colors"
+    <Tag
+      onClick={onClick}
+      className={`rounded-2xl px-4 py-3.5 transition-all w-full text-right ${interactive ? 'cursor-pointer hover:-translate-y-px hover:shadow-sm' : ''}`}
       style={{
-        backgroundColor: C.card,
-        border: `1px solid ${C.border}`,
-        boxShadow: '0 1px 0 rgba(255,255,255,0.6)',
+        backgroundColor: active ? `${accent}08` : C.card,
+        border: `1px solid ${active ? accent : C.border}`,
+        boxShadow: active
+          ? `0 0 0 1px ${accent}30, 0 1px 0 rgba(255,255,255,0.6)`
+          : '0 1px 0 rgba(255,255,255,0.6)',
       }}
     >
       <div className="flex items-center justify-between mb-2">
@@ -772,9 +904,20 @@ function KpiCard({
         {value}
       </p>
       {sub && <p className="text-[11px] mt-2 truncate" style={{ color: C.textSoft }}>{sub}</p>}
-      {/* subtle bottom accent rule */}
-      <div className="h-[2px] mt-3 rounded-full" style={{ backgroundColor: `${accent}22` }} />
-    </div>
+      {/* Bottom accent rule — thicker when active */}
+      <div
+        className="mt-3 rounded-full transition-all"
+        style={{
+          backgroundColor: active ? accent : `${accent}22`,
+          height: active ? 3 : 2,
+        }}
+      />
+      {interactive && (
+        <p className="text-[10px] mt-1.5 inline-flex items-center gap-1" style={{ color: active ? accent : C.textSoft }}>
+          <span>{active ? '↓ הוצג למטה' : 'לחצי לפירוט'}</span>
+        </p>
+      )}
+    </Tag>
   );
 }
 
@@ -1053,10 +1196,12 @@ function DeliveryActionCard({
 // ─── StockAttentionCard ──────────────────────────────────────────────────
 
 function StockAttentionCard({
-  stock, total,
+  stock, total, expanded,
 }: {
   stock: { raw: StockRow[]; products: StockRow[]; petitFours: StockRow[] };
   total: number;
+  // When the user clicked the inventory KPI, show every alert (not just top-3).
+  expanded?: boolean;
 }) {
   if (total === 0) {
     return (
@@ -1078,16 +1223,17 @@ function StockAttentionCard({
     );
   }
 
+  const limit = expanded ? Infinity : 3;
   return (
     <div
       className="rounded-2xl overflow-hidden"
       style={{ backgroundColor: C.card, border: `1px solid ${C.border}` }}
     >
-      <StockGroupRow title="חומרי גלם"      icon="box"   items={stock.raw} />
+      <StockGroupRow title="חומרי גלם"      icon="box"   items={stock.raw}        limit={limit} />
       <Divider />
-      <StockGroupRow title="מוצרים מוכנים" icon="bag"   items={stock.products} />
+      <StockGroupRow title="מוצרים מוכנים" icon="bag"   items={stock.products}   limit={limit} />
       <Divider />
-      <StockGroupRow title="פטיפורים"      icon="flame" items={stock.petitFours} />
+      <StockGroupRow title="פטיפורים"      icon="flame" items={stock.petitFours} limit={limit} />
     </div>
   );
 }
@@ -1096,8 +1242,8 @@ function Divider() {
   return <div className="h-px" style={{ backgroundColor: C.borderSoft }} />;
 }
 
-function StockGroupRow({ title, icon, items }: { title: string; icon: string; items: StockRow[] }) {
-  const top = items.slice(0, 3);
+function StockGroupRow({ title, icon, items, limit = 3 }: { title: string; icon: string; items: StockRow[]; limit?: number }) {
+  const top = items.slice(0, Number.isFinite(limit) ? limit : items.length);
   const tone = (s: string) =>
     s === 'אזל מהמלאי' ? { text: C.red,   bg: C.redSoft }
     : s === 'קריטי'     ? { text: C.amber, bg: C.amberSoft }
@@ -1299,6 +1445,114 @@ function MarkPaidModal({
         </button>
       </div>
     </Modal>
+  );
+}
+
+// ─── OrderRow — compact one-line view (management mode) ──────────────────
+// No primary CTA — that's deliberate. Management mode is for oversight, not
+// for poking at status. Action access is via the existing "עוד" link → modal,
+// which still routes through the same PATCH endpoints.
+
+function OrderRow({
+  order, isLast, onOpen, onMoreActions,
+}: {
+  order: TodayOrder;
+  isLast: boolean;
+  onOpen: () => void;
+  onMoreActions: () => void;
+}) {
+  const c = order.לקוחות;
+  const name = c ? `${c.שם_פרטי} ${c.שם_משפחה}` : (order.שם_מקבל || 'לקוח');
+  const isDelivery = (order.סוג_אספקה ?? '') === 'משלוח';
+  const paid = order.סטטוס_תשלום === 'שולם' || order.סטטוס_תשלום === 'בארטר';
+
+  return (
+    <div
+      className="grid items-center gap-3 px-4 py-2.5 transition-colors hover:bg-amber-50/40"
+      style={{
+        borderBottom: isLast ? 'none' : `1px solid ${C.borderSoft}`,
+        gridTemplateColumns: '52px 92px minmax(0,1fr) 56px 88px auto auto',
+      }}
+    >
+      {/* time */}
+      <span className="text-[12px] tabular-nums font-semibold" style={{ color: C.text }}>
+        {order.שעת_אספקה || '—'}
+      </span>
+      {/* order # */}
+      <span className="font-mono text-[11px] font-semibold" style={{ color: C.brand }}>
+        {order.מספר_הזמנה}
+      </span>
+      {/* customer + urgent badge */}
+      <div className="flex items-center gap-1.5 min-w-0">
+        <span className="text-[13px] font-medium truncate" style={{ color: C.text }}>{name}</span>
+        {order.הזמנה_דחופה && <UrgentBadge />}
+      </div>
+      {/* type */}
+      <span
+        className="inline-flex items-center justify-center gap-1 text-[11px] px-2 py-0.5 rounded-md"
+        style={{
+          backgroundColor: isDelivery ? C.blueSoft : C.brandSoft,
+          color: isDelivery ? C.blue : C.brand,
+        }}
+      >
+        <Icon name={isDelivery ? 'truck' : 'box'} className="w-3 h-3" />
+        {isDelivery ? 'משלוח' : 'איסוף'}
+      </span>
+      {/* amount + payment-pending dot */}
+      <div className="flex items-center gap-1.5 justify-end">
+        {!paid && (
+          <span
+            className="w-1.5 h-1.5 rounded-full"
+            style={{ backgroundColor: C.amber }}
+            title="ממתין לתשלום"
+            aria-label="ממתין לתשלום"
+          />
+        )}
+        <span className="text-[12px] tabular-nums font-semibold" style={{ color: C.text }}>
+          {formatCurrency(order.סך_הכל_לתשלום)}
+        </span>
+      </div>
+      {/* status */}
+      <StatusBadge status={order.סטטוס_הזמנה} type="order" />
+      {/* actions */}
+      <div className="flex items-center gap-2 flex-shrink-0">
+        <button
+          onClick={onMoreActions}
+          className="text-[11px] hover:underline"
+          style={{ color: C.textSoft }}
+        >
+          עוד
+        </button>
+        <button
+          onClick={onOpen}
+          className="text-[11px] font-medium hover:underline"
+          style={{ color: C.brand }}
+        >
+          פתח →
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── AdminLink — management mode quick links ─────────────────────────────
+
+function AdminLink({ href, icon, label, last }: { href: string; icon: string; label: string; last?: boolean }) {
+  return (
+    <Link
+      href={href}
+      className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-amber-50/40"
+      style={{ borderBottom: last ? 'none' : `1px solid ${C.borderSoft}` }}
+    >
+      <span
+        className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+        style={{ backgroundColor: C.brandSoft, color: C.brand }}
+      >
+        <Icon name={icon} className="w-3.5 h-3.5" />
+      </span>
+      <span className="text-[13px] font-medium flex-1 truncate" style={{ color: C.text }}>{label}</span>
+      <Icon name="arrow" className="w-3 h-3 rtl-flip" style={{ color: C.textSoft }} />
+    </Link>
   );
 }
 
