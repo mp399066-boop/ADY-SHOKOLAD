@@ -8,7 +8,7 @@
 // so all server-side hooks (stock movements, Morning receipt/tax-invoice,
 // WhatsApp courier ping) keep firing exactly as they do from the detail pages.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
@@ -654,10 +654,10 @@ export default function DashboardPage() {
                   key={o.id}
                   order={o}
                   updating={updatingId === o.id}
-                  onPrimary={() => onPrimaryOrderAction(o)}
-                  onMarkPaid={() => setMarkPaidOrder(o)}
                   onOpen={() => router.push(`/orders/${o.id}`)}
                   onMoreActions={() => setMoreActionsOrder(o)}
+                  onPickOrderStatus={s => onPickOrderStatus(o, s)}
+                  onPickPaymentStatus={s => onPickPaymentStatus(o, s)}
                 />
               ))}
             </div>
@@ -1006,136 +1006,127 @@ function KpiCard({
   );
 }
 
-// ─── OrderActionCard — compact 3-row work card ────────────────────────────
-// Three rows, ~88px tall: identification (number + name + badges), metadata
-// (time / type / amount / phone / note in one line), and the action row with
-// primary CTA + secondary mark-paid + small "עוד" / "פרטים" links. Replaces
-// the previous tall card with the inline payment alert strip — payment status
-// is now a top-row badge, mark-paid a sibling button to the primary CTA.
+// ─── OrderActionCard — stepper-driven work card ───────────────────────────
+// Header (number + customer + meta) → horizontal order-status stepper
+// (חדשה → בהכנה → מוכנה → נשלחה → הושלמה) → divider → payment stepper
+// (ממתין → חלקי → שולם) → footer links. Each circle in either stepper is
+// the action — clicking advances/reverts the status. No primary CTA, no
+// inline mark-paid button. Cancelled orders get an exception banner instead
+// of the order stepper but keep the payment stepper.
 
 function OrderActionCard({
-  order, updating, onPrimary, onMarkPaid, onOpen, onMoreActions,
+  order, updating, onOpen, onMoreActions, onPickOrderStatus, onPickPaymentStatus,
 }: {
   order: TodayOrder;
   updating: boolean;
-  onPrimary: () => void;
-  onMarkPaid: () => void;
   onOpen: () => void;
   onMoreActions: () => void;
+  onPickOrderStatus: (s: OrderStatus) => void;
+  onPickPaymentStatus: (s: 'ממתין' | 'שולם' | 'חלקי' | 'בוטל' | 'בארטר') => void;
 }) {
   const c = order.לקוחות;
   const customerName = c ? `${c.שם_פרטי} ${c.שם_משפחה}` : (order.שם_מקבל || 'לקוח');
   const isDelivery = (order.סוג_אספקה ?? '') === 'משלוח';
-  const action = nextOrderAction(order);
-  const paid = order.סטטוס_תשלום === 'שולם' || order.סטטוס_תשלום === 'בארטר';
   const note = (order.הערות_להזמנה ?? '').trim();
+  const cancelledOrDraft = order.סטטוס_הזמנה === 'בוטלה' || order.סטטוס_הזמנה === 'טיוטה';
 
   return (
     <div
-      className="rounded-xl px-4 py-3 transition-shadow hover:shadow-sm"
+      className="rounded-xl px-5 py-4 transition-shadow hover:shadow-sm"
       style={{
         backgroundColor: C.card,
         border: `1px solid ${C.border}`,
         boxShadow: '0 1px 2px rgba(58,42,26,0.03)',
       }}
     >
-      {/* ── Row 1: number + name + badges ───────────────────────────────── */}
-      <div className="flex items-center gap-2 mb-1.5">
-        <span className="font-mono text-[11px] font-semibold tracking-wide flex-shrink-0" style={{ color: C.brand }}>
-          {order.מספר_הזמנה}
-        </span>
-        <span className="text-[15px] font-semibold truncate flex-1" style={{ color: C.text, letterSpacing: '-0.01em' }}>
-          {customerName}
-        </span>
-        {order.הזמנה_דחופה && <UrgentBadge />}
-        <PremiumBadge status={order.סטטוס_הזמנה} kind="order" />
-        <PremiumBadge status={order.סטטוס_תשלום} kind="payment" />
-      </div>
-
-      {/* ── Row 2: meta line (time · type · amount · phone · note) ─────── */}
-      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[12px] mb-2.5" style={{ color: C.textSoft }}>
-        <Meta icon="clock" text={order.שעת_אספקה || '—'} mono />
-        <Sep />
-        <Meta icon={isDelivery ? 'truck' : 'box'} text={isDelivery ? 'משלוח' : 'איסוף'} />
-        <Sep />
-        <span className="tabular-nums font-semibold" style={{ color: C.text }}>
-          {formatCurrency(order.סך_הכל_לתשלום)}
-        </span>
-        {order.טלפון_מקבל && (
-          <>
-            <Sep />
-            <a
-              href={`tel:${order.טלפון_מקבל}`}
-              onClick={e => e.stopPropagation()}
-              className="inline-flex items-center gap-1 hover:underline tabular-nums"
-              style={{ color: C.blue }}
-            >
-              <Icon name="phone" className="w-3 h-3" />
-              {order.טלפון_מקבל}
-            </a>
-          </>
-        )}
-        {note && (
-          <>
-            <Sep />
-            <span className="inline-flex items-center gap-1 max-w-[28ch] truncate" style={{ color: C.amber }} title={note}>
-              <Icon name="note" className="w-3 h-3" />
-              <span className="truncate">{note}</span>
+      {/* ── Header: identification + meta ────────────────────────────────── */}
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 mb-0.5">
+            <span className="font-mono text-[11px] font-semibold tracking-wide" style={{ color: C.brand }}>
+              {order.מספר_הזמנה}
             </span>
-          </>
+            {order.הזמנה_דחופה && <UrgentBadge />}
+          </div>
+          <p className="text-[16px] font-semibold leading-tight truncate" style={{ color: C.text, letterSpacing: '-0.01em' }}>
+            {customerName}
+          </p>
+          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[12px] mt-1.5" style={{ color: C.textSoft }}>
+            <Meta icon="clock" text={order.שעת_אספקה || '—'} mono />
+            <Sep />
+            <Meta icon={isDelivery ? 'truck' : 'box'} text={isDelivery ? 'משלוח' : 'איסוף'} />
+            <Sep />
+            <span className="tabular-nums font-semibold" style={{ color: C.text }}>
+              {formatCurrency(order.סך_הכל_לתשלום)}
+            </span>
+            {order.טלפון_מקבל && (
+              <>
+                <Sep />
+                <a
+                  href={`tel:${order.טלפון_מקבל}`}
+                  onClick={e => e.stopPropagation()}
+                  className="inline-flex items-center gap-1 hover:underline tabular-nums"
+                  style={{ color: C.blue }}
+                >
+                  <Icon name="phone" className="w-3 h-3" />
+                  {order.טלפון_מקבל}
+                </a>
+              </>
+            )}
+            {note && (
+              <>
+                <Sep />
+                <span className="inline-flex items-center gap-1 max-w-[28ch]" style={{ color: C.amber }} title={note}>
+                  <Icon name="note" className="w-3 h-3 flex-shrink-0" />
+                  <span className="truncate">{note}</span>
+                </span>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Order status stepper (or exception banner) ───────────────────── */}
+      <div className="mb-4">
+        {cancelledOrDraft ? (
+          <ExceptionStateBanner status={order.סטטוס_הזמנה as 'בוטלה' | 'טיוטה'} />
+        ) : (
+          <OrderStatusStepper
+            order={order}
+            updating={updating}
+            onPick={onPickOrderStatus}
+          />
         )}
       </div>
 
-      {/* ── Row 3: action row — primary CTA + mark-paid + עוד · פרטים ──── */}
-      <div className="flex items-center gap-2">
-        {action ? (
-          <button
-            onClick={onPrimary}
-            disabled={updating}
-            className="inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-lg text-[13px] font-semibold text-white transition-colors disabled:opacity-60"
-            style={{ backgroundColor: C.brand }}
-          >
-            <span>{updating ? '...' : action.label}</span>
-            <Icon name="arrow" className="w-3 h-3 rtl-flip" />
-          </button>
-        ) : (
-          <span
-            className="inline-flex items-center gap-1.5 h-10 px-3 rounded-lg text-[12px] font-medium"
-            style={{ backgroundColor: C.brandSoft, color: C.brand }}
-          >
-            <Icon name="check" className="w-3.5 h-3.5" />
-            {order.סטטוס_הזמנה === 'בוטלה' ? 'בוטלה' : 'הושלמה'}
-          </span>
-        )}
+      {/* ── Hairline divider between order/payment progress ──────────────── */}
+      <div className="h-px mb-3" style={{ backgroundColor: C.borderSoft }} />
 
-        {!paid && (
-          <button
-            onClick={onMarkPaid}
-            disabled={updating}
-            className="inline-flex items-center gap-1.5 h-10 px-3 rounded-lg text-[12px] font-semibold transition-colors disabled:opacity-60 border"
-            style={{ backgroundColor: C.greenSoft, color: C.green, borderColor: '#B5E5DD' }}
-          >
-            <Icon name="wallet" className="w-3.5 h-3.5" />
-            סמני שולם
-          </button>
-        )}
+      {/* ── Payment stepper ─────────────────────────────────────────────── */}
+      <div className="mb-3">
+        <PaymentStatusStepper
+          order={order}
+          updating={updating}
+          onPick={onPickPaymentStatus}
+        />
+      </div>
 
-        <div className="flex-1" />
-
+      {/* ── Footer: tertiary links ──────────────────────────────────────── */}
+      <div className="flex items-center justify-end gap-2 pt-1">
         <button
           onClick={onMoreActions}
           className="text-[11px] font-medium hover:underline transition-colors px-1"
           style={{ color: C.textSoft }}
         >
-          עוד
+          עוד פעולות
         </button>
         <span className="text-[11px]" style={{ color: C.borderSoft }}>·</span>
         <button
           onClick={onOpen}
           className="text-[11px] font-medium hover:underline transition-colors px-1"
-          style={{ color: C.textSoft }}
+          style={{ color: C.brand }}
         >
-          פרטים
+          פרטים →
         </button>
       </div>
     </div>
@@ -1144,6 +1135,218 @@ function OrderActionCard({
 
 function Sep() {
   return <span style={{ color: C.borderSoft }}>·</span>;
+}
+
+// ─── OrderStatusStepper ──────────────────────────────────────────────────
+// 5 circular steps with hair-line connectors. Past steps show a check, the
+// current step is filled with a soft ring around it, future steps are empty
+// with a light border. Each circle is a full-width tap target (≥36px tall
+// including label) for tablet use.
+//
+// IMPORTANT: the API value sent to PATCH stays the literal status string
+// the DB expects ('מוכנה למשלוח', 'הושלמה בהצלחה'). The label shown to the
+// user can be a shorter display string ('מוכנה', 'הושלמה').
+
+const ORDER_STEPS: { label: string; value: OrderStatus }[] = [
+  { label: 'חדשה',   value: 'חדשה' },
+  { label: 'בהכנה',  value: 'בהכנה' },
+  { label: 'מוכנה',  value: 'מוכנה למשלוח' },
+  { label: 'נשלחה',  value: 'נשלחה' },
+  { label: 'הושלמה', value: 'הושלמה בהצלחה' },
+];
+
+function OrderStatusStepper({
+  order, updating, onPick,
+}: {
+  order: TodayOrder;
+  updating: boolean;
+  onPick: (s: OrderStatus) => void;
+}) {
+  const currentIdx = Math.max(0, ORDER_STEPS.findIndex(s => s.value === order.סטטוס_הזמנה));
+  // Pickup orders never "ship" — relabel the 4th step to "נמסרה" so the verb
+  // matches the flow the kitchen uses for self-collect orders. The PATCH still
+  // sends 'נשלחה' under the hood, which is what the route + Morning expect.
+  const isPickup = (order.סוג_אספקה ?? '') === 'איסוף עצמי';
+  const steps = isPickup
+    ? ORDER_STEPS.map((s, i) => (i === 3 ? { ...s, label: 'נמסרה' } : s))
+    : ORDER_STEPS;
+  const lastIdx = steps.length - 1;
+
+  return (
+    <div className="flex items-start" dir="rtl">
+      {steps.map((step, idx) => {
+        const isPast    = idx <  currentIdx;
+        const isCurrent = idx === currentIdx;
+        const isFuture  = idx >  currentIdx;
+        return (
+          <Fragment key={step.value}>
+            <button
+              onClick={() => !isCurrent && onPick(step.value)}
+              disabled={updating || isCurrent}
+              className="flex flex-col items-center gap-1.5 flex-shrink-0 disabled:cursor-default group"
+              style={{ minWidth: 56 }}
+              aria-label={`שינוי סטטוס ל${step.label}`}
+              aria-current={isCurrent ? 'step' : undefined}
+            >
+              <span
+                className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-semibold transition-all"
+                style={{
+                  backgroundColor: isPast ? C.brand : isCurrent ? C.brand : C.card,
+                  color: isPast || isCurrent ? '#FFFFFF' : C.textSoft,
+                  border: `1px solid ${isFuture ? C.border : C.brand}`,
+                  boxShadow: isCurrent ? `0 0 0 3px ${C.brand}22` : undefined,
+                }}
+              >
+                {isPast ? <Icon name="check" className="w-3.5 h-3.5" /> : idx + 1}
+              </span>
+              <span
+                className="text-[11px] whitespace-nowrap transition-colors"
+                style={{
+                  color: isCurrent ? C.text : C.textSoft,
+                  fontWeight: isCurrent ? 700 : 500,
+                }}
+              >
+                {step.label}
+              </span>
+            </button>
+            {idx < lastIdx && (
+              <div
+                className="flex-1 mt-4 transition-colors"
+                style={{
+                  backgroundColor: idx < currentIdx ? C.brand : C.border,
+                  height: 2,
+                  minWidth: 12,
+                }}
+              />
+            )}
+          </Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── PaymentStatusStepper ────────────────────────────────────────────────
+// Compact 3-state row: ממתין → חלקי → שולם. The שולם click opens MarkPaidModal
+// (handled upstream by onPickPaymentStatus). 'בארטר' and 'בוטל' aren't on the
+// regular ladder — render a labelled chip instead so the user still sees the
+// state without having to engage with the stepper.
+
+const PAYMENT_STEPS: { label: string; value: 'ממתין' | 'חלקי' | 'שולם'; tone: 'amber' | 'green' }[] = [
+  { label: 'ממתין', value: 'ממתין', tone: 'amber' },
+  { label: 'חלקי',  value: 'חלקי',  tone: 'amber' },
+  { label: 'שולם',  value: 'שולם',  tone: 'green' },
+];
+
+function PaymentStatusStepper({
+  order, updating, onPick,
+}: {
+  order: TodayOrder;
+  updating: boolean;
+  onPick: (s: 'ממתין' | 'שולם' | 'חלקי' | 'בוטל' | 'בארטר') => void;
+}) {
+  const status = order.סטטוס_תשלום;
+
+  if (status === 'בארטר' || status === 'בוטל') {
+    const tone = status === 'בוטל'
+      ? { bg: '#FEE4E2', text: '#991B1B', border: '#F5BFC0' }
+      : { bg: '#EEEAF4', text: '#4A3868', border: '#D4C8E8' };
+    return (
+      <div className="flex items-center gap-2">
+        <span className="text-[11px] font-semibold w-12 flex-shrink-0" style={{ color: C.textSoft }}>תשלום</span>
+        <span
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold"
+          style={{ backgroundColor: tone.bg, color: tone.text, border: `1px solid ${tone.border}` }}
+        >
+          {status === 'בוטל' ? 'תשלום בוטל' : 'בארטר'}
+        </span>
+        <button
+          onClick={() => onPick('ממתין')}
+          disabled={updating}
+          className="text-[11px] hover:underline disabled:opacity-50"
+          style={{ color: C.textSoft }}
+        >
+          איפוס לממתין
+        </button>
+      </div>
+    );
+  }
+
+  const currentIdx = Math.max(0, PAYMENT_STEPS.findIndex(s => s.value === status));
+  const lastIdx = PAYMENT_STEPS.length - 1;
+
+  return (
+    <div className="flex items-center" dir="rtl">
+      <span className="text-[11px] font-semibold w-12 flex-shrink-0" style={{ color: C.textSoft }}>תשלום</span>
+      {PAYMENT_STEPS.map((step, idx) => {
+        const isPast    = idx <  currentIdx;
+        const isCurrent = idx === currentIdx;
+        const isFuture  = idx >  currentIdx;
+        const accent = step.tone === 'green' ? C.green : C.amber;
+        return (
+          <Fragment key={step.value}>
+            <button
+              onClick={() => !isCurrent && onPick(step.value)}
+              disabled={updating || isCurrent}
+              className="flex items-center gap-1.5 flex-shrink-0 disabled:cursor-default px-1"
+              aria-label={`שינוי תשלום ל${step.label}`}
+              aria-current={isCurrent ? 'step' : undefined}
+            >
+              <span
+                className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-semibold transition-all"
+                style={{
+                  backgroundColor: isPast || isCurrent ? accent : C.card,
+                  color: isPast || isCurrent ? '#FFFFFF' : C.textSoft,
+                  border: `1px solid ${isFuture ? C.border : accent}`,
+                  boxShadow: isCurrent ? `0 0 0 2px ${accent}22` : undefined,
+                }}
+              >
+                {isPast ? <Icon name="check" className="w-2.5 h-2.5" /> : ''}
+              </span>
+              <span
+                className="text-[11px] whitespace-nowrap transition-colors"
+                style={{
+                  color: isCurrent ? C.text : C.textSoft,
+                  fontWeight: isCurrent ? 700 : 500,
+                }}
+              >
+                {step.label}
+              </span>
+            </button>
+            {idx < lastIdx && (
+              <div
+                className="flex-1 transition-colors mx-1.5"
+                style={{
+                  backgroundColor: idx < currentIdx ? accent : C.border,
+                  height: 2,
+                  minWidth: 10,
+                }}
+              />
+            )}
+          </Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── ExceptionStateBanner — replaces the order stepper for cancelled/draft ─
+
+function ExceptionStateBanner({ status }: { status: 'בוטלה' | 'טיוטה' }) {
+  const isCancelled = status === 'בוטלה';
+  const tone = isCancelled
+    ? { bg: '#FEE4E2', text: '#991B1B', border: '#F5BFC0', label: 'ההזמנה בוטלה', hint: 'להחזרה השתמשי ב"עוד פעולות"' }
+    : { bg: '#F5F0FA', text: '#5B21B6', border: '#DDD6FE', label: 'טיוטה', hint: 'ההזמנה אינה פעילה — להפעלה השתמשי ב"עוד פעולות"' };
+  return (
+    <div
+      className="flex items-center gap-3 px-3 py-2.5 rounded-lg"
+      style={{ backgroundColor: tone.bg, border: `1px solid ${tone.border}` }}
+    >
+      <Icon name="alert" className="w-4 h-4 flex-shrink-0" style={{ color: tone.text }} />
+      <span className="text-[12px] font-semibold" style={{ color: tone.text }}>{tone.label}</span>
+      <span className="text-[11px] flex-1 truncate" style={{ color: tone.text, opacity: 0.8 }}>{tone.hint}</span>
+    </div>
+  );
 }
 
 function Meta({ icon, text, mono }: { icon: string; text: string; mono?: boolean }) {
