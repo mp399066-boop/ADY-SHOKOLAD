@@ -137,6 +137,10 @@ const C = {
   textSoft: '#8A735F',
   brand:    '#8B5E34',
   brandSoft:'#FAF5E9',
+  // Matte gold — used for stepper steps that are completed. Softer than
+  // the brand brown so the current step still pops as the focal point.
+  gold:     '#B89870',
+  goldSoft: '#F4E8D8',
   green:    '#0F766E',
   greenSoft:'#ECFDF5',
   red:      '#B91C1C',
@@ -1178,23 +1182,34 @@ function OrderStatusStepper({
         const isPast    = idx <  currentIdx;
         const isCurrent = idx === currentIdx;
         const isFuture  = idx >  currentIdx;
+        // Past steps use matte gold (lighter than brand brown) so the
+        // current step stays the visual anchor. Future steps are cream.
+        const circleBg     = isCurrent ? C.brand : isPast ? C.gold : C.cardSoft;
+        const circleColor  = isPast || isCurrent ? '#FFFFFF' : C.textSoft;
+        const circleBorder = isCurrent ? C.brand : isPast ? C.gold : C.border;
         return (
           <Fragment key={step.value}>
             <button
               onClick={() => !isCurrent && onPick(step.value)}
               disabled={updating || isCurrent}
-              className="flex flex-col items-center gap-1.5 flex-shrink-0 disabled:cursor-default group"
-              style={{ minWidth: 56 }}
+              className="flex flex-col items-center gap-1.5 flex-shrink-0 disabled:cursor-default group transition-transform hover:-translate-y-px"
+              style={{ minWidth: 60 }}
               aria-label={`שינוי סטטוס ל${step.label}`}
               aria-current={isCurrent ? 'step' : undefined}
             >
               <span
-                className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-semibold transition-all"
+                className="rounded-full flex items-center justify-center text-[11px] font-semibold transition-all"
                 style={{
-                  backgroundColor: isPast ? C.brand : isCurrent ? C.brand : C.card,
-                  color: isPast || isCurrent ? '#FFFFFF' : C.textSoft,
-                  border: `1px solid ${isFuture ? C.border : C.brand}`,
-                  boxShadow: isCurrent ? `0 0 0 3px ${C.brand}22` : undefined,
+                  width:           isCurrent ? 36 : 32,
+                  height:          isCurrent ? 36 : 32,
+                  backgroundColor: circleBg,
+                  color:           circleColor,
+                  border:          `1px solid ${circleBorder}`,
+                  boxShadow: isCurrent
+                    ? `0 0 0 4px ${C.brand}1A, 0 1px 2px rgba(58,42,26,0.10)`
+                    : isPast
+                    ? `0 1px 2px rgba(184,152,112,0.20)`
+                    : 'none',
                 }}
               >
                 {isPast ? <Icon name="check" className="w-3.5 h-3.5" /> : idx + 1}
@@ -1202,8 +1217,9 @@ function OrderStatusStepper({
               <span
                 className="text-[11px] whitespace-nowrap transition-colors"
                 style={{
-                  color: isCurrent ? C.text : C.textSoft,
-                  fontWeight: isCurrent ? 700 : 500,
+                  color: isCurrent ? C.text : isPast ? C.text : C.textSoft,
+                  fontWeight: isCurrent ? 700 : isPast ? 600 : 500,
+                  letterSpacing: '0.01em',
                 }}
               >
                 {step.label}
@@ -1211,11 +1227,16 @@ function OrderStatusStepper({
             </button>
             {idx < lastIdx && (
               <div
-                className="flex-1 mt-4 transition-colors"
+                className="flex-1 transition-colors"
                 style={{
-                  backgroundColor: idx < currentIdx ? C.brand : C.border,
+                  backgroundColor: idx < currentIdx ? C.gold : C.border,
                   height: 2,
                   minWidth: 12,
+                  // Align the connector with the centerline of the smaller
+                  // (32px) circles. Current step is slightly larger so it
+                  // overflows the line — that's intentional, it makes the
+                  // active node read as a focal anchor.
+                  marginTop: 16,
                 }}
               />
             )}
@@ -1283,22 +1304,34 @@ function PaymentStatusStepper({
         const isCurrent = idx === currentIdx;
         const isFuture  = idx >  currentIdx;
         const accent = step.tone === 'green' ? C.green : C.amber;
+        // Past payment steps use matte gold for consistency with the order
+        // stepper above; current step is the live tone (amber/green); future
+        // is cream + light border.
+        const circleBg     = isCurrent ? accent : isPast ? C.gold : C.cardSoft;
+        const circleColor  = isPast || isCurrent ? '#FFFFFF' : C.textSoft;
+        const circleBorder = isCurrent ? accent : isPast ? C.gold : C.border;
         return (
           <Fragment key={step.value}>
             <button
               onClick={() => !isCurrent && onPick(step.value)}
               disabled={updating || isCurrent}
-              className="flex items-center gap-1.5 flex-shrink-0 disabled:cursor-default px-1"
+              className="flex items-center gap-1.5 flex-shrink-0 disabled:cursor-default px-1 transition-transform hover:-translate-y-px"
               aria-label={`שינוי תשלום ל${step.label}`}
               aria-current={isCurrent ? 'step' : undefined}
             >
               <span
-                className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-semibold transition-all"
+                className="rounded-full flex items-center justify-center text-[10px] font-semibold transition-all"
                 style={{
-                  backgroundColor: isPast || isCurrent ? accent : C.card,
-                  color: isPast || isCurrent ? '#FFFFFF' : C.textSoft,
-                  border: `1px solid ${isFuture ? C.border : accent}`,
-                  boxShadow: isCurrent ? `0 0 0 2px ${accent}22` : undefined,
+                  width:           isCurrent ? 22 : 20,
+                  height:          isCurrent ? 22 : 20,
+                  backgroundColor: circleBg,
+                  color:           circleColor,
+                  border:          `1px solid ${circleBorder}`,
+                  boxShadow: isCurrent
+                    ? `0 0 0 3px ${accent}1A`
+                    : isPast
+                    ? `0 1px 1px rgba(184,152,112,0.20)`
+                    : 'none',
                 }}
               >
                 {isPast ? <Icon name="check" className="w-2.5 h-2.5" /> : ''}
@@ -1306,8 +1339,9 @@ function PaymentStatusStepper({
               <span
                 className="text-[11px] whitespace-nowrap transition-colors"
                 style={{
-                  color: isCurrent ? C.text : C.textSoft,
-                  fontWeight: isCurrent ? 700 : 500,
+                  color: isCurrent ? C.text : isPast ? C.text : C.textSoft,
+                  fontWeight: isCurrent ? 700 : isPast ? 600 : 500,
+                  letterSpacing: '0.01em',
                 }}
               >
                 {step.label}
@@ -1317,7 +1351,7 @@ function PaymentStatusStepper({
               <div
                 className="flex-1 transition-colors mx-1.5"
                 style={{
-                  backgroundColor: idx < currentIdx ? accent : C.border,
+                  backgroundColor: idx < currentIdx ? C.gold : C.border,
                   height: 2,
                   minWidth: 10,
                 }}
