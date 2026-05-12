@@ -355,6 +355,24 @@ export interface Invoice {
   לקוחות?: Customer;
 }
 
+// Inventory movement ledger (migration 025). Append-only — every stock
+// change writes one row. Read-only from the UI; no edits.
+export interface InventoryMovement {
+  id: string;
+  תאריך_יצירה: string;
+  סוג_פריט: 'חומר_גלם' | 'מוצר' | 'פטיפור';
+  מזהה_פריט: string;
+  שם_פריט: string;
+  סוג_תנועה: 'כניסה' | 'יציאה' | 'התאמה';
+  כמות: number;
+  כמות_לפני: number;
+  כמות_אחרי: number;
+  סוג_מקור: 'הזמנה' | 'ידני' | 'מערכת';
+  מזהה_מקור: string | null;
+  הערות: string | null;
+  נוצר_על_ידי: string | null;
+}
+
 export interface UploadedFile {
   id: string;
   entity_type: string;

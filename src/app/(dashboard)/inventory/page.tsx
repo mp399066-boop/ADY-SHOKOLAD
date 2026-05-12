@@ -13,6 +13,7 @@ import { IconAlert, IconExport, IconEdit, IconTrash } from '@/components/icons';
 import { ActionBtn } from '@/components/ui/RowActions';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { BulkActionBar } from '@/components/ui/BulkActionBar';
+import { MovementsTab } from '@/components/inventory/MovementsTab';
 import { exportToCsv } from '@/lib/exportCsv';
 import { formatCurrency } from '@/lib/utils';
 import toast from 'react-hot-toast';
@@ -886,9 +887,7 @@ export default function InventoryPage() {
             </>
           )}
 
-          {tab === 'movements' && (
-            <EmptyState title="תנועות מלאי" description="היסטוריית תנועות מלאי תופיע כאן. פיצ׳ר זה יתווסף בקרוב." />
-          )}
+          {tab === 'movements' && <MovementsTab />}
         </div>
       </Card>
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { sendSatmarSummaryEmail } from '@/lib/satmar-email';
+import { recordStockMovement } from '@/lib/inventory-movements';
 // deploy trigger
 
 export async function GET(_: NextRequest, { params }: { params: { id: string } }) {
@@ -155,14 +156,28 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         if (!item.מוצר_id) continue;
         const { data: product } = await supabase
           .from('מוצרים_למכירה')
-          .select('כמות_במלאי')
+          .select('שם_מוצר, כמות_במלאי')
           .eq('id', item.מוצר_id)
           .single();
         if (product) {
+          const before = product.כמות_במלאי || 0;
+          const after = Math.max(0, before - item.כמות);
           await supabase
             .from('מוצרים_למכירה')
-            .update({ כמות_במלאי: Math.max(0, (product.כמות_במלאי || 0) - item.כמות) })
+            .update({ כמות_במלאי: after })
             .eq('id', item.מוצר_id);
+          // Ledger: link the movement to the order so the UI can deep-link
+          // back from "תנועות מלאי" to the order page.
+          await recordStockMovement(supabase, {
+            itemKind: 'מוצר',
+            itemId: item.מוצר_id,
+            itemName: product.שם_מוצר || '',
+            before,
+            after,
+            sourceKind: 'הזמנה',
+            sourceId: params.id,
+            notes: 'הורדה אוטומטית במעבר ל"בהכנה"',
+          });
         }
       }
     }
@@ -206,14 +221,26 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
           const qtyToDeduct = totalsByPF[pfId];
           const { data: pf } = await supabase
             .from('סוגי_פטיפורים')
-            .select('כמות_במלאי')
+            .select('שם_פטיפור, כמות_במלאי')
             .eq('id', pfId)
             .single();
           if (pf) {
+            const before = pf.כמות_במלאי || 0;
+            const after = Math.max(0, before - qtyToDeduct);
             await supabase
               .from('סוגי_פטיפורים')
-              .update({ כמות_במלאי: Math.max(0, (pf.כמות_במלאי || 0) - qtyToDeduct) })
+              .update({ כמות_במלאי: after })
               .eq('id', pfId);
+            await recordStockMovement(supabase, {
+              itemKind: 'פטיפור',
+              itemId: pfId,
+              itemName: pf.שם_פטיפור || '',
+              before,
+              after,
+              sourceKind: 'הזמנה',
+              sourceId: params.id,
+              notes: `הורדה ממארז (${qtyToDeduct} יח׳)`,
+            });
           }
         }
         console.log('[order-status] deducted petit-fours from packages:',

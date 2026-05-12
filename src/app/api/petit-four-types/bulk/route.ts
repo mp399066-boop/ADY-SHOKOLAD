@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
+import { recordStockMovement } from '@/lib/inventory-movements';
 
 export async function POST(req: NextRequest) {
   const auth = await requireManagementUser();
@@ -16,32 +17,34 @@ export async function POST(req: NextRequest) {
     let succeeded = 0;
     let failed = 0;
 
-    if (mode === 'set') {
+    const { data: rows } = await supabase
+      .from('סוגי_פטיפורים')
+      .select('id, שם_פטיפור, כמות_במלאי')
+      .in('id', ids);
+
+    for (const row of rows ?? []) {
+      const current = Number(row.כמות_במלאי) || 0;
+      const next =
+        mode === 'set' ? num :
+        mode === 'add' ? current + num :
+        Math.max(0, current - num);
       const { error } = await supabase
         .from('סוגי_פטיפורים')
-        .update({ כמות_במלאי: num })
-        .in('id', ids);
-      if (error) {
-        console.warn('[bulk-pf] set failed:', error.message);
-        failed = ids.length;
-      } else {
-        succeeded = ids.length;
-      }
-    } else {
-      const { data: rows } = await supabase
-        .from('סוגי_פטיפורים')
-        .select('id, כמות_במלאי')
-        .in('id', ids);
-
-      for (const row of rows ?? []) {
-        const current = Number(row.כמות_במלאי) || 0;
-        const next = mode === 'add' ? current + num : Math.max(0, current - num);
-        const { error } = await supabase
-          .from('סוגי_פטיפורים')
-          .update({ כמות_במלאי: next })
-          .eq('id', row.id);
-        if (error) failed++;
-        else succeeded++;
+        .update({ כמות_במלאי: next })
+        .eq('id', row.id);
+      if (error) { failed++; continue; }
+      succeeded++;
+      if (current !== next) {
+        await recordStockMovement(supabase, {
+          itemKind: 'פטיפור',
+          itemId: row.id,
+          itemName: row.שם_פטיפור || '',
+          before: current,
+          after: next,
+          sourceKind: 'ידני',
+          notes: `עדכון כמות מרוכז (${mode === 'set' ? 'הצב' : mode === 'add' ? 'הוסף' : 'הפחת'} ${num})`,
+          createdBy: auth.email,
+        });
       }
     }
 

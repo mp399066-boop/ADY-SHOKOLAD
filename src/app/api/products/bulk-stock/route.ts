@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
+import { recordStockMovement } from '@/lib/inventory-movements';
 
 // Bulk update כמות_במלאי for finished products (מוצרים_למכירה)
 export async function POST(req: NextRequest) {
@@ -17,32 +18,37 @@ export async function POST(req: NextRequest) {
     let succeeded = 0;
     let failed = 0;
 
-    if (mode === 'set') {
+    // Read all current rows so we can ledger per-row before/after even in
+    // 'set' mode (single bulk UPDATE replaced with per-row updates so the
+    // movements log is accurate).
+    const { data: rows } = await supabase
+      .from('מוצרים_למכירה')
+      .select('id, שם_מוצר, כמות_במלאי')
+      .in('id', ids);
+
+    for (const row of rows ?? []) {
+      const current = Number(row.כמות_במלאי) || 0;
+      const next =
+        mode === 'set' ? num :
+        mode === 'add' ? current + num :
+        Math.max(0, current - num);
       const { error } = await supabase
         .from('מוצרים_למכירה')
-        .update({ כמות_במלאי: num })
-        .in('id', ids);
-      if (error) {
-        console.warn('[bulk-products-stock] set failed:', error.message);
-        failed = ids.length;
-      } else {
-        succeeded = ids.length;
-      }
-    } else {
-      const { data: rows } = await supabase
-        .from('מוצרים_למכירה')
-        .select('id, כמות_במלאי')
-        .in('id', ids);
-
-      for (const row of rows ?? []) {
-        const current = Number(row.כמות_במלאי) || 0;
-        const next = mode === 'add' ? current + num : Math.max(0, current - num);
-        const { error } = await supabase
-          .from('מוצרים_למכירה')
-          .update({ כמות_במלאי: next })
-          .eq('id', row.id);
-        if (error) failed++;
-        else succeeded++;
+        .update({ כמות_במלאי: next })
+        .eq('id', row.id);
+      if (error) { failed++; continue; }
+      succeeded++;
+      if (current !== next) {
+        await recordStockMovement(supabase, {
+          itemKind: 'מוצר',
+          itemId: row.id,
+          itemName: row.שם_מוצר || '',
+          before: current,
+          after: next,
+          sourceKind: 'ידני',
+          notes: `עדכון כמות מרוכז (${mode === 'set' ? 'הצב' : mode === 'add' ? 'הוסף' : 'הפחת'} ${num})`,
+          createdBy: auth.email,
+        });
       }
     }
 

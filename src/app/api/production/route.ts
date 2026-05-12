@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
+import { recordStockMovement } from '@/lib/inventory-movements';
 
 export async function GET() {
   const auth = await requireManagementUser();
@@ -53,15 +54,28 @@ export async function POST(req: NextRequest) {
         const deduction = ingredient.כמות_נדרשת * multiplier;
         const { data: material } = await supabase
           .from('מלאי_חומרי_גלם')
-          .select('כמות_במלאי')
+          .select('שם_חומר_גלם, כמות_במלאי')
           .eq('id', ingredient.חומר_גלם_id)
           .single();
 
         if (material) {
+          const before = Number(material.כמות_במלאי) || 0;
+          const after = Math.max(0, before - deduction);
           await supabase
             .from('מלאי_חומרי_גלם')
-            .update({ כמות_במלאי: Math.max(0, material.כמות_במלאי - deduction) })
+            .update({ כמות_במלאי: after })
             .eq('id', ingredient.חומר_גלם_id);
+          await recordStockMovement(supabase, {
+            itemKind: 'חומר_גלם',
+            itemId: ingredient.חומר_גלם_id,
+            itemName: material.שם_חומר_גלם || '',
+            before,
+            after,
+            sourceKind: 'מערכת',
+            sourceId: production?.id ?? null,
+            notes: `הורדת חומר גלם בייצור (מתכון: ${recipe.שם_מתכון || '—'})`,
+            createdBy: auth.email,
+          });
         }
       }
     }
