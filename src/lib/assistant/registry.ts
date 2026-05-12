@@ -17,6 +17,74 @@ const DEFAULT_SUGGESTIONS: ClarifyOption[] = [
   { label: 'דוח הזמנות להיום',               text: 'דוח הזמנות להיום' },
 ];
 
+// Follow-up suggestions shown after a successful answer.
+// Picks 2-3 options that naturally extend the current intent.
+function followUpsFor(intent: ParsedIntent): ClarifyOption[] {
+  switch (intent.type) {
+    case 'find_orders': {
+      const r = rangeShort(intent.range);
+      return [
+        { label: 'הורידי דוח', text: `דוח הזמנות ${rangeLabel(intent.range)}` },
+        ...(intent.filters.urgentOnly ? [] : [{ label: 'רק הדחופות', text: 'רק הדחופות' }]),
+        ...(intent.filters.unpaidOnly ? [] : [{ label: 'רק שלא שולמו', text: 'רק שלא שולמו' }]),
+        { label: `פטיפורים שהוזמנו ${r}`, text: `איזה פטיפורים הוזמנו ${r}?` },
+      ].slice(0, 3);
+    }
+    case 'count_orders': {
+      const r = rangeShort(intent.range);
+      return [
+        { label: 'הצגי את ההזמנות', text: `איזה הזמנות יש ${r}?` },
+        { label: 'הורידי דוח', text: `דוח הזמנות ${rangeLabel(intent.range)}` },
+      ];
+    }
+    case 'list_low_stock':
+      return [
+        { label: 'סוגי פטיפורים', text: 'איזה סוגי פטיפורים קיימים?' },
+        { label: 'מה הוזמן היום?', text: 'איזה פטיפורים הוזמנו היום?' },
+      ];
+    case 'stock_query':
+      return [
+        { label: 'מה במלאי נמוך?',         text: 'מה במלאי נמוך?' },
+        { label: 'סוגי פטיפורים',          text: 'איזה סוגי פטיפורים קיימים?' },
+      ];
+    case 'find_package':
+      return [
+        { label: 'כל המארזים',                  text: 'איזה מארזים יש?' },
+        { label: 'מגשים בהזמנות היום',          text: 'כמה מגשי פטיפורים בהזמנות היום?' },
+      ];
+    case 'list_petit_four_types':
+      return [
+        { label: 'פטיפורים שהוזמנו היום', text: 'איזה פטיפורים הוזמנו היום?' },
+        { label: 'מה במלאי נמוך?',          text: 'מה במלאי נמוך?' },
+      ];
+    case 'order_petit_four_summary': {
+      const r = rangeShort(intent.range);
+      return [
+        { label: 'איזה הזמנות יש?',     text: `איזה הזמנות יש ${r}?` },
+        { label: 'הורידי דוח',           text: `דוח הזמנות ${rangeLabel(intent.range)}` },
+      ];
+    }
+    case 'count_order_items_by_kind': {
+      const r = rangeShort(intent.range);
+      return [
+        { label: 'איזה הזמנות?',                 text: `איזה הזמנות יש ${r}?` },
+        { label: `פטיפורים שהוזמנו ${r}`,        text: `איזה פטיפורים הוזמנו ${r}?` },
+      ];
+    }
+    case 'download_orders_report':
+    case 'send_orders_report':
+    case 'request_report_action': {
+      const r = rangeShort(intent.range);
+      return [
+        { label: 'איזה הזמנות?',         text: `איזה הזמנות יש ${r}?` },
+        { label: `דחופות ${r}`,          text: `הזמנות דחופות ${r}` },
+      ];
+    }
+    default:
+      return [];
+  }
+}
+
 function suggestionsFor(hint: UnknownHint): ClarifyOption[] {
   if (hint === 'report') return [
     { label: 'דוח הזמנות להיום',  text: 'דוח הזמנות להיום' },
@@ -65,6 +133,24 @@ function rangeLabel(range: Range): string {
   return `לתאריך ${range.date}`;
 }
 
+function rangeShort(range: Range): string {
+  if (range.kind === 'today')    return 'היום';
+  if (range.kind === 'tomorrow') return 'מחר';
+  if (range.kind === 'week')     return 'השבוע';
+  return range.date;
+}
+
+// Natural-language description e.g. "דחופות להיום" / "משלוחים שלא שולמו למחר"
+function describeOrders(range: Range, f: Filters): string {
+  const parts: string[] = [];
+  if (f.urgentOnly)   parts.push('דחופות');
+  if (f.unpaidOnly)   parts.push('שלא שולמו');
+  if (f.deliveryOnly) parts.push('למשלוח');
+  if (f.pickupOnly)   parts.push('לאיסוף עצמי');
+  const filterPart = parts.length ? `${parts.join(' ו')} ` : '';
+  return `${filterPart}${rangeLabel(range)}`;
+}
+
 function filtersLabel(f: Filters): string {
   const parts: string[] = [];
   if (f.urgentOnly)   parts.push('דחופות');
@@ -104,36 +190,56 @@ async function actionCountOrders(range: Range, filters: Filters): Promise<Assist
   const { startDate, endDate } = resolveReportRange(rangeToReportInput(range));
   const { summary } = await fetchOrdersForReport(startDate, endDate, filters);
 
-  const items: ListItem[] = [
-    { label: 'דחופות',     value: String(summary.urgent),   emoji: '⚡', tone: summary.urgent > 0 ? 'warn' : 'neutral' },
-    { label: 'משלוחים',    value: String(summary.delivery), emoji: '🚚', tone: 'neutral' },
-    { label: 'איסוף עצמי', value: String(summary.pickup),   emoji: '🏬', tone: 'neutral' },
-    { label: 'לא שולמו',   value: String(summary.unpaid),   emoji: '💰', tone: summary.unpaid > 0 ? 'warn' : 'neutral' },
+  const desc = describeOrders(range, filters);
+  const blocks: Block[] = [
+    { type: 'stat', label: `הזמנות ${desc}`, value: String(summary.total), emoji: '📦', tone: 'neutral' },
   ];
 
-  return {
-    kind: 'answer',
-    blocks: [
-      { type: 'stat', label: `הזמנות ${rangeLabel(range)} ${filtersLabel(filters)}`.trim(),
-        value: String(summary.total), emoji: '📦', tone: 'neutral' },
-      ...(summary.total > 0 ? [{ type: 'list' as const, items }] : []),
+  if (summary.total === 0) {
+    return { kind: 'answer', blocks: [{ type: 'text', text: `לא מצאתי הזמנות ${desc} 😊` }] };
+  }
+
+  blocks.push({
+    type: 'list',
+    items: [
+      { label: 'דחופות',     value: String(summary.urgent),   emoji: '⚡', tone: summary.urgent > 0 ? 'warn' : 'neutral' },
+      { label: 'משלוחים',    value: String(summary.delivery), emoji: '🚚', tone: 'neutral' },
+      { label: 'איסוף עצמי', value: String(summary.pickup),   emoji: '🏬', tone: 'neutral' },
+      { label: 'לא שולמו',   value: String(summary.unpaid),   emoji: '💰', tone: summary.unpaid > 0 ? 'warn' : 'neutral' },
     ],
-  };
+  });
+
+  if (summary.urgent > 0) {
+    blocks.push({ type: 'insight', text: `${summary.urgent} מההזמנות דחופות`, tone: 'warn', emoji: '⚡' });
+  }
+  if (summary.unpaid > 0) {
+    blocks.push({ type: 'insight', text: `${summary.unpaid} עוד לא שולמו`, tone: 'warn', emoji: '💰' });
+  }
+
+  return { kind: 'answer', blocks };
 }
 
 async function actionFindOrders(range: Range, filters: Filters): Promise<AssistantResponse> {
   const { startDate, endDate } = resolveReportRange(rangeToReportInput(range));
-  const { orders } = await fetchOrdersForReport(startDate, endDate, filters);
+  const { orders, summary } = await fetchOrdersForReport(startDate, endDate, filters);
 
+  const desc = describeOrders(range, filters);
   if (orders.length === 0) {
-    return { kind: 'answer', blocks: [{ type: 'text', text: `לא נמצאו הזמנות ${rangeLabel(range)} ${filtersLabel(filters)}`.trim() }] };
+    return { kind: 'answer', blocks: [{ type: 'text', text: `לא מצאתי הזמנות ${desc} 😊` }] };
   }
 
   const summaries = orders.slice(0, 20).map(toOrderSummary);
-  const title = `${orders.length} הזמנות ${rangeLabel(range)} ${filtersLabel(filters)}`.trim();
+  const title = `מצאתי ${orders.length} הזמנות ${desc}`;
   const blocks: Block[] = [{ type: 'orders', title, orders: summaries }];
+
+  if (!filters.urgentOnly && summary.urgent > 0) {
+    blocks.push({ type: 'insight', text: `${summary.urgent} מהן דחופות`, tone: 'warn', emoji: '⚡' });
+  }
+  if (!filters.unpaidOnly && summary.unpaid > 0) {
+    blocks.push({ type: 'insight', text: `${summary.unpaid} עוד לא שולמו`, tone: 'warn', emoji: '💰' });
+  }
   if (orders.length > 20) {
-    blocks.push({ type: 'text', text: `מציגה 20 ראשונות מתוך ${orders.length}` });
+    blocks.push({ type: 'text', text: `מציגה 20 הזמנות ראשונות מתוך ${orders.length}` });
   }
   return { kind: 'answer', blocks };
 }
@@ -151,14 +257,15 @@ async function actionListLowStock(): Promise<AssistantResponse> {
   const rows = (data || []) as Record<string, unknown>[];
 
   if (rows.length === 0) {
-    return { kind: 'answer', blocks: [{ type: 'text', text: '🟢 הכל תקין — אין חומרי גלם במלאי נמוך' }] };
+    return { kind: 'answer', blocks: [{ type: 'text', text: '🟢 הכל תקין במלאי 😊' }] };
   }
 
+  let outCount = 0;
   const items: ListItem[] = rows.map((r: Record<string, unknown>) => {
     const status = String(r['סטטוס_מלאי'] || '');
     const isOut = status === 'אזל מהמלאי';
-    const isCritical = status === 'קריטי';
-    const tone: Tone = isOut ? 'bad' : isCritical ? 'bad' : 'warn';
+    if (isOut) outCount++;
+    const tone: Tone = isOut ? 'bad' : status === 'קריטי' ? 'bad' : 'warn';
     return {
       label: String(r['שם_חומר_גלם']),
       value: `${r['כמות_במלאי']} ${r['יחידת_מידה'] || ''}`.trim(),
@@ -168,10 +275,13 @@ async function actionListLowStock(): Promise<AssistantResponse> {
     };
   });
 
-  return {
-    kind: 'answer',
-    blocks: [{ type: 'list', title: `${rows.length} פריטים במלאי נמוך`, items }],
-  };
+  const blocks: Block[] = [
+    { type: 'list', title: `מצאתי ${rows.length} פריטים שדורשים תשומת לב`, items },
+  ];
+  if (outCount > 0) {
+    blocks.push({ type: 'insight', text: `${outCount} פריטים אזלו מהמלאי`, tone: 'bad', emoji: '🔴' });
+  }
+  return { kind: 'answer', blocks };
 }
 
 async function actionFindPackage(rawQuery: string): Promise<AssistantResponse> {
@@ -230,8 +340,12 @@ async function actionListPetitFourTypes(): Promise<AssistantResponse> {
     return { kind: 'answer', blocks: [{ type: 'text', text: 'לא מצאתי סוגי פטיפורים פעילים במערכת' }] };
   }
 
+  let outCount = 0;
+  let lowCount = 0;
   const items: ListItem[] = rows.map((r: Record<string, unknown>) => {
     const qty = Number(r['כמות_במלאי']) || 0;
+    if (qty === 0) outCount++;
+    else if (qty <= 3) lowCount++;
     const tone: Tone = qty === 0 ? 'bad' : qty <= 3 ? 'warn' : 'good';
     return {
       label: String(r['שם_פטיפור']),
@@ -241,10 +355,15 @@ async function actionListPetitFourTypes(): Promise<AssistantResponse> {
     };
   });
 
-  return {
-    kind: 'answer',
-    blocks: [{ type: 'list', title: `${rows.length} סוגי פטיפורים`, items }],
-  };
+  const blocks: Block[] = [
+    { type: 'list', title: `מצאתי ${rows.length} סוגי פטיפורים`, items },
+  ];
+  if (outCount > 0) {
+    blocks.push({ type: 'insight', text: `${outCount} פטיפורים אזלו מהמלאי`, tone: 'bad', emoji: '🔴' });
+  } else if (lowCount > 0) {
+    blocks.push({ type: 'insight', text: `${lowCount} פטיפורים במלאי נמוך`, tone: 'warn', emoji: '🟡' });
+  }
+  return { kind: 'answer', blocks };
 }
 
 async function actionOrderPetitFourSummary(range: Range): Promise<AssistantResponse> {
@@ -302,15 +421,11 @@ async function actionOrderPetitFourSummary(range: Range): Promise<AssistantRespo
     kind: 'answer',
     blocks: [
       { type: 'stat', label: `סה"כ פטיפורים שהוזמנו ${rangeLabel(range)}`, value: `${grandTotal} יח׳`, emoji: '🍬', tone: 'neutral' },
-      {
-        type: 'list',
-        title: 'פירוט לפי סוג',
-        items: sorted.map(([name, qty]) => ({
-          label: name,
-          value: `${qty} יח׳`,
-          emoji: '🍬',
-        })),
-      },
+      { type: 'list', title: `פירוט לפי סוג (${sorted.length} סוגים)`, items: sorted.map(([name, qty]) => ({
+        label: name,
+        value: `${qty} יח׳`,
+        emoji: '🍬',
+      })) },
     ],
   };
 }
@@ -388,10 +503,14 @@ async function actionStockQuery(rawQuery: string): Promise<AssistantResponse> {
   const petitFours = (petitFourRes.data || []) as Record<string, unknown>[];
 
   if (finished.length === 0 && rawMats.length === 0 && petitFours.length === 0) {
-    return { kind: 'answer', blocks: [{ type: 'text', text: `לא מצאתי "${q}" במלאי` }] };
+    return { kind: 'answer', blocks: [{ type: 'text', text: `לא מצאתי "${q}" במלאי 😊 נסי שם אחר?` }] };
   }
 
   const blocks: Block[] = [];
+  let outOfStock = 0;
+  for (const r of finished) if (Number(r['כמות_במלאי']) === 0) outOfStock++;
+  for (const r of petitFours) if (Number(r['כמות_במלאי']) === 0) outOfStock++;
+  for (const r of rawMats) if (String(r['סטטוס_מלאי']) === 'אזל מהמלאי') outOfStock++;
 
   if (petitFours.length > 0) {
     const items: ListItem[] = petitFours.map((r: Record<string, unknown>) => {
@@ -438,20 +557,32 @@ async function actionStockQuery(rawQuery: string): Promise<AssistantResponse> {
     blocks.push({ type: 'list', title: 'חומרי גלם', items });
   }
 
+  if (outOfStock > 0) {
+    blocks.push({ type: 'insight', text: `${outOfStock} פריטים אזלו מהמלאי`, tone: 'bad', emoji: '🔴' });
+  }
+
   return { kind: 'answer', blocks };
 }
 
 // Returns a download_button block — actual download happens client-side
 // via /api/reports/orders/download (existing endpoint, no email side-effects).
-async function actionDownloadOrdersReport(range: Range): Promise<AssistantResponse> {
+// Filters flow through verbatim so "תורידי דוח דחופות למחר" works.
+async function actionDownloadOrdersReport(range: Range, filters: Filters): Promise<AssistantResponse> {
   const reportRange = rangeToReportInput(range);
   const payload: Record<string, unknown> = { range: reportRange.range };
   if (reportRange.date) payload.date = reportRange.date;
+  const cleaned = sanitizeFiltersForApi(filters);
+  if (cleaned) payload.filters = cleaned;
+
+  const filtersText = filtersLabel(filters);
+  const headline = filtersText
+    ? `דוח הזמנות ${filtersText} ${rangeLabel(range)} מוכן להורדה.`
+    : `דוח הזמנות ${rangeLabel(range)} מוכן להורדה.`;
 
   return {
     kind: 'answer',
     blocks: [
-      { type: 'text', text: `דוח הזמנות ${rangeLabel(range)} מוכן להורדה.` },
+      { type: 'text', text: headline },
       {
         type: 'download_button',
         label: 'הורידי דוח הזמנות',
@@ -463,10 +594,68 @@ async function actionDownloadOrdersReport(range: Range): Promise<AssistantRespon
   };
 }
 
+// Returns a confirmation card. The actual send happens only when the user
+// clicks the confirm button in the UI, which POSTs to /api/reports/orders/send.
+// If no email was given in the request and no DAILY_ORDERS_REPORT_EMAIL env
+// is set, returns a clarify asking the user to type the recipient address.
+async function actionSendOrdersReport(
+  range: Range,
+  filters: Filters,
+  recipientEmail?: string,
+): Promise<AssistantResponse> {
+  const fallback = process.env.DAILY_ORDERS_REPORT_EMAIL?.trim();
+  const email = recipientEmail || fallback;
+
+  if (!email) {
+    return {
+      kind: 'clarify',
+      message: 'לאיזה מייל לשלוח את הדוח? כתבי לי את הכתובת.',
+      options: [],
+    };
+  }
+
+  const reportRange = rangeToReportInput(range);
+  const payload: Record<string, unknown> = {
+    range: reportRange.range,
+    recipientEmail: email,
+  };
+  if (reportRange.date) payload.date = reportRange.date;
+  const cleaned = sanitizeFiltersForApi(filters);
+  if (cleaned) payload.filters = cleaned;
+
+  return {
+    kind: 'answer',
+    blocks: [
+      {
+        type: 'confirm_send_report',
+        recipientEmail: email,
+        rangeLabel: rangeLabel(range),
+        filtersLabel: filtersLabel(filters),
+        payload,
+      },
+    ],
+  };
+}
+
+// User asked for "דוח הזמנות להיום" without saying download or send.
+// Offer both as suggestions — each routes back through the parser.
+async function actionRequestReportAction(range: Range, filters: Filters): Promise<AssistantResponse> {
+  const fSuffix = filtersLabel(filters) ? ` ${filtersLabel(filters)}` : '';
+  const r = rangeShort(range);
+  return {
+    kind: 'clarify',
+    message: `דוח הזמנות${fSuffix} ${rangeLabel(range)} — להוריד או לשלוח במייל?`,
+    options: [
+      { label: 'הורידי דוח',  text: `תורידי דוח הזמנות${fSuffix} ${r}` },
+      { label: 'שלחי במייל',  text: `שלחי דוח הזמנות${fSuffix} ${r} במייל` },
+    ],
+  };
+}
+
 async function actionRequestReportRange(): Promise<AssistantResponse> {
   return {
     kind: 'clarify',
-    message: 'איזה דוח תרצי להוריד?',
+    message: 'איזה דוח תרצי?',
     options: [
       { label: 'דוח הזמנות להיום',  text: 'דוח הזמנות להיום' },
       { label: 'דוח הזמנות למחר',   text: 'דוח הזמנות למחר' },
@@ -475,9 +664,21 @@ async function actionRequestReportRange(): Promise<AssistantResponse> {
   };
 }
 
+// Strip undefined/false flags so the JSON payload sent to the API stays
+// minimal. Returns undefined when no filter is active so the API receives
+// no `filters` key at all.
+function sanitizeFiltersForApi(f: Filters): Record<string, boolean> | undefined {
+  const out: Record<string, boolean> = {};
+  if (f.urgentOnly)   out.urgentOnly   = true;
+  if (f.unpaidOnly)   out.unpaidOnly   = true;
+  if (f.deliveryOnly) out.deliveryOnly = true;
+  if (f.pickupOnly)   out.pickupOnly   = true;
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 // ───── Dispatcher ──────────────────────────────────────────────────────────
 
-export async function runIntent(intent: ParsedIntent): Promise<AssistantResponse> {
+async function dispatch(intent: ParsedIntent): Promise<AssistantResponse> {
   switch (intent.type) {
     case 'count_orders':              return actionCountOrders(intent.range, intent.filters);
     case 'find_orders':               return actionFindOrders(intent.range, intent.filters);
@@ -487,7 +688,9 @@ export async function runIntent(intent: ParsedIntent): Promise<AssistantResponse
     case 'list_petit_four_types':     return actionListPetitFourTypes();
     case 'order_petit_four_summary':  return actionOrderPetitFourSummary(intent.range);
     case 'count_order_items_by_kind': return actionCountOrderItemsByKind(intent.range, intent.kind);
-    case 'download_orders_report':    return actionDownloadOrdersReport(intent.range);
+    case 'download_orders_report':    return actionDownloadOrdersReport(intent.range, intent.filters);
+    case 'send_orders_report':        return actionSendOrdersReport(intent.range, intent.filters, intent.recipientEmail);
+    case 'request_report_action':     return actionRequestReportAction(intent.range, intent.filters);
     case 'request_report_range':      return actionRequestReportRange();
     case 'unknown':
       return {
@@ -496,6 +699,22 @@ export async function runIntent(intent: ParsedIntent): Promise<AssistantResponse
         options: suggestionsFor(intent.hint),
       };
   }
+}
+
+export async function runIntent(intent: ParsedIntent): Promise<AssistantResponse> {
+  const response = await dispatch(intent);
+  // Echo intent back so the client can use it as lastIntent next round
+  if (response.kind === 'answer' || response.kind === 'clarify') {
+    response.intent = intent;
+  }
+  // Append a follow-up suggestions block to answers (when meaningful)
+  if (response.kind === 'answer') {
+    const fus = followUpsFor(intent);
+    if (fus.length > 0) {
+      response.blocks.push({ type: 'suggestions', title: 'פעולות קשורות', items: fus });
+    }
+  }
+  return response;
 }
 
 export const ASSISTANT_SUGGESTIONS = DEFAULT_SUGGESTIONS;

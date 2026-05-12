@@ -1,11 +1,27 @@
 // Hebrew keyword-based intent parser. Deterministic — no LLM.
 // Maps free-text Hebrew to a registry intent. Synonyms grouped at top.
+// Supports follow-ups when the previous intent is provided.
 
 import type { ParsedIntent, Range, Filters, UnknownHint } from './types';
 
 // ───── Synonym groups ─────────────────────────────────────────────────────
 
-const SYN_REPORT     = ['דוח', 'דו"ח', 'דוחות'];
+const SYN_REPORT     = ['דוח', 'דו"ח', 'דו״ח', 'דוחות'];
+
+// Verbs that pin a report intent to download (file) vs send (email).
+const SYN_REPORT_DOWNLOAD = [
+  'תורידי', 'הורידי', 'תוריד', 'תוציאי', 'תוציא',
+  'תביאי', 'תביא',
+  // English fallbacks for safety
+  'download',
+];
+const SYN_REPORT_SEND = [
+  'שלחי', 'תשלחי', 'שלח', 'לשלוח',
+  'במייל', 'למייל', 'באימייל', 'לאימייל',
+];
+
+// Lenient e-mail detector — first hit wins. Strips trailing punctuation.
+const EMAIL_RE = /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/;
 const SYN_ORDERS     = ['הזמנות', 'הזמנה'];
 const SYN_PACKAGE    = ['מארז', 'מארזים', 'חבילה', 'חבילות'];
 const SYN_PETIT_FOUR = ['פטיפורים', 'פטיפור'];
@@ -36,7 +52,12 @@ const SYN_FROM_ORDERS = ['בהזמנ', 'הוזמנ', 'מההזמנ', 'בהזמנ
 const SYN_LOW_STOCK = [
   'מלאי נמוך', 'מלאי קריטי', 'נמוך במלאי', 'אזל', 'נגמר',
   'מה חסר', 'מה חוסר', 'חוסרים', 'מתקרב לסיום', 'נגמרים', 'מה נגמר',
+  'יש חוסרים', 'בעיות במלאי', 'בעיה במלאי',
 ];
+
+// Follow-up phrases — only meaningful when there's a lastIntent
+const FOLLOWUP_REPLACE = ['ומה עם', 'ומה ', 'מה לגבי', 'גם עם', 'וגם ', 'גם '];
+const FOLLOWUP_REFINE  = ['רק '];
 
 // Stripped from "subject" in stock queries
 const STRIP_WORDS = [
@@ -52,6 +73,7 @@ function normalize(text: string): string {
   return text
     .replace(/[֑-ׇ]/g, '')          // strip niqqud
     .replace(/[?!.,;:"'״׳]/g, ' ') // strip punctuation
+    .replace(/(.)\1{2,}/g, '$1')    // collapse runs of 3+ same chars (typo: 'אאאודם' → 'אודם')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -107,11 +129,47 @@ function extractSubject(text: string): string {
   return q.replace(/\s+/g, ' ').trim();
 }
 
+// ───── Follow-up handling ─────────────────────────────────────────────────
+
+function tryFollowUp(text: string, last: ParsedIntent): ParsedIntent | null {
+  // "ומה עם X" / "מה לגבי X" / "גם X" → swap subject of the previous query
+  const replacePrefix = FOLLOWUP_REPLACE.find(p => text.startsWith(p));
+  if (replacePrefix) {
+    const tail = text.slice(replacePrefix.length).trim();
+    const subject = extractSubject(tail);
+    if (subject.length < 2) return null;
+    if (last.type === 'stock_query')           return { type: 'stock_query', query: subject };
+    if (last.type === 'find_package')          return { type: 'find_package', query: subject };
+    if (last.type === 'list_petit_four_types') return { type: 'stock_query', query: subject };
+    return null;
+  }
+
+  // "רק הדחופות" / "רק לא שולמו" → refine filters on the previous orders query
+  if (FOLLOWUP_REFINE.some(p => text.startsWith(p)) || text === 'רק') {
+    const newFilters = detectFilters(text);
+    if (!hasAnyFilter(newFilters)) return null;
+    if (last.type === 'find_orders') {
+      return { type: 'find_orders', range: last.range, filters: { ...last.filters, ...newFilters } };
+    }
+    if (last.type === 'count_orders') {
+      return { type: 'count_orders', range: last.range, filters: { ...last.filters, ...newFilters } };
+    }
+    return null;
+  }
+
+  return null;
+}
+
 // ───── Main parser ────────────────────────────────────────────────────────
 
-export function parseIntent(rawText: string): ParsedIntent {
+export function parseIntent(rawText: string, lastIntent?: ParsedIntent | null): ParsedIntent {
   const text = normalize(rawText);
   if (!text) return { type: 'unknown' };
+
+  if (lastIntent) {
+    const fu = tryFollowUp(text, lastIntent);
+    if (fu) return fu;
+  }
 
   const hasLowStock   = includesAny(text, SYN_LOW_STOCK);
   const hasReport     = includesAny(text, SYN_REPORT);
@@ -129,11 +187,27 @@ export function parseIntent(rawText: string): ParsedIntent {
   if (hasLowStock) return { type: 'list_low_stock' };
 
   // 2. Report intent
-  // "דוח יומי", "דוח להיום", "תורידי דוח", "דוח" alone, etc.
+  // "דוח יומי" / "דוח להיום" / "תורידי דוח" / "שלחי דוח למייל X" etc.
   if (hasReport) {
     const range = detectRangeStrict(text);
-    if (range) return { type: 'download_orders_report', range };
-    return { type: 'request_report_range' };
+    if (!range) return { type: 'request_report_range' };
+
+    const filters = detectFilters(text);
+    const wantsSend = includesAny(text, SYN_REPORT_SEND);
+    const wantsDownload = includesAny(text, SYN_REPORT_DOWNLOAD);
+    const emailMatch = text.match(EMAIL_RE);
+    const recipientEmail = emailMatch ? emailMatch[1] : undefined;
+
+    // Send wins when both verbs/cues appear (more specific intent — "שלחי
+    // דוח להוריד" reads as "send"). Email in text → definitely send.
+    if (wantsSend || recipientEmail) {
+      return { type: 'send_orders_report', range, filters, recipientEmail };
+    }
+    if (wantsDownload) {
+      return { type: 'download_orders_report', range, filters };
+    }
+    // Range known but action ambiguous — registry will offer both buttons.
+    return { type: 'request_report_action', range, filters };
   }
 
   // 3. Petit fours (catalog / search / from-orders)
@@ -171,13 +245,20 @@ export function parseIntent(rawText: string): ParsedIntent {
     return { type: 'find_orders', range: detectRange(text), filters };
   }
 
-  // 8. Stock query — "כמה X", "יש X", "X במלאי", "איפה X"
+  // 8. Explicit range + show verb without other context → orders for that range
+  // "תראי מה יש מחר", "תני לי מה יש היום"
+  const explicitRange = detectRangeStrict(text);
+  if (explicitRange && (hasShow || hasCount)) {
+    return { type: 'find_orders', range: explicitRange, filters: {} };
+  }
+
+  // 9. Stock query — "כמה X", "יש X", "X במלאי", "איפה X"
   if (hasStockHint) {
     const subject = extractSubject(text);
     if (subject.length >= 2) return { type: 'stock_query', query: subject };
   }
 
-  // 9. Smart unknown — pick the most useful suggestion bucket
+  // 10. Smart unknown — pick the most useful suggestion bucket
   let hint: UnknownHint;
   if (hasReport)             hint = 'report';
   else if (hasPetitFour)     hint = 'petit_four';

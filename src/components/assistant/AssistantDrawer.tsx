@@ -3,15 +3,17 @@
 import { useState, useEffect, useRef, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import type { AssistantResponse, Block, ListItem, OrderSummary, Tone } from '@/lib/assistant/types';
+import type { AssistantResponse, Block, ClarifyOption, ListItem, OrderSummary, ParsedIntent, Tone } from '@/lib/assistant/types';
 
-const STORAGE_KEY = 'assistant-history-v1';
+const STORAGE_KEY      = 'assistant-history-v1';
+const LAST_INTENT_KEY  = 'assistant-last-intent-v1';
+const MAX_RECENT       = 3;
 
-const SUGGESTIONS = [
-  'כמה הזמנות יש היום?',
-  'איזה הזמנות יש למחר?',
-  'מה במלאי נמוך?',
-  'הזמנות דחופות להיום',
+// Categorized quick-actions for the empty state
+const QUICK_ACTIONS: { title: string; chips: string[] }[] = [
+  { title: 'דוחות',   chips: ['דוח הזמנות להיום', 'דוח הזמנות למחר'] },
+  { title: 'הזמנות',  chips: ['איזה הזמנות יש היום?', 'הזמנות דחופות להיום', 'מה לא שולם?'] },
+  { title: 'מלאי',    chips: ['מה במלאי נמוך?', 'איזה סוגי פטיפורים קיימים?'] },
 ];
 
 type Message =
@@ -38,6 +40,7 @@ export default function AssistantDrawer() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [pending, setPending]   = useState(false);
   const [logoUrl, setLogoUrl]   = useState<string | null>(null);
+  const lastIntentRef = useRef<ParsedIntent | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef  = useRef<HTMLInputElement>(null);
 
@@ -45,8 +48,24 @@ export default function AssistantDrawer() {
     try {
       const raw = sessionStorage.getItem(STORAGE_KEY);
       if (raw) setMessages(JSON.parse(raw));
+      const li = sessionStorage.getItem(LAST_INTENT_KEY);
+      if (li) lastIntentRef.current = JSON.parse(li);
     } catch { /* ignore */ }
   }, []);
+
+  // Recent user queries — derived from message history (no separate storage)
+  const recent = (() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (let i = messages.length - 1; i >= 0 && out.length < MAX_RECENT; i--) {
+      const m = messages[i];
+      if (m.role === 'user' && !seen.has(m.text)) {
+        seen.add(m.text);
+        out.push(m.text);
+      }
+    }
+    return out;
+  })();
 
   // Fetch brand logo from business_settings (same source as NavBar)
   useEffect(() => {
@@ -81,9 +100,14 @@ export default function AssistantDrawer() {
       const res = await fetch('/api/assistant/ask', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: trimmed }),
+        body: JSON.stringify({ text: trimmed, lastIntent: lastIntentRef.current }),
       });
       const json = (await res.json()) as AssistantResponse;
+      // Save intent for next round (only when it's an answer with real content)
+      if (json.kind === 'answer' && json.intent) {
+        lastIntentRef.current = json.intent;
+        try { sessionStorage.setItem(LAST_INTENT_KEY, JSON.stringify(json.intent)); } catch { /* ignore */ }
+      }
       setMessages(m => [...m, { role: 'assistant', response: json, ts: Date.now() }]);
     } catch {
       setMessages(m => [...m, { role: 'assistant', response: { kind: 'error', message: 'שגיאת רשת' }, ts: Date.now() }]);
@@ -96,7 +120,11 @@ export default function AssistantDrawer() {
 
   const clear = () => {
     setMessages([]);
-    try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+    lastIntentRef.current = null;
+    try {
+      sessionStorage.removeItem(STORAGE_KEY);
+      sessionStorage.removeItem(LAST_INTENT_KEY);
+    } catch { /* ignore */ }
   };
 
   return (
@@ -205,7 +233,7 @@ export default function AssistantDrawer() {
 
             {/* Messages */}
             <div ref={scrollRef} className="flex-1 overflow-y-auto" style={{ padding: '14px', backgroundColor: '#F8F6F2' }}>
-              {messages.length === 0 && <EmptyState onPick={send} />}
+              {messages.length === 0 && <EmptyState onPick={send} recent={recent} />}
               {messages.map((m, i) => (
                 <div key={i} style={{ marginBottom: '12px' }}>
                   {m.role === 'user' ? <UserBubble text={m.text} /> : <AssistantReply response={m.response} onPick={send} onOpenOrder={openOrder} />}
@@ -260,34 +288,69 @@ export default function AssistantDrawer() {
 
 // ───── Sub-components ──────────────────────────────────────────────────────
 
-function EmptyState({ onPick }: { onPick: (t: string) => void }) {
+function EmptyState({ onPick, recent }: { onPick: (t: string) => void; recent: string[] }) {
   return (
-    <div style={{ textAlign: 'center', paddingTop: '24px' }}>
-      <div style={{ fontSize: '13px', color: '#8A7664', marginBottom: '14px' }}>
-        שאלי על מלאי, הזמנות ומשלוחים
+    <div style={{ paddingTop: '8px' }}>
+      <div style={{ fontSize: '13px', color: '#8A7664', textAlign: 'center', marginBottom: '14px' }}>
+        על מה תרצי לשאול?
       </div>
-      <div className="flex flex-col gap-2" style={{ maxWidth: '280px', margin: '0 auto' }}>
-        {SUGGESTIONS.map(s => (
-          <button
-            key={s}
-            onClick={() => onPick(s)}
-            style={{
-              padding: '9px 12px',
-              fontSize: '12px',
-              borderRadius: '999px',
-              border: '1px solid #E8DED2',
-              backgroundColor: '#FFFFFF',
-              color: '#5C4A38',
-              cursor: 'pointer',
-              textAlign: 'right',
-              direction: 'rtl',
-            }}
-          >
-            {s}
-          </button>
-        ))}
+
+      {recent.length > 0 && (
+        <Section title="חיפושים אחרונים">
+          {recent.map(r => (
+            <Chip key={r} onClick={() => onPick(r)} muted>
+              <span style={{ color: '#B0A090', fontSize: '11px', marginLeft: '4px' }}>↻</span> {r}
+            </Chip>
+          ))}
+        </Section>
+      )}
+
+      {QUICK_ACTIONS.map(group => (
+        <Section key={group.title} title={group.title}>
+          {group.chips.map(s => (
+            <Chip key={s} onClick={() => onPick(s)}>{s}</Chip>
+          ))}
+        </Section>
+      ))}
+    </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div style={{ marginBottom: '14px' }}>
+      <div style={{ fontSize: '11px', fontWeight: 600, color: '#8E7D6A', letterSpacing: '0.05em', marginBottom: '6px' }}>
+        {title}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+        {children}
       </div>
     </div>
+  );
+}
+
+function Chip({ onClick, children, muted = false }: { onClick: () => void; children: React.ReactNode; muted?: boolean }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        padding: '8px 12px',
+        fontSize: '12px',
+        borderRadius: '8px',
+        border: '1px solid #E8DED2',
+        backgroundColor: muted ? '#FAF7F0' : '#FFFFFF',
+        color: '#5C4A38',
+        cursor: 'pointer',
+        textAlign: 'right',
+        direction: 'rtl',
+        fontFamily: 'inherit',
+        transition: 'background-color 100ms',
+      }}
+      onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#FBF3E8'; }}
+      onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = muted ? '#FAF7F0' : '#FFFFFF'; }}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -358,7 +421,7 @@ function AssistantReply({ response, onPick, onOpenOrder }: { response: Assistant
   }
   return (
     <Card>
-      {response.blocks.map((b, i) => <BlockView key={i} block={b} onOpenOrder={onOpenOrder} />)}
+      {response.blocks.map((b, i) => <BlockView key={i} block={b} onOpenOrder={onOpenOrder} onPick={onPick} />)}
     </Card>
   );
 }
@@ -380,9 +443,67 @@ function Card({ children }: { children: React.ReactNode }) {
   );
 }
 
-function BlockView({ block, onOpenOrder }: { block: Block; onOpenOrder: (id: string) => void }) {
+function BlockView({ block, onOpenOrder, onPick }: { block: Block; onOpenOrder: (id: string) => void; onPick: (t: string) => void }) {
   if (block.type === 'text') {
     return <div style={{ fontSize: '13px', color: '#2B1A10', lineHeight: 1.5, padding: '4px 0' }}>{block.text}</div>;
+  }
+
+  if (block.type === 'insight') {
+    const tone = block.tone || 'neutral';
+    return (
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          padding: '7px 11px',
+          fontSize: '12px',
+          backgroundColor: TONE_BG[tone],
+          color: TONE_FG[tone],
+          borderRadius: '8px',
+          marginTop: '6px',
+          fontWeight: 500,
+        }}
+      >
+        {block.emoji && <span style={{ fontSize: '13px' }}>{block.emoji}</span>}
+        <span>{block.text}</span>
+      </div>
+    );
+  }
+
+  if (block.type === 'suggestions') {
+    return (
+      <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #F0EAE0' }}>
+        {block.title && (
+          <div style={{ fontSize: '10px', color: '#B0A090', fontWeight: 600, letterSpacing: '0.05em', marginBottom: '6px' }}>
+            {block.title}
+          </div>
+        )}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+          {block.items.map(opt => (
+            <button
+              key={opt.text}
+              onClick={() => onPick(opt.text)}
+              style={{
+                padding: '5px 10px',
+                fontSize: '11px',
+                borderRadius: '999px',
+                border: '1px solid #E8DED2',
+                backgroundColor: '#FAF7F0',
+                color: '#5C4A38',
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                transition: 'background-color 100ms',
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#FBF3E8'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#FAF7F0'; }}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
   }
 
   if (block.type === 'stat') {
@@ -428,6 +549,10 @@ function BlockView({ block, onOpenOrder }: { block: Block; onOpenOrder: (id: str
 
   if (block.type === 'download_button') {
     return <DownloadBlockButton block={block} />;
+  }
+
+  if (block.type === 'confirm_send_report') {
+    return <ConfirmSendReportCard block={block} />;
   }
 
   if (block.type === 'orders') {
@@ -535,6 +660,112 @@ function DownloadBlockButton({ block }: { block: Extract<Block, { type: 'downloa
       </button>
       {error && (
         <div style={{ marginTop: '6px', fontSize: '12px', color: '#A03C2C' }}>{error}</div>
+      )}
+    </div>
+  );
+}
+
+// Confirmation card for sending the orders report by email. Renders the
+// recipient address + range + active filter summary, plus two buttons. The
+// email is sent ONLY when the user clicks אשרי שליחה — the assistant
+// action that produced this block did not call the send endpoint.
+function ConfirmSendReportCard({ block }: { block: Extract<Block, { type: 'confirm_send_report' }> }) {
+  const [state, setState] = useState<'idle' | 'sending' | 'sent' | 'cancelled' | 'error'>('idle');
+  const [error, setError] = useState<string | null>(null);
+
+  const handleConfirm = async () => {
+    setState('sending');
+    setError(null);
+    try {
+      const res = await fetch('/api/reports/orders/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(block.payload),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'שגיאה בשליחת הדוח');
+      setState('sent');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'שגיאה');
+      setState('error');
+    }
+  };
+
+  if (state === 'sent') {
+    return (
+      <div style={{ marginTop: '6px', padding: '12px 14px', borderRadius: '10px', backgroundColor: '#E8F5EE', border: '1px solid #B7DBC4', fontSize: '13px', color: '#1F6B43' }}>
+        ✓ הדוח נשלח ל-<span dir="ltr">{block.recipientEmail}</span>
+      </div>
+    );
+  }
+
+  if (state === 'cancelled') {
+    return (
+      <div style={{ marginTop: '6px', padding: '10px 14px', borderRadius: '10px', backgroundColor: '#F2EBDD', fontSize: '12px', color: '#6B4A2D' }}>
+        השליחה בוטלה — לא נשלח דבר.
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        marginTop: '6px',
+        padding: '14px 16px',
+        borderRadius: '12px',
+        backgroundColor: '#FFFDF8',
+        border: '1px solid #E8DED2',
+        boxShadow: '0 1px 4px rgba(58,42,26,0.04)',
+      }}
+    >
+      <div style={{ fontSize: '11px', color: '#9B7A5A', marginBottom: '4px', fontWeight: 600, letterSpacing: '0.04em' }}>
+        אישור שליחה
+      </div>
+      <div style={{ fontSize: '13px', color: '#2B1A10', marginBottom: '4px' }}>
+        לשלוח דוח הזמנות {block.filtersLabel ? `${block.filtersLabel} ` : ''}{block.rangeLabel} לכתובת:
+      </div>
+      <div dir="ltr" style={{ fontSize: '13px', fontWeight: 700, color: '#8B5E34', marginBottom: '12px', textAlign: 'right' }}>
+        {block.recipientEmail}
+      </div>
+      <div style={{ display: 'flex', gap: '6px' }}>
+        <button
+          onClick={handleConfirm}
+          disabled={state === 'sending'}
+          style={{
+            flex: 1,
+            padding: '9px 12px',
+            fontSize: '12px',
+            fontWeight: 600,
+            borderRadius: '8px',
+            backgroundColor: state === 'sending' ? '#D9CDBC' : '#8B5E34',
+            color: '#FFFFFF',
+            border: 'none',
+            cursor: state === 'sending' ? 'wait' : 'pointer',
+            fontFamily: 'inherit',
+          }}
+        >
+          {state === 'sending' ? '...שולח' : '✓ אשרי שליחה'}
+        </button>
+        <button
+          onClick={() => setState('cancelled')}
+          disabled={state === 'sending'}
+          style={{
+            padding: '9px 14px',
+            fontSize: '12px',
+            fontWeight: 500,
+            borderRadius: '8px',
+            backgroundColor: '#FFFFFF',
+            color: '#6B4A2D',
+            border: '1px solid #DDD0BC',
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+          }}
+        >
+          ביטול
+        </button>
+      </div>
+      {error && (
+        <div style={{ marginTop: '8px', fontSize: '12px', color: '#A03C2C' }}>{error}</div>
       )}
     </div>
   );

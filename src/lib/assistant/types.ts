@@ -24,10 +24,17 @@ export interface OrderSummary {
 
 export type Block =
   | { type: 'text'; text: string }
+  | { type: 'insight'; text: string; tone?: Tone; emoji?: string }
   | { type: 'stat'; label: string; value: string; sublabel?: string; tone?: Tone; emoji?: string }
   | { type: 'list'; title?: string; items: ListItem[] }
   | { type: 'orders'; title?: string; orders: OrderSummary[] }
-  | { type: 'download_button'; label: string; endpoint: string; payload: Record<string, unknown>; filenameHeader?: string };
+  | { type: 'suggestions'; title?: string; items: ClarifyOption[] }
+  | { type: 'download_button'; label: string; endpoint: string; payload: Record<string, unknown>; filenameHeader?: string }
+  // Confirm-then-send card. Renders the recipient + range + filter summary
+  // and asks the user to approve before posting to /api/reports/orders/send.
+  // No email is sent until the user clicks "אשרי שליחה" — the server-side
+  // action that produced this block did not call the send endpoint.
+  | { type: 'confirm_send_report'; recipientEmail: string; rangeLabel: string; filtersLabel: string; payload: Record<string, unknown> };
 
 export interface ClarifyOption {
   label: string;
@@ -35,8 +42,8 @@ export interface ClarifyOption {
 }
 
 export type AssistantResponse =
-  | { kind: 'answer'; blocks: Block[] }
-  | { kind: 'clarify'; message: string; options?: ClarifyOption[] }
+  | { kind: 'answer'; blocks: Block[]; intent?: ParsedIntent }
+  | { kind: 'clarify'; message: string; options?: ClarifyOption[]; intent?: ParsedIntent }
   | { kind: 'error'; message: string };
 
 export type Range =
@@ -63,6 +70,10 @@ export type ParsedIntent =
   | { type: 'list_petit_four_types' }
   | { type: 'order_petit_four_summary'; range: Range }
   | { type: 'count_order_items_by_kind'; range: Range; kind: 'מארז' | 'מוצר' }
-  | { type: 'download_orders_report'; range: Range }
+  | { type: 'download_orders_report'; range: Range; filters: Filters }
+  | { type: 'send_orders_report'; range: Range; filters: Filters; recipientEmail?: string }
+  // User asked for a report but didn't say download or send. Action returns
+  // a clarify with both options so the next round picks the path.
+  | { type: 'request_report_action'; range: Range; filters: Filters }
   | { type: 'request_report_range' }
   | { type: 'unknown'; hint?: UnknownHint };
