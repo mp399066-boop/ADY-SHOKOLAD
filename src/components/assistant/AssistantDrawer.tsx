@@ -174,13 +174,16 @@ export default function AssistantDrawer() {
 
   return (
     <>
-      {/* Floating button — bottom-left, brand logo, premium 3D feel */}
+      {/* Floating button — bottom-left. Lifted above the screen edge so it
+          doesn't sit on top of page-level CTAs ("אישור הזמנה" etc) that
+          live at the bottom of forms. 96px clears the typical button row
+          plus a comfortable safe-area margin on mobile. */}
       <button
         onClick={() => setOpen(o => !o)}
         aria-label="עוזרת מערכת"
         className="fixed z-40"
         style={{
-          bottom: '20px',
+          bottom: '96px',
           left: '20px',
           width: '56px',
           height: '56px',

@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { StatusBadge, UrgentBadge } from '@/components/ui/StatusBadge';
+import { UrgentBadge } from '@/components/ui/StatusBadge';
+import { STATUS_COLORS, PAYMENT_STATUS_COLORS } from '@/constants/theme';
 import { PageLoading } from '@/components/ui/LoadingSpinner';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { IconSearch, IconExport, IconEye, IconEdit, IconTrash } from '@/components/icons';
@@ -16,6 +17,79 @@ import toast from 'react-hot-toast';
 import { exportToCsv } from '@/lib/exportCsv';
 import { formatDate, formatCurrency } from '@/lib/utils';
 import type { Order } from '@/types/database';
+
+// Status options for inline pickers — must match the DB enums in
+// src/types/database.ts. The full PATCH /api/orders/{id} endpoint is what
+// runs side effects (stock deduction on 'בהכנה', invoice/receipt on 'שולם'),
+// so the picker just sends the new value and trusts the server.
+const ORDER_STATUS_OPTIONS = [
+  'חדשה', 'בהכנה', 'מוכנה למשלוח', 'נשלחה', 'הושלמה בהצלחה', 'בוטלה',
+] as const;
+const PAYMENT_STATUS_OPTIONS = [
+  'ממתין', 'שולם', 'חלקי', 'בוטל', 'בארטר',
+] as const;
+
+const FALLBACK_COLOR = { bg: '#F5F1EB', text: '#8A7664', border: '#E0D4C2' };
+
+function InlineStatusPicker({
+  value,
+  options,
+  type,
+  disabled,
+  onChange,
+}: {
+  value: string;
+  options: readonly string[];
+  type: 'order' | 'payment';
+  disabled?: boolean;
+  onChange: (next: string) => void;
+}) {
+  const colorMap = type === 'order' ? STATUS_COLORS : PAYMENT_STATUS_COLORS;
+  const c = colorMap[value] ?? FALLBACK_COLOR;
+  return (
+    <div className="inline-block relative" onClick={e => e.stopPropagation()}>
+      <select
+        value={value}
+        disabled={disabled}
+        onChange={e => onChange(e.target.value)}
+        className="text-xs font-medium rounded-full cursor-pointer focus:outline-none focus:ring-2 focus:ring-amber-100 disabled:cursor-wait whitespace-nowrap"
+        style={{
+          backgroundColor: c.bg,
+          color: c.text,
+          border: `1px solid ${c.border}`,
+          appearance: 'none',
+          WebkitAppearance: 'none',
+          MozAppearance: 'none',
+          paddingInlineStart: '10px',
+          paddingInlineEnd: '20px',
+          paddingBlock: '2px',
+          opacity: disabled ? 0.6 : 1,
+        }}
+      >
+        {options.map(o => (
+          <option key={o} value={o} style={{ backgroundColor: '#fff', color: '#2B1A10' }}>
+            {o}
+          </option>
+        ))}
+      </select>
+      <span
+        aria-hidden
+        style={{
+          position: 'absolute',
+          left: '6px',
+          top: '50%',
+          transform: 'translateY(-50%)',
+          pointerEvents: 'none',
+          fontSize: '7px',
+          color: c.text,
+          opacity: 0.7,
+        }}
+      >
+        ▼
+      </span>
+    </div>
+  );
+}
 
 const FILTERS = [
   { key: '',            label: 'הכל'             },
@@ -51,6 +125,22 @@ function OrdersContent() {
   const [bulkStatusValue, setBulkStatusValue] = useState('');
   const [bulkPaymentValue, setBulkPaymentValue] = useState('');
   const [bulkUpdating, setBulkUpdating] = useState(false);
+
+  // Inline single-row status edits. We optimistically mutate the local row
+  // and call PATCH /api/orders/{id} (the same endpoint the order detail page
+  // uses), so all server-side side effects fire — stock deduction on the
+  // first transition into 'בהכנה', Morning invoice/receipt on the first
+  // transition into 'הושלמה בהצלחה' / 'שולם'. Two transitions surface a
+  // confirm dialog first; everything else applies directly.
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [pendingChange, setPendingChange] = useState<{
+    orderId: string;
+    field: 'סטטוס_הזמנה' | 'סטטוס_תשלום';
+    oldValue: string;
+    newValue: string;
+    title: string;
+    description: string;
+  } | null>(null);
 
   const toggleSelect = (id: string) => {
     setSelected(prev => {
@@ -147,6 +237,78 @@ function OrdersContent() {
       setShowPaymentModal(false);
     } catch { toast.error('שגיאה בעדכון'); }
     finally { setBulkUpdating(false); }
+  };
+
+  const applyInlineUpdate = async (
+    orderId: string,
+    field: 'סטטוס_הזמנה' | 'סטטוס_תשלום',
+    oldValue: string,
+    newValue: string,
+  ) => {
+    setUpdatingId(orderId);
+    setOrders(prev => prev.map(o =>
+      o.id === orderId ? { ...o, [field]: newValue } as Order : o,
+    ));
+    try {
+      const res = await fetch(`/api/orders/${orderId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [field]: newValue }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'שגיאה בעדכון');
+      toast.success('הסטטוס עודכן');
+    } catch (err) {
+      // Rollback
+      setOrders(prev => prev.map(o =>
+        o.id === orderId ? { ...o, [field]: oldValue } as Order : o,
+      ));
+      toast.error(err instanceof Error ? err.message : 'שגיאה בעדכון');
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  const handleOrderStatusChange = (order: Order, newStatus: string) => {
+    if (newStatus === order.סטטוס_הזמנה) return;
+    // Confirm only when crossing INTO 'בהכנה' — the server only deducts
+    // stock on the first transition, so going בהכנה→משהו אחר→בהכנה won't
+    // deduct again, but the warning still helps the user understand intent.
+    if (newStatus === 'בהכנה' && order.סטטוס_הזמנה !== 'בהכנה') {
+      setPendingChange({
+        orderId: order.id,
+        field: 'סטטוס_הזמנה',
+        oldValue: order.סטטוס_הזמנה,
+        newValue: newStatus,
+        title: 'מעבר ל"בהכנה"',
+        description: "מעבר ל'בהכנה' יוריד מלאי. להמשיך?",
+      });
+      return;
+    }
+    applyInlineUpdate(order.id, 'סטטוס_הזמנה', order.סטטוס_הזמנה, newStatus);
+  };
+
+  const handlePaymentStatusChange = (order: Order, newStatus: string) => {
+    if (newStatus === order.סטטוס_תשלום) return;
+    if (newStatus === 'שולם' && order.סטטוס_תשלום !== 'שולם') {
+      setPendingChange({
+        orderId: order.id,
+        field: 'סטטוס_תשלום',
+        oldValue: order.סטטוס_תשלום,
+        newValue: newStatus,
+        title: 'שינוי ל"שולם"',
+        description: "שינוי ל'שולם' עשוי להפיק חשבונית/קבלה. להמשיך?",
+      });
+      return;
+    }
+    applyInlineUpdate(order.id, 'סטטוס_תשלום', order.סטטוס_תשלום, newStatus);
+  };
+
+  const confirmPendingChange = () => {
+    if (!pendingChange) return;
+    const { orderId, field, oldValue, newValue } = pendingChange;
+    setPendingChange(null);
+    applyInlineUpdate(orderId, field, oldValue, newValue);
   };
 
   const handleExport = () => {
@@ -319,10 +481,22 @@ function OrdersContent() {
                         {order.שעת_אספקה || '-'}
                       </td>
                       <td className="px-4 py-3">
-                        <StatusBadge status={order.סטטוס_הזמנה} type="order" />
+                        <InlineStatusPicker
+                          value={order.סטטוס_הזמנה}
+                          options={ORDER_STATUS_OPTIONS}
+                          type="order"
+                          disabled={updatingId === order.id}
+                          onChange={next => handleOrderStatusChange(order, next)}
+                        />
                       </td>
                       <td className="px-4 py-3">
-                        <StatusBadge status={order.סטטוס_תשלום} type="payment" />
+                        <InlineStatusPicker
+                          value={order.סטטוס_תשלום}
+                          options={PAYMENT_STATUS_OPTIONS}
+                          type="payment"
+                          disabled={updatingId === order.id}
+                          onChange={next => handlePaymentStatusChange(order, next)}
+                        />
                       </td>
                       <td className="px-4 py-3">
                         <span
@@ -361,6 +535,17 @@ function OrdersContent() {
         onClose={() => setConfirmId(null)}
         onConfirm={handleDelete}
         loading={deleting}
+      />
+
+      {/* Inline status change confirm — only fires for the two side-effect
+          transitions ('בהכנה' deducts stock; 'שולם' triggers Morning). */}
+      <ConfirmModal
+        open={!!pendingChange}
+        title={pendingChange?.title || 'אישור עדכון'}
+        description={pendingChange?.description || ''}
+        confirmLabel="המשך"
+        onClose={() => setPendingChange(null)}
+        onConfirm={confirmPendingChange}
       />
 
       {/* Bulk delete confirm */}
