@@ -4,6 +4,7 @@
 
 import { createAdminClient } from '@/lib/supabase/server';
 import { fetchOrdersForReport, resolveRange as resolveReportRange } from '@/lib/orders-report-email';
+import { resolveEntity } from './entity-resolver';
 import type {
   AssistantResponse, Block, ClarifyOption, ListItem, OrderSummary,
   ParsedIntent, Range, Filters, Tone, UnknownHint,
@@ -477,34 +478,65 @@ async function actionStockQuery(rawQuery: string): Promise<AssistantResponse> {
   }
 
   const supabase = createAdminClient();
+
+  // Phase 2.2 — let the entity resolver score and rank candidates across
+  // petit fours / products / raw materials using normalized Hebrew matching
+  // (NFC + geresh/gershayim/hyphens stripped). Drops false positives that
+  // the old per-table `.ilike(%q%)` produced and gives the user the most
+  // relevant matches first. Packages are excluded — "stock" semantics don't
+  // apply to them.
+  const resolveResult = await resolveEntity(q, supabase, {
+    kinds: ['פטיפור', 'מוצר', 'חומר_גלם'],
+    minScore: 0.5,
+    limit: 8,
+  });
+
+  if (resolveResult.alternatives.length === 0) {
+    return { kind: 'answer', blocks: [{ type: 'text', text: `לא מצאתי "${q}" במלאי 😊 נסי שם אחר?` }] };
+  }
+
+  // Group resolved IDs by kind so we can pull live stock data with a
+  // targeted query per table (one round-trip each, not per-row).
+  const idsByKind: Record<'פטיפור' | 'מוצר' | 'חומר_גלם', string[]> = {
+    'פטיפור': [], 'מוצר': [], 'חומר_גלם': [],
+  };
+  for (const e of resolveResult.alternatives) {
+    if (e.kind === 'פטיפור' || e.kind === 'מוצר' || e.kind === 'חומר_גלם') {
+      idsByKind[e.kind].push(e.id);
+    }
+  }
+
   const [finishedRes, rawRes, petitFourRes] = await Promise.all([
-    supabase.from('מוצרים_למכירה')
-      .select('id, שם_מוצר, כמות_במלאי, פעיל')
-      .ilike('שם_מוצר', `%${q}%`)
-      .eq('פעיל', true)
-      .limit(8),
-    supabase.from('מלאי_חומרי_גלם')
-      .select('שם_חומר_גלם, כמות_במלאי, יחידת_מידה, סטטוס_מלאי')
-      .ilike('שם_חומר_גלם', `%${q}%`)
-      .limit(8),
-    supabase.from('סוגי_פטיפורים')
-      .select('שם_פטיפור, כמות_במלאי, פעיל')
-      .ilike('שם_פטיפור', `%${q}%`)
-      .eq('פעיל', true)
-      .limit(8),
+    idsByKind['מוצר'].length > 0
+      ? supabase.from('מוצרים_למכירה')
+          .select('id, שם_מוצר, כמות_במלאי, פעיל')
+          .in('id', idsByKind['מוצר'])
+      : Promise.resolve({ data: [], error: null }),
+    idsByKind['חומר_גלם'].length > 0
+      ? supabase.from('מלאי_חומרי_גלם')
+          .select('id, שם_חומר_גלם, כמות_במלאי, יחידת_מידה, סטטוס_מלאי')
+          .in('id', idsByKind['חומר_גלם'])
+      : Promise.resolve({ data: [], error: null }),
+    idsByKind['פטיפור'].length > 0
+      ? supabase.from('סוגי_פטיפורים')
+          .select('id, שם_פטיפור, כמות_במלאי, פעיל')
+          .in('id', idsByKind['פטיפור'])
+      : Promise.resolve({ data: [], error: null }),
   ]);
 
   if (finishedRes.error)  throw new Error(finishedRes.error.message);
   if (rawRes.error)       throw new Error(rawRes.error.message);
   if (petitFourRes.error) throw new Error(petitFourRes.error.message);
 
-  const finished   = (finishedRes.data || []) as Record<string, unknown>[];
-  const rawMats    = (rawRes.data || []) as Record<string, unknown>[];
-  const petitFours = (petitFourRes.data || []) as Record<string, unknown>[];
+  // Re-order results by the resolver's score (best match first within each
+  // section). Sort by the position the id appears in the resolver output.
+  const scoreOrder = new Map(resolveResult.alternatives.map((e, i) => [e.id, i]));
+  const byScore = (a: Record<string, unknown>, b: Record<string, unknown>) =>
+    (scoreOrder.get(String(a.id)) ?? 999) - (scoreOrder.get(String(b.id)) ?? 999);
 
-  if (finished.length === 0 && rawMats.length === 0 && petitFours.length === 0) {
-    return { kind: 'answer', blocks: [{ type: 'text', text: `לא מצאתי "${q}" במלאי 😊 נסי שם אחר?` }] };
-  }
+  const finished   = ((finishedRes.data || []) as Record<string, unknown>[]).sort(byScore);
+  const rawMats    = ((rawRes.data || []) as Record<string, unknown>[]).sort(byScore);
+  const petitFours = ((petitFourRes.data || []) as Record<string, unknown>[]).sort(byScore);
 
   const blocks: Block[] = [];
   let outOfStock = 0;

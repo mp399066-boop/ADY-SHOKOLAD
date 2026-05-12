@@ -67,6 +67,29 @@ export type UnknownHint = 'report' | 'orders' | 'stock' | 'petit_four' | 'packag
 //
 // Lifetime: client-side React state, not stored in DB. Expired entries are
 // dropped before the next request. 5-minute window (CONTEXT_TTL_MS).
+// Entity resolver output — produced by src/lib/assistant/entity-resolver.ts
+// when the user mentions a business object by name ("פיסטוק", "שוהם",
+// "מארז 36", "טארטלט שוקולד"). Lets actions skip text-matching and work
+// with a concrete (kind + id + canonical name) tuple.
+export type ResolvedKind = 'פטיפור' | 'מוצר' | 'חומר_גלם' | 'מארז';
+
+export interface ResolvedEntity {
+  kind: ResolvedKind;
+  id: string;
+  canonicalName: string;
+  // 0–1 confidence. 1.0 = full normalized name match. Used by callers to
+  // decide whether to act directly or surface alternatives.
+  matchScore: number;
+}
+
+export type ResolveQuality = 'exact' | 'prefix' | 'substring' | 'ambiguous' | 'none';
+
+export interface ResolveResult {
+  best: ResolvedEntity | null;
+  alternatives: ResolvedEntity[]; // includes `best` when present, ordered by score desc
+  quality: ResolveQuality;
+}
+
 export interface ConversationContext {
   lastIntent?: ParsedIntent;
   lastFilters?: Filters;
@@ -76,9 +99,10 @@ export interface ConversationContext {
   lastAction?:
     | 'count' | 'find' | 'list' | 'stock_lookup'
     | 'report_download' | 'report_send' | 'report_choose';
-  // Reserved for Phase 2.2 (entity resolver) and future "תפתחי את זה" actions.
-  // Already part of the contract so we don't have to renegotiate later.
-  lastEntity?: { kind: string; id: string; name: string };
+  // The resolved entity from the previous turn — populated when an action
+  // narrowed a name down to a concrete row. Future "תפתחי את זה" / "ומה אם
+  // קוראים לזה אחרת" can then act on it without re-asking.
+  lastEntity?: ResolvedEntity;
   lastResultIds?: string[];
 }
 
