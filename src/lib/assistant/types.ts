@@ -61,6 +61,30 @@ export interface Filters {
 
 export type UnknownHint = 'report' | 'orders' | 'stock' | 'petit_four' | 'package' | undefined;
 
+// Short conversation memory carried by the client. Server is stateless —
+// every POST /api/assistant/ask sends the latest snapshot and the parser uses
+// it for follow-ups like "רק הדחופות" / "ותשלחי במייל" / "אותו דבר למחר".
+//
+// Lifetime: client-side React state, not stored in DB. Expired entries are
+// dropped before the next request. 5-minute window (CONTEXT_TTL_MS).
+export interface ConversationContext {
+  lastIntent?: ParsedIntent;
+  lastFilters?: Filters;
+  lastRange?: Range;
+  // Loose action label, lets follow-ups like "אותו דבר" / "גם לזה" reuse the
+  // verb the user last performed (download / send / find / count / etc).
+  lastAction?:
+    | 'count' | 'find' | 'list' | 'stock_lookup'
+    | 'report_download' | 'report_send' | 'report_choose';
+  // Reserved for Phase 2.2 (entity resolver) and future "תפתחי את זה" actions.
+  // Already part of the contract so we don't have to renegotiate later.
+  lastEntity?: { kind: string; id: string; name: string };
+  lastResultIds?: string[];
+}
+
+// 5 minutes — a follow-up beyond this window is treated as a fresh query.
+export const CONTEXT_TTL_MS = 5 * 60 * 1000;
+
 export type ParsedIntent =
   | { type: 'count_orders'; range: Range; filters: Filters }
   | { type: 'find_orders'; range: Range; filters: Filters }

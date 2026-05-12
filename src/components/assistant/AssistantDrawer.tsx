@@ -3,10 +3,36 @@
 import { useState, useEffect, useRef, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import type { AssistantResponse, Block, ClarifyOption, ListItem, OrderSummary, ParsedIntent, Tone } from '@/lib/assistant/types';
+import type { AssistantResponse, Block, ClarifyOption, ConversationContext, Filters, ListItem, OrderSummary, ParsedIntent, Range, Tone } from '@/lib/assistant/types';
+import { CONTEXT_TTL_MS } from '@/lib/assistant/types';
 
-const STORAGE_KEY      = 'assistant-history-v1';
-const LAST_INTENT_KEY  = 'assistant-last-intent-v1';
+const STORAGE_KEY  = 'assistant-history-v1';
+// Bumped from -v1 to -v2 because the stored shape changed from a bare
+// ParsedIntent to a {ctx, savedAt} envelope. v1 readers naturally fall
+// through to "no context" — fine, just one missed follow-up.
+const CONTEXT_KEY  = 'assistant-context-v2';
+
+// Pull the still-relevant pieces out of an intent so a follow-up can
+// reuse them ("ותשלחי במייל" needs the previous range/filters).
+function deriveContextFromIntent(intent: ParsedIntent): ConversationContext {
+  const ctx: ConversationContext = { lastIntent: intent };
+  // Range + filters live on different intent variants — pick where present.
+  if ('range' in intent)   ctx.lastRange   = intent.range as Range;
+  if ('filters' in intent) ctx.lastFilters = intent.filters as Filters;
+  // Coarse action label for "אותו דבר" replays.
+  switch (intent.type) {
+    case 'count_orders':              ctx.lastAction = 'count'; break;
+    case 'find_orders':               ctx.lastAction = 'find'; break;
+    case 'list_low_stock':
+    case 'list_petit_four_types':     ctx.lastAction = 'list'; break;
+    case 'stock_query':               ctx.lastAction = 'stock_lookup'; break;
+    case 'download_orders_report':    ctx.lastAction = 'report_download'; break;
+    case 'send_orders_report':        ctx.lastAction = 'report_send'; break;
+    case 'request_report_action':     ctx.lastAction = 'report_choose'; break;
+    default: /* no action label */
+  }
+  return ctx;
+}
 const MAX_RECENT       = 3;
 
 // Categorized quick-actions for the empty state
@@ -40,7 +66,12 @@ export default function AssistantDrawer() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [pending, setPending]   = useState(false);
   const [logoUrl, setLogoUrl]   = useState<string | null>(null);
-  const lastIntentRef = useRef<ParsedIntent | null>(null);
+  // Short conversation memory. Carries the previous intent + derived
+  // filters/range/action label so the parser can resolve follow-ups like
+  // "רק הדחופות" / "ותשלחי במייל" / "אותו דבר למחר". Expires after
+  // CONTEXT_TTL_MS — beyond that we drop it before sending so a long-idle
+  // tab doesn't apply stale follow-up logic to a fresh question.
+  const contextRef = useRef<{ ctx: ConversationContext; savedAt: number } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef  = useRef<HTMLInputElement>(null);
 
@@ -48,8 +79,15 @@ export default function AssistantDrawer() {
     try {
       const raw = sessionStorage.getItem(STORAGE_KEY);
       if (raw) setMessages(JSON.parse(raw));
-      const li = sessionStorage.getItem(LAST_INTENT_KEY);
-      if (li) lastIntentRef.current = JSON.parse(li);
+      const c = sessionStorage.getItem(CONTEXT_KEY);
+      if (c) {
+        const env = JSON.parse(c) as { ctx: ConversationContext; savedAt: number };
+        if (env && typeof env.savedAt === 'number' && Date.now() - env.savedAt < CONTEXT_TTL_MS) {
+          contextRef.current = env;
+        } else {
+          sessionStorage.removeItem(CONTEXT_KEY);
+        }
+      }
     } catch { /* ignore */ }
   }, []);
 
@@ -97,16 +135,23 @@ export default function AssistantDrawer() {
     setInput('');
     setPending(true);
     try {
+      // Drop expired context BEFORE sending so the server doesn't apply stale
+      // follow-up logic. Window is CONTEXT_TTL_MS (5 min).
+      const env = contextRef.current;
+      const fresh = env && Date.now() - env.savedAt < CONTEXT_TTL_MS ? env.ctx : undefined;
+
       const res = await fetch('/api/assistant/ask', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: trimmed, lastIntent: lastIntentRef.current }),
+        body: JSON.stringify({ text: trimmed, context: fresh }),
       });
       const json = (await res.json()) as AssistantResponse;
-      // Save intent for next round (only when it's an answer with real content)
+      // Update memory only when we got a real answer with an intent.
       if (json.kind === 'answer' && json.intent) {
-        lastIntentRef.current = json.intent;
-        try { sessionStorage.setItem(LAST_INTENT_KEY, JSON.stringify(json.intent)); } catch { /* ignore */ }
+        const ctx = deriveContextFromIntent(json.intent);
+        const savedAt = Date.now();
+        contextRef.current = { ctx, savedAt };
+        try { sessionStorage.setItem(CONTEXT_KEY, JSON.stringify({ ctx, savedAt })); } catch { /* ignore */ }
       }
       setMessages(m => [...m, { role: 'assistant', response: json, ts: Date.now() }]);
     } catch {
@@ -120,10 +165,10 @@ export default function AssistantDrawer() {
 
   const clear = () => {
     setMessages([]);
-    lastIntentRef.current = null;
+    contextRef.current = null;
     try {
       sessionStorage.removeItem(STORAGE_KEY);
-      sessionStorage.removeItem(LAST_INTENT_KEY);
+      sessionStorage.removeItem(CONTEXT_KEY);
     } catch { /* ignore */ }
   };
 

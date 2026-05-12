@@ -2,7 +2,7 @@
 // Maps free-text Hebrew to a registry intent. Synonyms grouped at top.
 // Supports follow-ups when the previous intent is provided.
 
-import type { ParsedIntent, Range, Filters, UnknownHint } from './types';
+import type { ParsedIntent, Range, Filters, UnknownHint, ConversationContext } from './types';
 
 // ───── Synonym groups ─────────────────────────────────────────────────────
 
@@ -58,6 +58,18 @@ const SYN_LOW_STOCK = [
 // Follow-up phrases — only meaningful when there's a lastIntent
 const FOLLOWUP_REPLACE = ['ומה עם', 'ומה ', 'מה לגבי', 'גם עם', 'וגם ', 'גם '];
 const FOLLOWUP_REFINE  = ['רק '];
+// Negation — drops a filter from the previous query.
+// "לא הדחופות" / "בלי הדחופות" / "חוץ מהדחופות"
+const FOLLOWUP_NEGATE  = ['לא ה', 'בלי ה', 'בלי ', 'חוץ מ'];
+// "אותו דבר" / "תעשי אותו דבר" / "אותו הדבר" — reuse last action verbatim,
+// optionally swapping the range when the user appended a new one.
+const FOLLOWUP_SAME    = ['אותו דבר', 'אותו הדבר', 'תעשי אותו דבר', 'גם לזה', 'אותה פעולה'];
+// "ותשלחי במייל" / "תשלחי לי את זה למייל" — switches the last orders query
+// into a send-by-email action. Captured by re-parsing as a report intent.
+const FOLLOWUP_SEND_EMAIL = ['ותשלחי', 'תשלחי לי את זה', 'שלחי לי את זה', 'במייל'];
+// "תורידי את זה" / "תני לי את זה כדוח" — switches the last orders query into
+// a download-report action.
+const FOLLOWUP_DOWNLOAD = ['תורידי את זה', 'תני לי את זה כדוח', 'תורידי דוח של זה', 'הורידי את זה'];
 
 // Stripped from "subject" in stock queries
 const STRIP_WORDS = [
@@ -131,7 +143,28 @@ function extractSubject(text: string): string {
 
 // ───── Follow-up handling ─────────────────────────────────────────────────
 
-function tryFollowUp(text: string, last: ParsedIntent): ParsedIntent | null {
+// Pull the most useful pieces out of the previous intent so a follow-up can
+// reuse them without each branch re-implementing the same `if` ladder.
+function intentRangeAndFilters(intent: ParsedIntent): { range?: Range; filters?: Filters } {
+  switch (intent.type) {
+    case 'count_orders':
+    case 'find_orders':
+    case 'download_orders_report':
+    case 'send_orders_report':
+    case 'request_report_action':
+      return { range: intent.range, filters: intent.filters };
+    case 'order_petit_four_summary':
+    case 'count_order_items_by_kind':
+      return { range: intent.range };
+    default:
+      return {};
+  }
+}
+
+function tryFollowUp(text: string, ctx: ConversationContext, emailFromRaw?: string): ParsedIntent | null {
+  const last = ctx.lastIntent;
+  if (!last) return null;
+
   // "ומה עם X" / "מה לגבי X" / "גם X" → swap subject of the previous query
   const replacePrefix = FOLLOWUP_REPLACE.find(p => text.startsWith(p));
   if (replacePrefix) {
@@ -157,17 +190,96 @@ function tryFollowUp(text: string, last: ParsedIntent): ParsedIntent | null {
     return null;
   }
 
+  // "לא הדחופות" / "בלי הדחופות" / "חוץ מהדחופות" → negate a filter on the
+  // previous orders query.
+  if (FOLLOWUP_NEGATE.some(p => text.startsWith(p))) {
+    const drop = detectFilters(text); // any filter mentioned is the one to remove
+    if (!hasAnyFilter(drop)) return null;
+    const base = intentRangeAndFilters(last);
+    if (!base.filters || !base.range) return null;
+    const next: Filters = { ...base.filters };
+    if (drop.urgentOnly)   delete next.urgentOnly;
+    if (drop.unpaidOnly)   delete next.unpaidOnly;
+    if (drop.deliveryOnly) delete next.deliveryOnly;
+    if (drop.pickupOnly)   delete next.pickupOnly;
+    if (last.type === 'find_orders')             return { type: 'find_orders',             range: base.range, filters: next };
+    if (last.type === 'count_orders')            return { type: 'count_orders',            range: base.range, filters: next };
+    if (last.type === 'download_orders_report')  return { type: 'download_orders_report',  range: base.range, filters: next };
+    if (last.type === 'send_orders_report')      return { type: 'send_orders_report',      range: base.range, filters: next, recipientEmail: last.recipientEmail };
+    return null;
+  }
+
+  // "ותשלחי במייל" / "במייל" / "תשלחי לי את זה" → switch the last orders/report
+  // query into a send-by-email action, preserving range + filters.
+  if (FOLLOWUP_SEND_EMAIL.some(p => text.startsWith(p) || text.includes(p))) {
+    const base = intentRangeAndFilters(last);
+    if (!base.range) return null;
+    return {
+      type: 'send_orders_report',
+      range: base.range,
+      filters: base.filters ?? {},
+      // Email comes from raw text (normalise() strips dots, which would
+      // shred the address before regex match).
+      recipientEmail: emailFromRaw,
+    };
+  }
+
+  // "תורידי את זה" / "תני לי את זה כדוח" → switch to download.
+  if (FOLLOWUP_DOWNLOAD.some(p => text.startsWith(p) || text.includes(p))) {
+    const base = intentRangeAndFilters(last);
+    if (!base.range) return null;
+    return { type: 'download_orders_report', range: base.range, filters: base.filters ?? {} };
+  }
+
+  // "אותו דבר" / "אותו דבר למחר" → reuse the previous intent verbatim,
+  // optionally swapping the range when the user mentioned a new one.
+  if (FOLLOWUP_SAME.some(p => text.includes(p))) {
+    const newRange = detectRangeStrict(text);
+    if (!newRange) return last; // identical replay
+    // Replay with new range — only types that actually carry a range.
+    switch (last.type) {
+      case 'count_orders':              return { type: 'count_orders',             range: newRange, filters: last.filters };
+      case 'find_orders':               return { type: 'find_orders',              range: newRange, filters: last.filters };
+      case 'order_petit_four_summary':  return { type: 'order_petit_four_summary', range: newRange };
+      case 'count_order_items_by_kind': return { type: 'count_order_items_by_kind', range: newRange, kind: last.kind };
+      case 'download_orders_report':    return { type: 'download_orders_report',   range: newRange, filters: last.filters };
+      case 'send_orders_report':        return { type: 'send_orders_report',       range: newRange, filters: last.filters, recipientEmail: last.recipientEmail };
+      case 'request_report_action':     return { type: 'request_report_action',    range: newRange, filters: last.filters };
+      default:                          return last;
+    }
+  }
+
   return null;
 }
 
 // ───── Main parser ────────────────────────────────────────────────────────
 
-export function parseIntent(rawText: string, lastIntent?: ParsedIntent | null): ParsedIntent {
+// Accepts either the legacy lastIntent shape or the richer ConversationContext.
+// Keeping both keeps existing callers working while we roll out memory expansion.
+export function parseIntent(
+  rawText: string,
+  contextOrLastIntent?: ConversationContext | ParsedIntent | null,
+): ParsedIntent {
+  // Extract email from RAW text — normalise() strips dots in punctuation
+  // cleanup which would otherwise shred addresses before regex match.
+  const emailFromRaw = rawText.match(EMAIL_RE)?.[1];
+
   const text = normalize(rawText);
   if (!text) return { type: 'unknown' };
 
-  if (lastIntent) {
-    const fu = tryFollowUp(text, lastIntent);
+  // Normalise the second arg to a ConversationContext so the rest of the
+  // parser doesn't have to branch on the shape.
+  const ctx: ConversationContext | null = (() => {
+    if (!contextOrLastIntent) return null;
+    if ('lastIntent' in (contextOrLastIntent as Record<string, unknown>)) {
+      return contextOrLastIntent as ConversationContext;
+    }
+    // Legacy shape — wrap.
+    return { lastIntent: contextOrLastIntent as ParsedIntent };
+  })();
+
+  if (ctx?.lastIntent) {
+    const fu = tryFollowUp(text, ctx, emailFromRaw);
     if (fu) return fu;
   }
 
@@ -195,8 +307,8 @@ export function parseIntent(rawText: string, lastIntent?: ParsedIntent | null): 
     const filters = detectFilters(text);
     const wantsSend = includesAny(text, SYN_REPORT_SEND);
     const wantsDownload = includesAny(text, SYN_REPORT_DOWNLOAD);
-    const emailMatch = text.match(EMAIL_RE);
-    const recipientEmail = emailMatch ? emailMatch[1] : undefined;
+    // Use the email captured from RAW text (normalize strips dots).
+    const recipientEmail = emailFromRaw;
 
     // Send wins when both verbs/cues appear (more specific intent — "שלחי
     // דוח להוריד" reads as "send"). Email in text → definitely send.
