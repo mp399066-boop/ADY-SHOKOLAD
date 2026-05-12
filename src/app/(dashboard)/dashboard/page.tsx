@@ -53,12 +53,40 @@ type Delivery = {
 type StockRow = { id: string; שם: string; status: string; quantity: number };
 
 type Mode = 'work' | 'management';
-type Filter = 'all' | 'urgent' | 'preparation' | 'unpaid' | 'pickup' | 'delivery';
+
+// Action-verb filter buckets — chips read like the next verb the user has
+// to do, not like a database status. The user almost never wants to see
+// "all שולח" — they want "what needs to be packed", "what is waiting on
+// money". `mark_ready` covers בהכנה (the kitchen still has work). `ready_to_go`
+// folds 'מוכנה למשלוח' + 'נשלחה' into one bucket: the order has left the
+// kitchen and is waiting to be handed off / completed.
+type Filter = 'all' | 'start' | 'mark_ready' | 'ready_to_go' | 'unpaid' | 'urgent';
 
 const PAYMENT_METHODS = [
   'מזומן', 'כרטיס אשראי', 'העברה בנקאית', 'bit', 'PayBox', 'PayPal', 'אחר',
 ] as const;
 const STOCK_ALERT_STATES = ['מלאי נמוך', 'קריטי', 'אזל מהמלאי'];
+
+// Full enum of order status — used only by the "עוד פעולות" override modal,
+// where the user explicitly asks for any status (cancellation, manual revert,
+// jumping straight from חדשה to הושלמה for a back-dated entry, etc.). The
+// regular flow uses `nextOrderAction` and never asks the user to pick.
+const ORDER_STATUS_OPTIONS: { value: OrderStatus; sideEffect?: string }[] = [
+  { value: 'חדשה' },
+  { value: 'בהכנה',          sideEffect: 'יוריד מלאי' },
+  { value: 'מוכנה למשלוח' },
+  { value: 'נשלחה' },
+  { value: 'הושלמה בהצלחה',  sideEffect: 'עשוי להפיק חשבונית מס' },
+  { value: 'בוטלה' },
+];
+
+const PAYMENT_STATUS_OPTIONS: { value: 'ממתין' | 'שולם' | 'חלקי' | 'בוטל' | 'בארטר'; sideEffect?: string }[] = [
+  { value: 'ממתין' },
+  { value: 'שולם',  sideEffect: 'עשוי להפיק קבלה' },
+  { value: 'חלקי' },
+  { value: 'בוטל' },
+  { value: 'בארטר' },
+];
 
 // ─── Theme tokens (centralized for consistency) ───────────────────────────
 const C = {
@@ -170,6 +198,7 @@ export default function DashboardPage() {
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<{ text: string; cta: string; onConfirm: () => Promise<void> | void } | null>(null);
   const [markPaidOrder, setMarkPaidOrder] = useState<TodayOrder | null>(null);
+  const [moreActionsOrder, setMoreActionsOrder] = useState<TodayOrder | null>(null);
 
   // In-flight write counter — auto-refresh skips ticks while > 0 so optimistic
   // updates aren't clobbered by a stale GET response.
@@ -318,6 +347,51 @@ export default function DashboardPage() {
     }
   };
 
+  // Manual override from the "עוד פעולות" modal. Same safety rails as the
+  // primary buttons: side-effecting transitions go through the existing
+  // confirm / mark-paid modals — never write to Supabase from here.
+  const onPickOrderStatus = (o: TodayOrder, newStatus: OrderStatus) => {
+    setMoreActionsOrder(null);
+    if (newStatus === o.סטטוס_הזמנה) return;
+    const exec = () => patchOrder(o.id, { סטטוס_הזמנה: newStatus }, { סטטוס_הזמנה: o.סטטוס_הזמנה });
+    if (newStatus === 'בהכנה' && o.סטטוס_הזמנה !== 'בהכנה') {
+      setConfirmAction({
+        text: 'מעבר ל"בהכנה" יוריד מלאי לפי הלוגיקה הקיימת. להמשיך?',
+        cta: 'אישור — בהכנה',
+        onConfirm: async () => { await exec(); setConfirmAction(null); },
+      });
+    } else if (newStatus === 'הושלמה בהצלחה' && o.סטטוס_הזמנה !== 'הושלמה בהצלחה') {
+      setConfirmAction({
+        text: 'סימון כ"הושלמה בהצלחה" עשוי להפיק חשבונית מס לפי הלוגיקה הקיימת. להמשיך?',
+        cta: 'אישור — הושלמה',
+        onConfirm: async () => { await exec(); setConfirmAction(null); },
+      });
+    } else if (newStatus === 'בוטלה' && o.סטטוס_הזמנה !== 'בוטלה') {
+      setConfirmAction({
+        text: 'ביטול ההזמנה אינו הפיך אוטומטית. להמשיך?',
+        cta: 'אישור — בטלי',
+        onConfirm: async () => { await exec(); setConfirmAction(null); },
+      });
+    } else {
+      void exec();
+    }
+  };
+
+  const onPickPaymentStatus = (
+    o: TodayOrder,
+    newStatus: 'ממתין' | 'שולם' | 'חלקי' | 'בוטל' | 'בארטר',
+  ) => {
+    setMoreActionsOrder(null);
+    if (newStatus === o.סטטוס_תשלום) return;
+    if (newStatus === 'שולם') {
+      // Hand off to the existing mark-paid modal so the user picks אופן_תשלום
+      // before the receipt-trigger fires (same flow as the secondary card button).
+      setMarkPaidOrder(o);
+      return;
+    }
+    void patchOrder(o.id, { סטטוס_תשלום: newStatus }, { סטטוס_תשלום: o.סטטוס_תשלום });
+  };
+
   // ─── Derived data ───────────────────────────────────────────────────────
 
   const liveOrders = useMemo(
@@ -325,23 +399,31 @@ export default function DashboardPage() {
     [todayOrders],
   );
 
-  const visibleOrders = useMemo(() => {
-    let f = liveOrders;
-    if (filter === 'urgent')      f = f.filter(o => o.הזמנה_דחופה);
-    else if (filter === 'preparation') f = f.filter(o => o.סטטוס_הזמנה === 'בהכנה');
-    else if (filter === 'unpaid')      f = f.filter(o => o.סטטוס_תשלום !== 'שולם' && o.סטטוס_תשלום !== 'בארטר');
-    else if (filter === 'pickup')      f = f.filter(o => o.סוג_אספקה === 'איסוף עצמי');
-    else if (filter === 'delivery')    f = f.filter(o => o.סוג_אספקה === 'משלוח');
-    return [...f].sort((a, b) => timeKey(a.שעת_אספקה) - timeKey(b.שעת_אספקה));
-  }, [liveOrders, filter]);
+  // Match an order against an action-verb filter bucket.
+  const matchesFilter = (o: TodayOrder, f: Filter): boolean => {
+    switch (f) {
+      case 'all':         return true;
+      case 'start':       return o.סטטוס_הזמנה === 'חדשה';
+      case 'mark_ready':  return o.סטטוס_הזמנה === 'בהכנה';
+      case 'ready_to_go': return o.סטטוס_הזמנה === 'מוכנה למשלוח' || o.סטטוס_הזמנה === 'נשלחה';
+      case 'unpaid':      return o.סטטוס_תשלום !== 'שולם' && o.סטטוס_תשלום !== 'בארטר';
+      case 'urgent':      return !!o.הזמנה_דחופה;
+    }
+  };
+
+  const visibleOrders = useMemo(
+    () => [...liveOrders.filter(o => matchesFilter(o, filter))]
+      .sort((a, b) => timeKey(a.שעת_אספקה) - timeKey(b.שעת_אספקה)),
+    [liveOrders, filter],
+  );
 
   const filterCounts = useMemo(() => ({
     all:         liveOrders.length,
-    urgent:      liveOrders.filter(o => o.הזמנה_דחופה).length,
-    preparation: liveOrders.filter(o => o.סטטוס_הזמנה === 'בהכנה').length,
-    unpaid:      liveOrders.filter(o => o.סטטוס_תשלום !== 'שולם' && o.סטטוס_תשלום !== 'בארטר').length,
-    pickup:      liveOrders.filter(o => o.סוג_אספקה === 'איסוף עצמי').length,
-    delivery:    liveOrders.filter(o => o.סוג_אספקה === 'משלוח').length,
+    start:       liveOrders.filter(o => matchesFilter(o, 'start')).length,
+    mark_ready:  liveOrders.filter(o => matchesFilter(o, 'mark_ready')).length,
+    ready_to_go: liveOrders.filter(o => matchesFilter(o, 'ready_to_go')).length,
+    unpaid:      liveOrders.filter(o => matchesFilter(o, 'unpaid')).length,
+    urgent:      liveOrders.filter(o => matchesFilter(o, 'urgent')).length,
   }), [liveOrders]);
 
   const expectedRevenue = useMemo(
@@ -434,14 +516,21 @@ export default function DashboardPage() {
             href="/orders?filter=today"
           />
 
-          {/* Filter chips — small & restrained */}
-          <div className="flex flex-wrap items-center gap-1.5">
-            <FilterChip label="הכל"      count={filterCounts.all}         active={filter === 'all'}         onClick={() => setFilter('all')} />
-            <FilterChip label="דחופות"   count={filterCounts.urgent}      active={filter === 'urgent'}      onClick={() => setFilter('urgent')}      tone="red" />
-            <FilterChip label="בהכנה"    count={filterCounts.preparation} active={filter === 'preparation'} onClick={() => setFilter('preparation')} tone="amber" />
-            <FilterChip label="לא שולמו" count={filterCounts.unpaid}      active={filter === 'unpaid'}      onClick={() => setFilter('unpaid')}      tone="amber" />
-            <FilterChip label="איסוף"    count={filterCounts.pickup}      active={filter === 'pickup'}      onClick={() => setFilter('pickup')} />
-            <FilterChip label="משלוח"    count={filterCounts.delivery}    active={filter === 'delivery'}    onClick={() => setFilter('delivery')} />
+          {/* Action-verb chips. Each one filters the cards below to the orders
+              that share the same next-step verb, so clicking "להתחיל הכנה"
+              shows just the orders whose primary button is "התחילי הכנה". */}
+          <div className="space-y-1.5">
+            <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: C.textSoft, letterSpacing: '0.08em' }}>
+              מה דורש טיפול עכשיו?
+            </p>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <FilterChip label="הכל"             count={filterCounts.all}         active={filter === 'all'}         onClick={() => setFilter('all')} />
+              <FilterChip label="להתחיל הכנה"     count={filterCounts.start}       active={filter === 'start'}       onClick={() => setFilter('start')}       tone="amber" />
+              <FilterChip label="לסמן מוכנות"     count={filterCounts.mark_ready}  active={filter === 'mark_ready'}  onClick={() => setFilter('mark_ready')}  tone="amber" />
+              <FilterChip label="מוכנות לאספקה"   count={filterCounts.ready_to_go} active={filter === 'ready_to_go'} onClick={() => setFilter('ready_to_go')} />
+              <FilterChip label="ממתינות לתשלום"  count={filterCounts.unpaid}      active={filter === 'unpaid'}      onClick={() => setFilter('unpaid')}      tone="amber" />
+              <FilterChip label="דחופות"          count={filterCounts.urgent}      active={filter === 'urgent'}      onClick={() => setFilter('urgent')}      tone="red" />
+            </div>
           </div>
 
           {/* Order cards */}
@@ -463,6 +552,7 @@ export default function DashboardPage() {
                   onPrimary={() => onPrimaryOrderAction(o)}
                   onMarkPaid={() => setMarkPaidOrder(o)}
                   onOpen={() => router.push(`/orders/${o.id}`)}
+                  onMoreActions={() => setMoreActionsOrder(o)}
                 />
               ))}
             </div>
@@ -533,6 +623,15 @@ export default function DashboardPage() {
             );
             if (ok) setMarkPaidOrder(null);
           }}
+        />
+      )}
+
+      {moreActionsOrder && (
+        <MoreActionsModal
+          order={moreActionsOrder}
+          onClose={() => setMoreActionsOrder(null)}
+          onPickOrderStatus={(s) => onPickOrderStatus(moreActionsOrder, s)}
+          onPickPaymentStatus={(s) => onPickPaymentStatus(moreActionsOrder, s)}
         />
       )}
     </div>
@@ -682,13 +781,14 @@ function KpiCard({
 // ─── OrderActionCard — the centerpiece ────────────────────────────────────
 
 function OrderActionCard({
-  order, updating, onPrimary, onMarkPaid, onOpen,
+  order, updating, onPrimary, onMarkPaid, onOpen, onMoreActions,
 }: {
   order: TodayOrder;
   updating: boolean;
   onPrimary: () => void;
   onMarkPaid: () => void;
   onOpen: () => void;
+  onMoreActions: () => void;
 }) {
   const c = order.לקוחות;
   const customerName = c ? `${c.שם_פרטי} ${c.שם_משפחה}` : (order.שם_מקבל || 'לקוח');
@@ -803,7 +903,7 @@ function OrderActionCard({
           </div>
         )}
 
-        {/* ── Action row: PRIMARY (big) + open link ─────────────────────── */}
+        {/* ── Action row: PRIMARY (big) + tertiary text links ───────────── */}
         <div className="flex items-center gap-3">
           <div className="flex-1">
             {action ? (
@@ -826,13 +926,22 @@ function OrderActionCard({
               </div>
             )}
           </div>
-          <button
-            onClick={onOpen}
-            className="text-[12px] font-medium hover:underline transition-colors flex-shrink-0"
-            style={{ color: C.textSoft }}
-          >
-            פתיחת הזמנה →
-          </button>
+          <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
+            <button
+              onClick={onOpen}
+              className="text-[12px] font-medium hover:underline transition-colors"
+              style={{ color: C.textSoft }}
+            >
+              פתיחת הזמנה →
+            </button>
+            <button
+              onClick={onMoreActions}
+              className="text-[11px] hover:underline transition-colors"
+              style={{ color: C.textSoft, opacity: 0.85 }}
+            >
+              עוד פעולות
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -1187,6 +1296,114 @@ function MarkPaidModal({
           style={{ backgroundColor: C.green }}
         >
           {loading ? '...' : 'אישור — סמני שולם'}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+// ─── MoreActionsModal — manual override surface ───────────────────────────
+// Lets the user jump to any status when the auto-suggested next-step doesn't
+// fit (revert from בהכנה → חדשה after a mistake, cancel an order, jump
+// straight to הושלמה for a back-dated entry, etc). Each pick is routed back
+// into the parent through onPickOrderStatus / onPickPaymentStatus, which
+// applies the same confirm + mark-paid wrappers as the primary flow — so
+// side-effecting transitions cannot be accidentally bypassed from here.
+
+function MoreActionsModal({
+  order, onClose, onPickOrderStatus, onPickPaymentStatus,
+}: {
+  order: TodayOrder;
+  onClose: () => void;
+  onPickOrderStatus: (s: OrderStatus) => void;
+  onPickPaymentStatus: (s: 'ממתין' | 'שולם' | 'חלקי' | 'בוטל' | 'בארטר') => void;
+}) {
+  const c = order.לקוחות;
+  const name = c ? `${c.שם_פרטי} ${c.שם_משפחה}` : (order.שם_מקבל || 'לקוח');
+
+  return (
+    <Modal open onClose={onClose} title="עוד פעולות" size="md">
+      <div className="text-sm mb-4 flex items-center gap-2 flex-wrap" style={{ color: C.text }}>
+        <span className="font-semibold">{name}</span>
+        <span style={{ color: C.textSoft }}>·</span>
+        <span className="font-mono text-xs" style={{ color: C.textSoft }}>{order.מספר_הזמנה}</span>
+      </div>
+
+      <p className="text-[12px] mb-5 px-3 py-2 rounded-lg" style={{ backgroundColor: C.amberSoft, color: C.amber }}>
+        זה מסך חריגים. סטטוסים עם פעולות צד יציגו אישור לפני ביצוע ולא יעקפו את הלוגיקה הקיימת.
+      </p>
+
+      {/* Order status block */}
+      <div className="mb-5">
+        <p className="text-[11px] uppercase tracking-wider font-semibold mb-2" style={{ color: C.textSoft, letterSpacing: '0.08em' }}>
+          סטטוס הזמנה
+        </p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {ORDER_STATUS_OPTIONS.map(opt => {
+            const active = order.סטטוס_הזמנה === opt.value;
+            return (
+              <button
+                key={opt.value}
+                onClick={() => onPickOrderStatus(opt.value)}
+                disabled={active}
+                className="text-sm font-medium h-11 rounded-xl transition-colors border text-right px-3 disabled:cursor-default"
+                style={{
+                  backgroundColor: active ? C.brand : C.card,
+                  color: active ? '#FFFFFF' : C.text,
+                  borderColor: active ? C.brand : C.border,
+                }}
+              >
+                <span className="block leading-tight">{opt.value}</span>
+                {opt.sideEffect && (
+                  <span className="block text-[10px] leading-tight mt-0.5" style={{ color: active ? 'rgba(255,255,255,0.85)' : C.amber }}>
+                    {opt.sideEffect}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Payment status block */}
+      <div className="mb-5">
+        <p className="text-[11px] uppercase tracking-wider font-semibold mb-2" style={{ color: C.textSoft, letterSpacing: '0.08em' }}>
+          סטטוס תשלום
+        </p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {PAYMENT_STATUS_OPTIONS.map(opt => {
+            const active = order.סטטוס_תשלום === opt.value;
+            return (
+              <button
+                key={opt.value}
+                onClick={() => onPickPaymentStatus(opt.value)}
+                disabled={active}
+                className="text-sm font-medium h-11 rounded-xl transition-colors border text-right px-3 disabled:cursor-default"
+                style={{
+                  backgroundColor: active ? C.green : C.card,
+                  color: active ? '#FFFFFF' : C.text,
+                  borderColor: active ? C.green : C.border,
+                }}
+              >
+                <span className="block leading-tight">{opt.value}</span>
+                {opt.sideEffect && (
+                  <span className="block text-[10px] leading-tight mt-0.5" style={{ color: active ? 'rgba(255,255,255,0.85)' : C.amber }}>
+                    {opt.sideEffect}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="flex gap-3 justify-end">
+        <button
+          onClick={onClose}
+          className="px-4 h-10 text-sm font-medium rounded-xl border transition-colors"
+          style={{ borderColor: C.border, color: C.textSoft }}
+        >
+          סגור
         </button>
       </div>
     </Modal>
