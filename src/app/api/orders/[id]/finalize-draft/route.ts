@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { sendOrderEmail, isInternalEmail, type OrderEmailData, type EmailContext } from '@/lib/email';
+import { sendAdminNewOrderAlert } from '@/lib/admin-alert-email';
 
 // Converts a draft order (status=טיוטה) to a real order (status=חדשה).
 // Replaces all items, creates delivery/payment records, sends emails.
@@ -179,12 +180,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     })();
   }
 
-  // 7. NO admin alert here. The owner already received a "התקבלה הזמנה חדשה
-  // במערכת" email when the draft was originally created (or earlier auto-saved
-  // as draft and then materialised — but the WC webhook / new-order flow that
-  // produces those drafts hits create-full's path). Sending a second alert
-  // when the draft is finalised was redundant and noisy. The customer-facing
-  // email above still fires here, since it represents new contact going out.
+  // 7. Admin alert — fire-and-forget, only on the moment the draft becomes
+  // a real order. Auto-save / save-draft never reach this endpoint, so this
+  // is the right single trigger for the "התקבלה הזמנה חדשה" email when the
+  // user submits via /orders/new. create-full(isDraft=false) sends the same
+  // alert for the rare path where someone submits before auto-save kicks in;
+  // since each order traverses exactly one of the two endpoints, no duplicate.
+  void sendAdminNewOrderAlert(orderId);
 
   return NextResponse.json({ data: { ...fullOrder, מוצרים_בהזמנה: fullItems || [] } }, { status: 200 });
 }
