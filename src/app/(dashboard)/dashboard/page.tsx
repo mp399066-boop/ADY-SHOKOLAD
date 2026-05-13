@@ -372,7 +372,35 @@ export default function DashboardPage() {
       />
 
       <DashboardShell
-        main={<WorkQueue items={queueItems} onAction={onQueueAction} />}
+        main={
+          <WorkQueue
+            items={queueItems}
+            updatingId={updatingId}
+            handlers={{
+              onAction: onQueueAction,
+              onRowClick: (item) => {
+                // Where each row navigates to. Stops short of opening
+                // anything for stock items where the action button (פתח מלאי)
+                // already does the routing.
+                if (item.entity?.kind === 'order') {
+                  router.push(`/orders/${item.entity.data.id}`);
+                  return;
+                }
+                if (item.entity?.kind === 'delivery') {
+                  const orderId = item.entity.data.הזמנות?.id;
+                  if (orderId) router.push(`/orders/${orderId}`);
+                  else router.push('/deliveries');
+                  return;
+                }
+                if (item.type === 'stock') {
+                  router.push('/inventory');
+                }
+              },
+              onChangeOrderStatus: onPickOrderStatus,
+              onChangePaymentStatus: onPickPaymentStatus,
+            }}
+          />
+        }
         side={
           <AttentionPanel
             liveOrders={activeOrders}

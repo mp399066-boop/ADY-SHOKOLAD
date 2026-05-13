@@ -1,20 +1,19 @@
 'use client';
 
-// Main work queue — the centerpiece of the dashboard. Single card with a
-// short title block and 3 urgency bands stacked inside it. The list is the
-// dashboard. Empty state collapses to one full-card empty message rather
-// than an empty card.
+// Centerpiece of the dashboard. The list IS the dashboard.
 
 import { C } from './theme';
 import { WorkQueueSection } from './WorkQueueSection';
 import { DashboardEmptyState } from './DashboardEmptyState';
 import type { QueueItem } from './queue-builder';
+import type { WorkQueueItemHandlers } from './WorkQueueItem';
 
 export function WorkQueue({
-  items, onAction,
+  items, updatingId, handlers,
 }: {
   items: QueueItem[];
-  onAction: (verb: QueueItem['action']['verb']) => void;
+  updatingId: string | null;
+  handlers: WorkQueueItemHandlers;
 }) {
   const urgent   = items.filter(i => i.urgency === 'urgent_now');
   const today    = items.filter(i => i.urgency === 'today');
@@ -48,9 +47,9 @@ export function WorkQueue({
         />
       ) : (
         <>
-          <WorkQueueSection title="דחוף עכשיו" tone="red"   items={urgent}   onAction={onAction} />
-          <WorkQueueSection title="להיום"      tone="amber" items={today}    onAction={onAction} />
-          <WorkQueueSection title="למעקב"      tone="muted" items={followUp} onAction={onAction} />
+          <WorkQueueSection title="דחוף עכשיו" tone="red"   items={urgent}   updatingId={updatingId} handlers={handlers} />
+          <WorkQueueSection title="להיום"      tone="amber" items={today}    updatingId={updatingId} handlers={handlers} />
+          <WorkQueueSection title="למעקב"      tone="muted" items={followUp} updatingId={updatingId} handlers={handlers} />
         </>
       )}
     </div>

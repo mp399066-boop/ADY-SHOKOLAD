@@ -1,11 +1,9 @@
 'use client';
 
-// One urgency band inside the WorkQueue. Renders a thin labelled header,
-// then the items list. Hidden entirely when empty so we don't waste vertical
-// space on bands with nothing in them.
+// One urgency band inside the WorkQueue.
 
 import { C } from './theme';
-import { WorkQueueItem } from './WorkQueueItem';
+import { WorkQueueItem, type WorkQueueItemHandlers } from './WorkQueueItem';
 import type { QueueItem } from './queue-builder';
 
 const TONE: Record<'red' | 'amber' | 'muted', { bg: string; text: string }> = {
@@ -15,12 +13,13 @@ const TONE: Record<'red' | 'amber' | 'muted', { bg: string; text: string }> = {
 };
 
 export function WorkQueueSection({
-  title, tone, items, onAction,
+  title, tone, items, updatingId, handlers,
 }: {
   title: string;
   tone: 'red' | 'amber' | 'muted';
   items: QueueItem[];
-  onAction: (verb: QueueItem['action']['verb']) => void;
+  updatingId: string | null;
+  handlers: WorkQueueItemHandlers;
 }) {
   if (items.length === 0) return null;
   const t = TONE[tone];
@@ -39,14 +38,23 @@ export function WorkQueueSection({
         <span className="text-[10.5px] font-semibold tabular-nums">{items.length}</span>
       </header>
       <ul>
-        {items.map((it, idx) => (
-          <WorkQueueItem
-            key={it.id}
-            item={it}
-            isLast={idx === items.length - 1}
-            onAction={onAction}
-          />
-        ))}
+        {items.map((it, idx) => {
+          // Mark this row as "updating" only when the underlying entity matches
+          // the row we're currently writing to. Other rows stay enabled.
+          const entityId = it.entity?.kind === 'order'    ? it.entity.data.id
+                        : it.entity?.kind === 'delivery' ? it.entity.data.id
+                        : null;
+          const updating = !!entityId && entityId === updatingId;
+          return (
+            <WorkQueueItem
+              key={it.id}
+              item={it}
+              isLast={idx === items.length - 1}
+              updating={updating}
+              handlers={handlers}
+            />
+          );
+        })}
       </ul>
     </section>
   );

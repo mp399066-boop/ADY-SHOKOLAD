@@ -22,6 +22,14 @@ export type QueueAction =
   | { kind: 'open_delivery';  payload: Delivery }        // פתח משלוח
   | { kind: 'open_inventory'; payload?: undefined };     // פתח מלאי
 
+// Inline status pills + row-click need direct access to the underlying entity
+// so the UI can read the current סטטוס_הזמנה / סטטוס_תשלום and route to the
+// correct detail page. Stock items don't carry an entity since there's no
+// "stock detail" page yet (clicks go to /inventory).
+export type QueueEntity =
+  | { kind: 'order';    data: TodayOrder }
+  | { kind: 'delivery'; data: Delivery };
+
 export interface QueueItem {
   id: string;
   type: QueueItemType;
@@ -32,6 +40,8 @@ export interface QueueItem {
   action: { label: string; verb: QueueAction };
   // Optional accent — currently used by stock items
   severity?: 'critical' | 'low';
+  // Underlying entity — set for order/delivery/payment items.
+  entity?: QueueEntity;
 }
 
 interface Inputs {
@@ -107,6 +117,7 @@ export function buildQueueItems({ liveOrders, todayDeliveries, stock, todayISO }
       action: advance
         ? { label: nextAdvanceLabel(o),     verb: { kind: 'advance_order', payload: o } }
         : { label: ACTION_LABEL.open_order, verb: { kind: 'open_order',    payload: o } },
+      entity: { kind: 'order', data: o },
     });
   }
 
@@ -148,6 +159,7 @@ export function buildQueueItems({ liveOrders, todayDeliveries, stock, todayISO }
       meta: `${o.מספר_הזמנה} · ${o.שעת_אספקה || '—'} · ${o.סטטוס_הזמנה}`,
       amount: formatCurrency(o.סך_הכל_לתשלום),
       action: { label: nextAdvanceLabel(o), verb: { kind: 'advance_order', payload: o } },
+      entity: { kind: 'order', data: o },
     });
   }
 
@@ -163,6 +175,7 @@ export function buildQueueItems({ liveOrders, todayDeliveries, stock, todayISO }
       title: deliveryRecipient(d),
       meta: `היום · ${d.כתובת ?? ''}${d.עיר ? ' · ' + d.עיר : ''}${o?.מספר_הזמנה ? ' · ' + o.מספר_הזמנה : ''}`,
       action: { label: ACTION_LABEL.send_to_courier, verb: { kind: 'send_to_courier', payload: d } },
+      entity: { kind: 'delivery', data: d },
     });
   }
 
@@ -182,6 +195,7 @@ export function buildQueueItems({ liveOrders, todayDeliveries, stock, todayISO }
       meta: `${o.מספר_הזמנה} · ${o.שעת_אספקה || '—'} · מוכנה`,
       amount: formatCurrency(o.סך_הכל_לתשלום),
       action: { label: nextAdvanceLabel(o), verb: { kind: 'advance_order', payload: o } },
+      entity: { kind: 'order', data: o },
     });
   }
 
@@ -196,6 +210,7 @@ export function buildQueueItems({ liveOrders, todayDeliveries, stock, todayISO }
       title: deliveryRecipient(d),
       meta: `נאסף · ממתין לאישור מסירה מהשליח${d.עיר ? ' · ' + d.עיר : ''}`,
       action: { label: ACTION_LABEL.open_delivery, verb: { kind: 'open_delivery', payload: d } },
+      entity: { kind: 'delivery', data: d },
     });
   }
 
@@ -215,6 +230,7 @@ export function buildQueueItems({ liveOrders, todayDeliveries, stock, todayISO }
       meta: `${o.מספר_הזמנה} · ${o.תאריך_אספקה ?? '—'} · ${o.סטטוס_תשלום}`,
       amount: formatCurrency(o.סך_הכל_לתשלום),
       action: { label: ACTION_LABEL.mark_paid, verb: { kind: 'mark_paid', payload: o } },
+      entity: { kind: 'order', data: o },
     });
   }
 
