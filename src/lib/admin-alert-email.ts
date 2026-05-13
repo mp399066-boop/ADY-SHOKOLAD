@@ -51,6 +51,13 @@ function buildHtml(args: {
   items: AlertItem[];
   total: number;
   isUrgent: boolean;
+  // Source attribution — set by callers like the WC webhook so the email
+  // explicitly says "נכנסה הזמנה חדשה מהאתר" instead of generic "new order".
+  source?: string | null;            // e.g. 'WooCommerce'
+  sourceOrderNumber?: string | null; // e.g. WC order # 4750
+  // Products that were auto-created in this webhook run. Surfaces a callout
+  // so the operator immediately knows new SKUs entered the catalog.
+  newProducts?: { id: string; name: string }[];
 }): string {
   const a = args;
 
@@ -85,6 +92,36 @@ function buildHtml(args: {
       }).join('');
 
   // ── Optional blocks ────────────────────────────────────────────────────────
+
+  // WC source banner — only when the order arrived via the WooCommerce
+  // webhook. Cream/gold treatment so it reads as a context badge, not an
+  // alert. Includes the WC order # so the operator can cross-reference.
+  const sourceBanner = a.source === 'WooCommerce'
+    ? `<div style="background:#FAF3E5;border:1px solid #E5DACA;border-radius:10px;padding:12px 16px;margin-bottom:16px;text-align:right">
+         <div style="font-weight:700;color:#7A4A27;font-size:14px">נכנסה הזמנה חדשה מהאתר</div>
+         <div style="font-size:12px;color:#85705C;margin-top:3px">
+           מקור: WooCommerce${a.sourceOrderNumber ? ` · מספר הזמנה באתר: #${escapeHtml(String(a.sourceOrderNumber))}` : ''}
+         </div>
+       </div>`
+    : '';
+
+  // Auto-created products callout. Single product → singular wording;
+  // multiple → labelled list. Hidden when nothing was created so we don't
+  // tell the operator "0 new products" on every email.
+  const newProductsBlock = (a.newProducts && a.newProducts.length > 0)
+    ? a.newProducts.length === 1
+      ? `<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:12px 16px;margin-bottom:18px;text-align:right">
+           <div style="font-weight:700;color:#92400E;font-size:13px">שימו לב — נוסף מוצר חדש למוצרים למכירה:</div>
+           <div style="font-size:13px;color:#78350F;margin-top:4px;font-weight:600">• ${escapeHtml(a.newProducts[0].name)}</div>
+         </div>`
+      : `<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:12px 16px;margin-bottom:18px;text-align:right">
+           <div style="font-weight:700;color:#92400E;font-size:13px">שימו לב — נוספו ${a.newProducts.length} מוצרים חדשים למוצרים למכירה:</div>
+           <ul style="margin:6px 0 0 0;padding-inline-start:16px;font-size:13px;color:#78350F;line-height:1.7">
+             ${a.newProducts.map(p => `<li style="font-weight:600">${escapeHtml(p.name)}</li>`).join('')}
+           </ul>
+         </div>`
+    : '';
+
   const urgentRow = a.isUrgent
     ? `<div style="background:#FEE2E2;border:1px solid #FECACA;border-radius:8px;padding:10px 14px;margin-bottom:18px;text-align:right">
          <span style="display:inline-block;font-weight:700;color:#991B1B;font-size:13px">⚡ הזמנה דחופה</span>
@@ -146,12 +183,16 @@ function buildHtml(args: {
           <td style="padding:32px 40px 36px">
 
             <h1 style="margin:0 0 6px;font-size:21px;font-weight:700;color:#2A1C12;line-height:1.35;text-align:right">
-              התקבלה הזמנה חדשה במערכת
+              ${a.source === 'WooCommerce' ? 'הזמנה חדשה מהאתר' : 'התקבלה הזמנה חדשה במערכת'}
             </h1>
             <p style="margin:0 0 22px;font-size:13px;color:#8A7664;text-align:right">
-              הזמנה חדשה נכנסה זה עתה.
+              ${a.source === 'WooCommerce'
+                ? 'הזמנה חדשה התקבלה דרך WooCommerce.'
+                : 'הזמנה חדשה נכנסה זה עתה.'}
             </p>
 
+            ${sourceBanner}
+            ${newProductsBlock}
             ${urgentRow}
 
             <!-- Order summary box -->
@@ -238,6 +279,9 @@ function buildText(args: {
   paymentStatus: string;
   total: number;
   items: AlertItem[];
+  source?: string | null;
+  sourceOrderNumber?: string | null;
+  newProducts?: { id: string; name: string }[];
 }): string {
   const line = '-'.repeat(40);
   const itemLines = args.items.length === 0
@@ -249,8 +293,19 @@ function buildText(args: {
         return head + pf + note;
       }).join('\n');
 
+  const newProductsLines = (args.newProducts && args.newProducts.length > 0)
+    ? [
+        line,
+        args.newProducts.length === 1
+          ? `שימו לב — נוסף מוצר חדש למוצרים למכירה:`
+          : `שימו לב — נוספו ${args.newProducts.length} מוצרים חדשים למוצרים למכירה:`,
+        ...args.newProducts.map(p => `  • ${p.name}`),
+      ]
+    : [];
+
   return [
-    `התקבלה הזמנה חדשה במערכת`,
+    args.source === 'WooCommerce' ? `נכנסה הזמנה חדשה מהאתר` : `התקבלה הזמנה חדשה במערכת`,
+    args.source === 'WooCommerce' && args.sourceOrderNumber ? `מספר הזמנה באתר: #${args.sourceOrderNumber}` : '',
     line,
     `מספר הזמנה: ${args.orderNumber}`,
     `לקוח: ${args.customerName}${args.customerPhone ? ` | ${args.customerPhone}` : ''}`,
@@ -259,14 +314,24 @@ function buildText(args: {
     line,
     'פירוט מוצרים:',
     itemLines,
+    ...newProductsLines,
     line,
     `סה"כ: ${fmt(args.total)}`,
   ].filter(Boolean).join('\n');
 }
 
+// Optional context for callers that have provenance / new-product info to
+// surface in the email body. The WC webhook passes both. Internal create-
+// full callers omit options and get the unchanged email.
+export interface AdminAlertOptions {
+  source?: 'WooCommerce' | string | null;
+  sourceOrderNumber?: string | number | null;
+  newProducts?: { id: string; name: string }[];
+}
+
 // Public entry point — fetches everything and sends. Idempotent at the
 // caller's discretion (we don't dedupe — caller decides when to invoke).
-export async function sendAdminNewOrderAlert(orderId: string): Promise<void> {
+export async function sendAdminNewOrderAlert(orderId: string, options: AdminAlertOptions = {}): Promise<void> {
   const apiKey = process.env.SENDGRID_API_KEY;
   const from = process.env.FROM_EMAIL;
   if (!apiKey || !from) {
@@ -355,18 +420,27 @@ export async function sendAdminNewOrderAlert(orderId: string): Promise<void> {
     items: alertItems,
     total: Number((order as Record<string, unknown>).סך_הכל_לתשלום ?? 0),
     isUrgent: !!(order as Record<string, unknown>).הזמנה_דחופה,
+    source: options.source ?? null,
+    sourceOrderNumber: options.sourceOrderNumber != null ? String(options.sourceOrderNumber) : null,
+    newProducts: options.newProducts ?? [],
   };
+
+  // Subject changes for WC orders so the operator can see at-a-glance from
+  // the inbox that this came from the website.
+  const subject = options.source === 'WooCommerce'
+    ? `הזמנה חדשה מהאתר ${args.orderNumber} — ${customerName}`
+    : `הזמנה חדשה ${args.orderNumber} — ${customerName}`;
 
   sgMail.setApiKey(apiKey);
   try {
     await sgMail.send({
       to: ADMIN_TO,
       from,
-      subject: `הזמנה חדשה ${args.orderNumber} — ${customerName}`,
+      subject,
       text: buildText(args),
       html: buildHtml(args),
     });
-    console.log('[admin-alert] sent for', args.orderNumber);
+    console.log('[admin-alert] sent for', args.orderNumber, '| source:', options.source ?? 'manual', '| newProducts:', args.newProducts.length);
   } catch (err) {
     console.error('[admin-alert] failed (non-blocking):', err instanceof Error ? err.message : err);
   }

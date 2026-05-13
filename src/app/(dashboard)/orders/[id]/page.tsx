@@ -998,7 +998,20 @@ export default function OrderDetailPage() {
                         const size = item.גודל_מארז ?? pkg?.גודל_מארז ?? '?';
                         return `${base} · ${size} יח׳`;
                       })()
-                    : ((item as OrderItem & { מוצרים_למכירה?: { שם_מוצר: string } }).מוצרים_למכירה?.שם_מוצר || '—');
+                    : ((() => {
+                        // Order items inserted via the WooCommerce webhook
+                        // sometimes arrive with a null מוצר_id (auto-create
+                        // fell through). The webhook then writes the WC name
+                        // into הערות_לשורה — surface that here as the
+                        // primary display name instead of "—" so the operator
+                        // still sees what was ordered.
+                        const linked = (item as OrderItem & { מוצרים_למכירה?: { שם_מוצר: string } }).מוצרים_למכירה?.שם_מוצר;
+                        if (linked) return linked;
+                        const note = (item as OrderItem).הערות_לשורה ?? '';
+                        const wcMatch = note.match(/^מוצר מהאתר:\s*(.+?)(?:\s*\(SKU\b|$)/);
+                        if (wcMatch) return wcMatch[1].trim();
+                        return 'מוצר לא מזוהה';
+                      })());
                   return (
                     <li
                       key={item.id}

@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 import { createAdminClient } from '@/lib/supabase/server';
 import { generateOrderNumber } from '@/lib/utils';
 import { sendOrderEmail, isInternalEmail, type OrderEmailData, type EmailContext } from '@/lib/email';
+import { sendAdminNewOrderAlert } from '@/lib/admin-alert-email';
 
 const PAID_STATUSES = new Set(['processing', 'completed']);
 
@@ -19,6 +20,40 @@ function normalizePhone(phone: string | undefined): string | null {
   if (!phone) return null;
   const cleaned = phone.replace(/[\s\-().+]/g, '').trim();
   return cleaned || null;
+}
+
+// Lightweight name normaliser used for catalog matching. Keeps Hebrew letters
+// + digits, collapses whitespace, lowercases Latin chars. Two products that
+// differ only by trailing whitespace / extra space match the same key.
+function normalizeName(s: string): string {
+  return s.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+// Build a stable identity slug for a WC line item — the same product/variation
+// hitting two different orders ALWAYS resolves to the same slug, so the
+// dedup-on-insert guard reliably catches it. Order of preference:
+//   1. SKU (operator-controlled, most reliable)
+//   2. variation_id (only set on variable products) — combined with product_id
+//   3. product_id alone
+//   4. normalized name — last resort, only when WC sent neither id nor sku
+function buildWcSlug(item: Record<string, unknown>): string {
+  const sku = (item.sku as string | undefined)?.trim();
+  if (sku) {
+    return `wc-sku-${sku.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-_]/g, '').slice(0, 80)}` || `wc-sku-${Date.now()}`;
+  }
+  const productId = item.product_id as number | undefined;
+  const variationId = item.variation_id as number | undefined;
+  if (productId && variationId) return `wc-prod-${productId}-var-${variationId}`;
+  if (productId)               return `wc-prod-${productId}`;
+  if (variationId)             return `wc-var-${variationId}`;
+  const name = (item.name as string | undefined) ?? '';
+  if (name) {
+    // Hash via simple base36 fold so RTL Hebrew names produce stable slugs.
+    let h = 0;
+    for (let i = 0; i < name.length; i++) h = (Math.imul(31, h) + name.charCodeAt(i)) | 0;
+    return `wc-name-${(h >>> 0).toString(36)}`;
+  }
+  return `wc-fallback-${Date.now()}`;
 }
 
 export async function GET() {
@@ -176,64 +211,123 @@ export async function POST(req: Request) {
     console.log('[wc-webhook] Created order:', order.id);
 
     // ── 5. Match products & create line items ────────────────────────────────
+    // Catalog query intentionally does NOT filter by פעיל — an inactive
+    // product in the catalog should still be matched (re-using its id) rather
+    // than silently re-created as a duplicate.
     console.log('[wc-webhook] creating order lines... items count:', lineItems.length);
-    const { data: catalog } = await supabase.from('מוצרים_למכירה').select('id, שם_מוצר, מזהה_לובהבל').eq('פעיל', true);
-    const productByName = new Map<string, string>();
+    const { data: catalog } = await supabase.from('מוצרים_למכירה').select('id, שם_מוצר, מזהה_לובהבל');
     const productBySlug = new Map<string, string>();
+    const productByName = new Map<string, string>();
     for (const p of catalog ?? []) {
-      productByName.set((p.שם_מוצר as string).toLowerCase().trim(), p.id as string);
-      productBySlug.set((p.מזהה_לובהבל as string).toLowerCase().trim(), p.id as string);
+      const slug = (p.מזהה_לובהבל as string | null);
+      const name = (p.שם_מוצר as string | null);
+      if (slug) productBySlug.set(slug.toLowerCase().trim(), p.id as string);
+      if (name) productByName.set(normalizeName(name), p.id as string);
     }
 
+    // Track products created during this webhook so the admin alert email
+    // can list them. Same wcSlug seen twice in a single webhook resolves to
+    // the same id (we update the maps in-place after each insert).
+    const newProducts: { id: string; name: string }[] = [];
+
     for (const item of lineItems) {
-      const name = (item.name as string) ?? '';
-      const sku = (item.sku as string) ?? '';
+      const rawName = (item.name as string) ?? '';
+      const name = rawName.trim() || `מוצר WooCommerce #${(item.product_id as number | undefined) ?? wcOrderId}`;
+      const sku = (item.sku as string | undefined)?.trim() ?? '';
       const qty = (item.quantity as number) || 1;
       const unitPrice = parseFloat(item.price as string) || 0;
       const lineTotal = parseFloat(item.subtotal as string) || unitPrice * qty;
+      const wooProductId = item.product_id as number | undefined;
+      const wooVariationId = item.variation_id as number | undefined;
+      const wcSlug = buildWcSlug(item);
 
-      const wcSlug = sku
-        ? `wc-${sku.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').slice(0, 50)}`
-        : null;
-
+      // Match priority: slug (sku/product-id) → normalized name. Slug is more
+      // reliable when a product gets renamed in WC; name matches operator-
+      // created products that don't have a WC source slug yet.
       let matchedId: string | null =
-        productByName.get(name.toLowerCase().trim()) ??
-        (wcSlug ? productBySlug.get(wcSlug) : undefined) ??
+        productBySlug.get(wcSlug.toLowerCase()) ??
+        productByName.get(normalizeName(name)) ??
         null;
 
-      if (!matchedId) {
-        const slug = wcSlug ?? `wc-${Date.now()}`;
+      if (matchedId) {
+        console.log('[woocommerce] matched product',
+          '| woo order id:', wcOrderId,
+          '| woo product id:', wooProductId ?? '—',
+          '| sku:', sku || '—',
+          '| name:', name,
+          '| local product id:', matchedId);
+      } else {
+        // No match → try to create. Description carries provenance so the
+        // operator can later see where the product came from.
+        const desc = `נוצר אוטומטית מהזמנת WooCommerce #${wcOrderId}`
+          + (wooProductId ? ` · WC product #${wooProductId}` : '')
+          + (wooVariationId ? ` · variation #${wooVariationId}` : '')
+          + (sku ? ` · SKU ${sku}` : '');
+
         const { data: newProduct, error: createErr } = await supabase
           .from('מוצרים_למכירה')
-          .insert({ מזהה_לובהבל: slug, שם_מוצר: name, מחיר: unitPrice, סוג_מוצר: 'מוצר רגיל', פעיל: true })
+          .insert({
+            מזהה_לובהבל: wcSlug,
+            שם_מוצר:     name,
+            מחיר:        unitPrice,
+            סוג_מוצר:    'מוצר רגיל',
+            פעיל:        true,
+            תיאור:       desc,
+          })
           .select('id')
           .single();
 
         if (newProduct) {
           matchedId = newProduct.id as string;
-          console.log(`[wc-webhook] Auto-created product: "${name}" (slug: ${slug})`);
-        } else if (wcSlug && createErr) {
-          // Possibly a UNIQUE conflict on wcSlug (e.g. product is inactive) — look it up
-          const { data: conflict } = await supabase.from('מוצרים_למכירה').select('id').eq('מזהה_לובהבל', wcSlug).maybeSingle();
+          newProducts.push({ id: matchedId, name });
+          // Update in-memory maps so a duplicate line item in the same
+          // webhook resolves to the freshly-created row.
+          productBySlug.set(wcSlug.toLowerCase(), matchedId);
+          productByName.set(normalizeName(name), matchedId);
+          console.log('[woocommerce] created missing product',
+            '| woo order id:', wcOrderId,
+            '| woo product id:', wooProductId ?? '—',
+            '| sku:', sku || '—',
+            '| name:', name,
+            '| price:', unitPrice,
+            '| new local product id:', matchedId);
+        } else {
+          // Insert failed — most likely a UNIQUE violation on the slug
+          // (race / re-import). Recover by selecting by slug.
+          const { data: conflict } = await supabase
+            .from('מוצרים_למכירה')
+            .select('id')
+            .eq('מזהה_לובהבל', wcSlug)
+            .maybeSingle();
           if (conflict) {
             matchedId = conflict.id as string;
-            console.log(`[wc-webhook] Found existing product by slug: "${name}" → ${matchedId}`);
+            productBySlug.set(wcSlug.toLowerCase(), matchedId);
+            console.log('[woocommerce] matched product (slug conflict recovery)',
+              '| sku:', sku || '—', '| name:', name, '| local product id:', matchedId);
           } else {
-            console.warn('[wc-webhook] Failed to auto-create product:', createErr.message, '| name:', name);
+            console.error('[woocommerce] failed to create missing product',
+              '| woo order id:', wcOrderId,
+              '| woo product id:', wooProductId ?? '—',
+              '| sku:', sku || '—',
+              '| name:', name,
+              '| error:', createErr?.message ?? 'unknown');
+            warnings.push(`Failed to create product "${name}"`);
           }
-        } else {
-          console.warn('[wc-webhook] Failed to auto-create product:', createErr?.message, '| name:', name);
         }
       }
 
+      // Insert order item. matchedId may still be null if BOTH create and
+      // recovery failed — in that case the line is recorded with the WC
+      // name in הערות so the operator can see what was ordered even though
+      // we couldn't bind it to a catalog product.
       const { error: itemErr } = await supabase.from('מוצרים_בהזמנה').insert({
-        הזמנה_id: order.id,
-        מוצר_id: matchedId,
-        סוג_שורה: 'מוצר',
-        כמות: qty,
-        מחיר_ליחידה: unitPrice,
-        סהכ: lineTotal,
-        הערות_לשורה: null,
+        הזמנה_id:     order.id,
+        מוצר_id:      matchedId,
+        סוג_שורה:     'מוצר',
+        כמות:         qty,
+        מחיר_ליחידה:  unitPrice,
+        סהכ:          lineTotal,
+        הערות_לשורה:  matchedId ? null : `מוצר מהאתר: ${name}${sku ? ` (SKU ${sku})` : ''}`,
       });
       if (itemErr) {
         console.warn('[wc-webhook] item insert error:', itemErr.message, '| item:', name);
@@ -327,11 +421,21 @@ export async function POST(req: Request) {
       }
     })();
 
+    // Owner-facing internal alert. Same template create-full uses; the
+    // `source` + `newProducts` options drive the WC-specific banner and the
+    // "נוסף מוצר חדש למוצרים למכירה" callout in the email body.
+    void sendAdminNewOrderAlert(order.id, {
+      source: 'WooCommerce',
+      sourceOrderNumber: wcOrderId,
+      newProducts,
+    });
+
     return Response.json({
       success: true,
       order_id: order.id,
       customer_id: customerId,
       payment_status: paymentStatus,
+      new_products: newProducts.length,
       warnings,
     });
 
