@@ -21,6 +21,11 @@ export interface ReportInput {
   // above the order cards. Optional; empty/missing = no banner. Not stored
   // anywhere; lives only inside the request that produced the report.
   note?: string | null;
+  // Per-order delivery-time override map (orderId → free text). Replaces
+  // the order's stored שעת_אספקה for *this report only* — never written
+  // back to the DB. Empty / missing entries fall through to the original
+  // value, which then itself falls through describeOrderTime's heuristic.
+  timeOverrides?: Record<string, string> | null;
 }
 
 export interface ReportSummary {
@@ -159,8 +164,12 @@ function describeOrderTime(
   const label = isDelivery ? 'שעת אספקה' : 'שעת איסוף';
   const t = (rawTime ?? '').trim();
   if (!t) return { label, value: 'לא צוינה שעה', strong: false };
-  const hhmm = t.match(/^(\d{1,2}):(\d{2})/);
-  if (hhmm) return { label, value: `${hhmm[1].padStart(2, '0')}:${hhmm[2]}`, strong: true };
+  // Anchored: only treat as a normalised HH:MM when the *whole* string is a
+  // bare time (with optional :SS suffix the DB sometimes returns). Free-text
+  // ranges like "09:00–11:00" or "עד 12:00" must fall through unchanged so
+  // the operator's intent reads back verbatim.
+  const exactTime = t.match(/^(\d{1,2}):(\d{2})(:\d{2})?$/);
+  if (exactTime) return { label, value: `${exactTime[1].padStart(2, '0')}:${exactTime[2]}`, strong: true };
   if (/גמיש|במהלך היום|כל היום|בערך|flex/i.test(t)) {
     return { label, value: 'גמיש', strong: false };
   }
@@ -241,7 +250,11 @@ function paymentBadge(status: string): string {
   return `<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;background:${c.bg};color:${c.fg}">${esc(status)}</span>`;
 }
 
-function orderCard(order: RawOrder, items: Record<string, unknown>[]): string {
+function orderCard(
+  order: RawOrder,
+  items: Record<string, unknown>[],
+  timeOverride?: string,
+): string {
   const customer = order['לקוחות'] as Record<string, unknown> | null;
   const customerName = customer
     ? `${esc(customer['שם_פרטי'] || '')} ${esc(customer['שם_משפחה'] || '')}`.trim() || 'ללא שם'
@@ -264,7 +277,11 @@ function orderCard(order: RawOrder, items: Record<string, unknown>[]): string {
   // when the customer arrives — relabel so the report reads correctly.
   // describeOrderTime also normalises empty / "גמיש" / free-text values so
   // the row never reads "—" silently when a window wasn't pinned down.
-  const timeInfo = describeOrderTime(order['שעת_אספקה'] as string | null | undefined, isDelivery);
+  // The per-report time override (operator-typed, this report only) wins
+  // over the stored value when present. Empty override = use stored value.
+  const overrideTrim = (timeOverride ?? '').trim();
+  const effectiveTime = overrideTrim || (order['שעת_אספקה'] as string | null | undefined);
+  const timeInfo = describeOrderTime(effectiveTime, isDelivery);
   const timeLine = `<tr><td style="padding:4px 10px;color:#8E7D6A">${timeInfo.label}</td><td style="padding:4px 10px;color:#2B1A10;font-weight:${timeInfo.strong ? 700 : 600}">${esc(timeInfo.value)}</td></tr>`;
   const deliveryInstructionsLine = isDelivery && order['הוראות_משלוח']
     ? `<tr><td style="padding:4px 10px;color:#8E7D6A">הוראות משלוח</td><td style="padding:4px 10px;color:#5C3D22">${esc(order['הוראות_משלוח'])}</td></tr>`
@@ -320,9 +337,10 @@ export function buildReportHtml(
   itemsByOrder: Record<string, Record<string, unknown>[]>,
   forDownload = false,
   note?: string | null,
+  timeOverrides?: Record<string, string> | null,
 ): string {
   const cards = orders.length
-    ? orders.map(o => orderCard(o, itemsByOrder[String(o.id)] || [])).join('')
+    ? orders.map(o => orderCard(o, itemsByOrder[String(o.id)] || [], timeOverrides?.[String(o.id)])).join('')
     : `<div style="background:#FFFFFF;border:1px dashed #EDE0CE;border-radius:10px;padding:32px;text-align:center;color:#8E7D6A;font-size:14px">אין הזמנות בטווח שנבחר</div>`;
 
   // Print-friendly toolbar + @media print rules — only injected for download mode
@@ -417,7 +435,7 @@ export async function generateOrdersReport(
   const { orders, itemsByOrder, summary: counts } = await fetchOrdersForReport(startDate, endDate, filters);
 
   const summary: ReportSummary = { ...counts, startDate, endDate, rangeLabel: label };
-  const html = buildReportHtml(summary, orders, itemsByOrder, opts.forDownload === true, input.note);
+  const html = buildReportHtml(summary, orders, itemsByOrder, opts.forDownload === true, input.note, input.timeOverrides);
   const subject = `דוח הזמנות — ${label} — ${BUSINESS}`;
   return { html, summary, subject };
 }

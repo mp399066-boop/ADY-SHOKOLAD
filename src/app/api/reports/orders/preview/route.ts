@@ -24,6 +24,11 @@ const bodySchema = z.object({
   // Optional free-text note rendered above the order cards. Capped at a
   // generous length so a runaway paste can't blow up the email body.
   note: z.string().max(2000).optional(),
+  // Per-order delivery-time overrides for *this report only* — never
+  // written to the DB. Keys are order ids; values are the operator-typed
+  // free text (HH:MM, "גמיש", "עד 12:00", "09:00–11:00", …). Empty values
+  // are treated as "no override" by the builder.
+  timeOverrides: z.record(z.string().max(80)).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -39,7 +44,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.errors[0]?.message || 'נתונים לא תקינים' }, { status: 400 });
   }
 
-  const { range, date, filters, note } = parsed.data;
+  const { range, date, filters, note, timeOverrides } = parsed.data;
   if (range === 'custom' && !date) {
     return NextResponse.json({ error: 'בטווח מותאם — חובה לבחור תאריך' }, { status: 400 });
   }
@@ -47,7 +52,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'לא ניתן לבחור גם משלוחים בלבד וגם איסוף בלבד' }, { status: 400 });
   }
 
-  const input: ReportInput = { range, date, filters, note };
+  const input: ReportInput = { range, date, filters, note, timeOverrides };
   const reportFilters: ReportFilters = filters ?? {};
 
   try {
@@ -65,7 +70,26 @@ export async function POST(req: NextRequest) {
     // content the recipient will see. WYSIWYG by construction — preview and
     // sent email cannot drift apart.
     const fullSummary: ReportSummary = { ...summary, startDate, endDate, rangeLabel: label };
-    const html = buildReportHtml(fullSummary, orders, itemsByOrder, false, note);
+    const html = buildReportHtml(fullSummary, orders, itemsByOrder, false, note, timeOverrides);
+
+    // Lightweight projection of the same orders the html was built from —
+    // the page uses this to render per-order time-override inputs (so the
+    // operator can edit times without re-loading the orders separately).
+    type RawO = Record<string, unknown>;
+    const orderList = orders.map(o => {
+      const r = o as RawO;
+      const cust = r['לקוחות'] as { שם_פרטי?: string; שם_משפחה?: string } | null;
+      const customerName = cust ? `${cust.שם_פרטי || ''} ${cust.שם_משפחה || ''}`.trim() || 'ללא שם' : 'ללא שם';
+      return {
+        id: String(r.id),
+        orderNumber: String(r['מספר_הזמנה'] || ''),
+        customerName,
+        deliveryDate: (r['תאריך_אספקה'] as string) || null,
+        deliveryTime: (r['שעת_אספקה'] as string) || null,
+        deliveryType: (r['סוג_אספקה'] as string) || null,
+        urgent: !!r['הזמנה_דחופה'],
+      };
+    });
 
     return NextResponse.json({
       ok: true,
@@ -76,6 +100,7 @@ export async function POST(req: NextRequest) {
         endDate,
         totalAmount,
       },
+      orders: orderList,
       html,
       // Echo the input so the caller can post the same payload back to
       // /download or /send without re-deriving anything.
