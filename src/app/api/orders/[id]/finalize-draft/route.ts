@@ -163,14 +163,28 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       items: (fullItems || []).map((item: Record<string, unknown>) => {
         const prod = item['מוצרים_למכירה'] as Record<string, unknown> | null;
         const pfSelections = item['בחירת_פטיפורים_בהזמנה'] as Record<string, unknown>[] | null;
-        const pfNames = pfSelections?.map(s => {
-          const pf = s['סוגי_פטיפורים'] as Record<string, string> | null;
-          return pf ? `${pf['שם_פטיפור']} ×${s['כמות']}` : '';
-        }).filter(Boolean).join(', ');
-        const name = item['סוג_שורה'] === 'מארז'
-          ? `מארז ${item['גודל_מארז'] || ''} יח׳${pfNames ? ` (${pfNames})` : ''}`
+        // Structured petit-four list — rendered as a vertical sub-list by
+        // the email template (no parentheses on the name line).
+        const petitFours = (pfSelections ?? [])
+          .map(s => {
+            const pf = s['סוגי_פטיפורים'] as Record<string, string> | null;
+            return pf?.['שם_פטיפור']
+              ? { name: pf['שם_פטיפור'], quantity: Number(s['כמות'] ?? 0) }
+              : null;
+          })
+          .filter((p): p is { name: string; quantity: number } => p !== null && p.quantity > 0);
+
+        const isPackage = item['סוג_שורה'] === 'מארז';
+        const name = isPackage
+          ? `מארז ${item['גודל_מארז'] || ''} פטיפורים`
           : (prod?.['שם_מוצר'] as string) || 'פריט';
-        return { name, quantity: Number(item['כמות'] || 1), unitPrice: Number(item['מחיר_ליחידה'] || 0), lineTotal: Number(item['סהכ'] || 0) };
+        return {
+          name,
+          quantity: Number(item['כמות'] || 1),
+          unitPrice: Number(item['מחיר_ליחידה'] || 0),
+          lineTotal: Number(item['סהכ'] || 0),
+          ...(isPackage && petitFours.length > 0 ? { petitFours } : {}),
+        };
       }),
     };
     const emailContext: EmailContext = { customerId: existingOrder.לקוח_id, orderId };

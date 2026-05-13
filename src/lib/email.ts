@@ -6,6 +6,10 @@ export interface OrderEmailItem {
   quantity: number;
   unitPrice: number;
   lineTotal: number;
+  // Optional structured petit-four breakdown — when present (and non-empty)
+  // the email renders these as a clean vertical list under the product name
+  // instead of stuffing them into the name string with parentheses.
+  petitFours?: { name: string; quantity: number }[];
 }
 
 export interface OrderEmailData {
@@ -55,14 +59,44 @@ function buildHtml(customerName: string, d: OrderEmailData, logoUrl?: string): s
     ? `<img src="${logoUrl}" alt="${BUSINESS}" width="36" height="36" style="width:36px;height:36px;object-fit:contain;border-radius:8px;display:block;margin:0 auto 12px" onerror="this.style.display='none'">`
     : '';
 
-  // Items — one row per product: name right, qty × unit-price left
+  // Items — one row per product: name + (when applicable) a vertical sub-list
+  // of selected petit-fours under it. Sub-list is wrapped in a second <tr> so
+  // the product row keeps its qty × price column aligned cleanly to the left.
   const itemRows = d.items.map((item, i) => {
-    const sep = i < d.items.length - 1 ? 'border-bottom:1px solid #F0EAE0;' : '';
-    return `
+    const isLast = i === d.items.length - 1;
+    const hasPf = !!item.petitFours && item.petitFours.length > 0;
+    // Border-bottom only on the LAST visible row of this product block —
+    // either the petit-four sub-row (if present) or the product row itself.
+    const productSep = !hasPf && !isLast ? 'border-bottom:1px solid #F0EAE0;' : '';
+    const subSep     = hasPf && !isLast  ? 'border-bottom:1px solid #F0EAE0;' : '';
+
+    const productRow = `
     <tr>
-      <td style="${sep}padding:11px 0;font-size:14px;color:#2A1C12;text-align:right">${item.name}</td>
-      <td style="${sep}padding:11px 0;font-size:13px;color:#5C4A38;text-align:left;direction:ltr;white-space:nowrap;padding-right:8px">${item.quantity} &times; ${fmt(item.unitPrice)}</td>
+      <td style="${productSep}padding:${hasPf ? '11px 0 4px' : '11px 0'};font-size:14px;font-weight:600;color:#2A1C12;text-align:right;vertical-align:top">${item.name}</td>
+      <td style="${productSep}padding:${hasPf ? '11px 0 4px' : '11px 0'};font-size:13px;color:#5C4A38;text-align:left;direction:ltr;white-space:nowrap;padding-right:8px;vertical-align:top">${item.quantity} &times; ${fmt(item.unitPrice)}</td>
     </tr>`;
+
+    if (!hasPf) return productRow;
+
+    // Petit-four sub-list — vertical, one type per line, gold accent label
+    // above. The whole block lives in a single <td colspan="2"> so it can
+    // breathe across the full row width without fighting the qty column.
+    const pfLines = item.petitFours!.map(pf => `
+        <div style="display:flex;justify-content:space-between;font-size:13px;color:#5C4A38;padding:2px 0">
+          <span>${pf.name}</span>
+          <span style="direction:ltr;color:#8A735F">&times; ${pf.quantity}</span>
+        </div>`).join('');
+    const subRow = `
+    <tr>
+      <td colspan="2" style="${subSep}padding:0 0 12px">
+        <div style="font-size:11px;font-weight:700;color:#B89870;letter-spacing:0.04em;margin:0 0 4px">בחירת פטיפורים</div>
+        <div style="border-inline-start:2px solid #F4E8D8;padding-inline-start:10px">
+          ${pfLines}
+        </div>
+      </td>
+    </tr>`;
+
+    return productRow + subRow;
   }).join('');
 
   const deliveryRow = d.deliveryDate ? `
@@ -212,9 +246,15 @@ function buildText(customerName: string, d: OrderEmailData): string {
   const finalTotal = showVat ? +(d.total + vat).toFixed(2) : d.total;
   const line = '-'.repeat(40);
 
-  const itemLines = d.items.map(item =>
-    `${item.name} | כמות: ${item.quantity} | מחיר ליח': ${fmt(item.unitPrice)} | סה"כ: ${fmt(item.lineTotal)}`
-  ).join('\n');
+  // Plaintext mirrors the HTML: product line, then (if applicable) an indented
+  // vertical petit-four list. Mail clients that fall back to text/plain still
+  // get something readable.
+  const itemLines = d.items.map(item => {
+    const head = `${item.name} | כמות: ${item.quantity} | מחיר ליח': ${fmt(item.unitPrice)} | סה"כ: ${fmt(item.lineTotal)}`;
+    if (!item.petitFours || item.petitFours.length === 0) return head;
+    const pfBody = item.petitFours.map(pf => `    ${pf.name} × ${pf.quantity}`).join('\n');
+    return `${head}\n  בחירת פטיפורים:\n${pfBody}`;
+  }).join('\n');
 
   return [
     `שלום ${customerName},`,
