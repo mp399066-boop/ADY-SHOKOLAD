@@ -4,36 +4,37 @@
 
 export const C = {
   // Surfaces
-  bg:         '#F7F3EC',  // page background — cream/warm grey
-  card:       '#FFFFFF',  // primary card surface
-  cardSoft:   '#FFFCF7',  // softer card variant for headers / panels
-  surface:    '#FBF8F1',  // intermediate fill (e.g. row hover)
+  bg:         '#F8F3EC',
+  card:       '#FFFDF9',
+  cardSoft:   '#FFFFFF',
+  surface:    '#EFE2D3',
 
   // Borders
-  border:     '#E5DACA',  // primary card / table border
-  borderSoft: '#EFE6D5',  // hairline row separator
+  border:     '#E8D8C6',
+  borderSoft: '#F0E5D8',
 
   // Text
-  text:       '#2A1B12',  // primary text
-  textSoft:   '#85705C',  // secondary text
-  textMuted:  '#B0A08D',  // tertiary text
+  text:       '#2F1B14',
+  textSoft:   '#7B604D',
+  textMuted:  '#AF9A87',
 
   // Brand
-  brand:      '#8B5E34',  // primary brown
-  espresso:   '#7A4A27',  // primary CTA — deeper than brand
-  brandSoft:  '#FAF3E5',  // brand-tinted fill
+  brand:      '#5A3424',
+  espresso:   '#2F1B14',
+  cocoa:      '#7B4A35',
+  brandSoft:  '#F4E9DC',
 
   // Accents
-  gold:       '#B89870',  // muted gold — used for ord# + completed states
-  goldSoft:   '#F4E8D8',  // gold-tinted chip fill
+  gold:       '#C49A6C',
+  goldSoft:   '#F3E4D0',
 
   // Status (used only on small badges / urgency bars)
-  green:      '#0F766E',
-  greenSoft:  '#E5F4EE',
-  red:        '#B43A2B',
-  redSoft:    '#FBE6E1',
-  amber:      '#A66A1F',
-  amberSoft:  '#F8EAD0',
-  blue:       '#1E5B8C',
-  blueSoft:   '#DDE9F5',
+  green:      '#476D53',
+  greenSoft:  '#E8F0E7',
+  red:        '#9D4B4A',
+  redSoft:    '#F4E4E1',
+  amber:      '#A8753D',
+  amberSoft:  '#F4E3C9',
+  blue:       '#496D7D',
+  blueSoft:   '#E5EEF1',
 } as const;

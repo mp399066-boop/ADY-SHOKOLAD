@@ -12,6 +12,7 @@ export type TodayOrder = Order & {
   אופן_תשלום?: string | null;
   שם_מקבל?: string | null;
   טלפון_מקבל?: string | null;
+  itemSummary?: string | null;
 };
 
 export type Delivery = {

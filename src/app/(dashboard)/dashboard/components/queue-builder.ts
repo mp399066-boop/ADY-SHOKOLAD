@@ -76,6 +76,17 @@ function isUnpaid(o: TodayOrder): boolean {
   return o.סטטוס_תשלום !== 'שולם' && o.סטטוס_תשלום !== 'בארטר' && o.סטטוס_תשלום !== 'בוטל';
 }
 
+function orderMeta(o: TodayOrder, fallbackStatus?: string): string {
+  return [
+    o.מספר_הזמנה,
+    o.תאריך_אספקה || null,
+    o.שעת_אספקה || null,
+    fallbackStatus || o.סטטוס_הזמנה,
+    o.סוג_אספקה || null,
+    o.itemSummary || null,
+  ].filter(Boolean).join(' · ');
+}
+
 function nextAdvanceLabel(o: TodayOrder): string {
   // Local copy of the verb logic — UI-facing labels only. Status values
   // sent to the server still come from the page.tsx getNextOrderStatus.
@@ -112,7 +123,7 @@ export function buildQueueItems({ liveOrders, todayDeliveries, stock, todayISO }
       type: 'order',
       urgency: 'urgent_now',
       title: customerName(o),
-      meta: `${o.מספר_הזמנה} · ${o.שעת_אספקה || '—'} · ${o.סטטוס_הזמנה}`,
+      meta: orderMeta(o),
       amount: formatCurrency(o.סך_הכל_לתשלום),
       action: advance
         ? { label: nextAdvanceLabel(o),     verb: { kind: 'advance_order', payload: o } }
@@ -121,16 +132,30 @@ export function buildQueueItems({ liveOrders, todayDeliveries, stock, todayISO }
     });
   }
 
-  // ── 2. Critical stock items used to land here, but the spec changed:
-  // generic stock alerts are now exclusively summarised in the side
-  // AttentionPanel (with breakdown numbers + top-3 names + a link to
-  // /inventory). Showing 24 stock rows in the main queue made every stock
-  // item look like a primary work task and crowded out actual order work.
-  // We deliberately silence `stock` here. Later, if we add recipe-based
-  // "blocks today's order" inference, we can reintroduce ONLY blocking
-  // items into the main queue.
-  void seenStockIds;
-  void stock;
+  // ── 2. Stock / production attention ───────────────────────────────────
+  const stockRank: Record<string, number> = { 'אזל מהמלאי': 0, 'קריטי': 1, 'מלאי נמוך': 2 };
+  const stockRows = [
+    ...stock.raw.map(s => ({ ...s, kind: 'חומר גלם' })),
+    ...stock.products.map(s => ({ ...s, kind: 'מוצר' })),
+    ...stock.petitFours.map(s => ({ ...s, kind: 'פטיפור' })),
+  ].filter(s => stockRank[s.status] !== undefined)
+   .sort((a, b) => (stockRank[a.status] ?? 9) - (stockRank[b.status] ?? 9))
+   .slice(0, 6);
+
+  for (const s of stockRows) {
+    const stockId = `${s.kind}-${s.id}`;
+    if (seenStockIds.has(stockId)) continue;
+    seenStockIds.add(stockId);
+    items.push({
+      id: `s-${stockId}`,
+      type: 'stock',
+      urgency: s.status === 'מלאי נמוך' ? 'follow_up' : 'urgent_now',
+      title: s.שם,
+      meta: `${s.kind} · ${s.status} · כמות ${s.quantity}`,
+      action: { label: ACTION_LABEL.open_inventory, verb: { kind: 'open_inventory' } },
+      severity: s.status === 'מלאי נמוך' ? 'low' : 'critical',
+    });
+  }
 
   // ── 3. Today's pending orders (חדשה / בהכנה) ─────────────────────────────
   const todayPending = liveOrders.filter(o =>
@@ -145,7 +170,7 @@ export function buildQueueItems({ liveOrders, todayDeliveries, stock, todayISO }
       type: 'order',
       urgency: 'today',
       title: customerName(o),
-      meta: `${o.מספר_הזמנה} · ${o.שעת_אספקה || '—'} · ${o.סטטוס_הזמנה}`,
+      meta: orderMeta(o),
       amount: formatCurrency(o.סך_הכל_לתשלום),
       action: { label: nextAdvanceLabel(o), verb: { kind: 'advance_order', payload: o } },
       entity: { kind: 'order', data: o },
@@ -181,7 +206,7 @@ export function buildQueueItems({ liveOrders, todayDeliveries, stock, todayISO }
       type: 'order',
       urgency: 'today',
       title: customerName(o),
-      meta: `${o.מספר_הזמנה} · ${o.שעת_אספקה || '—'} · מוכנה`,
+      meta: orderMeta(o, 'מוכנה'),
       amount: formatCurrency(o.סך_הכל_לתשלום),
       action: { label: nextAdvanceLabel(o), verb: { kind: 'advance_order', payload: o } },
       entity: { kind: 'order', data: o },
@@ -216,17 +241,12 @@ export function buildQueueItems({ liveOrders, todayDeliveries, stock, todayISO }
       type: 'payment',
       urgency: 'follow_up',
       title: customerName(o),
-      meta: `${o.מספר_הזמנה} · ${o.תאריך_אספקה ?? '—'} · ${o.סטטוס_תשלום}`,
+      meta: orderMeta(o, o.סטטוס_תשלום),
       amount: formatCurrency(o.סך_הכל_לתשלום),
       action: { label: ACTION_LABEL.mark_paid, verb: { kind: 'mark_paid', payload: o } },
       entity: { kind: 'order', data: o },
     });
   }
-
-  // קריטי / מלאי נמוך stock items also previously appeared as follow-up
-  // queue rows. Removed for the same reason as the urgent ones above —
-  // generic stock alerts belong in the side AttentionPanel summary, not in
-  // the main worklist.
 
   return items;
 }

@@ -1,12 +1,47 @@
 'use client';
 
-// Centerpiece of the dashboard. The list IS the dashboard.
-
 import { C } from './theme';
-import { WorkQueueSection } from './WorkQueueSection';
 import { DashboardEmptyState } from './DashboardEmptyState';
-import type { QueueItem } from './queue-builder';
+import type { QueueItem, QueueItemType } from './queue-builder';
 import type { WorkQueueItemHandlers } from './WorkQueueItem';
+import { WorkQueueItem } from './WorkQueueItem';
+
+const BOARD_COLUMNS: {
+  type: QueueItemType;
+  title: string;
+  subtitle: string;
+  accent: string;
+  empty: string;
+}[] = [
+  {
+    type: 'order',
+    title: 'עדכון סטטוס הזמנה',
+    subtitle: 'הזמנות שצריכות להתקדם לשלב הבא',
+    accent: C.brand,
+    empty: 'אין הזמנות שממתינות לעדכון סטטוס.',
+  },
+  {
+    type: 'payment',
+    title: 'עדכון תשלום',
+    subtitle: 'חובות, חלקי ותשלומים לסגירה',
+    accent: C.amber,
+    empty: 'אין תשלומים פתוחים לטיפול.',
+  },
+  {
+    type: 'delivery',
+    title: 'עדכון סטטוס משלוח',
+    subtitle: 'איסוף, מסירה ומעקב שליחים',
+    accent: C.blue,
+    empty: 'אין משלוחים פעילים כרגע.',
+  },
+  {
+    type: 'stock',
+    title: 'מלאי וייצור',
+    subtitle: 'חוסרים ופריטים שדורשים הכנה',
+    accent: C.red,
+    empty: 'אין התראות מלאי דחופות.',
+  },
+];
 
 export function WorkQueue({
   items, updatingId, handlers,
@@ -15,43 +50,120 @@ export function WorkQueue({
   updatingId: string | null;
   handlers: WorkQueueItemHandlers;
 }) {
-  const urgent   = items.filter(i => i.urgency === 'urgent_now');
-  const today    = items.filter(i => i.urgency === 'today');
-  const followUp = items.filter(i => i.urgency === 'follow_up');
+  if (items.length === 0) {
+    return (
+      <section className="rounded-2xl" style={{ backgroundColor: C.card, border: `1px solid ${C.border}` }}>
+        <DashboardEmptyState
+          title="היום רגוע"
+          subtitle="אין פעולות שממתינות לטיפול כרגע"
+        />
+      </section>
+    );
+  }
 
   return (
-    <div
+    <section className="space-y-4">
+      <div className="flex items-end justify-between gap-4 flex-wrap">
+        <div>
+          <h2 className="text-[22px] font-bold" style={{ color: C.text }}>
+            לוח פעולות יומי
+          </h2>
+          <p className="text-[13px] mt-1" style={{ color: C.textSoft }}>
+            מחולק לפי הפעולה שצריך לבצע, כדי לעבוד מהר וברור.
+          </p>
+        </div>
+        <div
+          className="inline-flex items-center gap-2 rounded-full px-3 py-2 text-[12px] font-bold"
+          style={{ backgroundColor: C.card, color: C.textSoft, border: `1px solid ${C.border}` }}
+        >
+          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: C.green }} />
+          {items.length} פעולות פתוחות
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        {BOARD_COLUMNS.map(column => {
+          const columnItems = items.filter(item => item.type === column.type);
+          return (
+            <ActionColumn
+              key={column.type}
+              title={column.title}
+              subtitle={column.subtitle}
+              accent={column.accent}
+              empty={column.empty}
+              items={columnItems}
+              updatingId={updatingId}
+              handlers={handlers}
+            />
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function ActionColumn({
+  title,
+  subtitle,
+  accent,
+  empty,
+  items,
+  updatingId,
+  handlers,
+}: {
+  title: string;
+  subtitle: string;
+  accent: string;
+  empty: string;
+  items: QueueItem[];
+  updatingId: string | null;
+  handlers: WorkQueueItemHandlers;
+}) {
+  return (
+    <section
       className="rounded-2xl overflow-hidden"
-      style={{
-        backgroundColor: C.card,
-        border: `1px solid ${C.border}`,
-        boxShadow: '0 1px 2px rgba(58,42,26,0.04), 0 4px 16px rgba(58,42,26,0.04)',
-      }}
+      style={{ backgroundColor: C.card, border: `1px solid ${C.border}`, boxShadow: '0 10px 26px rgba(47,27,20,0.055)' }}
     >
-      <header
-        className="px-5 py-4"
-        style={{ backgroundColor: C.cardSoft, borderBottom: `1px solid ${C.border}` }}
-      >
-        <h2 className="text-[15px] font-bold leading-tight" style={{ color: C.text, letterSpacing: '-0.01em' }}>
-          סדר עבודה להיום
-        </h2>
-        <p className="text-[11.5px] mt-1" style={{ color: C.textSoft }}>
-          מה שמצריך טיפול לפי דחיפות
-        </p>
+      <header className="px-4 py-4" style={{ borderBottom: `1px solid ${C.borderSoft}`, backgroundColor: '#FFFFFF' }}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: accent }} />
+              <h3 className="text-[16px] font-bold" style={{ color: C.text }}>{title}</h3>
+            </div>
+            <p className="text-[12px] mt-1.5" style={{ color: C.textSoft }}>{subtitle}</p>
+          </div>
+          <span
+            className="inline-flex items-center justify-center min-w-8 h-8 px-2 rounded-full text-[12px] font-bold"
+            style={{ color: accent, backgroundColor: C.card, border: `1px solid ${C.border}` }}
+          >
+            {items.length}
+          </span>
+        </div>
       </header>
 
       {items.length === 0 ? (
-        <DashboardEmptyState
-          title="הכל בשליטה"
-          subtitle="אין פריטים שדורשים טיפול דחוף כרגע"
-        />
+        <div className="px-4 py-8 text-center text-[13px]" style={{ color: C.textSoft }}>
+          {empty}
+        </div>
       ) : (
-        <>
-          <WorkQueueSection title="דחוף עכשיו" tone="red"   items={urgent}   updatingId={updatingId} handlers={handlers} />
-          <WorkQueueSection title="להיום"      tone="amber" items={today}    updatingId={updatingId} handlers={handlers} />
-          <WorkQueueSection title="למעקב"      tone="muted" items={followUp} updatingId={updatingId} handlers={handlers} />
-        </>
+        <ul className="p-3 space-y-3">
+          {items.map(item => {
+            const entityId = item.entity?.kind === 'order' ? item.entity.data.id
+              : item.entity?.kind === 'delivery' ? item.entity.data.id
+              : null;
+            const updating = !!entityId && entityId === updatingId;
+            return (
+              <WorkQueueItem
+                key={item.id}
+                item={item}
+                updating={updating}
+                handlers={handlers}
+              />
+            );
+          })}
+        </ul>
       )}
-    </div>
+    </section>
   );
 }

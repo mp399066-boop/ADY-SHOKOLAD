@@ -66,6 +66,51 @@ function todayIsraelISO(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
 }
 
+function summarizeOrderItems(orderDetail: unknown): string | null {
+  const data = (orderDetail as { data?: Record<string, unknown> } | null)?.data;
+  const items = (data?.['מוצרים_בהזמנה'] as Record<string, unknown>[] | undefined) || [];
+  if (!Array.isArray(items) || items.length === 0) return null;
+
+  const labels = items.slice(0, 3).map(item => {
+    const qty = Number(item['כמות'] ?? 1);
+    const product = item['מוצרים_למכירה'] as Record<string, unknown> | null | undefined;
+    const productName = String(product?.['שם_מוצר'] ?? '').trim();
+    const rowType = String(item['סוג_שורה'] ?? '');
+    const packageSize = item['גודל_מארז'];
+    const fallback = rowType === 'מארז' && packageSize ? `מארז ${packageSize}` : 'פריט';
+    return `${qty > 1 ? `${qty}× ` : ''}${productName || fallback}`;
+  });
+
+  const rest = items.length - labels.length;
+  return rest > 0 ? `${labels.join(', ')} +${rest}` : labels.join(', ');
+}
+
+async function fetchOrderSummaries(orders: TodayOrder[]): Promise<Map<string, string | null>> {
+  const unique = Array.from(new Map(orders.map(order => [order.id, order])).values());
+  const targets = unique.slice(0, 50);
+  const summaries = await Promise.allSettled(
+    targets.map(async order => {
+      const res = await fetch(`/api/orders/${order.id}`);
+      if (!res.ok) return [order.id, null] as const;
+      const json = await res.json();
+      return [order.id, summarizeOrderItems(json)] as const;
+    }),
+  );
+
+  const byId = new Map<string, string | null>();
+  for (const result of summaries) {
+    if (result.status === 'fulfilled') byId.set(result.value[0], result.value[1]);
+  }
+
+  return byId;
+}
+
+function applyOrderSummaries(orders: TodayOrder[], summaries: Map<string, string | null>): TodayOrder[] {
+  return orders.map(order => (
+    summaries.has(order.id) ? { ...order, itemSummary: summaries.get(order.id) ?? null } : order
+  ));
+}
+
 // Returns the next forward order status, with pickup-vs-delivery branching.
 // Used by the queue's "advance" action — the actual API value is sent here
 // while the user-facing label is generated locally inside the queue builder.
@@ -124,9 +169,15 @@ export default function DashboardPage() {
         fetch('/api/petit-four-types').then(r => r.json()),
       ]);
 
+      const todayOrderRows = (ordersTodayRes?.data || []) as TodayOrder[];
+      const activeOrderRows = (ordersAllRes?.data || []) as TodayOrder[];
+      const orderSummaries = await fetchOrderSummaries([...todayOrderRows, ...activeOrderRows]);
+      const todayWithSummaries = applyOrderSummaries(todayOrderRows, orderSummaries);
+      const activeWithSummaries = applyOrderSummaries(activeOrderRows, orderSummaries);
+
       if (dash?.data) setStats(dash.data);
-      setTodayOrders((ordersTodayRes?.data || []) as TodayOrder[]);
-      setActiveOrders((ordersAllRes?.data || []) as TodayOrder[]);
+      setTodayOrders(todayWithSummaries);
+      setActiveOrders(activeWithSummaries);
       setTodayDeliveries((deliveriesRes?.data || []) as Delivery[]);
 
       type RawRow = Record<string, unknown>;
@@ -198,7 +249,7 @@ export default function DashboardPage() {
     }
   }, []);
 
-  const patchDelivery = useCallback(async (id: string, newStatus: 'נאסף' | 'נמסר', prevStatus: string) => {
+  const patchDelivery = useCallback(async (id: string, newStatus: 'ממתין' | 'נאסף' | 'נמסר', prevStatus: string) => {
     setUpdatingId(id);
     inflightRef.current++;
     setTodayDeliveries(curr => curr.map(d => d.id === id ? { ...d, סטטוס_משלוח: newStatus } : d));
@@ -206,7 +257,10 @@ export default function DashboardPage() {
       const res = await fetch(`/api/deliveries/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ סטטוס_משלוח: newStatus }),
+        body: JSON.stringify({
+          סטטוס_משלוח: newStatus,
+          ...(newStatus === 'נמסר' ? { delivered_at: new Date().toISOString() } : {}),
+        }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -351,7 +405,7 @@ export default function DashboardPage() {
   if (loading) return <PageLoading />;
 
   return (
-    <div dir="rtl" className="mx-auto max-w-[1500px] space-y-5 pb-12" style={{ backgroundColor: C.bg }}>
+    <div dir="rtl" className="mx-auto max-w-[1500px] space-y-5 pb-12 px-1 sm:px-2" style={{ backgroundColor: C.bg }}>
 
       <CommandHeader
         greeting={greeting}
@@ -399,6 +453,7 @@ export default function DashboardPage() {
               },
               onChangeOrderStatus: onPickOrderStatus,
               onChangePaymentStatus: onPickPaymentStatus,
+              onChangeDeliveryStatus: (delivery, next) => patchDelivery(delivery.id, next, delivery.סטטוס_משלוח),
             }}
           />
         }
@@ -409,6 +464,9 @@ export default function DashboardPage() {
             stock={stock}
             unpaidAmount={stats?.unpaidAmount ?? 0}
             unpaidCount={stats?.unpaidOrders ?? 0}
+            updatingId={updatingId}
+            onChangePaymentStatus={onPickPaymentStatus}
+            onPatchDelivery={(delivery, next) => patchDelivery(delivery.id, next, delivery.סטטוס_משלוח)}
           />
         }
       />

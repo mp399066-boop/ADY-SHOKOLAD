@@ -6,10 +6,10 @@ import { C } from './theme';
 import { WorkQueueItem, type WorkQueueItemHandlers } from './WorkQueueItem';
 import type { QueueItem } from './queue-builder';
 
-const TONE: Record<'red' | 'amber' | 'muted', { bg: string; text: string }> = {
-  red:   { bg: C.redSoft,   text: C.red   },
-  amber: { bg: C.amberSoft, text: C.amber },
-  muted: { bg: C.surface,   text: C.textSoft },
+const TONE: Record<'red' | 'amber' | 'muted', { bg: string; text: string; dot: string }> = {
+  red:   { bg: '#FFF7F5', text: C.red,      dot: C.red },
+  amber: { bg: '#FFFBF4', text: C.amber,    dot: C.gold },
+  muted: { bg: '#FFFCF8', text: C.textSoft, dot: C.textMuted },
 };
 
 export function WorkQueueSection({
@@ -26,19 +26,26 @@ export function WorkQueueSection({
   return (
     <section>
       <header
-        className="flex items-center justify-between px-4 py-2"
+        className="flex items-center justify-between px-5 py-3"
         style={{
           backgroundColor: t.bg,
           color: t.text,
-          borderTop: `1px solid ${C.borderSoft}`,
           borderBottom: `1px solid ${C.borderSoft}`,
         }}
       >
-        <span className="text-[11.5px] font-bold uppercase" style={{ letterSpacing: '0.06em' }}>{title}</span>
-        <span className="text-[10.5px] font-semibold tabular-nums">{items.length}</span>
+        <span className="inline-flex items-center gap-2 text-[12px] font-bold">
+          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: t.dot }} />
+          {title}
+        </span>
+        <span
+          className="inline-flex items-center justify-center min-w-7 h-6 px-2 rounded-full text-[11px] font-bold tabular-nums"
+          style={{ backgroundColor: C.card, border: `1px solid ${C.border}`, color: t.text }}
+        >
+          {items.length}
+        </span>
       </header>
-      <ul>
-        {items.map((it, idx) => {
+      <ul className="p-3 space-y-2">
+        {items.map((it) => {
           // Mark this row as "updating" only when the underlying entity matches
           // the row we're currently writing to. Other rows stay enabled.
           const entityId = it.entity?.kind === 'order'    ? it.entity.data.id
@@ -49,7 +56,6 @@ export function WorkQueueSection({
             <WorkQueueItem
               key={it.id}
               item={it}
-              isLast={idx === items.length - 1}
               updating={updating}
               handlers={handlers}
             />
