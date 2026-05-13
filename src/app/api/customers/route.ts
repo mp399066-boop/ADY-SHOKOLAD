@@ -11,15 +11,27 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const search = searchParams.get('search');
   const type = searchParams.get('type');
+  const sort = searchParams.get('sort'); // 'name' = א׳-ת׳ by שם_פרטי+שם_משפחה. Default: newest first.
   const page = parseInt(searchParams.get('page') || '1');
   const limit = parseInt(searchParams.get('limit') || '50');
   const offset = (page - 1) * limit;
 
+  // Hebrew text under the default UTF-8 ordering sorts by code point, which
+  // matches the א-ת alphabet (U+05D0..U+05EA) — no special collation needed.
+  // Existing callers that don't pass `sort` keep the prior "newest first"
+  // behavior unchanged (additive change, no contract break).
   let query = supabase
     .from('לקוחות')
     .select('*', { count: 'exact' })
-    .order('תאריך_יצירה', { ascending: false })
     .range(offset, offset + limit - 1);
+
+  if (sort === 'name') {
+    query = query
+      .order('שם_פרטי', { ascending: true })
+      .order('שם_משפחה', { ascending: true });
+  } else {
+    query = query.order('תאריך_יצירה', { ascending: false });
+  }
 
   if (search) {
     query = query.or(`שם_פרטי.ilike.%${search}%,שם_משפחה.ilike.%${search}%,טלפון.ilike.%${search}%,אימייל.ilike.%${search}%`);

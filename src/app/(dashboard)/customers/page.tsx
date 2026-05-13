@@ -23,6 +23,10 @@ export default function CustomersPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
+  // Sort is UI-only — the API knows two modes: default (newest first) and
+  // 'name' (א׳-ת׳ by שם_פרטי + שם_משפחה). Search and sort compose: the
+  // server applies the search filter first, then orders the results.
+  const [sortBy, setSortBy] = useState<'recent' | 'name'>('recent');
   const [count, setCount] = useState(0);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -45,20 +49,21 @@ export default function CustomersPage() {
   };
   const clearSelected = () => setSelected(new Set());
 
-  useEffect(() => { clearSelected(); }, [search, typeFilter]);
+  useEffect(() => { clearSelected(); }, [search, typeFilter, sortBy]);
 
   useEffect(() => {
     setLoading(true);
     const params = new URLSearchParams();
     if (search) params.set('search', search);
     if (typeFilter) params.set('type', typeFilter);
+    if (sortBy === 'name') params.set('sort', 'name');
     params.set('limit', '100');
 
     fetch(`/api/customers?${params}`)
       .then(r => r.json())
       .then(({ data, count }) => { setCustomers(data || []); setCount(count || 0); })
       .finally(() => setLoading(false));
-  }, [search, typeFilter]);
+  }, [search, typeFilter, sortBy]);
 
   const handleDelete = async () => {
     if (!confirmId) return;
@@ -108,9 +113,9 @@ export default function CustomersPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap">
         <Input
-          placeholder="חיפוש שם, טלפון, אימייל..."
+          placeholder="חיפוש לקוח לפי שם, טלפון או מייל…"
           value={search}
           onChange={e => setSearch(e.target.value)}
           className="max-w-xs"
@@ -122,6 +127,15 @@ export default function CustomersPage() {
         >
           <option value="">כל הסוגים</option>
           {['פרטי', 'חוזר', 'עסקי'].map(t => <option key={t} value={t}>{t}</option>)}
+        </Select>
+        <Select
+          value={sortBy}
+          onChange={e => setSortBy(e.target.value as 'recent' | 'name')}
+          className="w-44"
+          aria-label="מיון לקוחות"
+        >
+          <option value="recent">חדשים תחילה</option>
+          <option value="name">א׳–ת׳ לפי שם</option>
         </Select>
         <span className="text-sm mr-auto" style={{ color: '#6B4A2D' }}>{count} לקוחות</span>
         <Link href="/customers/new"><Button size="sm">+ לקוח חדש</Button></Link>
