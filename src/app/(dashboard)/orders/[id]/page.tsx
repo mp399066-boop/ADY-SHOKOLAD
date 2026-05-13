@@ -835,6 +835,25 @@ export default function OrderDetailPage() {
         </div>
       )}
 
+      {/* ════════ FINANCIAL DOCUMENTS — full width, above the main grid ═══ */}
+      <FinancialActionsBar
+        invoiceReceiptLoading={issuingDocType === 'invoice_receipt'}
+        taxInvoiceLoading={issuingDocType === 'tax_invoice'}
+        receiptLoading={issuingDocType === 'receipt'}
+        busy={issuingDoc}
+        onIssueInvoiceReceipt={() => setPayModalDocType('invoice_receipt')}
+        onIssueReceipt={() => setPayModalDocType('receipt')}
+        onIssueTaxInvoice={async () => {
+          const all = order.חשבוניות ?? [];
+          const exists = all.some(i => i.סוג_מסמך === 'tax_invoice');
+          const baseMsg = 'להפיק חשבונית מס להזמנה זו?';
+          const dupMsg = 'כבר קיימת חשבונית מס להזמנה זו. הפקה נוספת עלולה ליצור כפילות. להמשיך?';
+          if (!window.confirm(exists ? dupMsg : baseMsg)) return;
+          await issueDocument('tax_invoice', undefined, exists);
+        }}
+      />
+      <FinancialDocumentsList invoices={order.חשבוניות ?? []} />
+
       {/* ════════ MAIN GRID ════════ */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Main column */}
@@ -1171,133 +1190,8 @@ export default function OrderDetailPage() {
             </Card>
           )}
 
-          {/* Financial documents — manual issuance only */}
-          <Card>
-            {/* Header row: title + subtitle + manual-only chip */}
-            <div className="flex items-start justify-between gap-3 mb-3">
-              <div className="min-w-0">
-                <h3 className="text-[15px] font-bold leading-tight" style={{ color: '#2B1A10', letterSpacing: '-0.01em' }}>
-                  מסמכים פיננסיים
-                </h3>
-                <p className="text-[11.5px] mt-1 leading-snug" style={{ color: '#8A735F' }}>
-                  הפקה ידנית של חשבוניות וקבלות להזמנה
-                </p>
-              </div>
-              <span
-                className="text-[10px] font-bold uppercase px-2 py-1 rounded-md flex-shrink-0 whitespace-nowrap"
-                style={{ backgroundColor: '#F4E8D8', color: '#7A4A27', letterSpacing: '0.06em' }}
-              >
-                ידני בלבד
-              </span>
-            </div>
-
-            {/* Premium action bar — 3 wide buttons, each with its own variant.
-                The button IS the choice; no doc-type picker modal. */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-5">
-              <DocActionButton
-                variant="primary"
-                title="הפק חשבונית מס קבלה"
-                hint="חשבונית וקבלה במסמך אחד"
-                loading={issuingDocType === 'invoice_receipt'}
-                disabled={issuingDoc && issuingDocType !== 'invoice_receipt'}
-                onClick={() => setPayModalDocType('invoice_receipt')}
-              />
-              <DocActionButton
-                variant="secondary"
-                title="הפק חשבונית מס"
-                hint="לתיעוד עסקה ללא קבלה"
-                loading={issuingDocType === 'tax_invoice'}
-                disabled={issuingDoc && issuingDocType !== 'tax_invoice'}
-                onClick={async () => {
-                  const all = order.חשבוניות ?? [];
-                  const exists = all.some(i => i.סוג_מסמך === 'tax_invoice');
-                  const baseMsg = 'להפיק חשבונית מס להזמנה זו?';
-                  const dupMsg = 'כבר קיימת חשבונית מס להזמנה זו. הפקה נוספת עלולה ליצור כפילות. להמשיך?';
-                  if (!window.confirm(exists ? dupMsg : baseMsg)) return;
-                  await issueDocument('tax_invoice', undefined, exists);
-                }}
-              />
-              <DocActionButton
-                variant="tertiary"
-                title="הפק קבלה"
-                hint="לאישור תשלום שהתקבל"
-                loading={issuingDocType === 'receipt'}
-                disabled={issuingDoc && issuingDocType !== 'receipt'}
-                onClick={() => setPayModalDocType('receipt')}
-              />
-            </div>
-
-            {(() => {
-              type Inv = NonNullable<FullOrder['חשבוניות']>[number];
-              const all = order.חשבוניות ?? [];
-              const isInvoiceReceipt = (i: Inv) => i.סוג_מסמך === 'invoice_receipt' || i.סוג_מסמך === 'חשבונית_מס_קבלה';
-              const isTaxInvoice     = (i: Inv) => i.סוג_מסמך === 'tax_invoice';
-              const isReceipt        = (i: Inv) => i.סוג_מסמך === 'receipt';
-              const groups: { label: string; items: Inv[] }[] = [
-                { label: 'חשבוניות מס קבלה', items: all.filter(isInvoiceReceipt) },
-                { label: 'חשבוניות מס',      items: all.filter(isTaxInvoice) },
-                { label: 'קבלות',            items: all.filter(isReceipt) },
-              ].filter(g => g.items.length > 0);
-
-              if (groups.length === 0) {
-                return (
-                  <p className="text-[11.5px] py-1 text-center" style={{ color: '#8A735F' }}>
-                    עדיין לא הופקו מסמכים להזמנה זו.
-                  </p>
-                );
-              }
-
-              return (
-                <div className="space-y-3">
-                  {groups.map(g => (
-                    <div key={g.label}>
-                      <p className="text-[10px] uppercase tracking-wider font-semibold mb-1.5" style={{ color: '#8A735F', letterSpacing: '0.06em' }}>
-                        {g.label}
-                      </p>
-                      <ul className="space-y-1">
-                        {g.items.map(inv => (
-                          <li
-                            key={inv.id}
-                            className="flex justify-between items-center gap-2 text-[13px] px-3 py-2 rounded-lg"
-                            style={{ backgroundColor: '#FAF7F0' }}
-                          >
-                            <div className="min-w-0 flex-1">
-                              {inv.קישור_חשבונית ? (
-                                <a
-                                  href={inv.קישור_חשבונית}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="font-semibold hover:underline"
-                                  style={{ color: '#8B5E34', textUnderlineOffset: '2px' }}
-                                >
-                                  #{inv.מספר_חשבונית}
-                                </a>
-                              ) : (
-                                <span className="font-semibold" style={{ color: '#2B1A10' }}>#{inv.מספר_חשבונית}</span>
-                              )}
-                              {inv.תאריך_יצירה && (
-                                <span className="text-[10.5px] mx-2" style={{ color: '#8A735F' }}>
-                                  {formatDate(inv.תאריך_יצירה)}
-                                </span>
-                              )}
-                              {!inv.קישור_חשבונית && (
-                                <span className="text-[10px] mx-2 px-1.5 py-0.5 rounded" style={{ color: '#8A735F', backgroundColor: '#EAE0D2' }}>
-                                  הופק ידנית — אין קובץ במערכת
-                                </span>
-                              )}
-                            </div>
-                            <span className="font-semibold tabular-nums" style={{ color: '#8B5E34' }}>
-                              {formatCurrency(inv.סכום)}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ))}
-                </div>
-              );
-            })()}
-          </Card>
+          {/* Financial documents moved out of the aside — see <FinancialActionsBar />
+              and <FinancialDocumentsList /> rendered full-width above the main grid. */}
         </aside>
       </div>
 
@@ -1825,6 +1719,178 @@ export default function OrderDetailPage() {
         />
       )}
     </div>
+  );
+}
+
+// ─── FinancialActionsBar ─────────────────────────────────────────────────
+// Horizontal full-width action bar (~110px tall on desktop) — replaces the
+// previous tall card that was tucked into the order-detail aside. Title
+// block sits on the start side (RTL = right) and the three action buttons
+// fill a sub-grid on the end side. Buttons remain the same DocActionButton
+// component used everywhere else; only the layout around them changed.
+
+function FinancialActionsBar({
+  invoiceReceiptLoading,
+  taxInvoiceLoading,
+  receiptLoading,
+  busy,
+  onIssueInvoiceReceipt,
+  onIssueTaxInvoice,
+  onIssueReceipt,
+}: {
+  invoiceReceiptLoading: boolean;
+  taxInvoiceLoading: boolean;
+  receiptLoading: boolean;
+  busy: boolean;
+  onIssueInvoiceReceipt: () => void;
+  onIssueTaxInvoice: () => void;
+  onIssueReceipt: () => void;
+}) {
+  return (
+    <Card style={{ paddingTop: 18, paddingBottom: 18 }}>
+      <div
+        className="grid items-center gap-4"
+        style={{
+          // Title column 220-300px, action grid takes the rest. On md and
+          // below the columns collapse to one (handled via media-query css
+          // — Tailwind doesn't natively support minmax, so this works via
+          // gridTemplateColumns at the breakpoint we want).
+          gridTemplateColumns: 'minmax(0,1fr)',
+        }}
+      >
+        {/* Inner responsive grid — desktop stacks title|buttons horizontally,
+            tablet+mobile stacks them vertically. */}
+        <div
+          className="grid gap-4 lg:gap-5"
+          style={{ gridTemplateColumns: 'minmax(220px,260px) 1fr' }}
+        >
+          {/* Title block */}
+          <div className="min-w-0">
+            <div className="flex items-baseline gap-2 mb-1">
+              <h3 className="text-[15px] font-bold leading-tight" style={{ color: '#2B1A10', letterSpacing: '-0.01em' }}>
+                מסמכים פיננסיים
+              </h3>
+              <span
+                className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-md whitespace-nowrap"
+                style={{ backgroundColor: '#F4E8D8', color: '#7A4A27', letterSpacing: '0.06em' }}
+              >
+                ידני בלבד
+              </span>
+            </div>
+            <p className="text-[11.5px] leading-snug" style={{ color: '#8A735F' }}>
+              הפקה ידנית של חשבוניות וקבלות להזמנה
+            </p>
+          </div>
+
+          {/* Action buttons — 3-up at desktop, collapses to 1 col on mobile */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            <DocActionButton
+              variant="primary"
+              title="הפק חשבונית מס קבלה"
+              hint="חשבונית וקבלה במסמך אחד"
+              loading={invoiceReceiptLoading}
+              disabled={busy && !invoiceReceiptLoading}
+              onClick={onIssueInvoiceReceipt}
+            />
+            <DocActionButton
+              variant="secondary"
+              title="הפק חשבונית מס"
+              hint="לתיעוד עסקה ללא קבלה"
+              loading={taxInvoiceLoading}
+              disabled={busy && !taxInvoiceLoading}
+              onClick={onIssueTaxInvoice}
+            />
+            <DocActionButton
+              variant="tertiary"
+              title="הפק קבלה"
+              hint="לאישור תשלום שהתקבל"
+              loading={receiptLoading}
+              disabled={busy && !receiptLoading}
+              onClick={onIssueReceipt}
+            />
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+// ─── FinancialDocumentsList ──────────────────────────────────────────────
+// Documents list — grouped into the three doc-type categories. Renders
+// nothing more than a tiny one-line empty state when there are no docs,
+// so we don't bloat the page when the order has only just been created.
+
+type InvRow = { id: string; מספר_חשבונית: string; סכום: number; סטטוס: string; קישור_חשבונית?: string | null; סוג_מסמך?: string | null; תאריך_יצירה?: string | null };
+
+function FinancialDocumentsList({ invoices }: { invoices: InvRow[] }) {
+  const isInvoiceReceipt = (i: InvRow) => i.סוג_מסמך === 'invoice_receipt' || i.סוג_מסמך === 'חשבונית_מס_קבלה';
+  const isTaxInvoice     = (i: InvRow) => i.סוג_מסמך === 'tax_invoice';
+  const isReceipt        = (i: InvRow) => i.סוג_מסמך === 'receipt';
+  const groups: { label: string; items: InvRow[] }[] = [
+    { label: 'חשבוניות מס קבלה', items: invoices.filter(isInvoiceReceipt) },
+    { label: 'חשבוניות מס',      items: invoices.filter(isTaxInvoice) },
+    { label: 'קבלות',            items: invoices.filter(isReceipt) },
+  ].filter(g => g.items.length > 0);
+
+  if (groups.length === 0) {
+    return (
+      <p className="text-[11.5px] py-1 px-2 text-center" style={{ color: '#8A735F' }}>
+        עדיין לא הופקו מסמכים להזמנה זו.
+      </p>
+    );
+  }
+
+  return (
+    <Card>
+      <p className="text-[10px] uppercase tracking-wider font-semibold mb-3" style={{ color: '#8A735F', letterSpacing: '0.08em' }}>מסמכים שהופקו</p>
+      <div className="space-y-3">
+        {groups.map(g => (
+          <div key={g.label}>
+            <p className="text-[10px] uppercase tracking-wider font-semibold mb-1.5" style={{ color: '#8A735F', letterSpacing: '0.06em' }}>
+              {g.label}
+            </p>
+            <ul className="space-y-1">
+              {g.items.map(inv => (
+                <li
+                  key={inv.id}
+                  className="flex justify-between items-center gap-2 text-[13px] px-3 py-2 rounded-lg"
+                  style={{ backgroundColor: '#FAF7F0' }}
+                >
+                  <div className="min-w-0 flex-1">
+                    {inv.קישור_חשבונית ? (
+                      <a
+                        href={inv.קישור_חשבונית}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-semibold hover:underline"
+                        style={{ color: '#8B5E34', textUnderlineOffset: '2px' }}
+                      >
+                        #{inv.מספר_חשבונית}
+                      </a>
+                    ) : (
+                      <span className="font-semibold" style={{ color: '#2B1A10' }}>#{inv.מספר_חשבונית}</span>
+                    )}
+                    {inv.תאריך_יצירה && (
+                      <span className="text-[10.5px] mx-2" style={{ color: '#8A735F' }}>
+                        {formatDate(inv.תאריך_יצירה)}
+                      </span>
+                    )}
+                    {!inv.קישור_חשבונית && (
+                      <span className="text-[10px] mx-2 px-1.5 py-0.5 rounded" style={{ color: '#8A735F', backgroundColor: '#EAE0D2' }}>
+                        הופק ידנית — אין קובץ במערכת
+                      </span>
+                    )}
+                  </div>
+                  <span className="font-semibold tabular-nums" style={{ color: '#8B5E34' }}>
+                    {formatCurrency(inv.סכום)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </Card>
   );
 }
 
