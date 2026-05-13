@@ -1845,6 +1845,32 @@ function FinancialActionsBar({
 
 type InvRow = { id: string; מספר_חשבונית: string; סכום: number; סטטוס: string; קישור_חשבונית?: string | null; סוג_מסמך?: string | null; תאריך_יצירה?: string | null };
 
+// Strip the internal `manual:` marker from displayed numbers and surface
+// it as a "הופקה ידנית" badge instead. Mirrors the helper on /invoices.
+function prettyDocNumber(raw: string): { display: string; isManual: boolean } {
+  const t = (raw ?? '').trim();
+  if (!t) return { display: '', isManual: false };
+  if (t.startsWith('manual:')) return { display: t.slice('manual:'.length).trim(), isManual: true };
+  return { display: t, isManual: false };
+}
+
+// Per-row Hebrew badge tone. Picked so that two same-numbered docs of
+// different types are immediately distinguishable at a glance.
+const DOC_ROW_BADGE: Record<'receipt' | 'tax_invoice' | 'invoice_receipt' | 'manual_other', { label: string; bg: string; fg: string }> = {
+  receipt:         { label: 'קבלה',            bg: '#E8F4EC', fg: '#1F6B3E' },
+  tax_invoice:     { label: 'חשבונית מס',       bg: '#EAF2FB', fg: '#1E4E8C' },
+  invoice_receipt: { label: 'חשבונית מס קבלה',  bg: '#F4E9DC', fg: '#7A4A27' },
+  manual_other:    { label: 'מסמך ידני',        bg: '#F1ECF7', fg: '#5B3A8C' },
+};
+
+function rowCategory(i: InvRow): keyof typeof DOC_ROW_BADGE {
+  const v = (i.סוג_מסמך ?? '').trim();
+  if (v === 'invoice_receipt' || v === 'חשבונית_מס_קבלה') return 'invoice_receipt';
+  if (v === 'tax_invoice') return 'tax_invoice';
+  if (v === 'receipt') return 'receipt';
+  return 'manual_other';
+}
+
 function FinancialDocumentsList({ invoices }: { invoices: InvRow[] }) {
   const isInvoiceReceipt = (i: InvRow) => i.סוג_מסמך === 'invoice_receipt' || i.סוג_מסמך === 'חשבונית_מס_קבלה';
   const isTaxInvoice     = (i: InvRow) => i.סוג_מסמך === 'tax_invoice';
@@ -1879,42 +1905,70 @@ function FinancialDocumentsList({ invoices }: { invoices: InvRow[] }) {
               {g.label}
             </p>
             <ul className="space-y-1">
-              {g.items.map(inv => (
-                <li
-                  key={inv.id}
-                  className="flex justify-between items-center gap-2 text-[13px] px-3 py-2 rounded-lg"
-                  style={{ backgroundColor: '#FAF7F0' }}
-                >
-                  <div className="min-w-0 flex-1">
-                    {inv.קישור_חשבונית ? (
-                      <a
-                        href={inv.קישור_חשבונית}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="font-semibold hover:underline"
-                        style={{ color: '#8B5E34', textUnderlineOffset: '2px' }}
+              {g.items.map(inv => {
+                const cat = rowCategory(inv);
+                const tag = DOC_ROW_BADGE[cat];
+                const { display, isManual } = prettyDocNumber(inv.מספר_חשבונית);
+                const hasFile = !!inv.קישור_חשבונית;
+                return (
+                  <li
+                    key={inv.id}
+                    className="flex justify-between items-center gap-2 text-[13px] px-3 py-2 rounded-lg"
+                    style={{ backgroundColor: '#FAF7F0' }}
+                  >
+                    <div className="min-w-0 flex-1 flex items-center gap-2 flex-wrap">
+                      {/* Per-row Hebrew badge so each row carries its own
+                          type label (the group header is the only other
+                          place this is shown). */}
+                      <span
+                        className="inline-block text-[10px] font-bold px-1.5 py-0.5 rounded"
+                        style={{ backgroundColor: tag.bg, color: tag.fg }}
                       >
-                        #{inv.מספר_חשבונית}
-                      </a>
-                    ) : (
-                      <span className="font-semibold" style={{ color: '#2B1A10' }}>#{inv.מספר_חשבונית}</span>
-                    )}
-                    {inv.תאריך_יצירה && (
-                      <span className="text-[10.5px] mx-2" style={{ color: '#8A735F' }}>
-                        {formatDate(inv.תאריך_יצירה)}
+                        {tag.label}
                       </span>
-                    )}
-                    {!inv.קישור_חשבונית && (
-                      <span className="text-[10px] mx-2 px-1.5 py-0.5 rounded" style={{ color: '#8A735F', backgroundColor: '#EAE0D2' }}>
-                        הופק ידנית — אין קובץ במערכת
-                      </span>
-                    )}
-                  </div>
-                  <span className="font-semibold tabular-nums" style={{ color: '#8B5E34' }}>
-                    {formatCurrency(inv.סכום)}
-                  </span>
-                </li>
-              ))}
+                      {hasFile ? (
+                        <a
+                          href={inv.קישור_חשבונית as string}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-semibold hover:underline"
+                          style={{ color: '#8B5E34', textUnderlineOffset: '2px' }}
+                        >
+                          #{display}
+                        </a>
+                      ) : (
+                        <span className="font-semibold" style={{ color: '#2B1A10' }}>#{display}</span>
+                      )}
+                      {isManual && (
+                        <span
+                          className="text-[10px] px-1.5 py-0.5 rounded"
+                          style={{ color: '#8B5E34', backgroundColor: '#FBF3E4', border: '1px solid #E8D2A8' }}
+                          title="המסמך הופק ידנית — לא דרך מורנינג"
+                        >
+                          הופקה ידנית
+                        </span>
+                      )}
+                      {inv.תאריך_יצירה && (
+                        <span className="text-[10.5px]" style={{ color: '#8A735F' }}>
+                          {formatDate(inv.תאריך_יצירה)}
+                        </span>
+                      )}
+                      {!hasFile && (
+                        <span
+                          className="text-[10px] px-1.5 py-0.5 rounded"
+                          style={{ color: '#8A735F', backgroundColor: '#EAE0D2' }}
+                          title="המסמך הופק ידנית ואין קובץ לצפייה"
+                        >
+                          אין קובץ במערכת
+                        </span>
+                      )}
+                    </div>
+                    <span className="font-semibold tabular-nums" style={{ color: '#8B5E34' }}>
+                      {formatCurrency(inv.סכום)}
+                    </span>
+                  </li>
+                );
+              })}
             </ul>
           </div>
         ))}

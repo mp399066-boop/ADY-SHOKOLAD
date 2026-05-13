@@ -15,7 +15,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/deliveries': 'משלוחים',
   '/inventory':  'מלאי',
   '/recipes':    'מתכונים וייצור',
-  '/invoices':   'חשבוניות',
+  '/invoices':   'חשבוניות וקבלות',
   '/import':     'ייבוא נתונים',
   '/settings':   'הגדרות',
 };

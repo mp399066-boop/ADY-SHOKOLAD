@@ -350,6 +350,11 @@ export interface Invoice {
   קישור_חשבונית: string | null;
   סכום: number;
   סטטוס: string;
+  // Document type — already populated server-side by the EF, just wasn't
+  // declared on the client interface. Known values today:
+  //   tax_invoice / receipt / invoice_receipt / חשבונית_מס_קבלה (legacy).
+  // Anything else is bucketed into "מסמכים נוספים" by the UI.
+  סוג_מסמך: string | null;
   תאריך_יצירה: string;
   הזמנות?: Order;
   לקוחות?: Customer;

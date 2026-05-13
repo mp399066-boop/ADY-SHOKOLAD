@@ -20,7 +20,7 @@ const NAV_MAIN = [
   { href: '/deliveries', label: 'משלוחים',            Icon: IconDeliveries },
   { href: '/inventory',  label: 'מלאי',               Icon: IconInventory  },
   { href: '/recipes',    label: 'מתכונים וייצור',     Icon: IconRecipes    },
-  { href: '/invoices',   label: 'חשבוניות',           Icon: IconInvoices   },
+  { href: '/invoices',   label: 'חשבוניות וקבלות',    Icon: IconInvoices   },
 ];
 
 const NAV_SYSTEM = [
