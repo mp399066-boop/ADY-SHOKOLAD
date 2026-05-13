@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
-import { fetchOrdersForReport, resolveRange, type ReportInput, type ReportFilters } from '@/lib/orders-report-email';
+import { fetchOrdersForReport, resolveRange, buildReportHtml, type ReportInput, type ReportFilters, type ReportSummary } from '@/lib/orders-report-email';
 
 // POST /api/reports/orders/preview
 //
@@ -22,8 +22,6 @@ const bodySchema = z.object({
     pickupOnly: z.boolean().optional(),
   }).optional(),
 });
-
-const SAMPLE_LIMIT = 5;
 
 export async function POST(req: NextRequest) {
   const auth = await requireManagementUser();
@@ -51,7 +49,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const { startDate, endDate, label } = resolveRange(input);
-    const { orders, summary } = await fetchOrdersForReport(startDate, endDate, reportFilters);
+    const { orders, itemsByOrder, summary } = await fetchOrdersForReport(startDate, endDate, reportFilters);
 
     // Compute totals from the orders we already fetched — same source the
     // real report uses, no additional query.
@@ -60,25 +58,11 @@ export async function POST(req: NextRequest) {
       0,
     );
 
-    // First N orders, projected to the minimal shape the UI needs to
-    // render a quick-look table.
-    type RawO = Record<string, unknown>;
-    const sample = orders.slice(0, SAMPLE_LIMIT).map(o => {
-      const r = o as RawO;
-      const cust = r['לקוחות'] as { שם_פרטי?: string; שם_משפחה?: string } | null;
-      const fullName = cust ? `${cust.שם_פרטי || ''} ${cust.שם_משפחה || ''}`.trim() : '—';
-      return {
-        id: String(r.id),
-        orderNumber: String(r['מספר_הזמנה'] || ''),
-        customerName: fullName,
-        deliveryDate: (r['תאריך_אספקה'] as string) || null,
-        deliveryTime: (r['שעת_אספקה'] as string) || null,
-        deliveryType: (r['סוג_אספקה'] as string) || null,
-        paymentStatus: (r['סטטוס_תשלום'] as string) || null,
-        urgent: !!r['הזמנה_דחופה'],
-        total: Number(r['סך_הכל_לתשלום'] || 0),
-      };
-    });
+    // Build the *actual* report HTML so the modal can iframe the same
+    // content the recipient will see. WYSIWYG by construction — preview and
+    // sent email cannot drift apart.
+    const fullSummary: ReportSummary = { ...summary, startDate, endDate, rangeLabel: label };
+    const html = buildReportHtml(fullSummary, orders, itemsByOrder, false);
 
     return NextResponse.json({
       ok: true,
@@ -88,10 +72,8 @@ export async function POST(req: NextRequest) {
         startDate,
         endDate,
         totalAmount,
-        sampleSize: sample.length,
-        truncated: orders.length > SAMPLE_LIMIT,
       },
-      sample,
+      html,
       // Echo the input so the caller can post the same payload back to
       // /download or /send without re-deriving anything.
       query: { range, date, filters: filters ?? {} },

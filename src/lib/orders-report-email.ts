@@ -141,8 +141,20 @@ function esc(s: unknown): string {
     .replace(/"/g, '&quot;');
 }
 
-function itemLine(item: Record<string, unknown>): string {
+// Fallback for product name when מוצרים_למכירה join didn't resolve. WC
+// orders that landed before auto-create stored the public name inside
+// הערות_לשורה as `מוצר מהאתר: <name> (SKU ...)`. Surface that so the
+// report doesn't show "פריט" / "—" for those legacy lines.
+function deriveItemName(item: Record<string, unknown>): string {
   const prod = item['מוצרים_למכירה'] as Record<string, unknown> | null;
+  if (prod?.['שם_מוצר']) return String(prod['שם_מוצר']);
+  const note = (item['הערות_לשורה'] as string | null) || '';
+  const wcMatch = note.match(/^מוצר מהאתר:\s*(.+?)(?:\s*\(SKU\b|$)/);
+  if (wcMatch) return wcMatch[1].trim();
+  return 'פריט';
+}
+
+function itemLine(item: Record<string, unknown>): string {
   const pfSelections = item['בחירת_פטיפורים_בהזמנה'] as Record<string, unknown>[] | null;
   const pfNames = pfSelections?.map(s => {
     const pf = s['סוגי_פטיפורים'] as Record<string, string> | null;
@@ -151,11 +163,18 @@ function itemLine(item: Record<string, unknown>): string {
 
   const name = item['סוג_שורה'] === 'מארז'
     ? `מארז ${item['גודל_מארז'] || ''} יח׳${pfNames ? ` (${pfNames})` : ''}`
-    : (prod?.['שם_מוצר'] as string || 'פריט');
+    : deriveItemName(item);
+
+  // הערות_לשורה for non-WC lines is a real per-line note (the WC fallback
+  // was already consumed by deriveItemName so we strip that prefix).
+  const rawNote = (item['הערות_לשורה'] as string | null) || '';
+  const isWcFallback = /^מוצר מהאתר:/.test(rawNote);
+  const lineNote = isWcFallback ? '' : rawNote;
 
   return `<li style="padding:4px 0;font-size:13px;color:#2B1A10">
     <span style="font-weight:600">${esc(item['כמות'])}×</span>
     <span style="margin-right:6px">${esc(name)}</span>
+    ${lineNote ? `<div style="margin-right:22px;font-size:11.5px;color:#8A7664;font-style:italic">· ${esc(lineNote)}</div>` : ''}
   </li>`;
 }
 
@@ -197,13 +216,19 @@ function orderCard(order: RawOrder, items: Record<string, unknown>[]): string {
     : `<div style="font-size:12px;color:#B0A090;font-style:italic">אין פריטים</div>`;
 
   const addressLine = isDelivery && order['כתובת_מקבל_ההזמנה']
-    ? `<tr><td style="padding:4px 0;color:#8E7D6A;width:38%">כתובת</td><td style="padding:4px 0;color:#2B1A10">${esc(order['כתובת_מקבל_ההזמנה'])}${order['עיר'] ? ', ' + esc(order['עיר']) : ''}</td></tr>`
+    ? `<tr><td style="padding:4px 10px;color:#8E7D6A;width:38%">כתובת</td><td style="padding:4px 10px;color:#2B1A10;font-weight:600">${esc(order['כתובת_מקבל_ההזמנה'])}${order['עיר'] ? ', ' + esc(order['עיר']) : ''}</td></tr>`
     : '';
-  const recipientLine = order['שם_מקבל']
-    ? `<tr><td style="padding:4px 0;color:#8E7D6A">שם מקבל</td><td style="padding:4px 0;color:#2B1A10">${esc(order['שם_מקבל'])}${order['טלפון_מקבל'] ? ` · ${esc(order['טלפון_מקבל'])}` : ''}</td></tr>`
+  const recipientLine = isDelivery && order['שם_מקבל']
+    ? `<tr><td style="padding:4px 10px;color:#8E7D6A">שם מקבל</td><td style="padding:4px 10px;color:#2B1A10;font-weight:600">${esc(order['שם_מקבל'])}${order['טלפון_מקבל'] ? ` · ${esc(order['טלפון_מקבל'])}` : ''}</td></tr>`
     : '';
+  // Pickup orders carry the same שעת_אספקה field but operationally that's
+  // when the customer arrives — relabel so the report reads correctly.
+  const timeLabel = isDelivery ? 'שעת אספקה' : 'שעת איסוף';
   const timeLine = order['שעת_אספקה']
-    ? `<tr><td style="padding:4px 0;color:#8E7D6A">שעה</td><td style="padding:4px 0;color:#2B1A10;font-weight:600">${esc(order['שעת_אספקה'])}</td></tr>`
+    ? `<tr><td style="padding:4px 10px;color:#8E7D6A">${timeLabel}</td><td style="padding:4px 10px;color:#2B1A10;font-weight:700">${esc(order['שעת_אספקה'])}</td></tr>`
+    : '';
+  const deliveryInstructionsLine = isDelivery && order['הוראות_משלוח']
+    ? `<tr><td style="padding:4px 10px;color:#8E7D6A">הוראות משלוח</td><td style="padding:4px 10px;color:#5C3D22">${esc(order['הוראות_משלוח'])}</td></tr>`
     : '';
 
   const notesLine = order['הערות_להזמנה']
@@ -236,9 +261,10 @@ function orderCard(order: RawOrder, items: Record<string, unknown>[]): string {
     <table style="width:100%;border-collapse:collapse;font-size:12px;background:#FAF7F0;border-radius:6px;padding:6px 10px;margin-bottom:6px">
       <tr><td style="padding:4px 10px;color:#8E7D6A;width:38%">תאריך אספקה</td><td style="padding:4px 10px;color:#2B1A10;font-weight:600">${esc(formatHebrewDate(String(order['תאריך_אספקה'] || '')))}</td></tr>
       ${timeLine}
-      <tr><td style="padding:4px 10px;color:#8E7D6A">סוג אספקה</td><td style="padding:4px 10px;color:#2B1A10">${esc(order['סוג_אספקה'])}</td></tr>
+      <tr><td style="padding:4px 10px;color:#8E7D6A">סוג אספקה</td><td style="padding:4px 10px;color:#2B1A10;font-weight:600">${esc(order['סוג_אספקה'])}</td></tr>
       ${recipientLine}
       ${addressLine}
+      ${deliveryInstructionsLine}
     </table>
 
     <div style="font-size:11px;font-weight:700;color:#8E7D6A;letter-spacing:0.06em;margin-top:10px">פריטים</div>

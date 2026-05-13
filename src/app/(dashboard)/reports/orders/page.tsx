@@ -27,9 +27,9 @@ function todayISO(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
 }
 
-// Preview payload returned by /api/reports/orders/preview. Same shape we
-// hand to the assistant's ReportPreviewCard — so the rendering logic feels
-// identical between the two surfaces.
+// Preview payload returned by /api/reports/orders/preview. The `html` field
+// is the actual report body the email/download will use — we iframe it in
+// the modal so preview and the sent report cannot drift apart.
 interface PreviewData {
   summary: {
     total: number;
@@ -41,20 +41,8 @@ interface PreviewData {
     startDate: string;
     endDate: string;
     totalAmount: number;
-    sampleSize: number;
-    truncated: boolean;
   };
-  sample: Array<{
-    id: string;
-    orderNumber: string;
-    customerName: string;
-    deliveryDate: string | null;
-    deliveryTime: string | null;
-    deliveryType: string | null;
-    paymentStatus: string | null;
-    urgent: boolean;
-    total: number;
-  }>;
+  html: string;
 }
 
 export default function OrdersReportPage() {
@@ -109,7 +97,7 @@ export default function OrdersReportPage() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'שגיאה בתצוגה מוקדמת');
-      setPreview({ summary: json.summary, sample: json.sample });
+      setPreview({ summary: json.summary, html: json.html });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'שגיאה');
     } finally {
@@ -284,7 +272,9 @@ export default function OrdersReportPage() {
               {preview.summary.pickup > 0 && <PreviewStat label="איסוף עצמי" value={String(preview.summary.pickup)} />}
             </div>
 
-            {/* Sample orders */}
+            {/* Live HTML preview — iframes the same body the email/download
+                will render, so what the user sees here is exactly what goes
+                out. Sandbox locks the iframe down (no scripts, no top nav). */}
             {preview.summary.total === 0 ? (
               <div className="rounded-lg p-6 text-center text-sm" style={{ backgroundColor: '#FAF7F0', color: '#9B7A5A' }}>
                 אין הזמנות בטווח שנבחר.<br/>
@@ -292,36 +282,22 @@ export default function OrdersReportPage() {
               </div>
             ) : (
               <div>
-                <div className="text-[11px] uppercase tracking-wider mb-2" style={{ color: '#9B7A5A' }}>
-                  {preview.summary.truncated ? `5 הראשונות מתוך ${preview.summary.total}` : 'כל ההזמנות'}
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-[11px] uppercase tracking-wider" style={{ color: '#9B7A5A' }}>
+                    תצוגת הדוח המלא ({preview.summary.total} הזמנות)
+                  </div>
+                  <div className="text-[11px]" style={{ color: '#B0A090' }}>
+                    זה בדיוק מה שהלקוחה תראה במייל
+                  </div>
                 </div>
                 <div className="rounded-lg overflow-hidden border" style={{ borderColor: '#EDE0CE' }}>
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr style={{ backgroundColor: '#FAF7F0', borderBottom: '1px solid #EDE0CE' }}>
-                        {['תאריך/שעה', 'לקוח', 'אספקה', 'תשלום', 'סכום'].map(h => (
-                          <th key={h} className="px-3 py-2 text-right text-[11px] font-semibold" style={{ color: '#6B4A2D' }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {preview.sample.map(o => (
-                        <tr key={o.id} className="border-b" style={{ borderColor: '#F5ECD8', backgroundColor: o.urgent ? '#FFF5F2' : undefined }}>
-                          <td className="px-3 py-2 text-xs" style={{ color: '#5C4A38' }}>
-                            {o.deliveryDate || '—'}
-                            {o.deliveryTime && <span className="ms-1.5" style={{ color: '#9B7A5A' }}>{o.deliveryTime}</span>}
-                          </td>
-                          <td className="px-3 py-2 text-xs font-medium" style={{ color: '#2B1A10' }}>
-                            {o.customerName}
-                            {o.urgent && <span className="ms-1.5 text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: '#FEE2E2', color: '#991B1B' }}>דחוף</span>}
-                          </td>
-                          <td className="px-3 py-2 text-xs" style={{ color: '#6B4A2D' }}>{o.deliveryType || '—'}</td>
-                          <td className="px-3 py-2 text-xs" style={{ color: '#6B4A2D' }}>{o.paymentStatus || '—'}</td>
-                          <td className="px-3 py-2 text-xs font-semibold tabular-nums" style={{ color: '#8B5E34' }}>₪{o.total.toFixed(2)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  <iframe
+                    srcDoc={preview.html}
+                    title="תצוגה מקדימה — דוח הזמנות"
+                    sandbox=""
+                    className="w-full block"
+                    style={{ height: '60vh', backgroundColor: '#F5F1EB', border: 'none' }}
+                  />
                 </div>
               </div>
             )}
