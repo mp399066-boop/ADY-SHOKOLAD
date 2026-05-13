@@ -21,6 +21,9 @@ const bodySchema = z.object({
     deliveryOnly: z.boolean().optional(),
     pickupOnly: z.boolean().optional(),
   }).optional(),
+  // Optional free-text note rendered above the order cards. Capped at a
+  // generous length so a runaway paste can't blow up the email body.
+  note: z.string().max(2000).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -36,7 +39,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.errors[0]?.message || 'נתונים לא תקינים' }, { status: 400 });
   }
 
-  const { range, date, filters } = parsed.data;
+  const { range, date, filters, note } = parsed.data;
   if (range === 'custom' && !date) {
     return NextResponse.json({ error: 'בטווח מותאם — חובה לבחור תאריך' }, { status: 400 });
   }
@@ -44,7 +47,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'לא ניתן לבחור גם משלוחים בלבד וגם איסוף בלבד' }, { status: 400 });
   }
 
-  const input: ReportInput = { range, date, filters };
+  const input: ReportInput = { range, date, filters, note };
   const reportFilters: ReportFilters = filters ?? {};
 
   try {
@@ -62,7 +65,7 @@ export async function POST(req: NextRequest) {
     // content the recipient will see. WYSIWYG by construction — preview and
     // sent email cannot drift apart.
     const fullSummary: ReportSummary = { ...summary, startDate, endDate, rangeLabel: label };
-    const html = buildReportHtml(fullSummary, orders, itemsByOrder, false);
+    const html = buildReportHtml(fullSummary, orders, itemsByOrder, false, note);
 
     return NextResponse.json({
       ok: true,

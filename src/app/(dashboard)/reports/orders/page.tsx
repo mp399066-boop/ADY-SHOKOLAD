@@ -49,6 +49,7 @@ export default function OrdersReportPage() {
   const [range, setRange] = useState<Range>('today');
   const [date, setDate] = useState<string>(todayISO());
   const [recipientEmail, setRecipientEmail] = useState<string>('');
+  const [note, setNote] = useState<string>('');
   const [filters, setFilters] = useState<{ urgentOnly: boolean; unpaidOnly: boolean; deliveryOnly: boolean; pickupOnly: boolean }>({
     urgentOnly: false, unpaidOnly: false, deliveryOnly: false, pickupOnly: false,
   });
@@ -78,6 +79,9 @@ export default function OrdersReportPage() {
     range,
     date: range === 'custom' ? date : undefined,
     filters,
+    // Trim before sending. An all-whitespace note becomes undefined so the
+    // banner doesn't render in the report.
+    note: note.trim() ? note.trim() : undefined,
     ...extra,
   });
 
@@ -243,6 +247,23 @@ export default function OrdersReportPage() {
         </div>
         <p className="text-xs mt-3" style={{ color: '#B0A090' }}>
           ניתן לסנן רק לפי משלוחים <em>או</em> רק לפי איסוף — לא שניהם יחד.
+        </p>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle>הערה למכינה (אופציונלי)</CardTitle></CardHeader>
+        <textarea
+          rows={3}
+          value={note}
+          onChange={e => setNote(e.target.value)}
+          maxLength={2000}
+          placeholder="אפשר לכתוב כאן כמה מילים שיופיעו בראש הדוח, למשל: להכין קודם את ההזמנות המוקדמות…"
+          className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 resize-y"
+          style={{ borderColor: '#E7D2A6', color: '#2B1A10', minHeight: '72px' }}
+          dir="rtl"
+        />
+        <p className="text-xs mt-2" style={{ color: '#B0A090' }}>
+          ההערה תופיע בראש הדוח מעל רשימת ההזמנות, גם בתצוגה המקדימה וגם במייל. ריק = לא מציגים אזור הערה.
         </p>
       </Card>
 

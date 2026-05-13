@@ -17,6 +17,10 @@ export interface ReportInput {
   range: ReportRange;
   date?: string | null;
   filters?: ReportFilters;
+  // Free-text "note to the preparer" — rendered at the top of the report,
+  // above the order cards. Optional; empty/missing = no banner. Not stored
+  // anywhere; lives only inside the request that produced the report.
+  note?: string | null;
 }
 
 export interface ReportSummary {
@@ -141,6 +145,41 @@ function esc(s: unknown): string {
     .replace(/"/g, '&quot;');
 }
 
+// Decides what to print for the time row. There is no per-order "flexible"
+// flag in the schema (owner declined a migration), so this is a heuristic
+// over the existing שעת_אספקה text:
+//   - empty/null            → "לא צוינה שעה"
+//   - "HH:MM[:SS]" prefix   → "HH:MM"           (strong = bolder)
+//   - contains a flex marker→ "גמיש"            (e.g. "גמיש", "כל היום")
+//   - anything else         → the raw text       (operator-written window)
+function describeOrderTime(
+  rawTime: string | null | undefined,
+  isDelivery: boolean,
+): { label: string; value: string; strong: boolean } {
+  const label = isDelivery ? 'שעת אספקה' : 'שעת איסוף';
+  const t = (rawTime ?? '').trim();
+  if (!t) return { label, value: 'לא צוינה שעה', strong: false };
+  const hhmm = t.match(/^(\d{1,2}):(\d{2})/);
+  if (hhmm) return { label, value: `${hhmm[1].padStart(2, '0')}:${hhmm[2]}`, strong: true };
+  if (/גמיש|במהלך היום|כל היום|בערך|flex/i.test(t)) {
+    return { label, value: 'גמיש', strong: false };
+  }
+  return { label, value: t, strong: false };
+}
+
+// Renders the optional "note to the preparer" banner. Escaped + newlines
+// preserved (white-space: pre-line) so a multi-line note still reads as
+// the operator typed it. Returns '' when nothing to render.
+function noteBanner(note: string | null | undefined): string {
+  const text = (note ?? '').trim();
+  if (!text) return '';
+  return `
+  <div style="background:#FBF3E4;border:1px solid #E8D2A8;border-right:4px solid #B8956A;border-radius:10px;padding:14px 18px;margin-bottom:14px">
+    <div style="font-size:11px;font-weight:700;color:#8B5E34;letter-spacing:0.06em;margin-bottom:6px">📋 הערה למכינה</div>
+    <div style="font-size:13.5px;color:#2B1A10;line-height:1.55;white-space:pre-line">${esc(text)}</div>
+  </div>`;
+}
+
 // Fallback for product name when מוצרים_למכירה join didn't resolve. WC
 // orders that landed before auto-create stored the public name inside
 // הערות_לשורה as `מוצר מהאתר: <name> (SKU ...)`. Surface that so the
@@ -223,10 +262,10 @@ function orderCard(order: RawOrder, items: Record<string, unknown>[]): string {
     : '';
   // Pickup orders carry the same שעת_אספקה field but operationally that's
   // when the customer arrives — relabel so the report reads correctly.
-  const timeLabel = isDelivery ? 'שעת אספקה' : 'שעת איסוף';
-  const timeLine = order['שעת_אספקה']
-    ? `<tr><td style="padding:4px 10px;color:#8E7D6A">${timeLabel}</td><td style="padding:4px 10px;color:#2B1A10;font-weight:700">${esc(order['שעת_אספקה'])}</td></tr>`
-    : '';
+  // describeOrderTime also normalises empty / "גמיש" / free-text values so
+  // the row never reads "—" silently when a window wasn't pinned down.
+  const timeInfo = describeOrderTime(order['שעת_אספקה'] as string | null | undefined, isDelivery);
+  const timeLine = `<tr><td style="padding:4px 10px;color:#8E7D6A">${timeInfo.label}</td><td style="padding:4px 10px;color:#2B1A10;font-weight:${timeInfo.strong ? 700 : 600}">${esc(timeInfo.value)}</td></tr>`;
   const deliveryInstructionsLine = isDelivery && order['הוראות_משלוח']
     ? `<tr><td style="padding:4px 10px;color:#8E7D6A">הוראות משלוח</td><td style="padding:4px 10px;color:#5C3D22">${esc(order['הוראות_משלוח'])}</td></tr>`
     : '';
@@ -280,6 +319,7 @@ export function buildReportHtml(
   orders: RawOrder[],
   itemsByOrder: Record<string, Record<string, unknown>[]>,
   forDownload = false,
+  note?: string | null,
 ): string {
   const cards = orders.length
     ? orders.map(o => orderCard(o, itemsByOrder[String(o.id)] || [])).join('')
@@ -348,8 +388,9 @@ export function buildReportHtml(
           </table>
         </td></tr>
 
-        <!-- Orders -->
+        <!-- Note to preparer (only when supplied) + Orders -->
         <tr><td style="background:#F5F1EB;border-right:1px solid #EDE0CE;border-left:1px solid #EDE0CE;padding:14px 16px">
+          ${noteBanner(note)}
           ${cards}
         </td></tr>
 
@@ -376,7 +417,7 @@ export async function generateOrdersReport(
   const { orders, itemsByOrder, summary: counts } = await fetchOrdersForReport(startDate, endDate, filters);
 
   const summary: ReportSummary = { ...counts, startDate, endDate, rangeLabel: label };
-  const html = buildReportHtml(summary, orders, itemsByOrder, opts.forDownload === true);
+  const html = buildReportHtml(summary, orders, itemsByOrder, opts.forDownload === true, input.note);
   const subject = `דוח הזמנות — ${label} — ${BUSINESS}`;
   return { html, summary, subject };
 }
