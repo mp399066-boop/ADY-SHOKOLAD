@@ -489,7 +489,12 @@ export default function DashboardPage() {
         setAssignCourierFor(verb.payload);
         return;
       case 'open_delivery': {
-        router.push('/deliveries');
+        // Pass the delivery id so the deliveries page can scroll to and
+        // briefly highlight the row — useful when the operator just dispatched
+        // it from the dashboard and expects to see it on landing.
+        const id = verb.payload.id;
+        const real = id.startsWith('no-record-') ? '' : id;
+        router.push(real ? `/deliveries?highlight=${encodeURIComponent(real)}` : '/deliveries');
         return;
       }
       case 'open_inventory':

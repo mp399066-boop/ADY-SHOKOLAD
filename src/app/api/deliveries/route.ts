@@ -64,68 +64,93 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ data: data || [] });
   }
 
-  // Fetch all orders that are deliveries:
-  // either marked סוג_אספקה='משלוח', OR have a delivery address, OR have delivery fee > 0
-  let ordersQuery = supabase
+  // ── Active deliveries (ממתין / נאסף) ────────────────────────────────────
+  //
+  // Previously this branch led with an ORDERS query filtered by
+  // `.or('סוג_אספקה.eq.משלוח, …')`. If an order didn't pass that .or()
+  // filter (e.g. סוג_אספקה wasn't exactly 'משלוח' and no address/fee was
+  // set), its delivery row was invisible even when it actually existed.
+  // That caused freshly-assigned deliveries to "vanish" after the
+  // dashboard's "שייך שליח" flow.
+  //
+  // The fix: the active list is built from two sources, then merged:
+  //   A. ANY משלוחים row whose סטטוס != 'נמסר' (with the linked order
+  //      excluded only when its סטטוס_הזמנה is בוטלה — cancelled orders
+  //      live in the orders archive, not the deliveries list).
+  //   B. Synthetic placeholders for orders that LOOK like deliveries but
+  //      have no row yet (so the operator can still pick them up from
+  //      the dashboard / deliveries page and start a delivery).
+  //
+  // Source A guarantees: if the row exists with a non-נמסר status, it
+  // shows up regardless of the order's סוג_אספקה.
+
+  // ── A. Real delivery rows (active) ───────────────────────────────────────
+  let activeDeliveriesQuery = supabase
+    .from('משלוחים')
+    .select(`
+      *,
+      שליחים!courier_id(id, שם_שליח, טלפון_שליח),
+      הזמנות!inner(id, מספר_הזמנה, שם_מקבל, טלפון_מקבל, לקוח_id, תאריך_אספקה, שעת_אספקה, כתובת_מקבל_ההזמנה, עיר, הוראות_משלוח, דמי_משלוח, סטטוס_הזמנה, לקוחות(שם_פרטי, שם_משפחה))
+    `)
+    .neq('סטטוס_משלוח', 'נמסר')
+    .neq('הזמנות.סטטוס_הזמנה', 'בוטלה')
+    .order('תאריך_משלוח', { ascending: true });
+  if (date) activeDeliveriesQuery = activeDeliveriesQuery.eq('תאריך_משלוח', date);
+
+  const { data: activeDeliveriesRaw, error: activeErr } = await activeDeliveriesQuery;
+  if (activeErr) return NextResponse.json({ error: activeErr.message }, { status: 500 });
+
+  type ActiveDeliveryRaw = DeliveryRow & { הזמנות?: OrderRow & { סטטוס_הזמנה?: string } | null };
+  const activeDeliveries = ((activeDeliveriesRaw || []) as unknown as ActiveDeliveryRaw[])
+    // Defensive: the !inner() join is supposed to drop rows where the order
+    // is missing, but a stale row whose order was deleted would otherwise
+    // crash downstream. Skip silently.
+    .filter(d => d.הזמנות != null);
+
+  // ── B. Orders that qualify as deliveries but have no row yet ────────────
+  let placeholderOrdersQuery = supabase
     .from('הזמנות')
     .select('id, מספר_הזמנה, שם_מקבל, טלפון_מקבל, לקוח_id, תאריך_אספקה, שעת_אספקה, כתובת_מקבל_ההזמנה, עיר, הוראות_משלוח, דמי_משלוח, לקוחות(שם_פרטי, שם_משפחה)')
     .or('סוג_אספקה.eq.משלוח,כתובת_מקבל_ההזמנה.not.is.null,דמי_משלוח.gt.0')
     .neq('סטטוס_הזמנה', 'הושלמה בהצלחה')
     .neq('סטטוס_הזמנה', 'בוטלה')
     .order('תאריך_אספקה', { ascending: true });
+  if (date) placeholderOrdersQuery = placeholderOrdersQuery.eq('תאריך_אספקה', date);
 
-  // date filter only when explicitly provided — no default
-  if (date) ordersQuery = ordersQuery.eq('תאריך_אספקה', date);
+  const { data: placeholderOrdersRaw, error: placeholderErr } = await placeholderOrdersQuery;
+  if (placeholderErr) return NextResponse.json({ error: placeholderErr.message }, { status: 500 });
+  const placeholderOrders = (placeholderOrdersRaw || []) as OrderRow[];
 
-  const { data: ordersRaw, error: ordersError } = await ordersQuery;
-  if (ordersError) return NextResponse.json({ error: ordersError.message }, { status: 500 });
+  // Drop any order that already has an active delivery row (we'll show the
+  // real row instead of a synthetic placeholder).
+  const orderIdsWithActiveRow = new Set(activeDeliveries.map(d => d.הזמנה_id));
 
-  const orders = (ordersRaw || []) as OrderRow[];
-  if (orders.length === 0) return NextResponse.json({ data: [] });
+  const synthetic = placeholderOrders
+    .filter(o => !orderIdsWithActiveRow.has(o.id))
+    .map(order => ({
+      _noRecord: true,
+      id: `no-record-${order.id}`,
+      הזמנה_id: order.id,
+      סטטוס_משלוח: 'ממתין',
+      תאריך_משלוח: order.תאריך_אספקה || null,
+      שעת_משלוח: order.שעת_אספקה || null,
+      כתובת: order.כתובת_מקבל_ההזמנה || null,
+      עיר: order.עיר || null,
+      הוראות_משלוח: order.הוראות_משלוח || null,
+      שם_שליח: null,
+      טלפון_שליח: null,
+      הערות: null,
+      courier_id: null,
+      delivery_token: null,
+      delivered_at: null,
+      whatsapp_sent_at: null,
+      שליחים: null,
+      הזמנות: order,
+    }));
 
-  const orderIds = orders.map(o => o.id);
-
-  // Fetch existing delivery records for these orders (with courier join)
-  const { data: deliveriesRaw, error: deliveriesError } = await supabase
-    .from('משלוחים')
-    .select('*, שליחים!courier_id(id, שם_שליח, טלפון_שליח)')
-    .in('הזמנה_id', orderIds);
-
-  if (deliveriesError) return NextResponse.json({ error: deliveriesError.message }, { status: 500 });
-
-  const deliveries = (deliveriesRaw || []) as DeliveryRow[];
-
-  // Map deliveries by order ID (one delivery per order assumed)
-  const deliveryByOrder = new Map(deliveries.map(d => [d.הזמנה_id, d]));
-
-  // Build combined result: orders with delivery record get full record; orders without get synthetic row
-  const combined = orders
-    .map(order => {
-      const delivery = deliveryByOrder.get(order.id);
-      if (delivery) {
-        return { ...delivery, הזמנות: order };
-      }
-      return {
-        _noRecord: true,
-        id: `no-record-${order.id}`,
-        הזמנה_id: order.id,
-        סטטוס_משלוח: 'ממתין',
-        תאריך_משלוח: order.תאריך_אספקה || null,
-        שעת_משלוח: order.שעת_אספקה || null,
-        כתובת: order.כתובת_מקבל_ההזמנה || null,
-        עיר: order.עיר || null,
-        הוראות_משלוח: order.הוראות_משלוח || null,
-        שם_שליח: null,
-        טלפון_שליח: null,
-        הערות: null,
-        courier_id: null,
-        delivery_token: null,
-        delivered_at: null,
-        whatsapp_sent_at: null,
-        שליחים: null,
-        הזמנות: order,
-      };
-    })
+  // Merge + apply optional explicit status filter (Select dropdown). Real
+  // rows come first since they carry actionable state.
+  const combined = [...activeDeliveries, ...synthetic]
     .filter(row => !status || row.סטטוס_משלוח === status);
 
   return NextResponse.json({ data: combined });

@@ -149,12 +149,17 @@ function DeliveriesContent() {
   const searchParams = useSearchParams();
   // Default: no date filter — show all deliveries
   const defaultDate = searchParams.get('date') || '';
+  // Optional ?highlight=<deliveryId> from the dashboard's "פתח משלוח" button.
+  // The matching row gets a soft golden ring + scrollIntoView when the data
+  // arrives. Highlight clears on first user interaction.
+  const highlightId = searchParams.get('highlight') || '';
 
   const [deliveries, setDeliveries] = useState<DeliveryWithCourier[]>([]);
   const [loading, setLoading] = useState(true);
   const [date, setDate] = useState(defaultDate);
   const [statusFilter, setStatusFilter] = useState('');
   const [couriers, setCouriers] = useState<Courier[]>([]);
+  const [highlight, setHighlight] = useState(highlightId);
 
   const [placedDelivery, setPlacedDelivery] = useState<DeliveryWithCourier | null>(null);
   const [placedForm, setPlacedForm] = useState<PlacedForm>({ שעת_הנחה: '', מקום_הנחה: '', הערה: '' });
@@ -208,6 +213,19 @@ function DeliveriesContent() {
       .then(r => r.json())
       .then(({ data }) => setCouriers((data || []).filter((c: CourierWithStats) => c.פעיל)));
   }, []);
+
+  // Once the deliveries are loaded, scroll the highlighted row into view
+  // (a one-shot effect — the highlight is cleared after a few seconds so a
+  // refresh doesn't keep flashing the same row).
+  useEffect(() => {
+    if (!highlight || loading || deliveries.length === 0) return;
+    const t = window.setTimeout(() => {
+      const el = document.getElementById(`delivery-row-${highlight}`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 100);
+    const clearAt = window.setTimeout(() => setHighlight(''), 4000);
+    return () => { window.clearTimeout(t); window.clearTimeout(clearAt); };
+  }, [highlight, loading, deliveries]);
 
   // Load deliveries on filter change
   useEffect(() => {
@@ -504,9 +522,19 @@ function DeliveriesContent() {
             const assignedCourier = d.courier_id ? couriers.find(c => c.id === d.courier_id) : null;
             const canSendToCourier = !d._noRecord && !!assignedCourier &&
               !!(assignedCourier.טלפון_שליח || assignedCourier.אימייל_שליח);
+            const isHighlighted = !!highlight && d.id === highlight;
 
             return (
-              <Card key={d.id}>
+              <div
+                key={d.id}
+                id={`delivery-row-${d.id}`}
+                style={isHighlighted ? {
+                  borderRadius: '14px',
+                  boxShadow: '0 0 0 3px #C9A46A, 0 8px 22px rgba(201,164,106,0.18)',
+                  transition: 'box-shadow 400ms ease',
+                } : undefined}
+              >
+              <Card>
                 <div className="flex items-start justify-between gap-4">
                   {/* Left: info */}
                   <div className="flex-1 min-w-0 space-y-1.5">
@@ -663,6 +691,7 @@ function DeliveriesContent() {
                   </div>
                 </div>
               </Card>
+              </div>
             );
           })}
         </div>
