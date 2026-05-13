@@ -1,5 +1,14 @@
 'use client';
 
+// Daily work queue. Renders the list of QueueItems in 4 categorical columns
+// (order / payment / delivery / stock) with a row of quick filter chips on
+// top so the operator can narrow the view without leaving the dashboard.
+//
+// Filtering is local UI state — it does NOT mutate or refetch data, only
+// hides items from the current render. All status / payment / delivery
+// handlers are pass-through to the page; no business logic here.
+
+import { useMemo, useState } from 'react';
 import { C } from './theme';
 import { DashboardEmptyState } from './DashboardEmptyState';
 import type { QueueItem, QueueItemType } from './queue-builder';
@@ -43,6 +52,29 @@ const BOARD_COLUMNS: {
   },
 ];
 
+type Filter = 'all' | 'urgent' | 'today' | 'payment' | 'delivery' | 'stock';
+
+const FILTER_CHIPS: { value: Filter; label: string }[] = [
+  { value: 'all',      label: 'הכל'              },
+  { value: 'urgent',   label: 'דחוף עכשיו'      },
+  { value: 'today',    label: 'להיום'           },
+  { value: 'payment',  label: 'ממתין לתשלום'    },
+  { value: 'delivery', label: 'משלוחים'         },
+  { value: 'stock',    label: 'מלאי חסר'        },
+];
+
+function applyFilter(items: QueueItem[], filter: Filter): QueueItem[] {
+  switch (filter) {
+    case 'urgent':   return items.filter(it => it.urgency === 'urgent_now');
+    case 'today':    return items.filter(it => it.urgency === 'urgent_now' || it.urgency === 'today');
+    case 'payment':  return items.filter(it => it.type === 'payment');
+    case 'delivery': return items.filter(it => it.type === 'delivery');
+    case 'stock':    return items.filter(it => it.type === 'stock');
+    case 'all':
+    default:         return items;
+  }
+}
+
 export function WorkQueue({
   items, updatingId, handlers,
 }: {
@@ -50,6 +82,21 @@ export function WorkQueue({
   updatingId: string | null;
   handlers: WorkQueueItemHandlers;
 }) {
+  const [filter, setFilter] = useState<Filter>('all');
+
+  const filtered = useMemo(() => applyFilter(items, filter), [items, filter]);
+
+  // Counts shown next to each chip. Computed off the *unfiltered* list so the
+  // numbers represent total available work, not the current view.
+  const counts = useMemo(() => ({
+    all:      items.length,
+    urgent:   items.filter(it => it.urgency === 'urgent_now').length,
+    today:    items.filter(it => it.urgency === 'urgent_now' || it.urgency === 'today').length,
+    payment:  items.filter(it => it.type === 'payment').length,
+    delivery: items.filter(it => it.type === 'delivery').length,
+    stock:    items.filter(it => it.type === 'stock').length,
+  }), [items]);
+
   if (items.length === 0) {
     return (
       <section className="rounded-2xl" style={{ backgroundColor: C.card, border: `1px solid ${C.border}` }}>
@@ -77,13 +124,47 @@ export function WorkQueue({
           style={{ backgroundColor: C.card, color: C.textSoft, border: `1px solid ${C.border}` }}
         >
           <span className="w-2 h-2 rounded-full" style={{ backgroundColor: C.green }} />
-          {items.length} פעולות פתוחות
+          {filtered.length} מתוך {items.length} פעולות
         </div>
+      </div>
+
+      {/* Filter chips — pure UI, no fetch / no mutation */}
+      <div className="flex flex-wrap gap-1.5">
+        {FILTER_CHIPS.map(chip => {
+          const active = filter === chip.value;
+          const count = counts[chip.value];
+          return (
+            <button
+              key={chip.value}
+              onClick={() => setFilter(chip.value)}
+              className="inline-flex items-center gap-1.5 px-3 h-8 rounded-full text-[11.5px] font-semibold transition-colors"
+              style={{
+                backgroundColor: active ? C.espresso : '#FFFFFF',
+                color: active ? '#FFFFFF' : C.text,
+                border: `1px solid ${active ? C.espresso : C.border}`,
+              }}
+            >
+              {chip.label}
+              <span
+                className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold tabular-nums"
+                style={{
+                  backgroundColor: active ? 'rgba(255,255,255,0.18)' : C.brandSoft,
+                  color: active ? '#FFFFFF' : C.brand,
+                }}
+              >
+                {count}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
         {BOARD_COLUMNS.map(column => {
-          const columnItems = items.filter(item => item.type === column.type);
+          const columnItems = filtered.filter(item => item.type === column.type);
+          // Hide empty columns when a filter is active — the user picked a
+          // narrow view, don't push empty placeholders into their face.
+          if (filter !== 'all' && columnItems.length === 0) return null;
           return (
             <ActionColumn
               key={column.type}
@@ -124,17 +205,15 @@ function ActionColumn({
       className="rounded-xl overflow-hidden"
       style={{ backgroundColor: C.card, border: `1px solid ${C.border}`, boxShadow: '0 6px 18px rgba(47,27,20,0.045)' }}
     >
-      <header className="px-3 py-3" style={{ borderBottom: `1px solid ${C.borderSoft}`, backgroundColor: '#FFFFFF' }}>
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: accent }} />
-              <h3 className="text-[14.5px] font-bold" style={{ color: C.text }}>{title}</h3>
-            </div>
-            <p className="text-[11.5px] mt-1" style={{ color: C.textSoft }}>{subtitle}</p>
+      <header className="px-3 py-2.5" style={{ borderBottom: `1px solid ${C.borderSoft}`, backgroundColor: '#FFFFFF' }}>
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: accent }} />
+            <h3 className="text-[13.5px] font-bold" style={{ color: C.text }}>{title}</h3>
+            <span className="text-[11px]" style={{ color: C.textMuted }}>· {subtitle}</span>
           </div>
           <span
-            className="inline-flex items-center justify-center min-w-7 h-7 px-2 rounded-full text-[11.5px] font-bold"
+            className="inline-flex items-center justify-center min-w-6 h-6 px-2 rounded-full text-[11px] font-bold tabular-nums"
             style={{ color: accent, backgroundColor: C.card, border: `1px solid ${C.border}` }}
           >
             {items.length}
@@ -143,11 +222,11 @@ function ActionColumn({
       </header>
 
       {items.length === 0 ? (
-        <div className="px-3 py-5 text-center text-[12px]" style={{ color: C.textSoft }}>
+        <div className="px-3 py-4 text-center text-[12px]" style={{ color: C.textSoft }}>
           {empty}
         </div>
       ) : (
-        <ul className="p-2 space-y-2">
+        <ul className="p-2 space-y-1.5">
           {items.map(item => {
             const entityId = item.entity?.kind === 'order' ? item.entity.data.id
               : item.entity?.kind === 'delivery' ? item.entity.data.id

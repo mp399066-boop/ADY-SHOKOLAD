@@ -1,5 +1,9 @@
 'use client';
 
+// Right-side rail. Kept deliberately small so the main board (WorkQueue)
+// gets the most room. Two collapsible panels: quick navigation actions and
+// a numeric alert summary that links into the full pages.
+
 import Link from 'next/link';
 import { C } from './theme';
 import type { Delivery, Stock, TodayOrder } from './types';
@@ -32,9 +36,9 @@ export function AttentionPanel({
   const activeDeliveries = todayDeliveries.filter(d => d.סטטוס_משלוח !== 'נמסר').length;
 
   return (
-    <aside className="space-y-3">
+    <aside className="space-y-2.5">
       <Panel title="פעולות מהירות">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-2">
           <QuickAction href="/orders/new" label="הזמנה חדשה">
             <path d="M12 5v14M5 12h14" />
           </QuickAction>
@@ -83,10 +87,10 @@ export function AttentionPanel({
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section
-      className="rounded-xl p-3"
-      style={{ backgroundColor: '#FFFFFF', border: `1px solid ${C.border}`, boxShadow: '0 6px 18px rgba(47,27,20,0.045)' }}
+      className="rounded-xl p-2.5"
+      style={{ backgroundColor: '#FFFFFF', border: `1px solid ${C.border}`, boxShadow: '0 4px 14px rgba(47,27,20,0.04)' }}
     >
-      <h2 className="text-[14.5px] font-bold mb-3" style={{ color: C.text }}>{title}</h2>
+      <h2 className="text-[12.5px] font-bold mb-2 px-0.5" style={{ color: C.textSoft, letterSpacing: '0.02em' }}>{title}</h2>
       {children}
     </section>
   );
@@ -96,18 +100,18 @@ function QuickAction({ href, label, children }: { href: string; label: string; c
   return (
     <Link
       href={href}
-      className="group flex flex-col items-center justify-center gap-2 rounded-lg p-3 text-center transition-all"
+      className="group flex items-center gap-2 rounded-lg p-2 transition-all hover:-translate-y-px"
       style={{ backgroundColor: C.card, border: `1px solid ${C.border}`, color: C.text }}
     >
       <span
-        className="flex h-9 w-9 items-center justify-center rounded-full transition-colors"
+        className="flex h-7 w-7 items-center justify-center rounded-full transition-colors shrink-0"
         style={{ backgroundColor: C.brandSoft, color: C.brand }}
       >
-        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+        <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
           {children}
         </svg>
       </span>
-      <span className="text-[12px] font-bold">{label}</span>
+      <span className="text-[11.5px] font-bold truncate">{label}</span>
     </Link>
   );
 }
@@ -116,12 +120,12 @@ function AlertLine({ label, value, href, tone }: { label: string; value: number;
   return (
     <Link
       href={href}
-      className="flex items-center justify-between gap-3 rounded-lg px-3 py-2.5 mb-2 last:mb-0 transition-colors"
+      className="flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 mb-1.5 last:mb-0 transition-colors"
       style={{ backgroundColor: C.card, border: `1px solid ${C.border}` }}
     >
-      <span className="text-[12px] font-semibold" style={{ color: C.text }}>{label}</span>
+      <span className="text-[11.5px] font-semibold truncate" style={{ color: C.text }}>{label}</span>
       <span
-        className="inline-flex min-w-7 h-7 items-center justify-center rounded-full px-2 text-[12px] font-bold"
+        className="inline-flex min-w-6 h-6 items-center justify-center rounded-full px-1.5 text-[11px] font-bold tabular-nums"
         style={{ color: tone, backgroundColor: '#FFFFFF', border: `1px solid ${C.borderSoft}` }}
       >
         {value}
