@@ -271,20 +271,10 @@ function OrdersContent() {
 
   const handleOrderStatusChange = (order: Order, newStatus: string) => {
     if (newStatus === order.סטטוס_הזמנה) return;
-    // Confirm only when crossing INTO 'בהכנה' — the server only deducts
-    // stock on the first transition, so going בהכנה→משהו אחר→בהכנה won't
-    // deduct again, but the warning still helps the user understand intent.
-    if (newStatus === 'בהכנה' && order.סטטוס_הזמנה !== 'בהכנה') {
-      setPendingChange({
-        orderId: order.id,
-        field: 'סטטוס_הזמנה',
-        oldValue: order.סטטוס_הזמנה,
-        newValue: newStatus,
-        title: 'מעבר ל"בהכנה"',
-        description: "מעבר ל'בהכנה' יוריד מלאי. להמשיך?",
-      });
-      return;
-    }
+    // No confirm for the בהכנה transition — under the current policy
+    // (DEDUCT_INVENTORY_ON_ORDER_STATUS = false in src/lib/inventory-deduct.ts)
+    // moving to בהכנה does NOT touch inventory. The previous warning was
+    // stale and misled the operator about what the click does.
     applyInlineUpdate(order.id, 'סטטוס_הזמנה', order.סטטוס_הזמנה, newStatus);
   };
 
@@ -297,7 +287,9 @@ function OrdersContent() {
         oldValue: order.סטטוס_תשלום,
         newValue: newStatus,
         title: 'שינוי ל"שולם"',
-        description: "שינוי ל'שולם' עשוי להפיק חשבונית/קבלה. להמשיך?",
+        // Inventory deduction is the real side effect now — Morning
+        // documents are issued manually, not as a side effect of this PATCH.
+        description: 'סימון ההזמנה כשולמה יוריד מלאי. להמשיך?',
       });
       return;
     }

@@ -43,9 +43,13 @@ const PAYMENT_METHODS = [
   'מזומן', 'כרטיס אשראי', 'העברה בנקאית', 'bit', 'PayBox', 'PayPal', 'המחאה', 'אחר',
 ] as const;
 
+// סטטוס הזמנה carries no inventory side effects under the current policy
+// (DEDUCT_INVENTORY_ON_ORDER_STATUS = false in src/lib/inventory-deduct.ts).
+// Inventory deduction is now exclusively driven by סטטוס_תשלום → 'שולם',
+// so the "יוריד מלאי" label moved to the payment-status grid below.
 const ORDER_STATUS_OPTIONS: { value: OrderStatus; sideEffect?: string }[] = [
   { value: 'חדשה' },
-  { value: 'בהכנה',          sideEffect: 'יוריד מלאי' },
+  { value: 'בהכנה' },
   { value: 'מוכנה למשלוח' },
   { value: 'נשלחה' },
   { value: 'הושלמה בהצלחה' },
@@ -54,7 +58,7 @@ const ORDER_STATUS_OPTIONS: { value: OrderStatus; sideEffect?: string }[] = [
 
 const PAYMENT_STATUS_OPTIONS: { value: 'ממתין' | 'שולם' | 'חלקי' | 'בוטל' | 'בארטר'; sideEffect?: string }[] = [
   { value: 'ממתין' },
-  { value: 'שולם' },
+  { value: 'שולם',           sideEffect: 'יוריד מלאי' },
   { value: 'חלקי' },
   { value: 'בוטל' },
   { value: 'בארטר' },
@@ -295,13 +299,12 @@ export default function DashboardPage() {
     setMoreActionsOrder(null);
     if (newStatus === o.סטטוס_הזמנה) return;
     const exec = () => patchOrder(o.id, { סטטוס_הזמנה: newStatus }, { סטטוס_הזמנה: o.סטטוס_הזמנה });
-    if (newStatus === 'בהכנה' && o.סטטוס_הזמנה !== 'בהכנה') {
-      setConfirmAction({
-        text: 'מעבר להכנה עשוי להוריד מלאי. להמשיך?',
-        cta: 'אישור — בהכנה',
-        onConfirm: async () => { await exec(); setConfirmAction(null); },
-      });
-    } else if (newStatus === 'הושלמה בהצלחה' && o.סטטוס_הזמנה !== 'הושלמה בהצלחה') {
+    // Note: there is intentionally no confirm modal for the בהכנה transition
+    // anymore. The inventory side-effect was removed when policy switched to
+    // "deduct on payment paid" (see DEDUCT_INVENTORY_ON_ORDER_STATUS = false
+    // in src/lib/inventory-deduct.ts). Showing a stale "יוריד מלאי" warning
+    // here would mislead the operator about what the click actually does.
+    if (newStatus === 'הושלמה בהצלחה' && o.סטטוס_הזמנה !== 'הושלמה בהצלחה') {
       setConfirmAction({
         text: 'סימון כהושלמה ישנה את סטטוס ההזמנה. להמשיך?',
         cta: 'אישור — הושלמה',
