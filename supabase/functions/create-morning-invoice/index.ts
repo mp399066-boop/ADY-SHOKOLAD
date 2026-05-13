@@ -15,39 +15,60 @@ const DOC_TYPE: Record<string, number> = {
 const PAYMENT_DOCS = new Set(['receipt', 'invoice_receipt']);
 
 // Payment builders for Morning's documents API. Each entry returns the full
-// payment object (not just a type code) because Morning needs the matching
-// extra fields per type — sending a bare {type, price, date} for credit card
-// caused the document to display the wrong method (the "כרטיס אשראי שיצא
-// כהעברה" bug). The previous version had a `?? 4` fallback that silently
-// labelled any unknown method as credit card; that fallback is gone — see
-// the lookup site for what happens when the method is unknown/empty.
+// payment object (not just a type code).
 //
-// Field meanings (Morning v1 /documents):
-//   subType  — credit-card sub-type: 0=normal, 1=installments, 2=credit
-//   cardType — card brand: 1=Isracard 2=Visa 3=Mastercard 4=Diners 5=Amex 6=Other
-//   cardNum  — last 4 digits (we don't capture them, sent as empty string)
-//   bankName — required for type 3 to render readably; placeholder is fine
+// CRITICAL — type-code mapping per Morning's documented PaymentType enum
+// (verified against developers.greeninvoice.co.il / the Apiary spec):
+//   -1  Unpaid
+//    0  Deduction at source
+//    1  Cash
+//    2  Check
+//    3  Credit card
+//    4  Electronic fund transfer (bank transfer)
+//    5  PayPal
+//   10  Payment app (bit / PayBox / etc.)
+//   11  Other
+//
+// Earlier this file had credit card on `type: 4` and bank transfer on
+// `type: 3`. Morning honored those codes literally — every "credit card"
+// receipt rendered as "העברה בנקאית" because we were sending the EFT code.
+// The fix is the swap below; the old layout is preserved only as comments.
+//
+// Credit card sub-fields (camelCase, per the official model):
+//   cardType     — card brand: 0=Unknown 1=Isracard 2=Visa 3=Mastercard 4=Amex 5=Diners
+//   cardNum      — last 4 digits (we don't capture them — omit when empty)
+//   dealType     — deal type: 1=Regular 2=Installments 3=Credit 4=BillingDeclined 5=Other
+//   numPayments  — number of installments (1 for a one-shot transaction)
+//
+// There is NO `subType` / `sub_type` field in the spec — we used to send it
+// and it was simply ignored.
 type MorningPayment = {
   type: number;
   price: number;
   date: string;
-  subType?: number;
+  currency?: string;
   cardType?: number;
   cardNum?: string;
+  dealType?: number;
+  numPayments?: number;
   bankName?: string;
 };
 
 const PAYMENT_BUILDERS: Record<string, (price: number, date: string) => MorningPayment> = {
-  'מזומן':         (price, date) => ({ type: 1, price, date }),
-  'המחאה':         (price, date) => ({ type: 2, price, date }),
-  'העברה בנקאית':  (price, date) => ({ type: 3, price, date, bankName: 'לא צוין' }),
-  'כרטיס אשראי':   (price, date) => ({ type: 4, price, date, subType: 0, cardType: 6, cardNum: '' }),
-  // bit/PayBox/PayPal go on type 4 (credit card) too — Morning v1 doesn't
-  // have dedicated codes for them. Same brand:6 (other) so the document
-  // doesn't claim a brand we don't actually know.
-  'bit':           (price, date) => ({ type: 4, price, date, subType: 0, cardType: 6, cardNum: '' }),
-  'PayBox':        (price, date) => ({ type: 4, price, date, subType: 0, cardType: 6, cardNum: '' }),
-  'PayPal':        (price, date) => ({ type: 4, price, date, subType: 0, cardType: 6, cardNum: '' }),
+  'מזומן':         (price, date) => ({ type: 1, price, date, currency: 'ILS' }),
+  'המחאה':         (price, date) => ({ type: 2, price, date, currency: 'ILS' }),
+  // type 3 = Credit card. We don't capture brand or last-4 → cardType:0
+  // (Unknown) is the safest valid value (1–5 would mis-claim a brand).
+  'כרטיס אשראי':   (price, date) => ({ type: 3, price, date, currency: 'ILS', cardType: 0, dealType: 1, numPayments: 1 }),
+  // type 4 = Electronic fund transfer (bank transfer). bankName is a
+  // human-readable placeholder for documents where we don't know the bank.
+  'העברה בנקאית':  (price, date) => ({ type: 4, price, date, currency: 'ILS', bankName: 'לא צוין' }),
+  // type 5 = PayPal (its own dedicated enum value).
+  'PayPal':        (price, date) => ({ type: 5, price, date, currency: 'ILS' }),
+  // type 10 = Payment app — bit / PayBox / similar Israeli wallets. Closer
+  // to reality than tagging them as credit card.
+  'bit':           (price, date) => ({ type: 10, price, date, currency: 'ILS' }),
+  'PayBox':        (price, date) => ({ type: 10, price, date, currency: 'ILS' }),
 };
 
 // Business customer types require exclusive VAT (vatType 1 at document level)
@@ -303,6 +324,18 @@ serve(async (req: Request) => {
     }
 
     console.log('[morning] Calling Morning API — docType:', morningDocType, '| order:', order.מספר_הזמנה);
+
+    // Sanitised dump of the payment portion of the body. Token / Authorization
+    // header are NOT included. This is the audit trail we use to prove what
+    // Morning received vs. what it rendered.
+    console.log('[MORNING PAYLOAD DEBUG]', JSON.stringify({
+      documentType,
+      morningType: morningDocType,
+      paymentMethod: paymentMethodOverride,
+      paymentMethodSource,
+      payment: documentBody.payment,
+      fullPaymentKeys: Object.keys(documentBody).filter(k => k.toLowerCase().includes('pay')),
+    }, null, 2));
 
     const docRes = await fetch(`${MORNING_API_BASE}/documents`, {
       method: 'POST',
