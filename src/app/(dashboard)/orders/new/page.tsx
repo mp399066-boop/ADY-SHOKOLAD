@@ -770,19 +770,30 @@ export default function NewOrderPage() {
           <Card>
             <SectionHeader number={1} title="פרטי לקוח" />
             <div className="space-y-3">
-              <Select
+              <Combobox
                 label="לקוח"
-                required
                 value={selectedCustomer}
-                onChange={e => handleCustomerChange(e.target.value)}
-              >
-                <option value="">בחר לקוח...</option>
-                {customers.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {c.שם_פרטי} {c.שם_משפחה}{c.טלפון ? ` — ${c.טלפון}` : ''}
-                  </option>
-                ))}
-              </Select>
+                onChange={handleCustomerChange}
+                placeholder="בחירת לקוח..."
+                searchPlaceholder="חיפוש לקוח לפי שם או טלפון…"
+                emptyText="לא נמצאו לקוחות"
+                options={customers.map(c => {
+                  const fullName = `${c.שם_פרטי || ''} ${c.שם_משפחה || ''}`.trim() || 'לקוח';
+                  const phone = c.טלפון || '';
+                  const email = c.אימייל || '';
+                  return {
+                    value: c.id,
+                    label: fullName,
+                    // Search hits name + phone + email so typing "0527…" or
+                    // "name@example.com" finds the customer just like a name
+                    // substring does. The legacy Select forced the user to
+                    // scroll the entire list — this turns it into a fast
+                    // narrow-as-you-type lookup.
+                    searchText: [fullName, phone, email].filter(Boolean).join(' '),
+                    hint: phone || email || undefined,
+                  };
+                })}
+              />
               <Link href="/customers/new" className="text-xs hover:underline" style={{ color: '#8B5E34' }}>
                 + צור לקוח חדש
               </Link>
