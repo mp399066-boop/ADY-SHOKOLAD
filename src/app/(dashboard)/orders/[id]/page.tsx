@@ -246,7 +246,10 @@ export default function OrderDetailPage() {
   // was removed because the document type is now obvious from which button
   // was pressed). When payModalDocType is null the modal stays closed.
   const [payModalDocType, setPayModalDocType] = useState<'receipt' | 'invoice_receipt' | null>(null);
-  const [issuingDoc, setIssuingDoc] = useState(false);
+  // Per-doc-type loading: tracks which button shows "מפיק..." and which other
+  // buttons are disabled while a request is in flight.
+  const [issuingDocType, setIssuingDocType] = useState<'tax_invoice' | 'receipt' | 'invoice_receipt' | null>(null);
+  const issuingDoc = issuingDocType !== null;
 
   // Single source of truth for the manual issuance request. All three buttons
   // (tax_invoice via confirm, receipt + invoice_receipt via the payment-method
@@ -258,7 +261,7 @@ export default function OrderDetailPage() {
     force: boolean,
   ): Promise<boolean> => {
     if (!order) return false;
-    setIssuingDoc(true);
+    setIssuingDocType(documentType);
     try {
       const res = await fetch(`/api/orders/${order.id}/create-document`, {
         method: 'POST',
@@ -283,7 +286,7 @@ export default function OrderDetailPage() {
       console.error('[create-document] failed:', err);
       return false;
     } finally {
-      setIssuingDoc(false);
+      setIssuingDocType(null);
     }
   };
   // UI-only: tracks which package rows are expanded to show their petit-fours
@@ -1170,21 +1173,41 @@ export default function OrderDetailPage() {
 
           {/* Financial documents — manual issuance only */}
           <Card>
-            <p className="text-[11px] uppercase tracking-wider font-semibold mb-3" style={{ color: '#8B5E34' }}>מסמכים פיננסיים</p>
+            {/* Header row: title + subtitle + manual-only chip */}
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <div className="min-w-0">
+                <h3 className="text-[15px] font-bold leading-tight" style={{ color: '#2B1A10', letterSpacing: '-0.01em' }}>
+                  מסמכים פיננסיים
+                </h3>
+                <p className="text-[11.5px] mt-1 leading-snug" style={{ color: '#8A735F' }}>
+                  הפקה ידנית של חשבוניות וקבלות להזמנה
+                </p>
+              </div>
+              <span
+                className="text-[10px] font-bold uppercase px-2 py-1 rounded-md flex-shrink-0 whitespace-nowrap"
+                style={{ backgroundColor: '#F4E8D8', color: '#7A4A27', letterSpacing: '0.06em' }}
+              >
+                ידני בלבד
+              </span>
+            </div>
 
-            {/* Three inline action buttons. No doc-type picker modal anymore —
-                the button IS the choice. tax_invoice fires after a confirm;
-                the other two open the payment-method modal. */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-4">
+            {/* Premium action bar — 3 wide buttons, each with its own variant.
+                The button IS the choice; no doc-type picker modal. */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-5">
               <DocActionButton
-                title="חשבונית מס קבלה"
+                variant="primary"
+                title="הפק חשבונית מס קבלה"
                 hint="חשבונית וקבלה במסמך אחד"
+                loading={issuingDocType === 'invoice_receipt'}
+                disabled={issuingDoc && issuingDocType !== 'invoice_receipt'}
                 onClick={() => setPayModalDocType('invoice_receipt')}
-                disabled={issuingDoc}
               />
               <DocActionButton
-                title="חשבונית מס"
+                variant="secondary"
+                title="הפק חשבונית מס"
                 hint="לתיעוד עסקה ללא קבלה"
+                loading={issuingDocType === 'tax_invoice'}
+                disabled={issuingDoc && issuingDocType !== 'tax_invoice'}
                 onClick={async () => {
                   const all = order.חשבוניות ?? [];
                   const exists = all.some(i => i.סוג_מסמך === 'tax_invoice');
@@ -1193,13 +1216,14 @@ export default function OrderDetailPage() {
                   if (!window.confirm(exists ? dupMsg : baseMsg)) return;
                   await issueDocument('tax_invoice', undefined, exists);
                 }}
-                disabled={issuingDoc}
               />
               <DocActionButton
-                title="קבלה"
+                variant="tertiary"
+                title="הפק קבלה"
                 hint="לאישור תשלום שהתקבל"
+                loading={issuingDocType === 'receipt'}
+                disabled={issuingDoc && issuingDocType !== 'receipt'}
                 onClick={() => setPayModalDocType('receipt')}
-                disabled={issuingDoc}
               />
             </div>
 
@@ -1217,8 +1241,8 @@ export default function OrderDetailPage() {
 
               if (groups.length === 0) {
                 return (
-                  <p className="text-[12px] py-3 text-center" style={{ color: '#8A735F' }}>
-                    אין מסמכים — לחצי &quot;+ הפק מסמך&quot; כדי להפיק.
+                  <p className="text-[11.5px] py-1 text-center" style={{ color: '#8A735F' }}>
+                    עדיין לא הופקו מסמכים להזמנה זו.
                   </p>
                 );
               }
@@ -1804,40 +1828,99 @@ export default function OrderDetailPage() {
   );
 }
 
-// ─── DocActionButton — inline action card in the financial-documents block
+// ─── DocActionButton — premium action bar button for the financial documents
+//
+// Three variants matching the three doc types:
+//   primary   — חשבונית מס קבלה. Mocha → muted-gold gradient, white text.
+//               This is the most-used document; it gets the visual weight.
+//   secondary — חשבונית מס. Cream surface with brown-gold border, brown text.
+//   tertiary  — קבלה. White surface with a soft olive accent ring + brown text.
+//
+// Hover lifts the card by 1px, deepens the shadow, and strengthens the border.
+// Active loading state replaces the title with "מפיק..." and disables the
+// other buttons in the bar (handled by the parent through `disabled`).
+
+type DocVariant = 'primary' | 'secondary' | 'tertiary';
 
 function DocActionButton({
-  title, hint, onClick, disabled,
+  variant, title, hint, onClick, loading, disabled,
 }: {
+  variant: DocVariant;
   title: string;
   hint: string;
   onClick: () => void;
+  loading?: boolean;
   disabled?: boolean;
 }) {
+  // Resting + hover styles per variant. Inline styles only — Tailwind doesn't
+  // help with the gradient + brand colors we want here.
+  const styles: Record<DocVariant, {
+    bg:     string; bgHover: string;
+    border: string; borderHover: string;
+    text:   string; sub: string;
+  }> = {
+    primary: {
+      bg:          'linear-gradient(135deg, #7A4A27 0%, #8B5E34 55%, #A88554 100%)',
+      bgHover:     'linear-gradient(135deg, #6B4022 0%, #7E5230 55%, #B5915E 100%)',
+      border:      '#5C3818',
+      borderHover: '#4A2D14',
+      text:        '#FFFFFF',
+      sub:         'rgba(255, 245, 220, 0.82)',
+    },
+    secondary: {
+      bg:          '#FFFCF7',
+      bgHover:     '#FAF5E9',
+      border:      '#D9B98F',
+      borderHover: '#B89870',
+      text:        '#2B1A10',
+      sub:         '#8A735F',
+    },
+    tertiary: {
+      bg:          '#FBFAF4',
+      bgHover:     '#F4F2E8',
+      border:      '#C9C8A7',
+      borderHover: '#A0A077',
+      text:        '#2B1A10',
+      sub:         '#8A735F',
+    },
+  };
+  const s = styles[variant];
+
   return (
     <button
       onClick={onClick}
-      disabled={disabled}
-      className="text-right rounded-lg px-3 py-2.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+      disabled={disabled || loading}
+      className="group text-right rounded-2xl px-4 py-3 transition-all disabled:cursor-not-allowed disabled:opacity-55"
       style={{
-        backgroundColor: '#FFFFFF',
-        border: '1px solid #E8DED2',
-        boxShadow: '0 1px 0 rgba(255,255,255,0.6)',
+        background:    s.bg,
+        border:        `1px solid ${s.border}`,
+        boxShadow:     variant === 'primary'
+                         ? '0 2px 6px rgba(122,74,39,0.20), 0 1px 0 rgba(255,255,255,0.05) inset'
+                         : '0 1px 2px rgba(58,42,26,0.04), 0 1px 0 rgba(255,255,255,0.6) inset',
+        minHeight:     60,
       }}
       onMouseEnter={e => {
-        if (disabled) return;
-        e.currentTarget.style.backgroundColor = '#FAF5E9';
-        e.currentTarget.style.borderColor = '#7A4A27';
+        if (disabled || loading) return;
+        e.currentTarget.style.background = s.bgHover;
+        e.currentTarget.style.borderColor = s.borderHover;
+        e.currentTarget.style.transform = 'translateY(-1px)';
+        e.currentTarget.style.boxShadow = variant === 'primary'
+          ? '0 4px 12px rgba(122,74,39,0.28), 0 1px 0 rgba(255,255,255,0.08) inset'
+          : '0 3px 10px rgba(58,42,26,0.10), 0 1px 0 rgba(255,255,255,0.6) inset';
       }}
       onMouseLeave={e => {
-        e.currentTarget.style.backgroundColor = '#FFFFFF';
-        e.currentTarget.style.borderColor = '#E8DED2';
+        e.currentTarget.style.background = s.bg;
+        e.currentTarget.style.borderColor = s.border;
+        e.currentTarget.style.transform = 'translateY(0)';
+        e.currentTarget.style.boxShadow = variant === 'primary'
+          ? '0 2px 6px rgba(122,74,39,0.20), 0 1px 0 rgba(255,255,255,0.05) inset'
+          : '0 1px 2px rgba(58,42,26,0.04), 0 1px 0 rgba(255,255,255,0.6) inset';
       }}
     >
-      <div className="text-[12.5px] font-bold" style={{ color: '#2B1A10', letterSpacing: '-0.005em' }}>
-        הפק {title}
+      <div className="text-[13.5px] font-bold leading-tight" style={{ color: s.text, letterSpacing: '-0.01em' }}>
+        {loading ? 'מפיק...' : title}
       </div>
-      <div className="text-[10.5px] mt-0.5 leading-snug" style={{ color: '#8A735F' }}>
+      <div className="text-[10.5px] mt-1 leading-snug" style={{ color: s.sub }}>
         {hint}
       </div>
     </button>
