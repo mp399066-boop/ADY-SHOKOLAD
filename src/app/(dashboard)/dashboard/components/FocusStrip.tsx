@@ -15,6 +15,7 @@ interface Props {
   unpaidCount: number;
   criticalStockCount: number;
   ordersTomorrow: number;
+  onJumpOrders: () => void;
   onJumpDeliveries: () => void;
   onJumpUnpaid: () => void;
   onJumpStock: () => void;
@@ -23,7 +24,7 @@ interface Props {
 export function FocusStrip({
   ordersTodayCount, deliveriesTodayCount, unpaidAmount, unpaidCount,
   criticalStockCount, ordersTomorrow,
-  onJumpDeliveries, onJumpUnpaid, onJumpStock,
+  onJumpOrders, onJumpDeliveries, onJumpUnpaid, onJumpStock,
 }: Props) {
   return (
     <div
@@ -41,6 +42,7 @@ export function FocusStrip({
         value={String(ordersTodayCount)}
         sub={ordersTomorrow > 0 ? `${ordersTomorrow} מחר` : 'אין הזמנות מחר'}
         accent={C.brand}
+        onClick={onJumpOrders}
       />
       <Divider />
       <Cell

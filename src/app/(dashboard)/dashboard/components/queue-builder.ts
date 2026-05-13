@@ -121,27 +121,16 @@ export function buildQueueItems({ liveOrders, todayDeliveries, stock, todayISO }
     });
   }
 
-  // ── 2. Critical stock (אזל מהמלאי) — blocks preparation ─────────────────
-  const allStock: { id: string; שם: string; status: string; quantity: number; kind: string }[] = [
-    ...stock.raw.map(r => ({ ...r, kind: 'גלם' })),
-    ...stock.products.map(r => ({ ...r, kind: 'מוצר' })),
-    ...stock.petitFours.map(r => ({ ...r, kind: 'פטיפור' })),
-  ];
-  const outItems = allStock.filter(s => s.status === 'אזל מהמלאי');
-  for (const s of outItems.slice(0, 4)) {
-    const key = `s-${s.kind}-${s.id}`;
-    if (seenStockIds.has(key)) continue;
-    seenStockIds.add(key);
-    items.push({
-      id: key,
-      type: 'stock',
-      urgency: 'urgent_now',
-      title: s.שם,
-      meta: `${s.kind} · אזל מהמלאי · נותר ${s.quantity}`,
-      action: { label: ACTION_LABEL.open_inventory, verb: { kind: 'open_inventory' } },
-      severity: 'critical',
-    });
-  }
+  // ── 2. Critical stock items used to land here, but the spec changed:
+  // generic stock alerts are now exclusively summarised in the side
+  // AttentionPanel (with breakdown numbers + top-3 names + a link to
+  // /inventory). Showing 24 stock rows in the main queue made every stock
+  // item look like a primary work task and crowded out actual order work.
+  // We deliberately silence `stock` here. Later, if we add recipe-based
+  // "blocks today's order" inference, we can reintroduce ONLY blocking
+  // items into the main queue.
+  void seenStockIds;
+  void stock;
 
   // ── 3. Today's pending orders (חדשה / בהכנה) ─────────────────────────────
   const todayPending = liveOrders.filter(o =>
@@ -234,39 +223,10 @@ export function buildQueueItems({ liveOrders, todayDeliveries, stock, todayISO }
     });
   }
 
-  // ── 8. Follow-up: critical stock (קריטי) — not the same as אזל ──────────
-  const critItems = allStock.filter(s => s.status === 'קריטי');
-  for (const s of critItems.slice(0, 3)) {
-    const key = `s-${s.kind}-${s.id}`;
-    if (seenStockIds.has(key)) continue;
-    seenStockIds.add(key);
-    items.push({
-      id: key,
-      type: 'stock',
-      urgency: 'follow_up',
-      title: s.שם,
-      meta: `${s.kind} · קריטי · נותר ${s.quantity}`,
-      action: { label: ACTION_LABEL.open_inventory, verb: { kind: 'open_inventory' } },
-      severity: 'critical',
-    });
-  }
-
-  // ── 9. Follow-up: low stock ────────────────────────────────────────────
-  const lowItems = allStock.filter(s => s.status === 'מלאי נמוך');
-  for (const s of lowItems.slice(0, 3)) {
-    const key = `s-${s.kind}-${s.id}`;
-    if (seenStockIds.has(key)) continue;
-    seenStockIds.add(key);
-    items.push({
-      id: key,
-      type: 'stock',
-      urgency: 'follow_up',
-      title: s.שם,
-      meta: `${s.kind} · מלאי נמוך · נותר ${s.quantity}`,
-      action: { label: ACTION_LABEL.open_inventory, verb: { kind: 'open_inventory' } },
-      severity: 'low',
-    });
-  }
+  // קריטי / מלאי נמוך stock items also previously appeared as follow-up
+  // queue rows. Removed for the same reason as the urgent ones above —
+  // generic stock alerts belong in the side AttentionPanel summary, not in
+  // the main worklist.
 
   return items;
 }

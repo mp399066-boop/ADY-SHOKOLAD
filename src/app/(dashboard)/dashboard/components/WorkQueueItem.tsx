@@ -44,8 +44,15 @@ export function WorkQueueItem({
   return (
     <li
       onClick={() => handlers.onRowClick(item)}
-      className="group flex flex-col gap-2 px-4 py-3 cursor-pointer transition-colors hover:bg-[#FBF8F1] relative"
-      style={{ borderBottom: isLast ? 'none' : `1px solid ${C.borderSoft}` }}
+      className="group flex flex-col gap-2.5 px-4 py-3.5 cursor-pointer transition-colors relative"
+      style={{
+        // Soft red wash on the row when urgent — strengthens the urgency
+        // signal without resorting to a saturated background.
+        backgroundColor: showEdgeAccent ? '#FCF1EE' : 'transparent',
+        borderBottom: isLast ? 'none' : `1px solid ${C.borderSoft}`,
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = showEdgeAccent ? '#F9E7E1' : '#FBF8F1'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = showEdgeAccent ? '#FCF1EE' : 'transparent'; }}
       role="button"
       tabIndex={0}
       onKeyDown={(e) => {
@@ -56,7 +63,7 @@ export function WorkQueueItem({
       }}
     >
       {showEdgeAccent && (
-        <div className="absolute top-0 right-0 bottom-0" style={{ width: 2, backgroundColor: C.red }} aria-hidden />
+        <div className="absolute top-0 right-0 bottom-0" style={{ width: 3, backgroundColor: C.red }} aria-hidden />
       )}
 
       {/* ── Header line ─────────────────────────────────────────────────── */}
@@ -68,24 +75,26 @@ export function WorkQueueItem({
           {tone.label}
         </span>
         <div className="min-w-0">
-          <p className="text-[13.5px] font-semibold truncate" style={{ color: C.text, letterSpacing: '-0.005em' }}>
+          {/* Customer name — bumped up for hierarchy */}
+          <p className="text-[15px] font-bold truncate" style={{ color: C.text, letterSpacing: '-0.012em', lineHeight: 1.2 }}>
             {item.title}
           </p>
-          <p className="text-[11px] mt-0.5 truncate" style={{ color: C.textSoft }}>
+          {/* Meta line — pushed down a tier so the name dominates */}
+          <p className="text-[10.5px] mt-1 truncate" style={{ color: C.textSoft }}>
             {item.meta}
           </p>
         </div>
         {item.amount ? (
-          <span className="text-[13px] tabular-nums font-bold whitespace-nowrap" style={{ color: C.text }}>
+          <span className="text-[14px] tabular-nums font-bold whitespace-nowrap" style={{ color: C.text }}>
             {item.amount}
           </span>
         ) : <span />}
         <span
-          className="text-[11px] opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap"
-          style={{ color: C.textSoft }}
+          className="inline-flex items-center gap-0.5 text-[10.5px] font-semibold opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap"
+          style={{ color: C.brand }}
           aria-hidden
         >
-          ←
+          פתח <span aria-hidden>←</span>
         </span>
       </div>
 

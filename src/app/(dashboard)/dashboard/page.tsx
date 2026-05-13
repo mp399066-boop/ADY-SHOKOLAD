@@ -366,6 +366,7 @@ export default function DashboardPage() {
         unpaidCount={stats?.unpaidOrders ?? 0}
         criticalStockCount={criticalStockCount}
         ordersTomorrow={stats?.ordersTomorrow ?? 0}
+        onJumpOrders={() => router.push('/orders?filter=today')}
         onJumpDeliveries={() => router.push('/deliveries')}
         onJumpUnpaid={() => router.push('/orders?filter=unpaid')}
         onJumpStock={() => router.push('/inventory')}

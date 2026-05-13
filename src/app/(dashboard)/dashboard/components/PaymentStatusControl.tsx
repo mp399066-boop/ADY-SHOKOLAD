@@ -55,14 +55,16 @@ export function PaymentStatusControl({
 }) {
   return (
     <div
-      className="inline-flex items-center gap-1.5"
+      className="inline-flex items-center gap-1.5 px-1.5 py-1 rounded-lg"
+      // Quiet pill-tray treatment so the payment row reads as a single
+      // unit, distinct from the order stepper above.
+      style={{ backgroundColor: C.surface, border: `1px solid ${C.borderSoft}` }}
       role="radiogroup"
       aria-label="סטטוס תשלום"
     >
-      {/* ₪ glyph as a section anchor — quietly signals "this is the money row" */}
       <span
-        className="inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-bold"
-        style={{ color: C.textSoft, backgroundColor: C.surface }}
+        className="inline-flex items-center justify-center text-[10.5px] font-bold"
+        style={{ color: C.textSoft }}
         aria-hidden
       >
         ₪
@@ -79,11 +81,11 @@ export function PaymentStatusControl({
             disabled={disabled || active}
             role="radio"
             aria-checked={active}
-            className="text-[10.5px] font-semibold px-2 h-6 rounded-full transition-colors disabled:cursor-default"
+            className="text-[10.5px] font-semibold px-2 h-6 rounded-md transition-colors disabled:cursor-default"
             style={{
-              backgroundColor: active ? c.activeBg : c.bg,
+              backgroundColor: active ? c.activeBg : 'transparent',
               color:           active ? c.activeText : c.text,
-              border:          `1px solid ${active ? c.activeBg : c.border}`,
+              border:          `1px solid ${active ? c.activeBg : 'transparent'}`,
             }}
           >
             {c.label}

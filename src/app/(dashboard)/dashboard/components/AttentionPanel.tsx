@@ -29,6 +29,19 @@ export function AttentionPanel({ liveOrders, todayDeliveries, stock, unpaidAmoun
     .filter(s => SEV[s.status] !== undefined)
     .sort((a, b) => (SEV[a.status] ?? 9) - (SEV[b.status] ?? 9));
 
+  // Severity breakdown — surfaced in the stock card sub line so the user
+  // gets a full count without having to scan the list.
+  const outCount  = allStock.filter(s => s.status === 'אזל מהמלאי').length;
+  const critCount = allStock.filter(s => s.status === 'קריטי').length;
+  const lowCount  = allStock.filter(s => s.status === 'מלאי נמוך').length;
+  const stockBreakdown = criticalStock.length === 0
+    ? 'הכל בטווח התקין'
+    : [outCount  ? `${outCount} אזלו`        : null,
+       critCount ? `${critCount} קריטי`      : null,
+       lowCount  ? `${lowCount} מתחת למינימום` : null]
+        .filter(Boolean)
+        .join(' · ');
+
   const openDeliveries = todayDeliveries.filter(d => d.סטטוס_משלוח !== 'נמסר').length;
 
   // Unused for now but kept on the call site for future "X דחופות" surfacing
@@ -41,9 +54,9 @@ export function AttentionPanel({ liveOrders, todayDeliveries, stock, unpaidAmoun
       </h2>
 
       <AttentionCard
-        label="מלאי קריטי"
+        label="מלאי דורש בדיקה"
         value={criticalStock.length}
-        sub={criticalStock.length === 0 ? 'הכל בטווח התקין' : 'פריטים שעלולים לעצור הכנה'}
+        sub={stockBreakdown}
         accent={criticalStock.length > 0 ? C.red : C.green}
         rows={criticalStock.slice(0, 3).map(s => ({
           id: `${s.kind}-${s.id}`,
