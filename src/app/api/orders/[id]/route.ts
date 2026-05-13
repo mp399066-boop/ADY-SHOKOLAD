@@ -9,6 +9,7 @@ import {
   DEDUCT_INVENTORY_ON_ORDER_STATUS,
   DEDUCT_INVENTORY_ON_PAYMENT_PAID,
 } from '@/lib/inventory-deduct';
+import { logActivity, userActor } from '@/lib/activity-log';
 // deploy trigger
 
 export async function GET(_: NextRequest, { params }: { params: { id: string } }) {
@@ -146,6 +147,41 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // ── Activity log: status transitions ─────────────────────────────────
+  // Two separate rows when both fields move in one PATCH (each is a
+  // distinct operator decision). Skipped silently when nothing changed.
+  const orderNumberLabel = String((data as Record<string, unknown>)?.['מספר_הזמנה'] || '').trim() || null;
+  if (body.סטטוס_הזמנה && body.סטטוס_הזמנה !== prevOrderStatus) {
+    void logActivity({
+      actor:        userActor(auth),
+      module:       'orders',
+      action:       'order_status_changed',
+      status:       'success',
+      entityType:   'order',
+      entityId:     params.id,
+      entityLabel:  orderNumberLabel,
+      title:        `שינוי סטטוס הזמנה: ${prevOrderStatus ?? '—'} → ${body.סטטוס_הזמנה}`,
+      oldValue:     { סטטוס_הזמנה: prevOrderStatus },
+      newValue:     { סטטוס_הזמנה: body.סטטוס_הזמנה },
+      request:      req,
+    });
+  }
+  if (body.סטטוס_תשלום && body.סטטוס_תשלום !== prevPaymentStatus) {
+    void logActivity({
+      actor:        userActor(auth),
+      module:       'orders',
+      action:       'payment_status_changed',
+      status:       'success',
+      entityType:   'order',
+      entityId:     params.id,
+      entityLabel:  orderNumberLabel,
+      title:        `שינוי סטטוס תשלום: ${prevPaymentStatus ?? '—'} → ${body.סטטוס_תשלום}`,
+      oldValue:     { סטטוס_תשלום: prevPaymentStatus },
+      newValue:     { סטטוס_תשלום: body.סטטוס_תשלום },
+      request:      req,
+    });
+  }
 
   // ── LEGACY (gated off): order-status driven deduction ─────────────────
   // Stock used to drop on the first חדשה→בהכנה transition. Owner moved the
@@ -316,17 +352,42 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   return NextResponse.json({ data });
 }
 
-export async function DELETE(_: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
+  // Capture order number before delete for the activity row.
+  const { data: pre } = await supabase.from('הזמנות').select('מספר_הזמנה').eq('id', params.id).maybeSingle();
   const { error } = await supabase.from('הזמנות').delete().eq('id', params.id);
   if (error) {
     const isFK = error.message.includes('foreign key') || error.message.includes('violates');
+    void logActivity({
+      actor:        userActor(auth),
+      module:       'orders',
+      action:       'order_deleted',
+      status:       'failed',
+      entityType:   'order',
+      entityId:     params.id,
+      entityLabel:  String((pre as Record<string, unknown> | null)?.['מספר_הזמנה'] || '').trim() || null,
+      title:        'מחיקת הזמנה נכשלה',
+      errorMessage: error.message,
+      request:      req,
+    });
     return NextResponse.json(
       { error: isFK ? 'לא ניתן למחוק כי קיימות רשומות מקושרות' : error.message },
       { status: isFK ? 409 : 500 },
     );
   }
+  void logActivity({
+    actor:        userActor(auth),
+    module:       'orders',
+    action:       'order_deleted',
+    status:       'success',
+    entityType:   'order',
+    entityId:     params.id,
+    entityLabel:  String((pre as Record<string, unknown> | null)?.['מספר_הזמנה'] || '').trim() || null,
+    title:        'הזמנה נמחקה',
+    request:      req,
+  });
   return NextResponse.json({ success: true });
 }

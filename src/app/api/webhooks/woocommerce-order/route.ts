@@ -6,6 +6,7 @@ import { sendOrderEmail, isInternalEmail, type OrderEmailData, type EmailContext
 import { sendAdminNewOrderAlert } from '@/lib/admin-alert-email';
 import { deductOrderInventory } from '@/lib/inventory-deduct';
 import { isServiceEnabled, logServiceRun } from '@/lib/system-services';
+import { logActivity, WEBHOOK_ACTOR_WC } from '@/lib/activity-log';
 
 const PAID_STATUSES = new Set(['processing', 'completed']);
 
@@ -463,6 +464,20 @@ export async function POST(req: Request) {
       newProducts,
     });
 
+    void logActivity({
+      actor:       WEBHOOK_ACTOR_WC,
+      module:      'integrations',
+      action:      'woocommerce_order_created',
+      status:      'success',
+      entityType:  'order',
+      entityId:    order.id,
+      entityLabel: `WC #${wcOrderId ?? '?'}`,
+      title:       'התקבלה הזמנה מ-WooCommerce',
+      description: `סטטוס תשלום: ${paymentStatus}${newProducts.length ? ` · נוצרו ${newProducts.length} מוצרים חדשים` : ''}`,
+      metadata:    { wc_order_id: wcOrderId, payment_status: paymentStatus, new_products: newProducts.length, warnings: warnings.length },
+      request:     req,
+    });
+
     return Response.json({
       success: true,
       order_id: order.id,
@@ -474,6 +489,15 @@ export async function POST(req: Request) {
 
   } catch (error) {
     console.error('[wc-webhook] Unexpected error:', error);
+    void logActivity({
+      actor:        WEBHOOK_ACTOR_WC,
+      module:       'integrations',
+      action:       'woocommerce_order_failed',
+      status:       'failed',
+      title:        'עיבוד webhook של WooCommerce נכשל',
+      errorMessage: error instanceof Error ? error.message : String(error),
+      request:      req,
+    });
     return Response.json({ success: true });
   }
 }

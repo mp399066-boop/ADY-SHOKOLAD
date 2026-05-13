@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
+import { logActivity, PUBLIC_TOKEN_ACTOR } from '@/lib/activity-log';
 
 type OrderJoin = {
   שם_מקבל?: string | null;
@@ -37,7 +38,7 @@ export async function GET(_req: NextRequest, { params }: { params: { token: stri
   });
 }
 
-export async function POST(_req: NextRequest, { params }: { params: { token: string } }) {
+export async function POST(req: NextRequest, { params }: { params: { token: string } }) {
   if (!params.token) return NextResponse.json({ error: 'לא תקין' }, { status: 400 });
 
   const supabase = createAdminClient();
@@ -61,6 +62,17 @@ export async function POST(_req: NextRequest, { params }: { params: { token: str
     .eq('id', existing.id);
 
   if (updateError) return NextResponse.json({ error: 'שגיאה בעדכון' }, { status: 500 });
+
+  void logActivity({
+    actor:       PUBLIC_TOKEN_ACTOR,
+    module:      'deliveries',
+    action:      'delivery_marked_delivered',
+    status:      'success',
+    entityType:  'delivery',
+    entityId:    String(existing.id),
+    title:       'משלוח סומן כנמסר דרך קישור שליח',
+    request:     req,
+  });
 
   return NextResponse.json({ success: true });
 }

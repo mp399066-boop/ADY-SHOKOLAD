@@ -4,7 +4,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireAdminUser, forbiddenAdminResponse, unauthorizedResponse, requireAuthorizedUser } from '@/lib/auth/requireAuthorizedUser';
-import { SERVICE_KEYS, type ServiceKey } from '@/lib/system-services';
+import { SERVICE_KEYS, SERVICE_FALLBACK_LABELS, type ServiceKey } from '@/lib/system-services';
+import { logActivity, userActor } from '@/lib/activity-log';
 
 // PATCH /api/system/services/[key]
 //
@@ -74,6 +75,21 @@ export async function PATCH(
   console.log(
     `[system/services] toggle ${key} → ${parsed.data.is_enabled ? 'ENABLED' : 'DISABLED'} by ${user.email}`,
   );
+
+  void logActivity({
+    actor:       userActor(user),
+    module:      'settings',
+    action:      'service_toggled',
+    status:      'success',
+    entityType:  'service',
+    entityId:    key,
+    entityLabel: SERVICE_FALLBACK_LABELS[key as ServiceKey]?.display || key,
+    title:       parsed.data.is_enabled ? 'שירות הופעל במרכז הבקרה' : 'שירות כובה במרכז הבקרה',
+    oldValue:    { is_enabled: !parsed.data.is_enabled },
+    newValue:    { is_enabled: parsed.data.is_enabled },
+    serviceKey:  key,
+    request:     req,
+  });
 
   return NextResponse.json({ ok: true, service: data });
 }

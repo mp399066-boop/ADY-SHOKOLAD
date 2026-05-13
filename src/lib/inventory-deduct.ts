@@ -23,6 +23,7 @@
 import { createAdminClient } from '@/lib/supabase/server';
 import { recordStockMovement } from '@/lib/inventory-movements';
 import { isServiceEnabled, logServiceRun } from '@/lib/system-services';
+import { logActivity } from '@/lib/activity-log';
 
 // ─── Policy switches ────────────────────────────────────────────────────────
 
@@ -219,6 +220,19 @@ export async function deductOrderInventory(
     relatedId:   orderId,
     message:     `מוצרים: ${productCount} · פטיפורים: ${petitFourTypes}`,
     metadata:    { productCount, petitFourTypes },
+  });
+  // Activity-log mirror — surfaces in the system-wide activity feed
+  // (system_service_runs is service-runs only; activity is the broader view).
+  void logActivity({
+    module:      'inventory',
+    action:      'inventory_deducted',
+    status:      'success',
+    entityType:  'order',
+    entityId:    orderId,
+    title:       'ירד מלאי בעקבות תשלום',
+    description: `מוצרים: ${productCount} · פטיפורים: ${petitFourTypes}`,
+    metadata:    { productCount, petitFourTypes },
+    serviceKey:  'inventory_deduction',
   });
   return { deducted: true, productCount, petitFourTypes };
 }

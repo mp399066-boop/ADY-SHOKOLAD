@@ -379,5 +379,24 @@ export async function sendOrderEmail(
         console.error('[email] failed to log communication:', logErr);
       }
     }
+    // Mirror to system_activity_logs so the activity feed surfaces every
+    // customer email send (success / failure). Lazy-imported so a missing
+    // helper / table never blocks the email path.
+    try {
+      const { logActivity } = await import('@/lib/activity-log');
+      void logActivity({
+        module:       'orders',
+        action:       'customer_order_email_sent',
+        status:       sendError ? 'failed' : 'success',
+        entityType:   context?.orderId ? 'order' : 'customer',
+        entityId:     context?.orderId || context?.customerId || null,
+        entityLabel:  customerName || null,
+        title:        sendError ? 'שליחת אישור הזמנה ללקוח נכשלה' : 'נשלח אישור הזמנה ללקוח',
+        description:  `אל: ${to}`,
+        errorMessage: sendError || null,
+        serviceKey:   'customer_order_emails',
+        metadata:     { subject, message_id: messageId || null },
+      });
+    } catch { /* ignore */ }
   }
 }

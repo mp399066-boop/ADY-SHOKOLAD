@@ -4,6 +4,7 @@ import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireA
 import { sendSatmarSummaryEmail } from '@/lib/satmar-email';
 import { AUTO_CREATE_MORNING_DOCUMENTS } from '@/lib/morning';
 import { deductOrderInventory } from '@/lib/inventory-deduct';
+import { logActivity, userActor } from '@/lib/activity-log';
 
 // Dedicated endpoint to mark an order as paid.
 // Reads order + customer from DB only — never accepts amounts from the client.
@@ -86,6 +87,18 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
   } else {
     console.log('[inventory] should deduct: false — סאטמר/בארטר order. order:', params.id);
   }
+
+  void logActivity({
+    actor:        userActor(auth),
+    module:       'orders',
+    action:       'order_marked_paid',
+    status:       'success',
+    entityType:   'order',
+    entityId:     params.id,
+    title:        'הזמנה סומנה כשולמה',
+    metadata:     { invoice_action: invoiceAction },
+    request:      _req,
+  });
 
   return NextResponse.json({
     ok: true,

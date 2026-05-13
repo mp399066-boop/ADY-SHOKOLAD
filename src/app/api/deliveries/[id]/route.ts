@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { isServiceEnabled, logServiceRun } from '@/lib/system-services';
+import { logActivity, userActor } from '@/lib/activity-log';
 import { randomBytes } from 'crypto';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -101,6 +102,12 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   // ── Plain update (not a status→נאסף transition) ──────────────────────────
   if (newStatus !== 'נאסף') {
+    // Capture pre-state for the activity log so old/new values are accurate.
+    const { data: pre } = await supabase
+      .from('משלוחים')
+      .select('סטטוס_משלוח, courier_id')
+      .eq('id', deliveryId)
+      .maybeSingle();
     const { data, error } = await supabase
       .from('משלוחים')
       .update(body)
@@ -108,6 +115,36 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       .select()
       .single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    // Log status changes (e.g. operator marking 'נמסר' from the desk).
+    if (newStatus && pre && newStatus !== pre.סטטוס_משלוח) {
+      void logActivity({
+        actor:       userActor(auth),
+        module:      'deliveries',
+        action:      'delivery_status_changed',
+        status:      'success',
+        entityType:  'delivery',
+        entityId:    deliveryId,
+        title:       `שינוי סטטוס משלוח: ${pre.סטטוס_משלוח ?? '—'} → ${newStatus}`,
+        oldValue:    { סטטוס_משלוח: pre.סטטוס_משלוח },
+        newValue:    { סטטוס_משלוח: newStatus },
+        request:     req,
+      });
+    }
+    // Log courier assignment as a separate event when one was set/changed.
+    if (body.courier_id && body.courier_id !== (pre?.courier_id ?? null)) {
+      void logActivity({
+        actor:       userActor(auth),
+        module:      'deliveries',
+        action:      'delivery_courier_assigned',
+        status:      'success',
+        entityType:  'delivery',
+        entityId:    deliveryId,
+        title:       'שליח שויך למשלוח',
+        oldValue:    { courier_id: pre?.courier_id ?? null },
+        newValue:    { courier_id: body.courier_id },
+        request:     req,
+      });
+    }
     return NextResponse.json({ data, was_created: wasCreated });
   }
 
@@ -275,6 +312,51 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   console.log('[delivery PATCH] update saved | whatsapp_url:', !!whatsappUrl, '| send_error:', sendError);
 
+  // Activity log: status flip + (separate) courier-link send.
+  if (prevStatus !== 'נאסף') {
+    void logActivity({
+      actor:       userActor(auth),
+      module:      'deliveries',
+      action:      'delivery_status_changed',
+      status:      'success',
+      entityType:  'delivery',
+      entityId:    deliveryId,
+      title:       `שינוי סטטוס משלוח: ${prevStatus ?? '—'} → נאסף`,
+      oldValue:    { סטטוס_משלוח: prevStatus },
+      newValue:    { סטטוס_משלוח: 'נאסף' },
+      request:     req,
+    });
+  }
+  if (whatsappUrl) {
+    void logActivity({
+      actor:       userActor(auth),
+      module:      'deliveries',
+      action:      'courier_link_sent',
+      status:      'success',
+      entityType:  'delivery',
+      entityId:    deliveryId,
+      entityLabel: courier?.שם_שליח || null,
+      title:       'נשלח קישור לשליח',
+      description: courier ? `שליח: ${courier.שם_שליח}` : null,
+      serviceKey:  'delivery_notifications',
+      request:     req,
+    });
+  } else if (sendError) {
+    void logActivity({
+      actor:       userActor(auth),
+      module:      'deliveries',
+      action:      'courier_link_failed',
+      status:      sendError.includes('כבוי') ? 'disabled' : 'failed',
+      entityType:  'delivery',
+      entityId:    deliveryId,
+      entityLabel: courier?.שם_שליח || null,
+      title:       'שליחת קישור לשליח לא בוצעה',
+      errorMessage: sendError,
+      serviceKey:  'delivery_notifications',
+      request:     req,
+    });
+  }
+
   return NextResponse.json({
     data,
     token,
@@ -303,7 +385,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 // Synthetic ids (no-record-{orderId}) are rejected: there's no DB row to
 // delete; the dashboard should drop them from local state without calling
 // this endpoint at all.
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
 
@@ -356,6 +438,19 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
       { status: isFK ? 409 : 500 },
     );
   }
+
+  void logActivity({
+    actor:       userActor(auth),
+    module:      'deliveries',
+    action:      'delivery_deleted',
+    status:      'success',
+    entityType:  'delivery',
+    entityId:    params.id,
+    title:       'משלוח נמחק',
+    description: `הזמנה: ${existing.הזמנה_id}`,
+    metadata:    { previous_status: existing.סטטוס_משלוח },
+    request:     req,
+  });
 
   return NextResponse.json({ ok: true, deleted_id: params.id });
 }

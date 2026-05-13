@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { sendOrderEmail, isInternalEmail, type OrderEmailData, type EmailContext } from '@/lib/email';
 import { sendAdminNewOrderAlert } from '@/lib/admin-alert-email';
+import { logActivity, userActor } from '@/lib/activity-log';
 
 // Converts a draft order (status=טיוטה) to a real order (status=חדשה).
 // Replaces all items, creates delivery/payment records, sends emails.
@@ -205,6 +206,23 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   // alert for the rare path where someone submits before auto-save kicks in;
   // since each order traverses exactly one of the two endpoints, no duplicate.
   void sendAdminNewOrderAlert(orderId);
+
+  // Activity log — single row when a draft becomes a real order. The
+  // earlier save-draft writes are operationally noisy (autosave fires
+  // every few keystrokes); we only audit the moment of finalization.
+  void logActivity({
+    actor:        userActor(auth),
+    module:       'orders',
+    action:       'order_finalized',
+    status:       'success',
+    entityType:   'order',
+    entityId:     orderId,
+    entityLabel:  String(((fullOrder as Record<string, unknown>)?.['מספר_הזמנה'] || '') || '').trim() || null,
+    title:        'טיוטה הפכה להזמנה חדשה',
+    description:  emailName ? `${emailName} · סה"כ ₪${total.toFixed(2)}` : `סה"כ ₪${total.toFixed(2)}`,
+    metadata:     { customer_id: existingOrder.לקוח_id, total, source: 'finalize-draft' },
+    request:      req,
+  });
 
   return NextResponse.json({ data: { ...fullOrder, מוצרים_בהזמנה: fullItems || [] } }, { status: 200 });
 }

@@ -6,6 +6,7 @@ import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireA
 import { generateOrderNumber } from '@/lib/utils';
 import { sendOrderEmail, isInternalEmail, type OrderEmailData, type EmailContext } from '@/lib/email';
 import { sendAdminNewOrderAlert } from '@/lib/admin-alert-email';
+import { logActivity, userActor } from '@/lib/activity-log';
 
 // In-memory idempotency store — maps clientRequestId → { orderId, response, expiresAt }
 // Prevents duplicate orders when the client sends the same request more than once.
@@ -347,6 +348,22 @@ export async function POST(req: NextRequest) {
   // new order; finalize-draft no longer sends an admin alert (avoids the
   // duplicate "draft converted" notification the owner used to receive).
   void sendAdminNewOrderAlert(order!.id);
+
+  // Activity log — single row per real new order. Drafts go through
+  // finalize-draft; we don't double-log there.
+  void logActivity({
+    actor:        userActor(auth),
+    module:       'orders',
+    action:       'order_created',
+    status:       'success',
+    entityType:   'order',
+    entityId:     order!.id,
+    entityLabel:  `${(order as Record<string, unknown>)?.['מספר_הזמנה'] || ''}`.trim() || null,
+    title:        'נוצרה הזמנה חדשה',
+    description:  emailName ? `${emailName} · סה"כ ₪${total.toFixed(2)}` : `סה"כ ₪${total.toFixed(2)}`,
+    metadata:     { customer_id: customerId, total, item_count: (מוצרים || []).length + (מארזי_פטיפורים || []).length, source: 'create-full' },
+    request:      req,
+  });
 
   console.log('[create-full] STEP 6: returning response for order', order!.id);
 

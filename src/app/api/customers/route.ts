@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
+import { logActivity, userActor } from '@/lib/activity-log';
 
 export async function GET(req: NextRequest) {
   const auth = await requireManagementUser();
@@ -75,6 +76,20 @@ export async function POST(req: NextRequest) {
 
   const { data, error } = await supabase.from('לקוחות').insert(customer).select().single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  void logActivity({
+    actor:        userActor(auth),
+    module:       'customers',
+    action:       'customer_created',
+    status:       'success',
+    entityType:   'customer',
+    entityId:     String(data.id),
+    entityLabel:  `${customer.שם_פרטי} ${customer.שם_משפחה}`.trim(),
+    title:        'נוצר לקוח חדש',
+    description:  customer.טלפון || customer.אימייל || null,
+    metadata:     { customer_type: customer.סוג_לקוח },
+    request:      req,
+  });
 
   return NextResponse.json({ data }, { status: 201 });
 }

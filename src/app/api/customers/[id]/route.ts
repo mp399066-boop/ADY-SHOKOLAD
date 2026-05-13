@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
+import { logActivity, userActor } from '@/lib/activity-log';
 
 export async function GET(_: NextRequest, { params }: { params: { id: string } }) {
   const auth = await requireManagementUser();
@@ -51,10 +52,24 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  void logActivity({
+    actor:        userActor(auth),
+    module:       'customers',
+    action:       'customer_updated',
+    status:       'success',
+    entityType:   'customer',
+    entityId:     params.id,
+    entityLabel:  `${data.שם_פרטי || ''} ${data.שם_משפחה || ''}`.trim() || null,
+    title:        'עודכן כרטיס לקוח',
+    metadata:     { fields_changed: Object.keys(body) },
+    request:      req,
+  });
+
   return NextResponse.json({ data });
 }
 
-export async function DELETE(_: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
@@ -71,7 +86,19 @@ export async function DELETE(_: NextRequest, { params }: { params: { id: string 
     );
   }
 
+  const { data: pre } = await supabase.from('לקוחות').select('שם_פרטי, שם_משפחה').eq('id', params.id).maybeSingle();
   const { error } = await supabase.from('לקוחות').delete().eq('id', params.id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  void logActivity({
+    actor:        userActor(auth),
+    module:       'customers',
+    action:       'customer_deleted',
+    status:       'success',
+    entityType:   'customer',
+    entityId:     params.id,
+    entityLabel:  pre ? `${pre.שם_פרטי || ''} ${pre.שם_משפחה || ''}`.trim() : null,
+    title:        'לקוח נמחק',
+    request:      req,
+  });
   return NextResponse.json({ success: true });
 }

@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { sendOrdersReport } from '@/lib/orders-report-email';
 import { createAdminClient } from '@/lib/supabase/server';
 import { isServiceEnabled, logServiceRun } from '@/lib/system-services';
+import { logActivity, CRON_ACTOR } from '@/lib/activity-log';
 
 // GET /api/cron/send-daily-orders-report
 // Triggered by Vercel Cron daily. Sends today's orders report to DAILY_ORDERS_REPORT_EMAIL.
@@ -58,6 +59,17 @@ export async function GET(req: NextRequest) {
       message:     `נשלח ל-${recipient} · ${summary.total} הזמנות`,
       metadata:    { recipient, total: summary.total, date: summary.startDate, urgent: summary.urgent, unpaid: summary.unpaid },
     });
+    void logActivity({
+      actor:       CRON_ACTOR,
+      module:      'reports',
+      action:      'daily_report_sent',
+      status:      'success',
+      title:       'נשלח דוח יומי',
+      description: `${summary.total} הזמנות · ${recipient}`,
+      serviceKey:  'daily_orders_report',
+      metadata:    { date: summary.startDate, total: summary.total, urgent: summary.urgent, unpaid: summary.unpaid },
+      request:     req,
+    });
     return NextResponse.json({
       ok: true,
       date: summary.startDate,
@@ -74,6 +86,16 @@ export async function GET(req: NextRequest) {
       startedAt, finishedAt,
       durationMs:    finishedAt.getTime() - startedAt.getTime(),
       errorMessage:  msg,
+    });
+    void logActivity({
+      actor:        CRON_ACTOR,
+      module:       'reports',
+      action:       'daily_report_failed',
+      status:       'failed',
+      title:        'שליחת דוח יומי נכשלה',
+      errorMessage: msg,
+      serviceKey:   'daily_orders_report',
+      request:      req,
     });
     return NextResponse.json({ error: 'send failed' }, { status: 500 });
   }

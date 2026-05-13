@@ -28,6 +28,7 @@ import { z } from 'zod';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { createAdminClient } from '@/lib/supabase/server';
 import { isServiceEnabled, logServiceRun, SERVICE_DISABLED_MESSAGE } from '@/lib/system-services';
+import { logActivity, userActor } from '@/lib/activity-log';
 
 // Document types that require a payment block. Mirrors PAYMENT_DOCS in the
 // Edge Function — keep these two sets in sync.
@@ -229,6 +230,20 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
       console.error('[manual-document] Morning failed:', res.status, JSON.stringify(body));
+      void logActivity({
+        actor:        userActor(auth),
+        module:       'finance',
+        action:       'financial_document_failed',
+        status:       'failed',
+        entityType:   'order',
+        entityId:     orderId,
+        title:        'הפקת מסמך פיננסי נכשלה',
+        description:  `סוג: ${documentType}${canonicalMethod ? ` · אמצעי: ${canonicalMethod}` : ''}`,
+        errorMessage: body.error || `HTTP ${res.status}`,
+        serviceKey:   'morning_documents',
+        metadata:     { document_type: documentType, payment_method: canonicalMethod, http_status: res.status },
+        request:      req,
+      });
       return NextResponse.json(
         { error: body.error || `שגיאה בהפקת המסמך (HTTP ${res.status})` },
         { status: res.status >= 500 ? 502 : 400 },
@@ -236,6 +251,20 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     }
 
     console.log('[manual-document] success:', JSON.stringify(body));
+    void logActivity({
+      actor:        userActor(auth),
+      module:       'finance',
+      action:       'financial_document_created',
+      status:       'success',
+      entityType:   'order',
+      entityId:     orderId,
+      entityLabel:  body.invoice_number ? `#${body.invoice_number}` : null,
+      title:        'נוצר מסמך פיננסי',
+      description:  `סוג: ${documentType}${canonicalMethod ? ` · אמצעי: ${canonicalMethod}` : ''}`,
+      serviceKey:   'morning_documents',
+      metadata:     { document_type: documentType, payment_method: canonicalMethod, invoice_id: body.invoice_id, invoice_number: body.invoice_number },
+      request:      req,
+    });
     return NextResponse.json({
       ok: true,
       ...body,
