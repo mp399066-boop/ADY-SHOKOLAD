@@ -5,9 +5,14 @@ const MORNING_API_BASE = 'https://api.greeninvoice.co.il/api/v1';
 
 // Morning document type codes
 const DOC_TYPE: Record<string, number> = {
-  tax_invoice: 305, // חשבונית מס — income lines, no payment section
-  receipt: 400,     // קבלה — income lines + payment section
+  tax_invoice:     305, // חשבונית מס — income lines, no payment section
+  receipt:         400, // קבלה — income lines + payment section
+  invoice_receipt: 320, // חשבונית מס קבלה — income lines + payment section
 };
+
+// Document types that require a payment block. Used both to gate the build
+// and to enforce that PAYMENT_BUILDERS yields a builder before issuing.
+const PAYMENT_DOCS = new Set(['receipt', 'invoice_receipt']);
 
 // Payment builders for Morning's documents API. Each entry returns the full
 // payment object (not just a type code) because Morning needs the matching
@@ -72,14 +77,26 @@ serve(async (req: Request) => {
     }
 
     const payload = await req.json();
-    // document_type: 'tax_invoice' (on completion) | 'receipt' (on payment)
+    // document_type: 'tax_invoice' | 'receipt' | 'invoice_receipt'.
+    // Manual issuance (the new POST /api/orders/[id]/create-document route)
+    // also passes `payment_method` to override `order.אופן_תשלום`, and
+    // `force=true` to bypass the (הזמנה_id, סוג_מסמך) idempotency guard
+    // when the user explicitly opts in to a duplicate.
     const documentType: string = payload.document_type ?? 'tax_invoice';
     const morningDocType = DOC_TYPE[documentType];
     if (!morningDocType) {
       return new Response(JSON.stringify({ error: `Unknown document_type: ${documentType}` }), { status: 400 });
     }
+    const paymentMethodOverride: string | null =
+      typeof payload.payment_method === 'string' && payload.payment_method.trim()
+        ? payload.payment_method.trim()
+        : null;
+    const force: boolean = payload.force === true;
 
-    console.log('[morning] Received — document_type:', documentType, '| type:', payload.type);
+    console.log('[morning] Received — document_type:', documentType,
+      '| type:', payload.type,
+      '| payment_method_override:', paymentMethodOverride ?? 'none',
+      '| force:', force);
 
     if (payload.type !== 'UPDATE') {
       return new Response(JSON.stringify({ success: true, skipped: true, reason: 'not UPDATE' }), { status: 200 });
@@ -96,17 +113,23 @@ serve(async (req: Request) => {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    // Idempotency: per order + document type
-    const { data: existingDoc } = await supabase
-      .from('חשבוניות')
-      .select('id, מספר_חשבונית')
-      .eq('הזמנה_id', orderId)
-      .eq('סוג_מסמך', documentType)
-      .maybeSingle();
+    // Idempotency: per order + document type. Bypassed when the caller
+    // sets force=true (only the manual issuance modal sends that, after the
+    // user has explicitly confirmed they want a duplicate).
+    if (!force) {
+      const { data: existingDoc } = await supabase
+        .from('חשבוניות')
+        .select('id, מספר_חשבונית')
+        .eq('הזמנה_id', orderId)
+        .eq('סוג_מסמך', documentType)
+        .maybeSingle();
 
-    if (existingDoc) {
-      console.log('[morning]', documentType, 'already exists for order', orderId, '— skipping');
-      return new Response(JSON.stringify({ success: true, skipped: true, invoice_id: existingDoc.id }), { status: 200 });
+      if (existingDoc) {
+        console.log('[morning]', documentType, 'already exists for order', orderId, '— skipping');
+        return new Response(JSON.stringify({ success: true, skipped: true, invoice_id: existingDoc.id }), { status: 200 });
+      }
+    } else {
+      console.log('[morning] force=true — bypassing idempotency check');
     }
 
     // Fetch order + customer type for VAT decision
@@ -199,21 +222,36 @@ serve(async (req: Request) => {
       income: incomeLines,
     };
 
-    // Receipt includes payment section; tax invoice does not.
-    // Build the payment block from PAYMENT_BUILDERS — refuse to invent a
-    // method when אופן_תשלום is missing/unknown. Without a valid builder we
-    // skip the payment block entirely; Morning will reject the document with
-    // a clear error rather than issuing a receipt under the wrong method,
-    // which is the safer failure mode (visible error vs silently mislabelled
-    // receipt that the customer sees).
-    if (documentType === 'receipt') {
-      const paymentMethod = (order.אופן_תשלום ?? '').trim();
+    // Receipt + invoice_receipt include a payment section; tax_invoice does
+    // not. The payment-method override (passed by the manual issuance route
+    // when the user explicitly picks one in the modal) takes precedence over
+    // the value stored on the order — that's the whole point of the modal:
+    // give the user a chance to set the method *for the document* without
+    // mutating the order's אופן_תשלום first.
+    //
+    // PAYMENT_BUILDERS is the source of truth for which methods Morning can
+    // render — refuse to invent a method when the source value is missing
+    // or unknown, and abort the whole issuance so the user gets a visible
+    // error instead of a silently mislabelled document.
+    if (PAYMENT_DOCS.has(documentType)) {
+      const paymentMethod = (paymentMethodOverride ?? order.אופן_תשלום ?? '').trim();
       const builder = PAYMENT_BUILDERS[paymentMethod];
       if (builder) {
         documentBody.payment = [builder(paymentAmount, new Date().toISOString().slice(0, 10))];
+        console.log('[morning] payment block built — method:', paymentMethod);
       } else {
-        console.warn('[morning] Unknown / missing אופן_תשלום:', JSON.stringify(paymentMethod),
-          '— skipping payment block. Morning will reject and the order needs to be fixed.');
+        console.error('[morning] Cannot build payment block — unknown / missing payment method:',
+          JSON.stringify(paymentMethod),
+          '| documentType:', documentType,
+          '— aborting issuance');
+        return new Response(
+          JSON.stringify({
+            error: paymentMethod
+              ? `אמצעי התשלום "${paymentMethod}" לא נתמך. יש לבחור אמצעי תשלום אחר.`
+              : `המסמך מסוג ${documentType} דורש אמצעי תשלום. יש לבחור אמצעי תשלום בעת ההפקה.`,
+          }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } },
+        );
       }
     }
 

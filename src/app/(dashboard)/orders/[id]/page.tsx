@@ -64,7 +64,7 @@ type FullOrder = Order & {
   מוצרים_בהזמנה: (OrderItem & { מוצרים_למכירה?: Product })[];
   משלוח: { סטטוס_משלוח: string; שם_שליח: string; עיר: string } | null;
   תשלומים: { id: string; סכום: number; אמצעי_תשלום: string; תאריך_תשלום: string }[];
-  חשבוניות: { id: string; מספר_חשבונית: string; סכום: number; סטטוס: string; קישור_חשבונית?: string | null }[];
+  חשבוניות: { id: string; מספר_חשבונית: string; סכום: number; סטטוס: string; קישור_חשבונית?: string | null; סוג_מסמך?: string | null; תאריך_יצירה?: string | null }[];
 };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -240,6 +240,11 @@ export default function OrderDetailPage() {
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Manual document issuance modal — owner-driven replacement for the old
+  // status-trigger auto-create flow. State lives here so the modal closes
+  // cleanly after issuance and the documents block re-fetches.
+  const [showDocModal, setShowDocModal] = useState(false);
+  const [issuingDoc, setIssuingDoc] = useState(false);
   // UI-only: tracks which package rows are expanded to show their petit-fours
   const [expandedPackages, setExpandedPackages] = useState<Set<string>>(new Set());
   const togglePackage = (lineId: string) =>
@@ -1122,38 +1127,90 @@ export default function OrderDetailPage() {
             </Card>
           )}
 
-          {/* Invoices */}
-          {order.חשבוניות && order.חשבוניות.length > 0 && (
-            <Card>
-              <p className="text-[11px] uppercase tracking-wider mb-3 font-semibold" style={{ color: '#8B5E34' }}>חשבוניות</p>
-              <ul className="space-y-1.5">
-                {order.חשבוניות.map(inv => (
-                  <li
-                    key={inv.id}
-                    className="flex justify-between items-center text-sm px-3 py-2 rounded-lg"
-                    style={{ backgroundColor: '#FAF7F0' }}
-                  >
-                    {inv.קישור_חשבונית ? (
-                      <a
-                        href={inv.קישור_חשבונית}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="font-medium hover:underline"
-                        style={{ color: '#8B5E34', textUnderlineOffset: '2px' }}
-                      >
-                        #{inv.מספר_חשבונית}
-                      </a>
-                    ) : (
-                      <span className="font-medium" style={{ color: '#2B1A10' }}>#{inv.מספר_חשבונית}</span>
-                    )}
-                    <span className="font-semibold tabular-nums" style={{ color: '#8B5E34' }}>
-                      {formatCurrency(inv.סכום)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          )}
+          {/* Financial documents — manual issuance only */}
+          <Card>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[11px] uppercase tracking-wider font-semibold" style={{ color: '#8B5E34' }}>מסמכים פיננסיים</p>
+              <button
+                onClick={() => setShowDocModal(true)}
+                className="inline-flex items-center gap-1 text-[11.5px] font-semibold px-2.5 h-7 rounded-md text-white transition-colors"
+                style={{ backgroundColor: '#7A4A27' }}
+              >
+                + הפק מסמך
+              </button>
+            </div>
+
+            {(() => {
+              type Inv = NonNullable<FullOrder['חשבוניות']>[number];
+              const all = order.חשבוניות ?? [];
+              const isInvoiceReceipt = (i: Inv) => i.סוג_מסמך === 'invoice_receipt' || i.סוג_מסמך === 'חשבונית_מס_קבלה';
+              const isTaxInvoice     = (i: Inv) => i.סוג_מסמך === 'tax_invoice';
+              const isReceipt        = (i: Inv) => i.סוג_מסמך === 'receipt';
+              const groups: { label: string; items: Inv[] }[] = [
+                { label: 'חשבוניות מס קבלה', items: all.filter(isInvoiceReceipt) },
+                { label: 'חשבוניות מס',      items: all.filter(isTaxInvoice) },
+                { label: 'קבלות',            items: all.filter(isReceipt) },
+              ].filter(g => g.items.length > 0);
+
+              if (groups.length === 0) {
+                return (
+                  <p className="text-[12px] py-3 text-center" style={{ color: '#8A735F' }}>
+                    אין מסמכים — לחצי &quot;+ הפק מסמך&quot; כדי להפיק.
+                  </p>
+                );
+              }
+
+              return (
+                <div className="space-y-3">
+                  {groups.map(g => (
+                    <div key={g.label}>
+                      <p className="text-[10px] uppercase tracking-wider font-semibold mb-1.5" style={{ color: '#8A735F', letterSpacing: '0.06em' }}>
+                        {g.label}
+                      </p>
+                      <ul className="space-y-1">
+                        {g.items.map(inv => (
+                          <li
+                            key={inv.id}
+                            className="flex justify-between items-center gap-2 text-[13px] px-3 py-2 rounded-lg"
+                            style={{ backgroundColor: '#FAF7F0' }}
+                          >
+                            <div className="min-w-0 flex-1">
+                              {inv.קישור_חשבונית ? (
+                                <a
+                                  href={inv.קישור_חשבונית}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="font-semibold hover:underline"
+                                  style={{ color: '#8B5E34', textUnderlineOffset: '2px' }}
+                                >
+                                  #{inv.מספר_חשבונית}
+                                </a>
+                              ) : (
+                                <span className="font-semibold" style={{ color: '#2B1A10' }}>#{inv.מספר_חשבונית}</span>
+                              )}
+                              {inv.תאריך_יצירה && (
+                                <span className="text-[10.5px] mx-2" style={{ color: '#8A735F' }}>
+                                  {formatDate(inv.תאריך_יצירה)}
+                                </span>
+                              )}
+                              {!inv.קישור_חשבונית && (
+                                <span className="text-[10px] mx-2 px-1.5 py-0.5 rounded" style={{ color: '#8A735F', backgroundColor: '#EAE0D2' }}>
+                                  הופק ידנית — אין קובץ במערכת
+                                </span>
+                              )}
+                            </div>
+                            <span className="font-semibold tabular-nums" style={{ color: '#8B5E34' }}>
+                              {formatCurrency(inv.סכום)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+          </Card>
         </aside>
       </div>
 
@@ -1658,6 +1715,247 @@ export default function OrderDetailPage() {
           </div>
         </div>
       )}
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          Manual Document Issuance Modal
+          ══════════════════════════════════════════════════════════════════════ */}
+      {showDocModal && (
+        <CreateDocumentModal
+          orderNumber={order.מספר_הזמנה}
+          existing={order.חשבוניות ?? []}
+          loading={issuingDoc}
+          onClose={() => setShowDocModal(false)}
+          onIssue={async (documentType, paymentMethod, force) => {
+            setIssuingDoc(true);
+            try {
+              const res = await fetch(`/api/orders/${order.id}/create-document`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ documentType, paymentMethod, force }),
+              });
+              const json = await res.json().catch(() => ({}));
+              if (!res.ok) {
+                toast.error(json.error || 'שגיאה בהפקת המסמך');
+                return false;
+              }
+              if (json.skipped) {
+                toast(`מסמך מסוג זה כבר קיים — לא נוצר חדש`, { icon: 'ℹ️' });
+                setShowDocModal(false);
+                loadOrder();
+                return true;
+              }
+              toast.success(`מסמך הופק — ${json.invoice_number || 'בהצלחה'}`);
+              setShowDocModal(false);
+              loadOrder();
+              return true;
+            } catch (err) {
+              toast.error('שגיאה ברשת — לא ניתן להפיק מסמך');
+              console.error('[create-document] failed:', err);
+              return false;
+            } finally {
+              setIssuingDoc(false);
+            }
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── CreateDocumentModal ─────────────────────────────────────────────────
+// Three doc types + a payment-method picker that's required for receipt
+// and invoice_receipt and hidden for tax_invoice. The "אחר" payment option
+// reveals a free-text input so the user can type a custom value — the
+// server canonicalises it via the alias map and rejects unsupported names
+// rather than picking a silent default.
+
+type DocType = 'invoice_receipt' | 'tax_invoice' | 'receipt';
+
+const DOC_TYPE_META: Record<DocType, { title: string; hint: string; needsPayment: boolean; sigil: string }> = {
+  invoice_receipt: {
+    title: 'חשבונית מס קבלה',
+    hint:  'מתאים כאשר התשלום התקבל ורוצים מסמך אחד הכולל חשבונית וקבלה.',
+    needsPayment: true,
+    sigil: 'מק',
+  },
+  tax_invoice: {
+    title: 'חשבונית מס',
+    hint:  'מתאים כאשר רוצים לחייב/לתעד עסקה ללא קבלה.',
+    needsPayment: false,
+    sigil: 'מ',
+  },
+  receipt: {
+    title: 'קבלה',
+    hint:  'מתאים כאשר התקבל תשלום וצריך להפיק קבלה בלבד.',
+    needsPayment: true,
+    sigil: 'ק',
+  },
+};
+
+const PAY_OPTIONS: readonly string[] = [
+  'כרטיס אשראי', 'מזומן', 'העברה בנקאית', 'ביט', 'PayBox', 'PayPal', 'צ\'ק', 'אחר',
+];
+
+function CreateDocumentModal({
+  orderNumber, existing, loading, onClose, onIssue,
+}: {
+  orderNumber: string;
+  existing: { id: string; סוג_מסמך?: string | null }[];
+  loading: boolean;
+  onClose: () => void;
+  onIssue: (documentType: DocType, paymentMethod: string | undefined, force: boolean) => Promise<boolean>;
+}) {
+  const [docType, setDocType] = useState<DocType | null>(null);
+  const [payMethod, setPayMethod] = useState<string>('');
+  const [customMethod, setCustomMethod] = useState<string>('');
+
+  const hasExisting = (t: DocType): boolean => {
+    if (t === 'invoice_receipt') return existing.some(e => e.סוג_מסמך === 'invoice_receipt' || e.סוג_מסמך === 'חשבונית_מס_קבלה');
+    return existing.some(e => e.סוג_מסמך === t);
+  };
+
+  const needsPayment = docType ? DOC_TYPE_META[docType].needsPayment : false;
+  const effectiveMethod = payMethod === 'אחר' ? customMethod.trim() : payMethod;
+  const canSubmit = !!docType && (!needsPayment || !!effectiveMethod);
+  const willDuplicate = !!docType && hasExisting(docType);
+
+  const handleIssue = async () => {
+    if (!docType) return;
+    if (willDuplicate) {
+      const ok = window.confirm('מסמך מסוג זה כבר קיים להזמנה. הפקה נוספת עלולה ליצור כפילות. להמשיך?');
+      if (!ok) return;
+    }
+    await onIssue(docType, needsPayment ? effectiveMethod : undefined, willDuplicate);
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 overflow-y-auto py-8 px-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 mb-6"
+        style={{ direction: 'rtl' }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-baseline justify-between mb-1">
+          <h3 className="text-lg font-bold" style={{ color: '#2B1A10' }}>הפקת מסמך</h3>
+          <span className="font-mono text-[11px] font-semibold" style={{ color: '#B89870', letterSpacing: '0.05em' }}>{orderNumber}</span>
+        </div>
+        <p className="text-[12px] mb-5" style={{ color: '#8A735F' }}>
+          המסמך יופק רק בלחיצת אישור. שינוי סטטוס הזמנה / תשלום לא מפיק מסמכים אוטומטית.
+        </p>
+
+        {/* Document type picker — 3 stacked cards with title + hint */}
+        <div className="space-y-2 mb-5">
+          {(Object.keys(DOC_TYPE_META) as DocType[]).map(t => {
+            const meta = DOC_TYPE_META[t];
+            const active = docType === t;
+            const exists = hasExisting(t);
+            return (
+              <button
+                key={t}
+                onClick={() => setDocType(t)}
+                className="w-full flex items-start gap-3 px-3 py-3 rounded-lg border text-right transition-colors"
+                style={{
+                  backgroundColor: active ? '#FAF5E9' : '#FFFFFF',
+                  borderColor: active ? '#7A4A27' : '#E8DED2',
+                  boxShadow: active ? '0 0 0 2px rgba(122,74,39,0.10)' : 'none',
+                }}
+              >
+                <span
+                  className="w-9 h-9 rounded-md flex items-center justify-center flex-shrink-0 font-bold text-[12px]"
+                  style={{
+                    backgroundColor: active ? '#7A4A27' : '#FAF5E9',
+                    color: active ? '#FFFFFF' : '#8B5E34',
+                  }}
+                >
+                  {meta.sigil}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[14px] font-semibold" style={{ color: '#2B1A10' }}>{meta.title}</span>
+                    {exists && (
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ backgroundColor: '#FBF1DC', color: '#92602A' }}>
+                        קיים
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11.5px] mt-0.5 leading-relaxed" style={{ color: '#8A735F' }}>{meta.hint}</p>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Payment method picker — only when needed */}
+        {needsPayment && (
+          <div className="mb-5">
+            <p className="text-[11px] uppercase tracking-wider font-semibold mb-2" style={{ color: '#8A735F', letterSpacing: '0.08em' }}>
+              אמצעי תשלום <span style={{ color: '#A8442D' }}>*</span>
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {PAY_OPTIONS.map(m => {
+                const active = payMethod === m;
+                return (
+                  <button
+                    key={m}
+                    onClick={() => setPayMethod(m)}
+                    className="text-[13px] font-medium h-10 rounded-lg transition-colors border"
+                    style={{
+                      backgroundColor: active ? '#7A4A27' : '#FFFFFF',
+                      color: active ? '#FFFFFF' : '#2B1A10',
+                      borderColor: active ? '#7A4A27' : '#E8DED2',
+                    }}
+                  >
+                    {m}
+                  </button>
+                );
+              })}
+            </div>
+            {payMethod === 'אחר' && (
+              <div className="mt-2">
+                <input
+                  type="text"
+                  value={customMethod}
+                  onChange={e => setCustomMethod(e.target.value)}
+                  placeholder="הקלידי אמצעי תשלום (למשל: ביט / PayPlus / Stripe)"
+                  className="w-full px-3 h-10 text-[13px] rounded-lg border focus:outline-none focus:ring-2"
+                  style={{ borderColor: '#E8DED2', color: '#2B1A10' }}
+                />
+                <p className="text-[10.5px] mt-1" style={{ color: '#8A735F' }}>
+                  הערך יעבור מיפוי לפי הכללים הקיימים. אם לא נתמך — תוצג שגיאה.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {willDuplicate && docType && (
+          <div className="text-[11.5px] mb-4 px-3 py-2 rounded-lg" style={{ backgroundColor: '#FFF7ED', color: '#92602A', border: '1px solid #FCD9A8' }}>
+            ⚠ קיים כבר מסמך {DOC_TYPE_META[docType].title} להזמנה זו. הפקה נוספת תיצור כפילות (תידרש אישור נוסף).
+          </div>
+        )}
+
+        <div className="flex gap-3 justify-end">
+          <button
+            onClick={onClose}
+            disabled={loading}
+            className="px-4 h-10 text-[13px] font-medium rounded-lg border transition-colors disabled:opacity-50"
+            style={{ borderColor: '#E8DED2', color: '#8A735F' }}
+          >
+            ביטול
+          </button>
+          <button
+            onClick={handleIssue}
+            disabled={!canSubmit || loading}
+            className="px-5 h-10 text-[13px] font-semibold rounded-lg text-white transition-colors disabled:opacity-50"
+            style={{ backgroundColor: '#7A4A27' }}
+          >
+            {loading ? 'מפיק...' : docType ? `הפק ${DOC_TYPE_META[docType].title}` : 'הפק מסמך'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

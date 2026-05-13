@@ -1,3 +1,15 @@
+// Master kill-switch for status-driven Morning issuance. The owner asked
+// (May 2026) to stop creating documents automatically as a side effect of
+// status transitions — wrong document type / wrong payment method / wrong
+// timing kept happening. All documents now go through the manual issuance
+// flow at POST /api/orders/[id]/create-document instead.
+//
+// We DON'T delete the auto-create code paths — they're guarded by this
+// flag so they can be re-enabled in one place if the policy reverses.
+// Production-time reads of this constant: PATCH /api/orders/[id] (after
+// transitions to הושלמה בהצלחה or שולם) and POST /api/orders/[id]/mark-paid.
+export const AUTO_CREATE_MORNING_DOCUMENTS = false;
+
 // Calls the Morning Edge Function to create a tax_invoice or receipt for an order.
 // Idempotency is enforced inside the Edge Function by (הזמנה_id + סוג_מסמך).
 // Amounts are read from the DB by the Edge Function itself — never accept them from the client.

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { sendSatmarSummaryEmail } from '@/lib/satmar-email';
-import { callMorning } from '@/lib/morning';
+import { callMorning, AUTO_CREATE_MORNING_DOCUMENTS } from '@/lib/morning';
 
 // Dedicated endpoint to mark an order as paid.
 // Reads order + customer from DB only — never accepts amounts from the client.
@@ -50,16 +50,23 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
     return NextResponse.json({ error: updErr.message }, { status: 500 });
   }
 
-  let invoiceAction: 'satmar_email' | 'barter_skipped' | 'morning_receipt';
+  // Receipt issuance is gated behind AUTO_CREATE_MORNING_DOCUMENTS. With
+  // the flag off (current policy), this endpoint just flips סטטוס_תשלום;
+  // the receipt itself is issued manually from the order detail modal so
+  // the user picks the payment method explicitly each time.
+  let invoiceAction: 'satmar_email' | 'barter_skipped' | 'morning_receipt' | 'manual_required';
   if (isSatmar) {
     invoiceAction = 'satmar_email';
     await sendSatmarSummaryEmail(params.id);
   } else if (isBarter) {
     invoiceAction = 'barter_skipped';
     console.log('[mark-paid] Barter order — no invoice/receipt created. order:', params.id);
-  } else {
+  } else if (AUTO_CREATE_MORNING_DOCUMENTS) {
     invoiceAction = 'morning_receipt';
     await callMorning(params.id, 'receipt');
+  } else {
+    invoiceAction = 'manual_required';
+    console.log('[mark-paid] auto-create OFF — סטטוס flipped, receipt requires manual issuance. order:', params.id);
   }
 
   return NextResponse.json({

@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { sendSatmarSummaryEmail } from '@/lib/satmar-email';
 import { recordStockMovement } from '@/lib/inventory-movements';
+import { AUTO_CREATE_MORNING_DOCUMENTS } from '@/lib/morning';
 // deploy trigger
 
 export async function GET(_: NextRequest, { params }: { params: { id: string } }) {
@@ -251,21 +252,28 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     }
   }
 
-  // חשבונית מס / סאטמר: first time order status → הושלמה בהצלחה
+  // חשבונית מס / סאטמר: first time order status → הושלמה בהצלחה.
+  // Morning issuance is gated behind AUTO_CREATE_MORNING_DOCUMENTS — when
+  // off (current owner policy), only the satmar email side-effect runs and
+  // tax-invoice creation happens manually via the order detail modal.
   if (body.סטטוס_הזמנה === 'הושלמה בהצלחה' && prevOrderStatus !== 'הושלמה בהצלחה') {
     if (orderType === 'סאטמר') {
       await sendSatmarSummaryEmail(params.id);
-    } else {
+    } else if (AUTO_CREATE_MORNING_DOCUMENTS) {
       await callMorning(params.id, 'tax_invoice');
+    } else {
+      console.log('[invoice] auto-create OFF — skipping tax_invoice on הושלמה. order:', params.id);
     }
   }
 
-  // קבלה / סאטמר: first time payment status → שולם
+  // קבלה / סאטמר: first time payment status → שולם. Same gating story.
   if (body.סטטוס_תשלום === 'שולם' && prevPaymentStatus !== 'שולם') {
     if (orderType === 'סאטמר') {
       await sendSatmarSummaryEmail(params.id);
-    } else {
+    } else if (AUTO_CREATE_MORNING_DOCUMENTS) {
       await callMorning(params.id, 'receipt');
+    } else {
+      console.log('[invoice] auto-create OFF — skipping receipt on שולם. order:', params.id);
     }
   }
 
