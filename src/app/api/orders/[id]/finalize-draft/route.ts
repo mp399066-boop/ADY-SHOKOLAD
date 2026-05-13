@@ -117,14 +117,18 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     }
   }
 
-  // 4. Create delivery record if needed
+  // 4. Create delivery record if needed.
+  // Initial status MUST be 'ממתין'. See the matching note in
+  // src/app/api/orders/create-full/route.ts — defaulting to 'נאסף' would
+  // mis-label the row as already-collected and skip the WhatsApp-on-pickup
+  // trigger that lives in PATCH /api/deliveries/[id].
   if (משלוח) {
     const { data: existingDelivery } = await supabase
       .from('משלוחים').select('id').eq('הזמנה_id', orderId).single();
     if (!existingDelivery) {
       await supabase.from('משלוחים').insert({
         הזמנה_id: orderId,
-        סטטוס_משלוח: 'נאסף',
+        סטטוס_משלוח: 'ממתין',
         תאריך_משלוח: הזמנה?.תאריך_אספקה || null,
         שעת_משלוח: הזמנה?.שעת_אספקה || null,
         כתובת: משלוח.כתובת || null,

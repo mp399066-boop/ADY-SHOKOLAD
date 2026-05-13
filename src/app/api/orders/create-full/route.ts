@@ -226,11 +226,17 @@ export async function POST(req: NextRequest) {
 
   const isDraft = הזמנה?.סטטוס_הזמנה === 'טיוטה';
 
-  // 7. Create delivery record (skip for drafts)
+  // 7. Create delivery record (skip for drafts).
+  // Initial status MUST be 'ממתין' — a brand-new delivery has not yet been
+  // handed to a courier. Defaulting to 'נאסף' here would (a) lie about the
+  // physical state, (b) make the row look already-collected on the dashboard,
+  // and (c) sit in a state that the WhatsApp-to-courier trigger expects to
+  // *transition into*. Status is only allowed to advance via the dedicated
+  // PATCH /api/deliveries/[id] flow, never at creation.
   if (!isDraft && משלוח) {
     await supabase.from('משלוחים').insert({
       הזמנה_id: order!.id,
-      סטטוס_משלוח: 'נאסף',
+      סטטוס_משלוח: 'ממתין',
       תאריך_משלוח: order!.תאריך_אספקה || null,
       שעת_משלוח: order!.שעת_אספקה || null,
       כתובת: משלוח.כתובת || order!.כתובת_מקבל_ההזמנה || null,

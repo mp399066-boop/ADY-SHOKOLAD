@@ -139,6 +139,37 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const prevStatus = existing.סטטוס_משלוח;
   console.log('[delivery PATCH] old status:', prevStatus, '→ נאסף');
 
+  // ── Idempotency guard: never re-fire WhatsApp on a no-op transition ────────
+  // Two cases this guard covers:
+  //   1. The row was already 'נאסף' — caller (button double-click, stray
+  //      PATCH from a refresh, etc.) is asking for a transition that's
+  //      already happened. Persist any other body fields and exit, no send.
+  //   2. whatsapp_sent_at is set on the row — even if a status transition
+  //      somehow re-fires (status flipped to ממתין and back), the courier
+  //      was already notified. The owner must explicitly resend via a
+  //      future "resend WhatsApp" action, not as a side effect of a PATCH.
+  const alreadyCollected = prevStatus === 'נאסף';
+  const alreadyNotified = !!existing.whatsapp_sent_at;
+  if (alreadyCollected || alreadyNotified) {
+    console.log('[delivery PATCH] idempotent no-op — alreadyCollected:', alreadyCollected, '| alreadyNotified:', alreadyNotified, '— persisting body without WhatsApp resend');
+    const { data, error } = await supabase
+      .from('משלוחים')
+      .update(body)
+      .eq('id', deliveryId)
+      .select()
+      .single();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({
+      data,
+      whatsapp_url: null,
+      send_error: null,
+      was_created: wasCreated,
+      // Surface the reason so the frontend can show a quieter toast instead
+      // of opening WhatsApp again.
+      already_notified: true,
+    });
+  }
+
   // 2. Generate token if missing
   let token = existing.delivery_token as string | null;
   if (!token) {

@@ -279,6 +279,12 @@ export default function DashboardPage() {
         const win = window.open(json.whatsapp_url, '_blank');
         if (!win || win.closed) toast('הדפדפן חסם — פתחי וואטסאפ ידנית', { icon: '⚠️' });
         else toast.success('וואטסאפ נפתח לשליח');
+      } else if (newStatus === 'נאסף' && json.already_notified) {
+        // Idempotency path — the row was already 'נאסף' or whatsapp_sent_at
+        // was set. We deliberately did NOT resend. Tell the operator clearly
+        // so they don't think the WhatsApp window is missing because of an
+        // error.
+        toast('השליח כבר עודכן בעבר — לא נשלחה הודעה חוזרת', { icon: 'ℹ️' });
       } else if (newStatus === 'נאסף' && json.send_error) {
         toast.error(json.send_error);
       } else {
