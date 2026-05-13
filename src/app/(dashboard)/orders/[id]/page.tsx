@@ -240,11 +240,52 @@ export default function OrderDetailPage() {
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [saving, setSaving] = useState(false);
-  // Manual document issuance modal — owner-driven replacement for the old
-  // status-trigger auto-create flow. State lives here so the modal closes
-  // cleanly after issuance and the documents block re-fetches.
-  const [showDocModal, setShowDocModal] = useState(false);
+  // Manual document issuance — three inline buttons in the financial-documents
+  // block. tax_invoice fires straight after a confirm; receipt + invoice_receipt
+  // open a small payment-method-only modal first (the doc-type picker modal
+  // was removed because the document type is now obvious from which button
+  // was pressed). When payModalDocType is null the modal stays closed.
+  const [payModalDocType, setPayModalDocType] = useState<'receipt' | 'invoice_receipt' | null>(null);
   const [issuingDoc, setIssuingDoc] = useState(false);
+
+  // Single source of truth for the manual issuance request. All three buttons
+  // (tax_invoice via confirm, receipt + invoice_receipt via the payment-method
+  // modal) call this. POSTs to the existing /api/orders/{id}/create-document
+  // endpoint — no new API surface.
+  const issueDocument = async (
+    documentType: 'tax_invoice' | 'receipt' | 'invoice_receipt',
+    paymentMethod: string | undefined,
+    force: boolean,
+  ): Promise<boolean> => {
+    if (!order) return false;
+    setIssuingDoc(true);
+    try {
+      const res = await fetch(`/api/orders/${order.id}/create-document`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ documentType, paymentMethod, force }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(json.error || 'שגיאה בהפקת המסמך');
+        return false;
+      }
+      if (json.skipped) {
+        toast('מסמך מסוג זה כבר קיים — לא נוצר חדש', { icon: 'ℹ️' });
+        loadOrder();
+        return true;
+      }
+      toast.success(`מסמך הופק — ${json.invoice_number || 'בהצלחה'}`);
+      loadOrder();
+      return true;
+    } catch (err) {
+      toast.error('שגיאה ברשת — לא ניתן להפיק מסמך');
+      console.error('[create-document] failed:', err);
+      return false;
+    } finally {
+      setIssuingDoc(false);
+    }
+  };
   // UI-only: tracks which package rows are expanded to show their petit-fours
   const [expandedPackages, setExpandedPackages] = useState<Set<string>>(new Set());
   const togglePackage = (lineId: string) =>
@@ -1129,15 +1170,37 @@ export default function OrderDetailPage() {
 
           {/* Financial documents — manual issuance only */}
           <Card>
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-[11px] uppercase tracking-wider font-semibold" style={{ color: '#8B5E34' }}>מסמכים פיננסיים</p>
-              <button
-                onClick={() => setShowDocModal(true)}
-                className="inline-flex items-center gap-1 text-[11.5px] font-semibold px-2.5 h-7 rounded-md text-white transition-colors"
-                style={{ backgroundColor: '#7A4A27' }}
-              >
-                + הפק מסמך
-              </button>
+            <p className="text-[11px] uppercase tracking-wider font-semibold mb-3" style={{ color: '#8B5E34' }}>מסמכים פיננסיים</p>
+
+            {/* Three inline action buttons. No doc-type picker modal anymore —
+                the button IS the choice. tax_invoice fires after a confirm;
+                the other two open the payment-method modal. */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-4">
+              <DocActionButton
+                title="חשבונית מס קבלה"
+                hint="חשבונית וקבלה במסמך אחד"
+                onClick={() => setPayModalDocType('invoice_receipt')}
+                disabled={issuingDoc}
+              />
+              <DocActionButton
+                title="חשבונית מס"
+                hint="לתיעוד עסקה ללא קבלה"
+                onClick={async () => {
+                  const all = order.חשבוניות ?? [];
+                  const exists = all.some(i => i.סוג_מסמך === 'tax_invoice');
+                  const baseMsg = 'להפיק חשבונית מס להזמנה זו?';
+                  const dupMsg = 'כבר קיימת חשבונית מס להזמנה זו. הפקה נוספת עלולה ליצור כפילות. להמשיך?';
+                  if (!window.confirm(exists ? dupMsg : baseMsg)) return;
+                  await issueDocument('tax_invoice', undefined, exists);
+                }}
+                disabled={issuingDoc}
+              />
+              <DocActionButton
+                title="קבלה"
+                hint="לאישור תשלום שהתקבל"
+                onClick={() => setPayModalDocType('receipt')}
+                disabled={issuingDoc}
+              />
             </div>
 
             {(() => {
@@ -1717,44 +1780,23 @@ export default function OrderDetailPage() {
       )}
 
       {/* ══════════════════════════════════════════════════════════════════════
-          Manual Document Issuance Modal
+          Payment-method modal — opens only for receipt / invoice_receipt.
+          tax_invoice doesn't use this; it goes through window.confirm directly.
           ══════════════════════════════════════════════════════════════════════ */}
-      {showDocModal && (
-        <CreateDocumentModal
+      {payModalDocType && (
+        <PaymentMethodModal
           orderNumber={order.מספר_הזמנה}
-          existing={order.חשבוניות ?? []}
+          documentType={payModalDocType}
+          duplicate={(order.חשבוניות ?? []).some(i =>
+            payModalDocType === 'invoice_receipt'
+              ? (i.סוג_מסמך === 'invoice_receipt' || i.סוג_מסמך === 'חשבונית_מס_קבלה')
+              : i.סוג_מסמך === payModalDocType,
+          )}
           loading={issuingDoc}
-          onClose={() => setShowDocModal(false)}
-          onIssue={async (documentType, paymentMethod, force) => {
-            setIssuingDoc(true);
-            try {
-              const res = await fetch(`/api/orders/${order.id}/create-document`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ documentType, paymentMethod, force }),
-              });
-              const json = await res.json().catch(() => ({}));
-              if (!res.ok) {
-                toast.error(json.error || 'שגיאה בהפקת המסמך');
-                return false;
-              }
-              if (json.skipped) {
-                toast(`מסמך מסוג זה כבר קיים — לא נוצר חדש`, { icon: 'ℹ️' });
-                setShowDocModal(false);
-                loadOrder();
-                return true;
-              }
-              toast.success(`מסמך הופק — ${json.invoice_number || 'בהצלחה'}`);
-              setShowDocModal(false);
-              loadOrder();
-              return true;
-            } catch (err) {
-              toast.error('שגיאה ברשת — לא ניתן להפיק מסמך');
-              console.error('[create-document] failed:', err);
-              return false;
-            } finally {
-              setIssuingDoc(false);
-            }
+          onClose={() => setPayModalDocType(null)}
+          onIssue={async (paymentMethod, force) => {
+            const ok = await issueDocument(payModalDocType, paymentMethod, force);
+            if (ok) setPayModalDocType(null);
           }}
         />
       )}
@@ -1762,70 +1804,87 @@ export default function OrderDetailPage() {
   );
 }
 
-// ─── CreateDocumentModal ─────────────────────────────────────────────────
-// Three doc types + a payment-method picker that's required for receipt
-// and invoice_receipt and hidden for tax_invoice. The "אחר" payment option
-// reveals a free-text input so the user can type a custom value — the
-// server canonicalises it via the alias map and rejects unsupported names
-// rather than picking a silent default.
+// ─── DocActionButton — inline action card in the financial-documents block
 
-type DocType = 'invoice_receipt' | 'tax_invoice' | 'receipt';
+function DocActionButton({
+  title, hint, onClick, disabled,
+}: {
+  title: string;
+  hint: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="text-right rounded-lg px-3 py-2.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+      style={{
+        backgroundColor: '#FFFFFF',
+        border: '1px solid #E8DED2',
+        boxShadow: '0 1px 0 rgba(255,255,255,0.6)',
+      }}
+      onMouseEnter={e => {
+        if (disabled) return;
+        e.currentTarget.style.backgroundColor = '#FAF5E9';
+        e.currentTarget.style.borderColor = '#7A4A27';
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.backgroundColor = '#FFFFFF';
+        e.currentTarget.style.borderColor = '#E8DED2';
+      }}
+    >
+      <div className="text-[12.5px] font-bold" style={{ color: '#2B1A10', letterSpacing: '-0.005em' }}>
+        הפק {title}
+      </div>
+      <div className="text-[10.5px] mt-0.5 leading-snug" style={{ color: '#8A735F' }}>
+        {hint}
+      </div>
+    </button>
+  );
+}
 
-const DOC_TYPE_META: Record<DocType, { title: string; hint: string; needsPayment: boolean; sigil: string }> = {
-  invoice_receipt: {
-    title: 'חשבונית מס קבלה',
-    hint:  'מתאים כאשר התשלום התקבל ורוצים מסמך אחד הכולל חשבונית וקבלה.',
-    needsPayment: true,
-    sigil: 'מק',
-  },
-  tax_invoice: {
-    title: 'חשבונית מס',
-    hint:  'מתאים כאשר רוצים לחייב/לתעד עסקה ללא קבלה.',
-    needsPayment: false,
-    sigil: 'מ',
-  },
-  receipt: {
-    title: 'קבלה',
-    hint:  'מתאים כאשר התקבל תשלום וצריך להפיק קבלה בלבד.',
-    needsPayment: true,
-    sigil: 'ק',
-  },
+// ─── PaymentMethodModal — slim modal opened only by receipt + invoice_receipt
+// Doc-type is decided by which button was pressed (no doc-type picker here).
+// User picks a payment method and confirms. "אחר" reveals a free-text input;
+// the server canonicalises and rejects unsupported names rather than picking
+// a silent default.
+
+type DocTypeWithPayment = 'receipt' | 'invoice_receipt';
+
+const DOC_TITLE: Record<DocTypeWithPayment, string> = {
+  receipt:         'קבלה',
+  invoice_receipt: 'חשבונית מס קבלה',
 };
 
 const PAY_OPTIONS: readonly string[] = [
   'כרטיס אשראי', 'מזומן', 'העברה בנקאית', 'ביט', 'PayBox', 'PayPal', 'צ\'ק', 'אחר',
 ];
 
-function CreateDocumentModal({
-  orderNumber, existing, loading, onClose, onIssue,
+function PaymentMethodModal({
+  orderNumber, documentType, duplicate, loading, onClose, onIssue,
 }: {
   orderNumber: string;
-  existing: { id: string; סוג_מסמך?: string | null }[];
+  documentType: DocTypeWithPayment;
+  duplicate: boolean;
   loading: boolean;
   onClose: () => void;
-  onIssue: (documentType: DocType, paymentMethod: string | undefined, force: boolean) => Promise<boolean>;
+  onIssue: (paymentMethod: string, force: boolean) => void | Promise<void>;
 }) {
-  const [docType, setDocType] = useState<DocType | null>(null);
   const [payMethod, setPayMethod] = useState<string>('');
   const [customMethod, setCustomMethod] = useState<string>('');
 
-  const hasExisting = (t: DocType): boolean => {
-    if (t === 'invoice_receipt') return existing.some(e => e.סוג_מסמך === 'invoice_receipt' || e.סוג_מסמך === 'חשבונית_מס_קבלה');
-    return existing.some(e => e.סוג_מסמך === t);
-  };
-
-  const needsPayment = docType ? DOC_TYPE_META[docType].needsPayment : false;
   const effectiveMethod = payMethod === 'אחר' ? customMethod.trim() : payMethod;
-  const canSubmit = !!docType && (!needsPayment || !!effectiveMethod);
-  const willDuplicate = !!docType && hasExisting(docType);
+  const canSubmit = !!effectiveMethod;
+  const title = DOC_TITLE[documentType];
 
   const handleIssue = async () => {
-    if (!docType) return;
-    if (willDuplicate) {
-      const ok = window.confirm('מסמך מסוג זה כבר קיים להזמנה. הפקה נוספת עלולה ליצור כפילות. להמשיך?');
+    if (!canSubmit) return;
+    if (duplicate) {
+      const ok = window.confirm(`כבר קיים מסמך מסוג ${title} להזמנה. הפקה נוספת עלולה ליצור כפילות. להמשיך?`);
       if (!ok) return;
     }
-    await onIssue(docType, needsPayment ? effectiveMethod : undefined, willDuplicate);
+    await onIssue(effectiveMethod, duplicate);
   };
 
   return (
@@ -1834,106 +1893,61 @@ function CreateDocumentModal({
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 mb-6"
+        className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 mb-6"
         style={{ direction: 'rtl' }}
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-baseline justify-between mb-1">
-          <h3 className="text-lg font-bold" style={{ color: '#2B1A10' }}>הפקת מסמך</h3>
+          <h3 className="text-lg font-bold" style={{ color: '#2B1A10' }}>הפקת {title}</h3>
           <span className="font-mono text-[11px] font-semibold" style={{ color: '#B89870', letterSpacing: '0.05em' }}>{orderNumber}</span>
         </div>
         <p className="text-[12px] mb-5" style={{ color: '#8A735F' }}>
-          המסמך יופק רק בלחיצת אישור. שינוי סטטוס הזמנה / תשלום לא מפיק מסמכים אוטומטית.
+          לפני הפקת ה{title} יש לבחור את אמצעי התשלום שיופיע על המסמך.
         </p>
 
-        {/* Document type picker — 3 stacked cards with title + hint */}
-        <div className="space-y-2 mb-5">
-          {(Object.keys(DOC_TYPE_META) as DocType[]).map(t => {
-            const meta = DOC_TYPE_META[t];
-            const active = docType === t;
-            const exists = hasExisting(t);
-            return (
-              <button
-                key={t}
-                onClick={() => setDocType(t)}
-                className="w-full flex items-start gap-3 px-3 py-3 rounded-lg border text-right transition-colors"
-                style={{
-                  backgroundColor: active ? '#FAF5E9' : '#FFFFFF',
-                  borderColor: active ? '#7A4A27' : '#E8DED2',
-                  boxShadow: active ? '0 0 0 2px rgba(122,74,39,0.10)' : 'none',
-                }}
-              >
-                <span
-                  className="w-9 h-9 rounded-md flex items-center justify-center flex-shrink-0 font-bold text-[12px]"
+        <div className="mb-5">
+          <p className="text-[11px] uppercase tracking-wider font-semibold mb-2" style={{ color: '#8A735F', letterSpacing: '0.08em' }}>
+            אמצעי תשלום <span style={{ color: '#A8442D' }}>*</span>
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            {PAY_OPTIONS.map(m => {
+              const active = payMethod === m;
+              return (
+                <button
+                  key={m}
+                  onClick={() => setPayMethod(m)}
+                  className="text-[13px] font-medium h-10 rounded-lg transition-colors border"
                   style={{
-                    backgroundColor: active ? '#7A4A27' : '#FAF5E9',
-                    color: active ? '#FFFFFF' : '#8B5E34',
+                    backgroundColor: active ? '#7A4A27' : '#FFFFFF',
+                    color: active ? '#FFFFFF' : '#2B1A10',
+                    borderColor: active ? '#7A4A27' : '#E8DED2',
                   }}
                 >
-                  {meta.sigil}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[14px] font-semibold" style={{ color: '#2B1A10' }}>{meta.title}</span>
-                    {exists && (
-                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ backgroundColor: '#FBF1DC', color: '#92602A' }}>
-                        קיים
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[11.5px] mt-0.5 leading-relaxed" style={{ color: '#8A735F' }}>{meta.hint}</p>
-                </div>
-              </button>
-            );
-          })}
+                  {m}
+                </button>
+              );
+            })}
+          </div>
+          {payMethod === 'אחר' && (
+            <div className="mt-2">
+              <input
+                type="text"
+                value={customMethod}
+                onChange={e => setCustomMethod(e.target.value)}
+                placeholder="הקלידי אמצעי תשלום (PayPlus / Stripe / וכו')"
+                className="w-full px-3 h-10 text-[13px] rounded-lg border focus:outline-none focus:ring-2"
+                style={{ borderColor: '#E8DED2', color: '#2B1A10' }}
+              />
+              <p className="text-[10.5px] mt-1" style={{ color: '#8A735F' }}>
+                הערך יעבור מיפוי לפי הכללים הקיימים. אם לא נתמך — תוצג שגיאה ולא יופק מסמך.
+              </p>
+            </div>
+          )}
         </div>
 
-        {/* Payment method picker — only when needed */}
-        {needsPayment && (
-          <div className="mb-5">
-            <p className="text-[11px] uppercase tracking-wider font-semibold mb-2" style={{ color: '#8A735F', letterSpacing: '0.08em' }}>
-              אמצעי תשלום <span style={{ color: '#A8442D' }}>*</span>
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              {PAY_OPTIONS.map(m => {
-                const active = payMethod === m;
-                return (
-                  <button
-                    key={m}
-                    onClick={() => setPayMethod(m)}
-                    className="text-[13px] font-medium h-10 rounded-lg transition-colors border"
-                    style={{
-                      backgroundColor: active ? '#7A4A27' : '#FFFFFF',
-                      color: active ? '#FFFFFF' : '#2B1A10',
-                      borderColor: active ? '#7A4A27' : '#E8DED2',
-                    }}
-                  >
-                    {m}
-                  </button>
-                );
-              })}
-            </div>
-            {payMethod === 'אחר' && (
-              <div className="mt-2">
-                <input
-                  type="text"
-                  value={customMethod}
-                  onChange={e => setCustomMethod(e.target.value)}
-                  placeholder="הקלידי אמצעי תשלום (למשל: ביט / PayPlus / Stripe)"
-                  className="w-full px-3 h-10 text-[13px] rounded-lg border focus:outline-none focus:ring-2"
-                  style={{ borderColor: '#E8DED2', color: '#2B1A10' }}
-                />
-                <p className="text-[10.5px] mt-1" style={{ color: '#8A735F' }}>
-                  הערך יעבור מיפוי לפי הכללים הקיימים. אם לא נתמך — תוצג שגיאה.
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {willDuplicate && docType && (
+        {duplicate && (
           <div className="text-[11.5px] mb-4 px-3 py-2 rounded-lg" style={{ backgroundColor: '#FFF7ED', color: '#92602A', border: '1px solid #FCD9A8' }}>
-            ⚠ קיים כבר מסמך {DOC_TYPE_META[docType].title} להזמנה זו. הפקה נוספת תיצור כפילות (תידרש אישור נוסף).
+            ⚠ קיים כבר מסמך {title} להזמנה זו. הפקה נוספת תיצור כפילות (תידרש אישור נוסף).
           </div>
         )}
 
@@ -1952,7 +1966,7 @@ function CreateDocumentModal({
             className="px-5 h-10 text-[13px] font-semibold rounded-lg text-white transition-colors disabled:opacity-50"
             style={{ backgroundColor: '#7A4A27' }}
           >
-            {loading ? 'מפיק...' : docType ? `הפק ${DOC_TYPE_META[docType].title}` : 'הפק מסמך'}
+            {loading ? 'מפיק...' : `הפק ${title}`}
           </button>
         </div>
       </div>
