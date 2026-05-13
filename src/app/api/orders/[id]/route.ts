@@ -4,6 +4,11 @@ import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireA
 import { sendSatmarSummaryEmail } from '@/lib/satmar-email';
 import { recordStockMovement } from '@/lib/inventory-movements';
 import { AUTO_CREATE_MORNING_DOCUMENTS } from '@/lib/morning';
+import {
+  deductOrderInventory,
+  DEDUCT_INVENTORY_ON_ORDER_STATUS,
+  DEDUCT_INVENTORY_ON_PAYMENT_PAID,
+} from '@/lib/inventory-deduct';
 // deploy trigger
 
 export async function GET(_: NextRequest, { params }: { params: { id: string } }) {
@@ -138,13 +143,12 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // Deduct product inventory only on FIRST transition from "חדשה" → "בהכנה".
-  // Same guard for both finished products and package petit-fours below.
-  // Limitation: a manual revert to "חדשה" followed by another "בהכנה" will
-  // re-trigger this block (the guard only checks the immediate transition).
-  // Acceptable trade-off — fixing it properly needs a new boolean column or a
-  // movements table; out of scope for this slice.
-  if (body.סטטוס_הזמנה === 'בהכנה' && prevOrderStatus === 'חדשה') {
+  // ── LEGACY (gated off): order-status driven deduction ─────────────────
+  // Stock used to drop on the first חדשה→בהכנה transition. Owner moved the
+  // policy to "drop on payment received" (May 2026), so this whole branch
+  // runs only if DEDUCT_INVENTORY_ON_ORDER_STATUS is flipped back on. The
+  // code is kept rather than deleted so a policy reversal is one constant.
+  if (DEDUCT_INVENTORY_ON_ORDER_STATUS && body.סטטוס_הזמנה === 'בהכנה' && prevOrderStatus === 'חדשה') {
     // ── 1. Finished products (סוג_שורה = 'מוצר') ────────────────────────────
     const { data: items } = await supabase
       .from('מוצרים_בהזמנה')
@@ -264,6 +268,27 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     } else {
       console.log('[invoice] auto-create OFF — skipping tax_invoice on הושלמה. order:', params.id);
     }
+  }
+
+  // ── INVENTORY DEDUCTION on first transition to סטטוס_תשלום='שולם' ──────
+  // The active policy. Idempotency lives inside deductOrderInventory which
+  // checks תנועות_מלאי for any prior 'יציאה' linked to this order.
+  console.log('[inventory] checking payment status transition',
+    '| order id:', params.id,
+    '| previous payment status:', prevPaymentStatus,
+    '| new payment status:', body.סטטוס_תשלום ?? '(unchanged)');
+  if (
+    DEDUCT_INVENTORY_ON_PAYMENT_PAID
+    && body.סטטוס_תשלום === 'שולם'
+    && prevPaymentStatus !== 'שולם'
+    && orderType !== 'סאטמר'
+  ) {
+    console.log('[inventory] should deduct: true. order:', params.id);
+    await deductOrderInventory(supabase, params.id);
+  } else if (body.סטטוס_תשלום === 'שולם' && prevPaymentStatus === 'שולם') {
+    console.log('[inventory] should deduct: false — order was already שולם. skipping. order:', params.id);
+  } else if (body.סטטוס_תשלום === 'שולם' && orderType === 'סאטמר') {
+    console.log('[inventory] should deduct: false — סאטמר order, no inventory deduction. order:', params.id);
   }
 
   // קבלה / סאטמר: first time payment status → שולם. Same gating story.

@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { generateOrderNumber } from '@/lib/utils';
 import { sendOrderEmail, isInternalEmail, type OrderEmailData, type EmailContext } from '@/lib/email';
 import { sendAdminNewOrderAlert } from '@/lib/admin-alert-email';
+import { deductOrderInventory } from '@/lib/inventory-deduct';
 
 const PAID_STATUSES = new Set(['processing', 'completed']);
 
@@ -420,6 +421,17 @@ export async function POST(req: Request) {
         console.error('[wc-webhook] Order confirmation email failed:', err instanceof Error ? err.message : err);
       }
     })();
+
+    // Inventory deduction for orders that arrive already-paid. The webhook
+    // INSERTs סטטוס_תשלום='שולם' directly (no PATCH transition to hook on),
+    // so we trigger the helper here. Idempotent — if a previous webhook for
+    // the same order already deducted, the lookup against תנועות_מלאי will
+    // short-circuit. Skipped silently for unpaid orders (deduction will fire
+    // later when the operator marks them paid).
+    if (paymentStatus === 'שולם') {
+      console.log('[inventory] WC order arrived already-paid. order:', order.id);
+      await deductOrderInventory(supabase, order.id);
+    }
 
     // Owner-facing internal alert. Same template create-full uses; the
     // `source` + `newProducts` options drive the WC-specific banner and the

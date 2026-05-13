@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { sendSatmarSummaryEmail } from '@/lib/satmar-email';
 import { callMorning, AUTO_CREATE_MORNING_DOCUMENTS } from '@/lib/morning';
+import { deductOrderInventory } from '@/lib/inventory-deduct';
 
 // Dedicated endpoint to mark an order as paid.
 // Reads order + customer from DB only — never accepts amounts from the client.
@@ -67,6 +68,20 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
   } else {
     invoiceAction = 'manual_required';
     console.log('[mark-paid] auto-create OFF — סטטוס flipped, receipt requires manual issuance. order:', params.id);
+  }
+
+  // Inventory deduction triggered by the same status flip. Skipped for סאטמר
+  // and barter — neither paths inventories the same way as a regular sale.
+  // Idempotent: a second call is a no-op (checks תנועות_מלאי).
+  console.log('[inventory] checking payment status transition (mark-paid endpoint)',
+    '| order id:', params.id,
+    '| previous payment status:', o.סטטוס_תשלום,
+    '| new payment status: שולם');
+  if (!isSatmar && !isBarter) {
+    console.log('[inventory] should deduct: true. order:', params.id);
+    await deductOrderInventory(supabase, params.id);
+  } else {
+    console.log('[inventory] should deduct: false — סאטמר/בארטר order. order:', params.id);
   }
 
   return NextResponse.json({
