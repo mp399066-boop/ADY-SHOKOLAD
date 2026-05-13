@@ -163,6 +163,44 @@ function DeliveriesContent() {
   const [generatingToken, setGeneratingToken] = useState<string | null>(null);
   // Popup-blocked fallback: when window.open() returns null, surface a manual button
   const [blockedWhatsApp, setBlockedWhatsApp] = useState<string | null>(null);
+  // Delete-confirmation modal state. Holds the delivery being deleted; null = closed.
+  const [deletingDelivery, setDeletingDelivery] = useState<DeliveryWithCourier | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  // Delete a single delivery row. The DELETE endpoint is admin-only and only
+  // touches the משלוחים table — the order, customer, invoices, and inventory
+  // ledger are explicitly NOT touched (see route.ts). Synthetic placeholder
+  // rows (no underlying DB record) are removed from local state without an
+  // API call.
+  const confirmDeleteDelivery = async () => {
+    if (!deletingDelivery) return;
+    const target = deletingDelivery;
+
+    // Synthetic row — nothing to delete in the DB. Just hide it locally.
+    if (target._noRecord || target.id.startsWith('no-record-')) {
+      setDeliveries(prev => prev.filter(d => d.id !== target.id));
+      setDeletingDelivery(null);
+      toast.success('המשלוח הוסר מהתצוגה');
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/deliveries/${target.id}`, { method: 'DELETE' });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(json.error || 'לא ניתן למחוק את המשלוח. נסי שוב.');
+        return;
+      }
+      setDeliveries(prev => prev.filter(d => d.id !== target.id));
+      setDeletingDelivery(null);
+      toast.success('המשלוח נמחק בהצלחה');
+    } catch {
+      toast.error('לא ניתן למחוק את המשלוח. נסי שוב.');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   // Load active couriers once
   useEffect(() => {
@@ -608,6 +646,20 @@ function DeliveriesContent() {
                         ✉️
                       </button>
                     )}
+
+                    {/* Delete delivery — last in the column so it doesn't compete
+                        with the primary actions. Deletes the משלוחים row only;
+                        the linked order is untouched. Confirmed in a modal. */}
+                    <button
+                      onClick={() => setDeletingDelivery(d)}
+                      title="מחק משלוח"
+                      aria-label="מחק משלוח"
+                      className="text-xs px-2 py-1.5 rounded-lg font-medium transition-all whitespace-nowrap border flex items-center gap-1"
+                      style={{ backgroundColor: '#FFFFFF', color: '#9D4B4A', borderColor: '#E4C2BE' }}
+                    >
+                      <IconTrash className="w-3.5 h-3.5" />
+                      מחק
+                    </button>
                   </div>
                 </div>
               </Card>
@@ -615,6 +667,45 @@ function DeliveriesContent() {
           })}
         </div>
       )}
+
+      {/* Delete-delivery confirmation. Stronger warning copy when the row was
+          already 'נמסר' (the operator is unwinding a completed delivery). */}
+      <Modal
+        open={!!deletingDelivery}
+        onClose={() => { if (!deleting) setDeletingDelivery(null); }}
+        title="מחיקת משלוח"
+      >
+        {deletingDelivery && (
+          <div className="space-y-4">
+            {deletingDelivery.סטטוס_משלוח === 'נמסר' ? (
+              <p className="text-sm" style={{ color: '#9D4B4A', fontWeight: 600 }}>
+                המשלוח כבר סומן כנמסר. למחוק בכל זאת?
+              </p>
+            ) : (
+              <p className="text-sm" style={{ color: '#1E120A', fontWeight: 600 }}>
+                למחוק את המשלוח?
+              </p>
+            )}
+            <p className="text-xs" style={{ color: '#6B4A2D' }}>
+              הפעולה תמחק את רשומת המשלוח בלבד. ההזמנה עצמה לא תימחק.
+              {deletingDelivery.delivery_token && ' הקישור הציבורי שנשלח לשליח כבר לא יעבוד.'}
+            </p>
+            <div className="flex gap-3 justify-end">
+              <Button variant="outline" onClick={() => setDeletingDelivery(null)} disabled={deleting}>
+                ביטול
+              </Button>
+              <button
+                onClick={confirmDeleteDelivery}
+                disabled={deleting}
+                className="px-4 h-10 text-sm font-semibold rounded-xl text-white transition-colors disabled:opacity-60"
+                style={{ backgroundColor: '#9D4B4A' }}
+              >
+                {deleting ? 'מוחק...' : 'מחק משלוח'}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* Mark delivered modal */}
       <Modal open={!!placedDelivery} onClose={() => setPlacedDelivery(null)} title="סמן משלוח כנמסר">
@@ -910,6 +1001,7 @@ type ArchiveRow = {
   עיר: string | null;
   delivered_at: string | null;
   סטטוס_משלוח: string;
+  delivery_token: string | null;
   הזמנות?: {
     id: string;
     מספר_הזמנה: string;
@@ -923,6 +1015,10 @@ type ArchiveRow = {
 function ArchiveContent() {
   const [rows, setRows] = useState<ArchiveRow[]>([]);
   const [loading, setLoading] = useState(true);
+  // Delete-confirm state — same shape as the active tab. Archive rows are
+  // always 'נמסר' so the modal always uses the stronger wording.
+  const [deletingRow, setDeletingRow] = useState<ArchiveRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     fetch('/api/deliveries?mode=archive')
@@ -930,6 +1026,27 @@ function ArchiveContent() {
       .then(({ data }) => setRows(data || []))
       .finally(() => setLoading(false));
   }, []);
+
+  const confirmDelete = async () => {
+    if (!deletingRow) return;
+    const target = deletingRow;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/deliveries/${target.id}`, { method: 'DELETE' });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(json.error || 'לא ניתן למחוק את המשלוח. נסי שוב.');
+        return;
+      }
+      setRows(prev => prev.filter(r => r.id !== target.id));
+      setDeletingRow(null);
+      toast.success('המשלוח נמחק בהצלחה');
+    } catch {
+      toast.error('לא ניתן למחוק את המשלוח. נסי שוב.');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   if (loading) return <PageLoading />;
   if (rows.length === 0) return <EmptyState title="ארכיון ריק" description="אין משלוחים שסומנו כנמסרו עדיין" />;
@@ -985,10 +1102,53 @@ function ArchiveContent() {
                   </div>
                 )}
               </div>
+
+              {/* Delete archived delivery — single right-side action */}
+              <button
+                onClick={() => setDeletingRow(d)}
+                title="מחק משלוח"
+                aria-label="מחק משלוח"
+                className="text-xs px-2 py-1.5 rounded-lg font-medium transition-all whitespace-nowrap border flex items-center gap-1 self-start"
+                style={{ backgroundColor: '#FFFFFF', color: '#9D4B4A', borderColor: '#E4C2BE' }}
+              >
+                <IconTrash className="w-3.5 h-3.5" />
+                מחק
+              </button>
             </div>
           </Card>
         );
       })}
+
+      <Modal
+        open={!!deletingRow}
+        onClose={() => { if (!deleting) setDeletingRow(null); }}
+        title="מחיקת משלוח מהארכיון"
+      >
+        {deletingRow && (
+          <div className="space-y-4">
+            <p className="text-sm" style={{ color: '#9D4B4A', fontWeight: 600 }}>
+              המשלוח כבר סומן כנמסר. למחוק בכל זאת?
+            </p>
+            <p className="text-xs" style={{ color: '#6B4A2D' }}>
+              הפעולה תמחק את רשומת המשלוח בלבד. ההזמנה עצמה לא תימחק.
+              {deletingRow.delivery_token && ' הקישור הציבורי שנשלח לשליח כבר לא יעבוד.'}
+            </p>
+            <div className="flex gap-3 justify-end">
+              <Button variant="outline" onClick={() => setDeletingRow(null)} disabled={deleting}>
+                ביטול
+              </Button>
+              <button
+                onClick={confirmDelete}
+                disabled={deleting}
+                className="px-4 h-10 text-sm font-semibold rounded-xl text-white transition-colors disabled:opacity-60"
+                style={{ backgroundColor: '#9D4B4A' }}
+              >
+                {deleting ? 'מוחק...' : 'מחק משלוח'}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

@@ -258,3 +258,78 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     was_created: wasCreated,
   });
 }
+
+// ─── DELETE ───────────────────────────────────────────────────────────────────
+// Removes a delivery row only. Never touches:
+//   - הזמנות (the linked order stays exactly as it was)
+//   - לקוחות (customer untouched)
+//   - חשבוניות (invoices/receipts untouched)
+//   - תנועות_מלאי (inventory ledger untouched)
+//
+// After delete, the public /delivery-update/[token] route automatically
+// returns a not-found / friendly message (the row is gone, the token GET
+// returns 404 and the page renders the "המשלוח לא נמצא או שכבר אינו פעיל"
+// state — no extra invalidation step required).
+//
+// Auth: same gate as PATCH (requireManagementUser). Public callers cannot
+// hit this — the public token route only supports GET / POST(נמסר).
+//
+// Synthetic ids (no-record-{orderId}) are rejected: there's no DB row to
+// delete; the dashboard should drop them from local state without calling
+// this endpoint at all.
+export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+  const auth = await requireManagementUser();
+  if (!auth) return unauthorizedResponse();
+
+  if (!params.id || params.id.startsWith('no-record-')) {
+    console.warn('[delivery DELETE] refused — synthetic / missing id:', params.id);
+    return NextResponse.json(
+      { error: 'אין רשומת משלוח למחיקה.' },
+      { status: 400 },
+    );
+  }
+
+  const supabase = createAdminClient();
+
+  // Look up first so we can return a useful response (and a clear log) if
+  // the row was already deleted or never existed.
+  const { data: existing, error: fetchErr } = await supabase
+    .from('משלוחים')
+    .select('id, סטטוס_משלוח, הזמנה_id')
+    .eq('id', params.id)
+    .maybeSingle();
+
+  if (fetchErr) {
+    console.error('[delivery DELETE] fetch failed:', fetchErr.message);
+    return NextResponse.json({ error: fetchErr.message }, { status: 500 });
+  }
+  if (!existing) {
+    return NextResponse.json({ error: 'המשלוח לא נמצא' }, { status: 404 });
+  }
+
+  console.log('[delivery DELETE] deleting delivery row',
+    '| id:', existing.id,
+    '| order id (kept untouched):', existing.הזמנה_id,
+    '| status was:', existing.סטטוס_משלוח);
+
+  const { error: deleteErr } = await supabase
+    .from('משלוחים')
+    .delete()
+    .eq('id', params.id);
+
+  if (deleteErr) {
+    console.error('[delivery DELETE] delete failed:', deleteErr.message);
+    // Surface FK / constraint failures verbatim so the operator (and a future
+    // reader of the logs) can see exactly what blocked the delete. Owner
+    // policy: do not run a migration to relax a constraint without approval.
+    const isFK = deleteErr.message.includes('foreign key') || deleteErr.message.includes('violates');
+    return NextResponse.json(
+      { error: isFK
+        ? 'לא ניתן למחוק — קיים קישור פעיל למשלוח. ייתכן שצריך migration.'
+        : `לא ניתן למחוק את המשלוח: ${deleteErr.message}` },
+      { status: isFK ? 409 : 500 },
+    );
+  }
+
+  return NextResponse.json({ ok: true, deleted_id: params.id });
+}

@@ -68,8 +68,8 @@ export default function DeliveryUpdatePage() {
         {pageStatus === 'invalid' && (
           <div style={{ textAlign: 'center', padding: '40px 24px', background: '#FEF2F2', borderRadius: '20px', border: '1px solid #FECACA' }}>
             <div style={{ fontSize: '32px', marginBottom: '12px' }}>⚠️</div>
-            <div style={{ fontWeight: 700, color: '#991B1B', marginBottom: '8px' }}>קישור לא תקין</div>
-            <div style={{ fontSize: '14px', color: '#B91C1C' }}>הקישור אינו תקין או שפג תוקפו</div>
+            <div style={{ fontWeight: 700, color: '#991B1B', marginBottom: '8px' }}>המשלוח לא נמצא או שכבר אינו פעיל</div>
+            <div style={{ fontSize: '14px', color: '#B91C1C' }}>הקישור אינו תקין, פג תוקפו, או שהמשלוח נמחק</div>
           </div>
         )}
 
