@@ -79,6 +79,12 @@ function canonicalizePaymentMethod(raw: string): string | null {
 const bodySchema = z.object({
   documentType: z.enum(['tax_invoice', 'receipt', 'invoice_receipt']),
   paymentMethod: z.string().optional(),
+  // Provenance marker. The PaymentMethodModal sends `'manual_modal'` so
+  // we can prove (later in the chain + at the EF) that the method was
+  // typed/picked by a human in this session — and isn't a leftover from
+  // order.אופן_תשלום, WC, or any other non-explicit source. PAYMENT_DOCS
+  // require this literal exactly; missing/wrong value = 400.
+  paymentMethodSource: z.literal('manual_modal').optional(),
   force: z.boolean().optional(),
 });
 
@@ -95,8 +101,25 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({ error: parsed.error.errors[0]?.message || 'נתונים לא תקינים' }, { status: 400 });
   }
 
-  const { documentType, paymentMethod, force } = parsed.data;
+  const { documentType, paymentMethod, paymentMethodSource, force } = parsed.data;
   const orderId = params.id;
+
+  // ── PROVENANCE GATE ────────────────────────────────────────────────────
+  // PAYMENT_DOCS may only be issued when the request carries the explicit
+  // `paymentMethodSource: 'manual_modal'` marker. Anything else (an old
+  // browser still sending the pre-fix body, a custom client, or a
+  // re-played webhook) is refused before we touch Morning.
+  if (PAYMENT_DOCS.has(documentType) && paymentMethodSource !== 'manual_modal') {
+    console.error('[PAYMENT API] REFUSE — PAYMENT_DOC issuance without paymentMethodSource=manual_modal',
+      '| documentType:', documentType,
+      '| received source:', JSON.stringify(paymentMethodSource ?? null));
+    return NextResponse.json(
+      {
+        error: 'הפקת קבלה / חשבונית מס קבלה מותרת רק דרך מודאל ההפקה הידני. רעני את הדף ונסי שוב.',
+      },
+      { status: 400 },
+    );
+  }
 
   // Validate the payment-method requirement before we wake up Morning.
   let canonicalMethod: string | null = null;
@@ -122,16 +145,20 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     console.log('[manual-document] paymentMethod ignored for', documentType, '— tax invoice has no payment section');
   }
 
-  console.log('[manual-document] order id:', orderId);
-  console.log('[manual-document] requested document type:', documentType);
-  // documentType passes through 1:1 to the Edge Function — no remapping —
-  // but log it explicitly so any future translation layer is auditable.
-  console.log('[manual-document] normalized document type:', documentType);
-  console.log('[manual-document] morning document type:', { tax_invoice: 305, receipt: 400, invoice_receipt: 320 }[documentType]);
-  console.log('[manual-document] requires payment:', PAYMENT_DOCS.has(documentType));
-  console.log('[manual-document] raw payment method (from UI):', JSON.stringify(paymentMethod ?? null));
-  console.log('[manual-document] canonicalized method (sent to Morning):', JSON.stringify(canonicalMethod));
-  console.log('[manual-document] force:', !!force);
+  // ── HARD TRACE ─────────────────────────────────────────────────────────
+  // Every PAYMENT_DOC issuance writes this block in one place so it's easy
+  // to grep in Vercel logs. If a doc came out wrong, the trace makes the
+  // who-sent-what unambiguous.
+  console.log('[PAYMENT API] route: /api/orders/[id]/create-document');
+  console.log('[PAYMENT API] order id:', orderId);
+  console.log('[PAYMENT API] documentType:', documentType);
+  console.log('[PAYMENT API] morning document type code:', { tax_invoice: 305, receipt: 400, invoice_receipt: 320 }[documentType]);
+  console.log('[PAYMENT API] requires payment block:', PAYMENT_DOCS.has(documentType));
+  console.log('[PAYMENT API] paymentMethod from body:', JSON.stringify(paymentMethod ?? null));
+  console.log('[PAYMENT API] paymentMethodSource:', JSON.stringify(paymentMethodSource ?? null));
+  console.log('[PAYMENT API] canonical method:', JSON.stringify(canonicalMethod));
+  console.log('[PAYMENT API] forwarding to EF — payment_method:', JSON.stringify(canonicalMethod), '| payment_method_source:', JSON.stringify(paymentMethodSource ?? null));
+  console.log('[PAYMENT API] force:', !!force);
   // Defensive belt-and-suspenders. The schema + canonicalization above
   // already guarantees this for PAYMENT_DOCS, but a final assertion makes
   // it impossible to ever forward a PAYMENT_DOC without a method — even if
@@ -166,6 +193,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         table: 'הזמנות',
         document_type: documentType,
         payment_method: canonicalMethod ?? undefined,
+        // Forward the provenance marker so the EF can re-validate. PAYMENT_DOCS
+        // without this exact value will be rejected at the EF layer too —
+        // belt-and-suspenders against a future caller that bypasses this route.
+        payment_method_source: paymentMethodSource ?? undefined,
         force: !!force,
         record: { הזמנה_id: orderId },
         old_record: {},

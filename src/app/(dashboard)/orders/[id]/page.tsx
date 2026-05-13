@@ -262,11 +262,21 @@ export default function OrderDetailPage() {
   ): Promise<boolean> => {
     if (!order) return false;
     setIssuingDocType(documentType);
+    // Hard log so we can prove what the UI sent if a document later
+    // appears with the wrong method. This runs in the browser console;
+    // pair it with the [PAYMENT API] / [PAYMENT EF] traces server-side.
+    console.log('[PAYMENT UI] documentType:', documentType,
+      '| selected paymentMethod:', JSON.stringify(paymentMethod ?? null),
+      '| source: manual_modal',
+      '| order id:', order.id);
     try {
       const res = await fetch(`/api/orders/${order.id}/create-document`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ documentType, paymentMethod, force }),
+        // PAYMENT_DOCS (receipt + invoice_receipt) require the explicit
+        // `manual_modal` source. tax_invoice doesn't need it but we send
+        // it anyway for shape consistency — the API ignores it on that type.
+        body: JSON.stringify({ documentType, paymentMethod, paymentMethodSource: 'manual_modal', force }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -2106,6 +2116,16 @@ function PaymentMethodModal({
             </div>
           )}
         </div>
+
+        {/* Confirmation strip — visible only after a method is picked.
+            Owner-mandated: the user must see the exact method that will go
+            on the document before clicking "הפק". If this line shows
+            something different from what was picked, do NOT issue. */}
+        {effectiveMethod && (
+          <div className="text-[12px] mb-3 px-3 py-2.5 rounded-lg" style={{ backgroundColor: '#F1F8EE', color: '#2F5C2C', border: '1px solid #B8D5A8' }}>
+            ✓ המסמך יופק עם אמצעי תשלום: <strong>{effectiveMethod}</strong>
+          </div>
+        )}
 
         {duplicate && (
           <div className="text-[11.5px] mb-4 px-3 py-2 rounded-lg" style={{ backgroundColor: '#FFF7ED', color: '#92602A', border: '1px solid #FCD9A8' }}>

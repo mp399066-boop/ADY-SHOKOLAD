@@ -104,12 +104,17 @@ serve(async (req: Request) => {
       typeof payload.payment_method === 'string' && payload.payment_method.trim()
         ? payload.payment_method.trim()
         : null;
+    const paymentMethodSource: string | null =
+      typeof payload.payment_method_source === 'string' && payload.payment_method_source.trim()
+        ? payload.payment_method_source.trim()
+        : null;
     const force: boolean = payload.force === true;
 
-    console.log('[morning] Received — document_type:', documentType,
-      '| type:', payload.type,
-      '| payment_method_override:', paymentMethodOverride ?? 'none',
-      '| force:', force);
+    console.log('[PAYMENT EF] document_type:', documentType);
+    console.log('[PAYMENT EF] payload.type:', payload.type);
+    console.log('[PAYMENT EF] received payment_method:', JSON.stringify(paymentMethodOverride));
+    console.log('[PAYMENT EF] received payment_method_source:', JSON.stringify(paymentMethodSource));
+    console.log('[PAYMENT EF] force:', force);
 
     if (payload.type !== 'UPDATE') {
       return new Response(JSON.stringify({ success: true, skipped: true, reason: 'not UPDATE' }), { status: 200 });
@@ -246,11 +251,29 @@ serve(async (req: Request) => {
     // pass `payment_method` for a PAYMENT_DOC now gets a hard 400 instead of
     // a silently mislabelled receipt.
     if (PAYMENT_DOCS.has(documentType)) {
-      if (!paymentMethodOverride) {
-        console.error('[morning] PAYMENT_DOC issuance with no payment_method override',
+      // ── PROVENANCE GATE ───────────────────────────────────────────────
+      // The only legal source for a PAYMENT_DOC's payment method is the
+      // manual issuance modal. Any other path (an old browser, a re-played
+      // webhook, a misconfigured caller) is rejected before we touch
+      // Morning. This is the single most important guard in the whole
+      // chain — owner-mandated "fail loud rather than silently mis-label".
+      if (paymentMethodSource !== 'manual_modal') {
+        console.error('[PAYMENT EF] REFUSE — PAYMENT_DOC issuance without payment_method_source=manual_modal',
           '| documentType:', documentType,
-          '| order.אופן_תשלום (NOT used):', order.אופן_תשלום,
-          '— aborting');
+          '| received source:', JSON.stringify(paymentMethodSource),
+          '| received payment_method (NOT used):', JSON.stringify(paymentMethodOverride),
+          '| order.אופן_תשלום (NOT used):', order.אופן_תשלום);
+        return new Response(
+          JSON.stringify({
+            error: 'הפקת המסמך נחסמה: לא הוכח שאמצעי התשלום נבחר במודאל ההפקה. רעני את הדף ונסי שוב.',
+          }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      if (!paymentMethodOverride) {
+        console.error('[PAYMENT EF] REFUSE — PAYMENT_DOC issuance with no payment_method override',
+          '| documentType:', documentType,
+          '| order.אופן_תשלום (NOT used):', order.אופן_תשלום);
         return new Response(
           JSON.stringify({
             error: `המסמך מסוג ${documentType} דורש אמצעי תשלום מפורש מהקליינט. אסור להפיק עם ברירת מחדל.`,
@@ -261,11 +284,10 @@ serve(async (req: Request) => {
       const paymentMethod = paymentMethodOverride;
       const builder = PAYMENT_BUILDERS[paymentMethod];
       if (!builder) {
-        console.error('[morning] Cannot build payment block — payment method not in PAYMENT_BUILDERS:',
+        console.error('[PAYMENT EF] REFUSE — payment method not in PAYMENT_BUILDERS:',
           JSON.stringify(paymentMethod),
           '| documentType:', documentType,
-          '| supported:', Object.keys(PAYMENT_BUILDERS).join(', '),
-          '— aborting issuance');
+          '| supported:', Object.keys(PAYMENT_BUILDERS).join(', '));
         return new Response(
           JSON.stringify({
             error: `אמצעי התשלום "${paymentMethod}" לא ממופה למורנינג. יש לבחור אמצעי תשלום אחר או לעדכן את המיפוי.`,
@@ -275,7 +297,9 @@ serve(async (req: Request) => {
       }
       const paymentObj = builder(paymentAmount, new Date().toISOString().slice(0, 10));
       documentBody.payment = [paymentObj];
-      console.log('[morning] payment block built — method:', paymentMethod, '| morning type:', paymentObj.type);
+      console.log('[PAYMENT EF] selected builder for method:', paymentMethod);
+      console.log('[PAYMENT EF] morning payment type sent to API:', paymentObj.type);
+      console.log('[PAYMENT EF] full payment object:', JSON.stringify(paymentObj));
     }
 
     console.log('[morning] Calling Morning API — docType:', morningDocType, '| order:', order.מספר_הזמנה);
