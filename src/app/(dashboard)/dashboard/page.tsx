@@ -18,6 +18,19 @@ import { Modal } from '@/components/ui/Modal';
 import { formatCurrency } from '@/lib/utils';
 import type { DashboardStats, Order } from '@/types/database';
 
+// New tab-based dashboard split (May 2026 redesign). The page below still
+// orchestrates state + handlers + modals; the panel files render the visible
+// content for each tab.
+import type { DashboardTab as TabId } from './components/types';
+import { DashboardTabs } from './components/DashboardTabs';
+import { DashboardSidePanel } from './components/DashboardSidePanel';
+import { OverviewPanel } from './components/OverviewPanel';
+import { TodayPanel } from './components/TodayPanel';
+import { OrdersPanel } from './components/OrdersPanel';
+import { DeliveriesPanel } from './components/DeliveriesPanel';
+import { PaymentsPanel } from './components/PaymentsPanel';
+import { InventoryPanel } from './components/InventoryPanel';
+
 // ─── Types ────────────────────────────────────────────────────────────────
 
 type OrderStatus = 'חדשה' | 'בהכנה' | 'מוכנה למשלוח' | 'נשלחה' | 'הושלמה בהצלחה' | 'בוטלה' | 'טיוטה';
@@ -254,6 +267,9 @@ export default function DashboardPage() {
 
   const [mode, setMode] = useState<Mode>('work');
   const [workView, setWorkView] = useState<WorkView>('table');
+  // Active tab in work mode. Persisted to localStorage so the user resumes
+  // on the same tab they left.
+  const [tab, setTab] = useState<TabId>('overview');
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [todayOrders, setTodayOrders] = useState<TodayOrder[]>([]);
   const [todayDeliveries, setTodayDeliveries] = useState<Delivery[]>([]);
@@ -301,6 +317,16 @@ export default function DashboardPage() {
   useEffect(() => {
     try { window.localStorage.setItem('dashboard-work-view', workView); } catch { /* no-op */ }
   }, [workView]);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const t = window.localStorage.getItem('dashboard-tab');
+    if (t === 'overview' || t === 'today' || t === 'orders' || t === 'deliveries' || t === 'payments' || t === 'inventory') {
+      setTab(t);
+    }
+  }, []);
+  useEffect(() => {
+    try { window.localStorage.setItem('dashboard-tab', tab); } catch { /* no-op */ }
+  }, [tab]);
 
   // ─── Data fetching ──────────────────────────────────────────────────────
 
@@ -665,100 +691,124 @@ export default function DashboardPage() {
         />
       </section>
 
-      {/* ════════ WORK MODE — Command Center layout ═══════════════════════ */}
-      {mode === 'work' && (
-        <>
-          <section ref={ordersRef} className="grid grid-cols-1 lg:grid-cols-3 gap-5 scroll-mt-4">
+      {/* ════════ WORK MODE — tab-based Command Center ═══════════════════ */}
+      {mode === 'work' && (() => {
+        // Counts shown in the tab labels — small numeric badges next to each
+        // tab name. Only counts items that need attention, not totals.
+        const tabCounts: Partial<Record<TabId, number>> = {
+          today:      liveOrders.filter(o => o.תאריך_אספקה && o.תאריך_אספקה === todayIsraelISO()).length,
+          orders:     liveOrders.length,
+          deliveries: todayDeliveries.filter(d => d.סטטוס_משלוח !== 'נמסר').length,
+          payments:   liveOrders.filter(o => o.סטטוס_תשלום !== 'שולם' && o.סטטוס_תשלום !== 'בארטר').length,
+          inventory:  stockTotal,
+        };
 
-            {/* ── Main orders surface (col-span-2) ─────────────────────── */}
-            <div className="lg:col-span-2 space-y-3">
+        // Bundle data + handlers once so each panel gets a uniform set of
+        // props. The panels destructure only what they use.
+        const data = { stats, todayOrders, liveOrders, todayDeliveries, stock, stockTotal, expectedRevenue };
+        const handlers = {
+          updatingId,
+          onAdvanceOrder:  (o: TodayOrder) => onPickOrderStatus(o, getNextOrderStatus(o)!),
+          onMarkPaid:      (o: TodayOrder) => setMarkPaidOrder(o),
+          onOpenOrder:     (o: TodayOrder) => router.push(`/orders/${o.id}`),
+          onMoreActions:   (o: TodayOrder) => setMoreActionsOrder(o),
+          onPatchDelivery: (d: Delivery, next: 'נאסף' | 'נמסר') => patchDelivery(d.id, next, d.סטטוס_משלוח),
+          onOpenDelivery:  (d: Delivery) => d.הזמנות?.id && router.push(`/orders/${d.הזמנות.id}`),
+        };
 
-              {/* Section header — title + view toggle (table/flow) */}
-              <div className="flex items-end justify-between gap-3 flex-wrap">
-                <div className="flex items-baseline gap-2">
-                  <h2 className="text-[15px] font-bold tracking-tight" style={{ color: C.text }}>הזמנות לטיפול היום</h2>
-                  <span className="text-[10px] font-semibold tabular-nums px-1.5 py-0.5 rounded-md" style={{ backgroundColor: C.brandSoft, color: C.brand }}>
-                    {visibleOrders.length}
-                  </span>
-                </div>
-                <WorkViewToggle view={workView} onChange={setWorkView} />
+        // Quick actions for the side panel — they jump to a specific tab so
+        // the user lands directly on the relevant worklist.
+        const sideJumps = {
+          onJumpUnpaid:     () => setTab('payments'),
+          onJumpDeliveries: () => setTab('deliveries'),
+          onJumpInventory:  () => setTab('inventory'),
+          onJumpUrgent:     () => { setFilterFromChip('urgent'); setTab('orders'); },
+        };
+
+        return (
+          <>
+            <DashboardTabs active={tab} counts={tabCounts} onChange={setTab} />
+
+            <section className="grid grid-cols-1 lg:grid-cols-4 gap-5">
+              {/* Main panel area (3/4) */}
+              <div className="lg:col-span-3 min-w-0">
+                {tab === 'overview' && (
+                  <OverviewPanel
+                    {...data}
+                    {...handlers}
+                    onJumpInventory={sideJumps.onJumpInventory}
+                  />
+                )}
+                {tab === 'today' && (
+                  <TodayPanel {...data} {...handlers} />
+                )}
+                {tab === 'orders' && (
+                  <OrdersPanel
+                    visibleCount={visibleOrders.length}
+                    empty={visibleOrders.length === 0}
+                    emptyText={filter === 'all' ? 'אין הזמנות פעילות' : 'אין התאמות לסינון הנוכחי'}
+                    filterChips={
+                      <div className="flex items-end justify-between gap-3 flex-wrap">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <FilterChip label="הכל"             count={filterCounts.all}         active={filter === 'all'}         onClick={() => setFilterFromChip('all')} />
+                          <FilterChip label="להתחיל הכנה"     count={filterCounts.start}       active={filter === 'start'}       onClick={() => setFilterFromChip('start')}       tone="amber" />
+                          <FilterChip label="לסמן מוכנות"     count={filterCounts.mark_ready}  active={filter === 'mark_ready'}  onClick={() => setFilterFromChip('mark_ready')}  tone="amber" />
+                          <FilterChip label="מוכנות לאספקה"   count={filterCounts.ready_to_go} active={filter === 'ready_to_go'} onClick={() => setFilterFromChip('ready_to_go')} />
+                          <FilterChip label="ממתינות לתשלום"  count={filterCounts.unpaid}      active={filter === 'unpaid'}      onClick={() => setFilterFromChip('unpaid')}      tone="amber" />
+                          <FilterChip label="דחופות"          count={filterCounts.urgent}      active={filter === 'urgent'}      onClick={() => setFilterFromChip('urgent')}      tone="red" />
+                        </div>
+                        <WorkViewToggle view={workView} onChange={setWorkView} />
+                      </div>
+                    }
+                    table={
+                      workView === 'table' ? (
+                        <OrdersWorkTable
+                          orders={visibleOrders}
+                          updatingId={updatingId}
+                          onAdvance={handlers.onAdvanceOrder}
+                          onMarkPaid={handlers.onMarkPaid}
+                          onOpen={handlers.onOpenOrder}
+                          onMoreActions={handlers.onMoreActions}
+                        />
+                      ) : (
+                        <KanbanBoard
+                          orders={visibleOrders}
+                          updatingId={updatingId}
+                          onAdvance={handlers.onAdvanceOrder}
+                          onMarkPaid={handlers.onMarkPaid}
+                          onOpen={handlers.onOpenOrder}
+                          onMoreActions={handlers.onMoreActions}
+                        />
+                      )
+                    }
+                  />
+                )}
+                {tab === 'deliveries' && (
+                  <DeliveriesPanel
+                    deliveries={todayDeliveries}
+                    updatingId={updatingId}
+                    onPatchDelivery={handlers.onPatchDelivery}
+                    onOpenDelivery={handlers.onOpenDelivery}
+                  />
+                )}
+                {tab === 'payments' && (
+                  <PaymentsPanel
+                    orders={liveOrders}
+                    onMarkPaid={handlers.onMarkPaid}
+                    onOpenOrder={handlers.onOpenOrder}
+                  />
+                )}
+                {tab === 'inventory' && (
+                  <InventoryPanel stock={stock} total={stockTotal} />
+                )}
               </div>
 
-              {/* Filter chips — same data, refined spacing */}
-              <div className="flex flex-wrap items-center gap-1.5">
-                <FilterChip label="הכל"             count={filterCounts.all}         active={filter === 'all'}         onClick={() => setFilterFromChip('all')} />
-                <FilterChip label="להתחיל הכנה"     count={filterCounts.start}       active={filter === 'start'}       onClick={() => setFilterFromChip('start')}       tone="amber" />
-                <FilterChip label="לסמן מוכנות"     count={filterCounts.mark_ready}  active={filter === 'mark_ready'}  onClick={() => setFilterFromChip('mark_ready')}  tone="amber" />
-                <FilterChip label="מוכנות לאספקה"   count={filterCounts.ready_to_go} active={filter === 'ready_to_go'} onClick={() => setFilterFromChip('ready_to_go')} />
-                <FilterChip label="ממתינות לתשלום"  count={filterCounts.unpaid}      active={filter === 'unpaid'}      onClick={() => setFilterFromChip('unpaid')}      tone="amber" />
-                <FilterChip label="דחופות"          count={filterCounts.urgent}      active={filter === 'urgent'}      onClick={() => setFilterFromChip('urgent')}      tone="red" />
-              </div>
-
-              {/* Orders surface — table (default) or Kanban (sub-view) */}
-              {visibleOrders.length === 0 ? (
-                <EmptyInline
-                  icon="check"
-                  title={filter === 'all' ? 'אין הזמנות פעילות להיום' : 'אין התאמות לסינון הנוכחי'}
-                  hint={filter === 'all' ? 'צפה בכל ההזמנות' : 'נקי את הסינון'}
-                  hintHref={filter === 'all' ? '/orders' : undefined}
-                  hintOnClick={filter !== 'all' ? () => setFilter('all') : undefined}
-                />
-              ) : workView === 'table' ? (
-                <OrdersWorkTable
-                  orders={visibleOrders}
-                  updatingId={updatingId}
-                  onAdvance={(o) => onPickOrderStatus(o, getNextOrderStatus(o)!)}
-                  onMarkPaid={(o) => setMarkPaidOrder(o)}
-                  onOpen={(o) => router.push(`/orders/${o.id}`)}
-                  onMoreActions={(o) => setMoreActionsOrder(o)}
-                />
-              ) : (
-                <KanbanBoard
-                  orders={visibleOrders}
-                  updatingId={updatingId}
-                  onAdvance={(o) => onPickOrderStatus(o, getNextOrderStatus(o)!)}
-                  onMarkPaid={(o) => setMarkPaidOrder(o)}
-                  onOpen={(o) => router.push(`/orders/${o.id}`)}
-                  onMoreActions={(o) => setMoreActionsOrder(o)}
-                />
-              )}
-            </div>
-
-            {/* ── AttentionPanel (col-span-1) ──────────────────────────── */}
-            <AttentionPanel
-              stats={stats}
-              liveOrders={liveOrders}
-              todayDeliveries={todayDeliveries}
-              stockTotal={stockTotal}
-              onJumpUnpaid={() => onKpiClick('unpaid')}
-              onJumpDeliveries={() => onKpiClick('deliveries')}
-              onJumpInventory={() => onKpiClick('inventory')}
-              onJumpUrgent={() => { setFilterFromChip('urgent'); ordersRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}
-            />
-          </section>
-
-          {/* ════════ BOTTOM PANELS — 3 in a row ═══════════════════════════ */}
-          <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <PanelDeliveries
-              innerRef={deliveriesRef}
-              deliveries={todayDeliveries}
-              updatingId={updatingId}
-              onPrimary={(d, next) => patchDelivery(d.id, next, d.סטטוס_משלוח)}
-              onOpen={(d) => d.הזמנות?.id && router.push(`/orders/${d.הזמנות.id}`)}
-            />
-            <PanelStock
-              innerRef={inventoryRef}
-              stock={stock}
-              total={stockTotal}
-              expanded={activeKpi === 'inventory'}
-            />
-            <PanelPayments
-              orders={liveOrders}
-              onMarkPaid={(o) => setMarkPaidOrder(o)}
-            />
-          </section>
-        </>
-      )}
+              {/* Side panel (1/4) — same across all tabs */}
+              <DashboardSidePanel {...data} {...sideJumps} />
+            </section>
+          </>
+        );
+      })()}
 
       {/* ════════ MANAGEMENT MODE — classic 2/3 + 1/3 split ════════════════ */}
       {mode === 'management' && (
