@@ -58,7 +58,7 @@ export function PaymentStatusControl({
 
   return (
     <div
-      className="inline-flex items-start max-w-full overflow-x-auto pb-0.5"
+      className="inline-flex items-start max-w-full overflow-x-auto px-1 pb-1"
       role="radiogroup"
       aria-label="סטטוס תשלום"
     >
@@ -75,8 +75,8 @@ export function PaymentStatusControl({
               disabled={disabled || active}
               role="radio"
               aria-checked={active}
-              className="flex flex-col items-center gap-0.5 flex-shrink-0 disabled:cursor-default"
-              style={{ minWidth: 38 }}
+              className="flex flex-col items-center gap-1 flex-shrink-0 disabled:cursor-default"
+              style={{ minWidth: 42 }}
             >
               <span
                 className="flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-bold transition-all"
@@ -100,7 +100,7 @@ export function PaymentStatusControl({
               <span
                 className="flex-shrink-0 rounded-full"
                 style={{
-                  width: 14,
+                  width: 20,
                   height: 2,
                   marginTop: 9,
                   backgroundColor: idx + 1 <= currentIdx ? c.activeBg : C.border,

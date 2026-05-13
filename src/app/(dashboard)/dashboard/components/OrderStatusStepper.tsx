@@ -66,7 +66,7 @@ export function OrderStatusStepper({
 
   return (
     <div
-      className="inline-flex items-start gap-0 max-w-full overflow-x-auto pb-0.5"
+      className="inline-flex items-start gap-0 max-w-full overflow-x-auto px-1 pb-1"
       role="radiogroup"
       aria-label="סטטוס הזמנה"
     >
@@ -88,8 +88,8 @@ export function OrderStatusStepper({
               role="radio"
               aria-checked={isCur}
               aria-label={`שינוי סטטוס ל${s.label}`}
-              className="flex flex-col items-center gap-0.5 flex-shrink-0 disabled:cursor-default group"
-              style={{ minWidth: 36 }}
+              className="flex flex-col items-center gap-1 flex-shrink-0 disabled:cursor-default group"
+              style={{ minWidth: 40 }}
             >
               <span
                 className="rounded-full flex items-center justify-center text-[9px] font-bold transition-all"
@@ -131,7 +131,7 @@ export function OrderStatusStepper({
               <span
                 className="flex-shrink-0"
                 style={{
-                  width:           14,
+                  width:           18,
                   height:          2,
                   // marginTop centers the line on the smaller (past/future)
                   // circle vertical midline (18/2 - 2/2 = 8). Current step is

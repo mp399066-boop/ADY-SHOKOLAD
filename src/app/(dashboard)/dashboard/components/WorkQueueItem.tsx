@@ -98,54 +98,63 @@ export function WorkQueueItem({
 
       {order && (
         <div
-          className="grid gap-2 px-3 py-2.5 sm:grid-cols-[minmax(210px,1.35fr)_minmax(170px,1fr)_auto] items-center"
+          className="grid gap-3 px-3 py-3"
           style={{ borderTop: `1px solid ${C.borderSoft}`, backgroundColor: '#FFFCF8' }}
           onClick={(e) => e.stopPropagation()}
         >
-          <ProgressField label="סטטוס הזמנה">
-            <OrderStatusStepper
-              current={order.סטטוס_הזמנה}
-              disabled={updating}
-              onChange={(next) => handlers.onChangeOrderStatus(order, next)}
-            />
-          </ProgressField>
+          <div className="grid gap-2.5">
+            <ProgressField label="סטטוס הזמנה">
+              <OrderStatusStepper
+                current={order.סטטוס_הזמנה}
+                disabled={updating}
+                onChange={(next) => handlers.onChangeOrderStatus(order, next)}
+              />
+            </ProgressField>
 
-          <ProgressField label="סטטוס תשלום">
-            <PaymentStatusControl
-              current={order.סטטוס_תשלום}
-              disabled={updating}
-              onChange={(next) => handlers.onChangePaymentStatus(order, next)}
-            />
-          </ProgressField>
+            <div className="grid gap-2.5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+              <ProgressField label="סטטוס תשלום">
+                <PaymentStatusControl
+                  current={order.סטטוס_תשלום}
+                  disabled={updating}
+                  onChange={(next) => handlers.onChangePaymentStatus(order, next)}
+                />
+              </ProgressField>
 
-          <PrimaryActionButton
-            label={item.action.label}
-            urgent={isUrgent}
-            disabled={updating}
-            onClick={(e) => { e.stopPropagation(); handlers.onAction(item.action.verb); }}
-          />
+              <div className="flex justify-start pb-0.5">
+                <PrimaryActionButton
+                  label={item.action.label}
+                  urgent={isUrgent}
+                  disabled={updating}
+                  onClick={(e) => { e.stopPropagation(); handlers.onAction(item.action.verb); }}
+                />
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
       {delivery && (
         <div
-          className="grid gap-2 px-3 py-2.5 sm:grid-cols-[1fr_auto] items-center"
+          className="grid gap-2 px-3 py-2.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end"
           style={{ borderTop: `1px solid ${C.borderSoft}`, backgroundColor: '#FFFCF8' }}
           onClick={(e) => e.stopPropagation()}
         >
-          <ProgressField label="סטטוס משלוח">
+          <CompactProgressField label="סטטוס משלוח">
             <DeliveryStatusStepper
               current={delivery.סטטוס_משלוח}
               disabled={updating}
               onChange={(next) => handlers.onChangeDeliveryStatus(delivery, next)}
             />
-          </ProgressField>
-          <PrimaryActionButton
-            label={item.action.label}
-            urgent={isUrgent || item.type === 'delivery'}
-            disabled={updating}
-            onClick={(e) => { e.stopPropagation(); handlers.onAction(item.action.verb); }}
-          />
+          </CompactProgressField>
+
+          <div className="flex justify-start pb-0.5">
+            <PrimaryActionButton
+              label={item.action.label}
+              urgent={isUrgent || item.type === 'delivery'}
+              disabled={updating}
+              onClick={(e) => { e.stopPropagation(); handlers.onAction(item.action.verb); }}
+            />
+          </div>
         </div>
       )}
     </li>
@@ -154,8 +163,22 @@ export function WorkQueueItem({
 
 function ProgressField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
+    <div
+      className="min-w-0 rounded-lg px-3 py-2.5"
+      style={{ backgroundColor: '#FFFFFF', border: `1px solid ${C.borderSoft}` }}
+    >
+      <p className="mb-2 text-[10.5px] font-bold" style={{ color: C.textSoft }}>
+        {label}
+      </p>
+      {children}
+    </div>
+  );
+}
+
+function CompactProgressField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
     <div className="min-w-0">
-      <p className="mb-1 text-[10.5px] font-bold" style={{ color: C.textSoft }}>
+      <p className="mb-1.5 text-[10.5px] font-bold" style={{ color: C.textSoft }}>
         {label}
       </p>
       {children}
@@ -175,7 +198,7 @@ function DeliveryStatusStepper({
   const currentIdx = Math.max(0, DELIVERY_STATUSES.findIndex(status => status === current));
 
   return (
-    <div className="inline-flex items-start max-w-full overflow-x-auto pb-0.5" role="radiogroup" aria-label="סטטוס משלוח">
+    <div className="inline-flex items-start gap-0 max-w-full overflow-x-auto px-1 pb-1" role="radiogroup" aria-label="סטטוס משלוח">
       {DELIVERY_STATUSES.map((status, idx) => {
         const active = current === status;
         const reached = idx <= currentIdx;
@@ -189,8 +212,8 @@ function DeliveryStatusStepper({
               disabled={disabled || active}
               role="radio"
               aria-checked={active}
-              className="flex flex-col items-center gap-0.5 flex-shrink-0 disabled:cursor-default"
-              style={{ minWidth: 42 }}
+              className="flex flex-col items-center gap-1 flex-shrink-0 disabled:cursor-default"
+              style={{ minWidth: 44 }}
             >
               <span
                 className="flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-bold"
@@ -214,7 +237,7 @@ function DeliveryStatusStepper({
               <span
                 className="flex-shrink-0 rounded-full"
                 style={{
-                  width: 18,
+                  width: 22,
                   height: 2,
                   marginTop: 9,
                   backgroundColor: idx + 1 <= currentIdx ? C.blue : C.border,

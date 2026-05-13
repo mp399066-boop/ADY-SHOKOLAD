@@ -390,8 +390,7 @@ export default function DashboardPage() {
         patchDelivery(verb.payload.id, 'נאסף', verb.payload.סטטוס_משלוח);
         return;
       case 'open_delivery': {
-        const d = verb.payload;
-        if (d.הזמנות?.id) router.push(`/orders/${d.הזמנות.id}`);
+        router.push('/deliveries');
         return;
       }
       case 'open_inventory':
