@@ -1849,10 +1849,16 @@ function FinancialDocumentsList({ invoices }: { invoices: InvRow[] }) {
   const isInvoiceReceipt = (i: InvRow) => i.סוג_מסמך === 'invoice_receipt' || i.סוג_מסמך === 'חשבונית_מס_קבלה';
   const isTaxInvoice     = (i: InvRow) => i.סוג_מסמך === 'tax_invoice';
   const isReceipt        = (i: InvRow) => i.סוג_מסמך === 'receipt';
+  // Fallback bucket: any document whose סוג_מסמך isn't one of the three
+  // known types (legacy values, future types, manually-imported docs)
+  // surfaces under "מסמכים נוספים" instead of vanishing from the UI.
+  const isOther = (i: InvRow) =>
+    !isInvoiceReceipt(i) && !isTaxInvoice(i) && !isReceipt(i);
   const groups: { label: string; items: InvRow[] }[] = [
     { label: 'חשבוניות מס קבלה', items: invoices.filter(isInvoiceReceipt) },
     { label: 'חשבוניות מס',      items: invoices.filter(isTaxInvoice) },
     { label: 'קבלות',            items: invoices.filter(isReceipt) },
+    { label: 'מסמכים נוספים',    items: invoices.filter(isOther) },
   ].filter(g => g.items.length > 0);
 
   if (groups.length === 0) {

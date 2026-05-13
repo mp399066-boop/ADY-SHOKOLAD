@@ -27,20 +27,27 @@ export async function GET(req: NextRequest) {
       .range(offset, offset + limit - 1);
 
     if (filter === 'archive') {
-      // Archive: only completed / archived orders
-      query = query.eq('סטטוס_הזמנה', 'הושלמה בהצלחה');
+      // Archive view: completed AND cancelled orders. Cancelled used to fall
+      // through both ways (excluded from archive but visible in default 'הכל'),
+      // which left them in a confusing no-man's-land. Both terminal statuses
+      // now live here.
+      query = query.in('סטטוס_הזמנה', ['הושלמה בהצלחה', 'בוטלה']);
     } else if (filter === 'drafts') {
       query = query.eq('סטטוס_הזמנה', 'טיוטה');
     } else {
-      // All other views: exclude completed/archived orders AND drafts
-      query = query.neq('סטטוס_הזמנה', 'הושלמה בהצלחה').neq('סטטוס_הזמנה', 'טיוטה');
+      // All other views: exclude completed / cancelled / drafts. Cancelled
+      // orders belong in the archive, not in the active workflow tabs.
+      query = query
+        .neq('סטטוס_הזמנה', 'הושלמה בהצלחה')
+        .neq('סטטוס_הזמנה', 'בוטלה')
+        .neq('סטטוס_הזמנה', 'טיוטה');
       if (filter === 'today') query = query.eq('תאריך_אספקה', today);
       else if (filter === 'tomorrow') query = query.eq('תאריך_אספקה', tomorrow);
-      else if (filter === 'urgent') query = query.eq('הזמנה_דחופה', true).neq('סטטוס_הזמנה', 'בוטלה');
-      // "Unpaid" = pay status in (ממתין, חלקי). Order-level draft/completed
-       // exclusions already applied above; we only add the cancelled guard.
-       // Must stay in lock-step with the dashboard's unpaid count.
-      else if (filter === 'unpaid') query = query.in('סטטוס_תשלום', ['ממתין', 'חלקי']).neq('סטטוס_הזמנה', 'בוטלה');
+      else if (filter === 'urgent') query = query.eq('הזמנה_דחופה', true);
+      // "Unpaid" = pay status in (ממתין, חלקי). Cancellation guard is no
+      // longer needed here — the default branch above already excludes it.
+      // Must stay in lock-step with the dashboard's unpaid count.
+      else if (filter === 'unpaid') query = query.in('סטטוס_תשלום', ['ממתין', 'חלקי']);
       else if (filter === 'preparation') query = query.eq('סטטוס_הזמנה', 'בהכנה');
       else if (filter === 'ready') query = query.eq('סטטוס_הזמנה', 'מוכנה למשלוח');
       else if (filter === 'shipped') query = query.eq('סטטוס_הזמנה', 'נשלחה');
