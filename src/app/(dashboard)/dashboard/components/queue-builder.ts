@@ -213,6 +213,35 @@ export function buildQueueItems({ liveOrders, todayDeliveries, stock, todayISO }
     });
   }
 
+  // ── 5b. Shipped orders awaiting completion confirmation ─────────────────
+  // 'נשלחה' means the order has left the workshop. The owner still needs to
+  // flip it to 'הושלמה בהצלחה' once the customer has it in hand — only at
+  // that point should it leave the active board (the page filter excludes
+  // 'הושלמה בהצלחה' / 'בוטלה' / 'טיוטה' from liveOrders). Without this
+  // bucket the queue had no place for 'נשלחה' rows and they silently
+  // disappeared the moment the operator clicked "סמני נשלחה". Limit to 8
+  // so a long shipping tail doesn't flood the dashboard.
+  const shippedAwaitingCompletion = liveOrders.filter(o =>
+    o.סטטוס_הזמנה === 'נשלחה'
+    && !seenOrderIds.has(o.id),
+  ).slice(0, 8);
+  for (const o of shippedAwaitingCompletion) {
+    seenOrderIds.add(o.id);
+    items.push({
+      id: `o-${o.id}`,
+      type: 'order',
+      urgency: 'follow_up',
+      title: customerName(o),
+      meta: orderMeta(o, 'נשלחה'),
+      amount: formatCurrency(o.סך_הכל_לתשלום),
+      // nextAdvanceLabel returns 'סמני הושלמה' for 'נשלחה'; advance_order
+      // resolves to 'הושלמה בהצלחה' via getNextOrderStatus in page.tsx, and
+      // the page already shows a confirm modal before that transition.
+      action: { label: nextAdvanceLabel(o), verb: { kind: 'advance_order', payload: o } },
+      entity: { kind: 'order', data: o },
+    });
+  }
+
   // ── 6. Follow-up: in-transit deliveries (waiting courier confirm) ───────
   const inTransit = todayDeliveries.filter(d => d.סטטוס_משלוח === 'נאסף' && !seenDeliveryIds.has(d.id));
   for (const d of inTransit.slice(0, 3)) {
