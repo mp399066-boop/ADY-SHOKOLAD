@@ -22,7 +22,7 @@ import toast from 'react-hot-toast';
 import { PageLoading } from '@/components/ui/LoadingSpinner';
 import { Modal } from '@/components/ui/Modal';
 
-import type { DashboardStats } from '@/types/database';
+import type { DashboardStats, Courier } from '@/types/database';
 import type { TodayOrder, Delivery, Stock, StockRow } from './components/types';
 
 import { CommandHeader } from './components/CommandHeader';
@@ -141,6 +141,9 @@ export default function DashboardPage() {
   const [todayDeliveries, setTodayDeliveries] = useState<Delivery[]>([]);
   const [stock, setStock] = useState<Stock>({ raw: [], products: [], petitFours: [] });
   const [activeOrders, setActiveOrders] = useState<TodayOrder[]>([]);
+  // Active couriers — used by the assign-courier modal triggered from the
+  // queue's "שייך שליח" action. Loaded once with the rest of the dashboard.
+  const [couriers, setCouriers] = useState<Courier[]>([]);
   const [loading, setLoading] = useState(true);
 
   // ── Mutation / modal state ──────────────────────────────────────────────
@@ -148,6 +151,8 @@ export default function DashboardPage() {
   const [confirmAction, setConfirmAction] = useState<{ text: string; cta: string; onConfirm: () => Promise<void> | void } | null>(null);
   const [markPaidOrder, setMarkPaidOrder] = useState<TodayOrder | null>(null);
   const [moreActionsOrder, setMoreActionsOrder] = useState<TodayOrder | null>(null);
+  // The delivery the operator is about to assign a courier to. Null = closed.
+  const [assignCourierFor, setAssignCourierFor] = useState<Delivery | null>(null);
 
   // In-flight write counter — auto-refresh skips ticks while > 0 so optimistic
   // updates aren't clobbered by a stale GET response.
@@ -160,7 +165,7 @@ export default function DashboardPage() {
     if (!silent) setLoading(true);
     try {
       const today = todayIsraelISO();
-      const [dash, ordersTodayRes, ordersAllRes, deliveriesRes, rawRes, prodsRes, pfRes] = await Promise.all([
+      const [dash, ordersTodayRes, ordersAllRes, deliveriesRes, rawRes, prodsRes, pfRes, couriersRes] = await Promise.all([
         fetch('/api/dashboard').then(r => r.json()),
         fetch('/api/orders?filter=today&limit=100').then(r => r.json()),
         // All active orders (excludes drafts/archive based on the orders API
@@ -171,6 +176,11 @@ export default function DashboardPage() {
         fetch('/api/inventory').then(r => r.json()),
         fetch('/api/products?active=true').then(r => r.json()),
         fetch('/api/petit-four-types').then(r => r.json()),
+        // Couriers list — needed by the assign-courier modal. Filtered down
+        // to active records only since only those should appear in the
+        // picker. Cheap call (one row per courier), batched with everything
+        // else so the dashboard doesn't fan out a second wave.
+        fetch('/api/couriers').then(r => r.json()),
       ]);
 
       const todayOrderRows = (ordersTodayRes?.data || []) as TodayOrder[];
@@ -200,6 +210,9 @@ export default function DashboardPage() {
         products:   filterAlerts((prodsRes?.data || []) as RawRow[], 'שם_מוצר'),
         petitFours: filterAlerts((pfRes?.data || []) as RawRow[],    'שם_פטיפור'),
       });
+
+      const allCouriers = (couriersRes?.data || []) as Courier[];
+      setCouriers(allCouriers.filter(c => c.פעיל));
     } catch (err) {
       if (!silent) {
         console.error('[dashboard] fetch failed:', err);
@@ -299,6 +312,80 @@ export default function DashboardPage() {
     }
   }, []);
 
+  // Assign a courier to a delivery, then flip the row to 'נאסף' so the API
+  // builds the WhatsApp link and returns it for the browser to open.
+  //
+  // Two sequential PATCHes (not one) because the deliveries API fetches the
+  // delivery+courier row BEFORE applying the body when handling a 'נאסף'
+  // transition. If we sent {courier_id, סטטוס_משלוח: 'נאסף'} together, the
+  // existing-row fetch would still see the OLD (null) courier and skip the
+  // WhatsApp build. Two calls = guaranteed correct ordering on the server.
+  const assignCourierAndDispatch = useCallback(async (delivery: Delivery, courierId: string) => {
+    setUpdatingId(delivery.id);
+    inflightRef.current++;
+    try {
+      // 1. Persist the courier assignment. Plain-update branch — no WhatsApp.
+      const assignRes = await fetch(`/api/deliveries/${delivery.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ courier_id: courierId }),
+      });
+      const assignJson = await assignRes.json().catch(() => ({}));
+      if (!assignRes.ok) {
+        toast.error(assignJson.error || 'שגיאה בשיוך שליח');
+        return;
+      }
+      // The API may auto-create the row (synthetic id) on first PATCH.
+      // Use the real id from now on so the next call hits the same record.
+      const realId = (assignJson.data?.id as string) || delivery.id;
+
+      // 2. Flip status to 'נאסף'. PATCH endpoint will build the WhatsApp URL
+      //    using the just-assigned courier and return it in `whatsapp_url`.
+      //    The idempotency guard (added previously) prevents double-send.
+      const flipRes = await fetch(`/api/deliveries/${realId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ סטטוס_משלוח: 'נאסף' }),
+      });
+      const flipJson = await flipRes.json().catch(() => ({}));
+      if (!flipRes.ok) {
+        toast.error(flipJson.error || 'שגיאה בעדכון סטטוס משלוח');
+        return;
+      }
+
+      // Optimistic local update — bump status + courier on the matching row.
+      const courierData = couriers.find(c => c.id === courierId) || null;
+      setTodayDeliveries(curr => curr.map(d => d.id === delivery.id ? ({
+        ...d,
+        ...(flipJson.data || {}),
+        id: realId,
+        סטטוס_משלוח: 'נאסף' as const,
+        courier_id: courierId,
+        שליחים: courierData ? { id: courierData.id, שם_שליח: courierData.שם_שליח, טלפון_שליח: courierData.טלפון_שליח } : null,
+        _noRecord: false,
+      } as Delivery) : d));
+
+      // 3. Open WhatsApp if the API gave us a URL.
+      if (flipJson.whatsapp_url) {
+        const win = window.open(flipJson.whatsapp_url, '_blank');
+        if (!win || win.closed) toast('הדפדפן חסם — פתחי וואטסאפ ידנית', { icon: '⚠️' });
+        else toast.success('שליח שויך, וואטסאפ נפתח');
+      } else if (flipJson.send_error) {
+        toast.error(flipJson.send_error);
+      } else if (flipJson.already_notified) {
+        toast('השליח כבר עודכן בעבר — לא נשלחה הודעה חוזרת', { icon: 'ℹ️' });
+      } else {
+        toast.success('שליח שויך');
+      }
+    } catch {
+      toast.error('שגיאה ברשת');
+    } finally {
+      setAssignCourierFor(null);
+      setUpdatingId(null);
+      inflightRef.current = Math.max(0, inflightRef.current - 1);
+    }
+  }, [couriers]);
+
   // ── Order/payment status handlers (used by queue + modals) ──────────────
 
   const onPickOrderStatus = (o: TodayOrder, newStatus: OrderStatus) => {
@@ -395,8 +482,11 @@ export default function DashboardPage() {
       case 'mark_paid':
         setMarkPaidOrder(verb.payload);
         return;
-      case 'send_to_courier':
-        patchDelivery(verb.payload.id, 'נאסף', verb.payload.סטטוס_משלוח);
+      case 'assign_courier':
+        // Open the picker — assignment + status flip + WhatsApp happens
+        // inside the modal's confirm handler so the operator sees a clear
+        // intermediate step ("which courier?") before any side effect fires.
+        setAssignCourierFor(verb.payload);
         return;
       case 'open_delivery': {
         router.push('/deliveries');
@@ -516,6 +606,16 @@ export default function DashboardPage() {
           onPickPaymentStatus={(s) => onPickPaymentStatus(moreActionsOrder, s)}
         />
       )}
+
+      {assignCourierFor && (
+        <AssignCourierModal
+          delivery={assignCourierFor}
+          couriers={couriers}
+          loading={!!updatingId}
+          onClose={() => setAssignCourierFor(null)}
+          onPick={(courierId) => assignCourierAndDispatch(assignCourierFor, courierId)}
+        />
+      )}
     </div>
   );
 }
@@ -627,6 +727,90 @@ function MarkPaidModal({
           style={{ backgroundColor: C.green }}
         >
           {loading ? '...' : 'אישור — סמני שולם'}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+// ─── AssignCourierModal — picker triggered by the queue's "שייך שליח" action.
+// Lists active couriers with phone, click a row → assign + flip to 'נאסף'
+// + WhatsApp open. Couriers with no phone are listed but disabled (the API
+// would refuse to build a WhatsApp link for them anyway, and the owner
+// asked for a clear up-front message rather than a silent failure).
+function AssignCourierModal({
+  delivery, couriers, loading, onClose, onPick,
+}: {
+  delivery: Delivery;
+  couriers: Courier[];
+  loading: boolean;
+  onClose: () => void;
+  onPick: (courierId: string) => void;
+}) {
+  const o = delivery.הזמנות;
+  const customer = o?.שם_מקבל
+    || (o?.לקוחות ? `${o.לקוחות.שם_פרטי} ${o.לקוחות.שם_משפחה}` : '')
+    || 'לקוח';
+  const addr = [delivery.כתובת, delivery.עיר].filter(Boolean).join(', ');
+
+  return (
+    <Modal open onClose={onClose} title="שיוך שליח למשלוח" size="sm">
+      <div className="text-sm mb-3" style={{ color: C.text }}>
+        <span className="font-semibold">{customer}</span>
+        {addr && (
+          <>
+            <span className="mx-2" style={{ color: C.textSoft }}>·</span>
+            <span style={{ color: C.textSoft }}>{addr}</span>
+          </>
+        )}
+      </div>
+      <p className="text-sm mb-4" style={{ color: C.textSoft }}>
+        בחירת שליח תשייך אותו למשלוח, תעביר את הסטטוס ל"נאסף" ותפתח וואטסאפ עם קישור לסימון "נמסר".
+      </p>
+
+      {couriers.length === 0 ? (
+        <div className="rounded-xl px-3 py-4 text-center text-[12.5px] mb-4" style={{ backgroundColor: C.amberSoft, color: C.amber, border: `1px solid ${C.border}` }}>
+          אין שליחים פעילים במערכת. ניתן להוסיף שליח במסך משלוחים → שליחים.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-2 mb-5">
+          {couriers.map(c => {
+            const hasPhone = !!c.טלפון_שליח;
+            return (
+              <button
+                key={c.id}
+                onClick={() => hasPhone && !loading && onPick(c.id)}
+                disabled={loading || !hasPhone}
+                className="text-right px-3 py-2.5 rounded-xl border transition-colors disabled:cursor-not-allowed"
+                style={{
+                  backgroundColor: hasPhone ? C.card : '#FBF6EE',
+                  borderColor: hasPhone ? C.border : C.borderSoft,
+                  color: C.text,
+                  opacity: hasPhone ? 1 : 0.65,
+                }}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-semibold truncate">{c.שם_שליח}</span>
+                  {hasPhone ? (
+                    <span dir="ltr" className="text-[11px] font-mono" style={{ color: C.textSoft }}>{c.טלפון_שליח}</span>
+                  ) : (
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: C.redSoft, color: C.red, border: '1px solid #E4C2BE' }}>אין טלפון</span>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="flex gap-3 justify-end">
+        <button
+          onClick={onClose}
+          disabled={loading}
+          className="px-4 h-10 text-sm font-medium rounded-xl border transition-colors disabled:opacity-50"
+          style={{ borderColor: C.border, color: C.textSoft }}
+        >
+          ביטול
         </button>
       </div>
     </Modal>

@@ -18,7 +18,7 @@ export type QueueAction =
   | { kind: 'advance_order';  payload: TodayOrder }      // המשך טיפול / השלב הבא
   | { kind: 'open_order';     payload: TodayOrder }      // פתח הזמנה
   | { kind: 'mark_paid';      payload: TodayOrder }      // סמני שולם
-  | { kind: 'send_to_courier'; payload: Delivery }       // שלח לשליח
+  | { kind: 'assign_courier'; payload: Delivery }        // שייך שליח (status: 'ממתין')
   | { kind: 'open_delivery';  payload: Delivery }        // פתח משלוח
   | { kind: 'open_inventory'; payload?: undefined };     // פתח מלאי
 
@@ -55,7 +55,10 @@ const ACTION_LABEL: Record<QueueAction['kind'], string> = {
   advance_order:    'המשך טיפול',
   open_order:       'פתח הזמנה',
   mark_paid:        'סמני שולם',
-  send_to_courier:  'שלח לשליח',
+  // 'ממתין' deliveries need a courier picked first — only after assignment
+  // does the row flip to 'נאסף' and WhatsApp goes out. The action text
+  // names the actual decision the operator is about to make.
+  assign_courier:   'שייך שליח',
   open_delivery:    'פתח משלוח',
   open_inventory:   'פתח מלאי',
 };
@@ -188,7 +191,7 @@ export function buildQueueItems({ liveOrders, todayDeliveries, stock, todayISO }
       urgency: 'today',
       title: deliveryRecipient(d),
       meta: `היום · ${d.כתובת ?? ''}${d.עיר ? ' · ' + d.עיר : ''}${o?.מספר_הזמנה ? ' · ' + o.מספר_הזמנה : ''}`,
-      action: { label: ACTION_LABEL.send_to_courier, verb: { kind: 'send_to_courier', payload: d } },
+      action: { label: ACTION_LABEL.assign_courier, verb: { kind: 'assign_courier', payload: d } },
       entity: { kind: 'delivery', data: d },
     });
   }
