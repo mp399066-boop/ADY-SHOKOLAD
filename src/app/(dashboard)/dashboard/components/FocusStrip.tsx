@@ -28,14 +28,14 @@ export function FocusStrip({
 }: Props) {
   return (
     <section
-      className="rounded-2xl p-3"
-      style={{ backgroundColor: '#FFFDF9', border: `1px solid ${C.border}`, boxShadow: '0 10px 28px rgba(47,27,20,0.055)' }}
+      className="rounded-xl p-2.5"
+      style={{ backgroundColor: '#FFFDF9', border: `1px solid ${C.border}`, boxShadow: '0 6px 18px rgba(47,27,20,0.045)' }}
     >
-      <div className="flex items-center justify-between gap-3 px-2 pb-3">
-        <h2 className="text-[15px] font-bold" style={{ color: C.text }}>תמונת מצב יומית</h2>
-        <span className="text-[11px] font-semibold" style={{ color: C.textSoft }}>לחיצה על כרטיס פותחת טיפול מלא</span>
+      <div className="flex items-center justify-between gap-3 px-1.5 pb-2">
+        <h2 className="text-[13.5px] font-bold" style={{ color: C.text }}>תמונת מצב יומית</h2>
+        <span className="text-[10.5px] font-semibold" style={{ color: C.textSoft }}>לחיצה פותחת טיפול מלא</span>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2">
       <Cell
         label="הזמנות להיום"
         value={String(ordersTodayCount)}
@@ -95,7 +95,7 @@ function Cell({
   return (
     <Tag
       onClick={onClick}
-      className={`relative overflow-hidden text-right px-4 py-3.5 transition-all w-full rounded-xl ${interactive ? 'cursor-pointer hover:-translate-y-0.5' : ''}`}
+      className={`relative overflow-hidden text-right px-3 py-2.5 transition-all w-full rounded-lg ${interactive ? 'cursor-pointer hover:-translate-y-0.5' : ''}`}
       style={{
         backgroundColor: '#FFFFFF',
         border: `1px solid ${C.borderSoft}`,
@@ -107,16 +107,16 @@ function Cell({
         style={{ background: `radial-gradient(circle at 0 0, ${glow}, transparent 68%)` }}
         aria-hidden
       />
-      <div className="relative flex items-center justify-between gap-3 mb-3">
-        <span className="text-[11px] font-bold" style={{ color: C.textSoft }}>
+      <div className="relative flex items-center justify-between gap-3 mb-2">
+        <span className="text-[10.5px] font-bold" style={{ color: C.textSoft }}>
           {label}
         </span>
-        <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: accent, boxShadow: `0 0 0 4px ${glow}` }} />
+        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: accent, boxShadow: `0 0 0 4px ${glow}` }} />
       </div>
-      <p className="relative text-[23px] font-bold tabular-nums leading-none" style={{ color: C.text, letterSpacing: '0' }}>
+      <p className="relative text-[19px] font-bold tabular-nums leading-none" style={{ color: C.text, letterSpacing: '0' }}>
         {value}
       </p>
-      {sub && <p className="relative text-[11.5px] mt-2 truncate" style={{ color: C.textSoft }}>{sub}</p>}
+      {sub && <p className="relative text-[10.5px] mt-1.5 truncate" style={{ color: C.textSoft }}>{sub}</p>}
     </Tag>
   );
 }

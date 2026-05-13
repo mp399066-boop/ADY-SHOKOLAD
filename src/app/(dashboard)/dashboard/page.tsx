@@ -405,7 +405,7 @@ export default function DashboardPage() {
   if (loading) return <PageLoading />;
 
   return (
-    <div dir="rtl" className="mx-auto max-w-[1500px] space-y-5 pb-12 px-1 sm:px-2" style={{ backgroundColor: C.bg }}>
+    <div dir="rtl" className="mx-auto max-w-[1360px] space-y-3 pb-10 px-2 sm:px-3" style={{ backgroundColor: C.bg }}>
 
       <CommandHeader
         greeting={greeting}
@@ -560,9 +560,14 @@ function MarkPaidModal({
   onConfirm: (method: string) => Promise<void> | void;
   onClose: () => void;
 }) {
+  // Pre-select only when the order already carries a known method. Falling
+  // back to a hardcoded default (e.g. 'מזומן' or the order's stored value
+  // when it isn't in the list) is a silent default — the owner explicitly
+  // banned that pattern. An empty selection keeps the confirm button
+  // disabled, forcing an explicit pick.
   const initial = (order.אופן_תשלום ?? '').trim();
   const [method, setMethod] = useState<string>(
-    initial && (PAYMENT_METHODS as readonly string[]).includes(initial) ? initial : 'מזומן',
+    initial && (PAYMENT_METHODS as readonly string[]).includes(initial) ? initial : '',
   );
   const c = order.לקוחות;
   const name = c ? `${c.שם_פרטי} ${c.שם_משפחה}` : (order.שם_מקבל || 'לקוח');

@@ -236,36 +236,46 @@ serve(async (req: Request) => {
     };
 
     // Receipt + invoice_receipt include a payment section; tax_invoice does
-    // not. The payment-method override (passed by the manual issuance route
-    // when the user explicitly picks one in the modal) takes precedence over
-    // the value stored on the order — that's the whole point of the modal:
-    // give the user a chance to set the method *for the document* without
-    // mutating the order's אופן_תשלום first.
+    // not. The caller MUST send `payment_method` explicitly for PAYMENT_DOCS
+    // — there is no fallback to `order.אופן_תשלום` and no silent default.
     //
-    // PAYMENT_BUILDERS is the source of truth for which methods Morning can
-    // render — refuse to invent a method when the source value is missing
-    // or unknown, and abort the whole issuance so the user gets a visible
-    // error instead of a silently mislabelled document.
+    // Why: orders coming from WooCommerce store `אופן_תשלום='העברה בנקאית'`
+    // for bacs. A previous version of this branch fell back to that value,
+    // which silently labelled documents as bank transfer even when the user
+    // explicitly picked credit card in the modal. Any caller that fails to
+    // pass `payment_method` for a PAYMENT_DOC now gets a hard 400 instead of
+    // a silently mislabelled receipt.
     if (PAYMENT_DOCS.has(documentType)) {
-      const paymentMethod = (paymentMethodOverride ?? order.אופן_תשלום ?? '').trim();
-      const builder = PAYMENT_BUILDERS[paymentMethod];
-      if (builder) {
-        documentBody.payment = [builder(paymentAmount, new Date().toISOString().slice(0, 10))];
-        console.log('[morning] payment block built — method:', paymentMethod);
-      } else {
-        console.error('[morning] Cannot build payment block — unknown / missing payment method:',
-          JSON.stringify(paymentMethod),
+      if (!paymentMethodOverride) {
+        console.error('[morning] PAYMENT_DOC issuance with no payment_method override',
           '| documentType:', documentType,
-          '— aborting issuance');
+          '| order.אופן_תשלום (NOT used):', order.אופן_תשלום,
+          '— aborting');
         return new Response(
           JSON.stringify({
-            error: paymentMethod
-              ? `אמצעי התשלום "${paymentMethod}" לא נתמך. יש לבחור אמצעי תשלום אחר.`
-              : `המסמך מסוג ${documentType} דורש אמצעי תשלום. יש לבחור אמצעי תשלום בעת ההפקה.`,
+            error: `המסמך מסוג ${documentType} דורש אמצעי תשלום מפורש מהקליינט. אסור להפיק עם ברירת מחדל.`,
           }),
           { status: 400, headers: { 'Content-Type': 'application/json' } },
         );
       }
+      const paymentMethod = paymentMethodOverride;
+      const builder = PAYMENT_BUILDERS[paymentMethod];
+      if (!builder) {
+        console.error('[morning] Cannot build payment block — payment method not in PAYMENT_BUILDERS:',
+          JSON.stringify(paymentMethod),
+          '| documentType:', documentType,
+          '| supported:', Object.keys(PAYMENT_BUILDERS).join(', '),
+          '— aborting issuance');
+        return new Response(
+          JSON.stringify({
+            error: `אמצעי התשלום "${paymentMethod}" לא ממופה למורנינג. יש לבחור אמצעי תשלום אחר או לעדכן את המיפוי.`,
+          }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      const paymentObj = builder(paymentAmount, new Date().toISOString().slice(0, 10));
+      documentBody.payment = [paymentObj];
+      console.log('[morning] payment block built — method:', paymentMethod, '| morning type:', paymentObj.type);
     }
 
     console.log('[morning] Calling Morning API — docType:', morningDocType, '| order:', order.מספר_הזמנה);

@@ -62,18 +62,18 @@ export function WorkQueue({
   }
 
   return (
-    <section className="space-y-4">
-      <div className="flex items-end justify-between gap-4 flex-wrap">
+    <section className="space-y-3">
+      <div className="flex items-end justify-between gap-3 flex-wrap">
         <div>
-          <h2 className="text-[22px] font-bold" style={{ color: C.text }}>
+          <h2 className="text-[18px] font-bold" style={{ color: C.text }}>
             לוח פעולות יומי
           </h2>
-          <p className="text-[13px] mt-1" style={{ color: C.textSoft }}>
+          <p className="text-[12px] mt-0.5" style={{ color: C.textSoft }}>
             מחולק לפי הפעולה שצריך לבצע, כדי לעבוד מהר וברור.
           </p>
         </div>
         <div
-          className="inline-flex items-center gap-2 rounded-full px-3 py-2 text-[12px] font-bold"
+          className="inline-flex items-center gap-2 rounded-full px-2.5 py-1.5 text-[11.5px] font-bold"
           style={{ backgroundColor: C.card, color: C.textSoft, border: `1px solid ${C.border}` }}
         >
           <span className="w-2 h-2 rounded-full" style={{ backgroundColor: C.green }} />
@@ -81,7 +81,7 @@ export function WorkQueue({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
         {BOARD_COLUMNS.map(column => {
           const columnItems = items.filter(item => item.type === column.type);
           return (
@@ -121,20 +121,20 @@ function ActionColumn({
 }) {
   return (
     <section
-      className="rounded-2xl overflow-hidden"
-      style={{ backgroundColor: C.card, border: `1px solid ${C.border}`, boxShadow: '0 10px 26px rgba(47,27,20,0.055)' }}
+      className="rounded-xl overflow-hidden"
+      style={{ backgroundColor: C.card, border: `1px solid ${C.border}`, boxShadow: '0 6px 18px rgba(47,27,20,0.045)' }}
     >
-      <header className="px-4 py-4" style={{ borderBottom: `1px solid ${C.borderSoft}`, backgroundColor: '#FFFFFF' }}>
+      <header className="px-3 py-3" style={{ borderBottom: `1px solid ${C.borderSoft}`, backgroundColor: '#FFFFFF' }}>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: accent }} />
-              <h3 className="text-[16px] font-bold" style={{ color: C.text }}>{title}</h3>
+              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: accent }} />
+              <h3 className="text-[14.5px] font-bold" style={{ color: C.text }}>{title}</h3>
             </div>
-            <p className="text-[12px] mt-1.5" style={{ color: C.textSoft }}>{subtitle}</p>
+            <p className="text-[11.5px] mt-1" style={{ color: C.textSoft }}>{subtitle}</p>
           </div>
           <span
-            className="inline-flex items-center justify-center min-w-8 h-8 px-2 rounded-full text-[12px] font-bold"
+            className="inline-flex items-center justify-center min-w-7 h-7 px-2 rounded-full text-[11.5px] font-bold"
             style={{ color: accent, backgroundColor: C.card, border: `1px solid ${C.border}` }}
           >
             {items.length}
@@ -143,11 +143,11 @@ function ActionColumn({
       </header>
 
       {items.length === 0 ? (
-        <div className="px-4 py-8 text-center text-[13px]" style={{ color: C.textSoft }}>
+        <div className="px-3 py-5 text-center text-[12px]" style={{ color: C.textSoft }}>
           {empty}
         </div>
       ) : (
-        <ul className="p-3 space-y-3">
+        <ul className="p-2 space-y-2">
           {items.map(item => {
             const entityId = item.entity?.kind === 'order' ? item.entity.data.id
               : item.entity?.kind === 'delivery' ? item.entity.data.id

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { sendSatmarSummaryEmail } from '@/lib/satmar-email';
-import { callMorning, AUTO_CREATE_MORNING_DOCUMENTS } from '@/lib/morning';
+import { AUTO_CREATE_MORNING_DOCUMENTS } from '@/lib/morning';
 import { deductOrderInventory } from '@/lib/inventory-deduct';
 
 // Dedicated endpoint to mark an order as paid.
@@ -51,23 +51,26 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
     return NextResponse.json({ error: updErr.message }, { status: 500 });
   }
 
-  // Receipt issuance is gated behind AUTO_CREATE_MORNING_DOCUMENTS. With
-  // the flag off (current policy), this endpoint just flips סטטוס_תשלום;
-  // the receipt itself is issued manually from the order detail modal so
-  // the user picks the payment method explicitly each time.
-  let invoiceAction: 'satmar_email' | 'barter_skipped' | 'morning_receipt' | 'manual_required';
+  // Receipt issuance is *always* manual now. Even when AUTO_CREATE_MORNING_DOCUMENTS
+  // is flipped back on, receipts cannot be auto-issued from this endpoint —
+  // there is no defensible payment method to send (silent fallback to the
+  // order's אופן_תשלום caused WooCommerce bacs orders to label docs as bank
+  // transfer in the past). The receipt is created by POST
+  // /api/orders/[id]/create-document where the user picks the method.
+  let invoiceAction: 'satmar_email' | 'barter_skipped' | 'manual_required';
   if (isSatmar) {
     invoiceAction = 'satmar_email';
     await sendSatmarSummaryEmail(params.id);
   } else if (isBarter) {
     invoiceAction = 'barter_skipped';
     console.log('[mark-paid] Barter order — no invoice/receipt created. order:', params.id);
-  } else if (AUTO_CREATE_MORNING_DOCUMENTS) {
-    invoiceAction = 'morning_receipt';
-    await callMorning(params.id, 'receipt');
   } else {
     invoiceAction = 'manual_required';
-    console.log('[mark-paid] auto-create OFF — סטטוס flipped, receipt requires manual issuance. order:', params.id);
+    if (AUTO_CREATE_MORNING_DOCUMENTS) {
+      console.error('[mark-paid] AUTO_CREATE_MORNING_DOCUMENTS=true but receipt auto-call is disabled — issue manually. order:', params.id);
+    } else {
+      console.log('[mark-paid] auto-create OFF — סטטוס flipped, receipt requires manual issuance. order:', params.id);
+    }
   }
 
   // Inventory deduction triggered by the same status flip. Skipped for סאטמר

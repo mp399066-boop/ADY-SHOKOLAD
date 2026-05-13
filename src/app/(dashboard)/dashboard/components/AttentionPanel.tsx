@@ -32,7 +32,7 @@ export function AttentionPanel({
   const activeDeliveries = todayDeliveries.filter(d => d.סטטוס_משלוח !== 'נמסר').length;
 
   return (
-    <aside className="space-y-4">
+    <aside className="space-y-3">
       <Panel title="פעולות מהירות">
         <div className="grid grid-cols-2 gap-3">
           <QuickAction href="/orders/new" label="הזמנה חדשה">
@@ -83,10 +83,10 @@ export function AttentionPanel({
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section
-      className="rounded-2xl p-4"
-      style={{ backgroundColor: '#FFFFFF', border: `1px solid ${C.border}`, boxShadow: '0 10px 26px rgba(47,27,20,0.055)' }}
+      className="rounded-xl p-3"
+      style={{ backgroundColor: '#FFFFFF', border: `1px solid ${C.border}`, boxShadow: '0 6px 18px rgba(47,27,20,0.045)' }}
     >
-      <h2 className="text-[16px] font-bold mb-4" style={{ color: C.text }}>{title}</h2>
+      <h2 className="text-[14.5px] font-bold mb-3" style={{ color: C.text }}>{title}</h2>
       {children}
     </section>
   );
@@ -96,18 +96,18 @@ function QuickAction({ href, label, children }: { href: string; label: string; c
   return (
     <Link
       href={href}
-      className="group flex flex-col items-center justify-center gap-3 rounded-2xl p-4 text-center transition-all"
+      className="group flex flex-col items-center justify-center gap-2 rounded-lg p-3 text-center transition-all"
       style={{ backgroundColor: C.card, border: `1px solid ${C.border}`, color: C.text }}
     >
       <span
-        className="flex h-11 w-11 items-center justify-center rounded-full transition-colors"
+        className="flex h-9 w-9 items-center justify-center rounded-full transition-colors"
         style={{ backgroundColor: C.brandSoft, color: C.brand }}
       >
-        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
           {children}
         </svg>
       </span>
-      <span className="text-[13px] font-bold">{label}</span>
+      <span className="text-[12px] font-bold">{label}</span>
     </Link>
   );
 }
@@ -116,12 +116,12 @@ function AlertLine({ label, value, href, tone }: { label: string; value: number;
   return (
     <Link
       href={href}
-      className="flex items-center justify-between gap-3 rounded-xl px-3 py-3 mb-2 last:mb-0 transition-colors"
+      className="flex items-center justify-between gap-3 rounded-lg px-3 py-2.5 mb-2 last:mb-0 transition-colors"
       style={{ backgroundColor: C.card, border: `1px solid ${C.border}` }}
     >
-      <span className="text-[13px] font-semibold" style={{ color: C.text }}>{label}</span>
+      <span className="text-[12px] font-semibold" style={{ color: C.text }}>{label}</span>
       <span
-        className="inline-flex min-w-8 h-8 items-center justify-center rounded-full px-2 text-[13px] font-bold"
+        className="inline-flex min-w-7 h-7 items-center justify-center rounded-full px-2 text-[12px] font-bold"
         style={{ color: tone, backgroundColor: '#FFFFFF', border: `1px solid ${C.borderSoft}` }}
       >
         {value}

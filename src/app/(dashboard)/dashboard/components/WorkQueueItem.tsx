@@ -1,8 +1,8 @@
 'use client';
 
 import { C } from './theme';
-import type { OrderStatusValue } from './OrderStatusStepper';
-import type { PaymentStatusValue } from './PaymentStatusControl';
+import { OrderStatusStepper, type OrderStatusValue } from './OrderStatusStepper';
+import { PaymentStatusControl, type PaymentStatusValue } from './PaymentStatusControl';
 import type { QueueItem, QueueItemType } from './queue-builder';
 import type { Delivery, TodayOrder } from './types';
 
@@ -14,8 +14,6 @@ export interface WorkQueueItemHandlers {
   onChangeDeliveryStatus: (delivery: Delivery, next: 'ממתין' | 'נאסף' | 'נמסר') => void;
 }
 
-const ORDER_STATUSES: OrderStatusValue[] = ['חדשה', 'בהכנה', 'מוכנה למשלוח', 'נשלחה', 'הושלמה בהצלחה', 'בוטלה'];
-const PAYMENT_STATUSES: PaymentStatusValue[] = ['ממתין', 'חלקי', 'שולם', 'בוטל'];
 const DELIVERY_STATUSES = ['ממתין', 'נאסף', 'נמסר'] as const;
 
 export function WorkQueueItem({
@@ -26,28 +24,19 @@ export function WorkQueueItem({
   handlers: WorkQueueItemHandlers;
 }) {
   const tone = TYPE_TONE[item.type];
-  const isOrderRow = item.entity?.kind === 'order';
-  const isDeliveryRow = item.entity?.kind === 'delivery';
   const isUrgent = item.urgency === 'urgent_now';
   const order = item.entity?.kind === 'order' ? item.entity.data : null;
   const delivery = item.entity?.kind === 'delivery' ? item.entity.data : null;
+  const hasProgress = !!order || !!delivery;
 
   return (
     <li
       onClick={() => handlers.onRowClick(item)}
-      className="group cursor-pointer rounded-2xl transition-all"
+      className="group cursor-pointer rounded-xl transition-colors"
       style={{
-        backgroundColor: isUrgent ? '#FFF7F4' : '#FFFFFF',
+        backgroundColor: isUrgent ? '#FFF9F6' : '#FFFFFF',
         border: `1px solid ${isUrgent ? '#E9C9C3' : C.borderSoft}`,
-        boxShadow: isUrgent ? '0 12px 28px rgba(157,75,74,0.10)' : '0 8px 22px rgba(47,27,20,0.05)',
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.transform = 'translateY(-1px)';
-        e.currentTarget.style.boxShadow = isUrgent ? '0 16px 34px rgba(157,75,74,0.14)' : '0 12px 28px rgba(47,27,20,0.08)';
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.transform = 'translateY(0)';
-        e.currentTarget.style.boxShadow = isUrgent ? '0 12px 28px rgba(157,75,74,0.10)' : '0 8px 22px rgba(47,27,20,0.05)';
+        boxShadow: isUrgent ? '0 8px 18px rgba(157,75,74,0.08)' : '0 4px 14px rgba(47,27,20,0.04)',
       }}
       role="button"
       tabIndex={0}
@@ -58,73 +47,77 @@ export function WorkQueueItem({
         }
       }}
     >
-      <div className="grid gap-3 p-4">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span
-              className="inline-flex items-center justify-center text-[11px] font-bold px-2.5 py-1.5 rounded-lg"
-              style={{ backgroundColor: tone.bg, color: tone.text, border: `1px solid ${tone.border}` }}
-            >
-              {tone.label}
-            </span>
-            {isUrgent && (
+      <div className="grid gap-2.5 p-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 flex-wrap">
               <span
-                className="inline-flex items-center justify-center text-[11px] font-bold px-2.5 py-1.5 rounded-lg"
-                style={{ backgroundColor: C.redSoft, color: C.red, border: '1px solid #E4C2BE' }}
+                className="inline-flex items-center justify-center text-[10px] font-bold px-2 py-1 rounded-md"
+                style={{ backgroundColor: tone.bg, color: tone.text, border: `1px solid ${tone.border}` }}
               >
-                דחוף
+                {tone.label}
               </span>
-            )}
+              {isUrgent && (
+                <span
+                  className="inline-flex items-center justify-center text-[10px] font-bold px-2 py-1 rounded-md"
+                  style={{ backgroundColor: C.redSoft, color: C.red, border: '1px solid #E4C2BE' }}
+                >
+                  דחוף
+                </span>
+              )}
+            </div>
+
+            <p className="mt-2 text-[15px] font-bold truncate" style={{ color: C.text, letterSpacing: 0 }}>
+              {item.title}
+            </p>
+            <p className="mt-1 text-[11.5px] leading-5 line-clamp-2" style={{ color: C.textSoft }}>
+              {item.meta}
+            </p>
+          </div>
+
+          <div className="flex flex-col items-end gap-2 shrink-0">
             {item.amount && (
               <span
-                className="inline-flex items-center justify-center text-[13px] font-bold px-3 py-1.5 rounded-lg tabular-nums"
+                className="inline-flex items-center justify-center text-[12px] font-bold px-2.5 h-8 rounded-lg tabular-nums"
                 style={{ backgroundColor: C.card, color: C.text, border: `1px solid ${C.borderSoft}` }}
               >
                 {item.amount}
               </span>
             )}
+            {!hasProgress && (
+              <PrimaryActionButton
+                label={item.action.label}
+                urgent={isUrgent || item.type === 'delivery'}
+                disabled={updating}
+                onClick={(e) => { e.stopPropagation(); handlers.onAction(item.action.verb); }}
+              />
+            )}
           </div>
-
-          <p className="mt-3 text-[17px] font-bold truncate" style={{ color: C.text, letterSpacing: 0 }}>
-            {item.title}
-          </p>
-          <p className="mt-1.5 text-[12px] leading-5 line-clamp-2" style={{ color: C.textSoft }}>
-            {item.meta}
-          </p>
-        </div>
-
-        <div className="flex items-center justify-between gap-2 lg:justify-end">
-          {!isOrderRow && !delivery && (
-            <PrimaryActionButton
-              label={item.action.label}
-              urgent={isUrgent || isDeliveryRow}
-              disabled={updating}
-              onClick={(e) => { e.stopPropagation(); handlers.onAction(item.action.verb); }}
-            />
-          )}
         </div>
       </div>
 
       {order && (
         <div
-          className="grid gap-3 px-4 py-3 sm:grid-cols-[1fr_1fr_auto] items-end"
+          className="grid gap-2 px-3 py-2.5 sm:grid-cols-[minmax(210px,1.35fr)_minmax(170px,1fr)_auto] items-center"
           style={{ borderTop: `1px solid ${C.borderSoft}`, backgroundColor: '#FFFCF8' }}
           onClick={(e) => e.stopPropagation()}
         >
-          <FieldSelect
-            label="סטטוס הזמנה"
-            value={order.סטטוס_הזמנה}
-            options={ORDER_STATUSES}
-            disabled={updating}
-            onChange={(next) => handlers.onChangeOrderStatus(order, next as OrderStatusValue)}
-          />
-          <FieldSelect
-            label="סטטוס תשלום"
-            value={order.סטטוס_תשלום}
-            options={PAYMENT_STATUSES}
-            disabled={updating}
-            onChange={(next) => handlers.onChangePaymentStatus(order, next as PaymentStatusValue)}
-          />
+          <ProgressField label="סטטוס הזמנה">
+            <OrderStatusStepper
+              current={order.סטטוס_הזמנה}
+              disabled={updating}
+              onChange={(next) => handlers.onChangeOrderStatus(order, next)}
+            />
+          </ProgressField>
+
+          <ProgressField label="סטטוס תשלום">
+            <PaymentStatusControl
+              current={order.סטטוס_תשלום}
+              disabled={updating}
+              onChange={(next) => handlers.onChangePaymentStatus(order, next)}
+            />
+          </ProgressField>
+
           <PrimaryActionButton
             label={item.action.label}
             urgent={isUrgent}
@@ -136,20 +129,20 @@ export function WorkQueueItem({
 
       {delivery && (
         <div
-          className="grid gap-3 px-4 py-3 sm:grid-cols-[1fr_auto] items-end"
+          className="grid gap-2 px-3 py-2.5 sm:grid-cols-[1fr_auto] items-center"
           style={{ borderTop: `1px solid ${C.borderSoft}`, backgroundColor: '#FFFCF8' }}
           onClick={(e) => e.stopPropagation()}
         >
-          <FieldSelect
-            label="סטטוס משלוח"
-            value={delivery.סטטוס_משלוח}
-            options={DELIVERY_STATUSES}
-            disabled={updating}
-            onChange={(next) => handlers.onChangeDeliveryStatus(delivery, next as 'ממתין' | 'נאסף' | 'נמסר')}
-          />
+          <ProgressField label="סטטוס משלוח">
+            <DeliveryStatusStepper
+              current={delivery.סטטוס_משלוח}
+              disabled={updating}
+              onChange={(next) => handlers.onChangeDeliveryStatus(delivery, next)}
+            />
+          </ProgressField>
           <PrimaryActionButton
             label={item.action.label}
-            urgent={isUrgent || isDeliveryRow}
+            urgent={isUrgent || item.type === 'delivery'}
             disabled={updating}
             onClick={(e) => { e.stopPropagation(); handlers.onAction(item.action.verb); }}
           />
@@ -159,44 +152,80 @@ export function WorkQueueItem({
   );
 }
 
-function FieldSelect({
-  label,
-  value,
-  options,
+function ProgressField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <p className="mb-1 text-[10.5px] font-bold" style={{ color: C.textSoft }}>
+        {label}
+      </p>
+      {children}
+    </div>
+  );
+}
+
+function DeliveryStatusStepper({
+  current,
   disabled,
   onChange,
 }: {
-  label: string;
-  value: string;
-  options: readonly string[];
-  disabled: boolean;
-  onChange: (value: string) => void;
+  current: string;
+  disabled?: boolean;
+  onChange: (next: 'ממתין' | 'נאסף' | 'נמסר') => void;
 }) {
+  const currentIdx = Math.max(0, DELIVERY_STATUSES.findIndex(status => status === current));
+
   return (
-    <label className="block min-w-0">
-      <span className="block text-[11px] font-bold mb-1.5" style={{ color: C.textSoft }}>
-        {label}
-      </span>
-      <select
-        value={value}
-        disabled={disabled}
-        onClick={(e) => e.stopPropagation()}
-        onChange={(e) => {
-          if (e.target.value !== value) onChange(e.target.value);
-        }}
-        className="w-full h-10 rounded-xl px-3 text-[13px] font-semibold outline-none disabled:opacity-60 disabled:cursor-wait"
-        style={{
-          backgroundColor: '#FFFFFF',
-          color: C.text,
-          border: `1px solid ${C.border}`,
-          boxShadow: '0 4px 12px rgba(47,27,20,0.04)',
-        }}
-      >
-        {options.map(option => (
-          <option key={option} value={option}>{option}</option>
-        ))}
-      </select>
-    </label>
+    <div className="inline-flex items-start max-w-full overflow-x-auto pb-0.5" role="radiogroup" aria-label="סטטוס משלוח">
+      {DELIVERY_STATUSES.map((status, idx) => {
+        const active = current === status;
+        const reached = idx <= currentIdx;
+        return (
+          <span key={status} className="inline-flex items-start">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!active && !disabled) onChange(status);
+              }}
+              disabled={disabled || active}
+              role="radio"
+              aria-checked={active}
+              className="flex flex-col items-center gap-0.5 flex-shrink-0 disabled:cursor-default"
+              style={{ minWidth: 42 }}
+            >
+              <span
+                className="flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-bold"
+                style={{
+                  backgroundColor: active || reached ? C.blue : C.card,
+                  color: active || reached ? '#FFFFFF' : C.textMuted,
+                  border: `1px solid ${active || reached ? C.blue : C.border}`,
+                  boxShadow: active ? `0 0 0 3px ${C.blue}22` : 'none',
+                }}
+              >
+                {idx + 1}
+              </span>
+              <span
+                className="text-[9.5px] whitespace-nowrap"
+                style={{ color: active ? C.text : reached ? C.textSoft : C.textMuted, fontWeight: active ? 700 : 600 }}
+              >
+                {status}
+              </span>
+            </button>
+            {idx < DELIVERY_STATUSES.length - 1 && (
+              <span
+                className="flex-shrink-0 rounded-full"
+                style={{
+                  width: 18,
+                  height: 2,
+                  marginTop: 9,
+                  backgroundColor: idx + 1 <= currentIdx ? C.blue : C.border,
+                }}
+                aria-hidden
+              />
+            )}
+          </span>
+        );
+      })}
+    </div>
   );
 }
 
@@ -212,12 +241,12 @@ function PrimaryActionButton({
     <button
       onClick={onClick}
       disabled={disabled}
-      className="inline-flex items-center justify-center h-10 px-4 rounded-xl text-[13px] font-bold whitespace-nowrap transition-all disabled:opacity-60 disabled:cursor-default"
+      className="inline-flex items-center justify-center h-8 px-3 rounded-lg text-[12px] font-bold whitespace-nowrap transition-colors disabled:opacity-60 disabled:cursor-default"
       style={{
         backgroundColor: urgent ? C.espresso : C.brand,
         color: '#FFFFFF',
         border: `1px solid ${urgent ? C.espresso : C.brand}`,
-        boxShadow: '0 8px 18px rgba(47,27,20,0.16)',
+        boxShadow: '0 5px 12px rgba(47,27,20,0.13)',
       }}
     >
       {disabled ? 'מעדכן...' : label}

@@ -12,18 +12,18 @@ export function CommandHeader({
 }) {
   return (
     <header
-      className="rounded-2xl px-5 py-5 sm:px-6"
-      style={{ backgroundColor: '#FFFFFF', border: `1px solid ${C.border}`, boxShadow: '0 10px 28px rgba(47,27,20,0.055)' }}
+      className="rounded-xl px-4 py-3.5 sm:px-5"
+      style={{ backgroundColor: '#FFFFFF', border: `1px solid ${C.border}`, boxShadow: '0 6px 18px rgba(47,27,20,0.045)' }}
     >
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="min-w-0">
-          <p className="text-[12px] font-bold mb-1" style={{ color: C.gold }}>
+          <p className="text-[11.5px] font-bold mb-0.5" style={{ color: C.gold }}>
             {dateStr}
           </p>
-          <h1 className="text-[26px] sm:text-[32px] font-bold leading-tight" style={{ color: C.text, letterSpacing: 0 }}>
+          <h1 className="text-[21px] sm:text-[25px] font-bold leading-tight" style={{ color: C.text, letterSpacing: 0 }}>
             {greeting}, זה לוח העבודה של היום
           </h1>
-          <p className="text-[13px] mt-2 leading-6 max-w-3xl" style={{ color: C.textSoft }}>
+          <p className="text-[12px] mt-1 leading-5 max-w-3xl" style={{ color: C.textSoft }}>
             עדכוני הזמנות, תשלומים, משלוחים ומלאי מחולקים לפי פעולה. נכנסים לעמודה, סוגרים טיפול, ממשיכים הלאה.
           </p>
         </div>
@@ -31,7 +31,7 @@ export function CommandHeader({
         <div className="flex items-center gap-2">
           <button
             onClick={onRefresh}
-            className="inline-flex items-center justify-center w-11 h-11 rounded-xl border transition-colors"
+            className="inline-flex items-center justify-center w-9 h-9 rounded-lg border transition-colors"
             style={{ borderColor: C.border, color: C.brand, backgroundColor: C.card }}
             aria-label="רענון נתונים"
             title="רענון נתונים"
@@ -45,8 +45,8 @@ export function CommandHeader({
           </button>
           <Link
             href="/orders/new"
-            className="inline-flex items-center gap-2 px-5 h-11 text-[13px] font-bold rounded-xl transition-colors"
-            style={{ backgroundColor: C.espresso, color: '#FFFFFF', boxShadow: '0 8px 18px rgba(47,27,20,0.16)' }}
+            className="inline-flex items-center gap-2 px-4 h-9 text-[12px] font-bold rounded-lg transition-colors"
+            style={{ backgroundColor: C.espresso, color: '#FFFFFF', boxShadow: '0 5px 12px rgba(47,27,20,0.13)' }}
           >
             <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
               <path d="M12 5v14M5 12h14" />

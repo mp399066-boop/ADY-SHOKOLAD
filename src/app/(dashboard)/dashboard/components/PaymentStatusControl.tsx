@@ -1,16 +1,6 @@
 'use client';
 
-// Inline payment-status control. Visually distinct from OrderStatusStepper
-// — colour-per-status chips rather than a unified segmented background, so
-// the user reads "this is the money line" at a glance. Each chip carries
-// its own tone (amber/gold/green/red) and stays muted when inactive.
-//
-// IMPORTANT: 'שולם' delegates to the parent's mark-paid handler — that
-// handler opens the existing MarkPaidModal so the user picks אופן_תשלום
-// before the status flips. Other statuses fire a direct PATCH. NEITHER
-// path triggers Morning — auto-document creation stays off (gated by
-// AUTO_CREATE_MORNING_DOCUMENTS in src/lib/morning.ts).
-
+import { Fragment } from 'react';
 import { C } from './theme';
 
 export type PaymentStatusValue = 'ממתין' | 'חלקי' | 'שולם' | 'בוטל';
@@ -30,17 +20,17 @@ const CHIPS: {
     activeBg: C.amber, activeText: '#FFFFFF',
   },
   {
-    value: 'חלקי',  label: 'חלקי',
+    value: 'חלקי', label: 'חלקי',
     bg: '#FFFFFF', text: C.gold, border: C.borderSoft,
     activeBg: C.gold, activeText: '#FFFFFF',
   },
   {
-    value: 'שולם',  label: 'שולם',
+    value: 'שולם', label: 'שולם',
     bg: '#FFFFFF', text: C.green, border: C.borderSoft,
     activeBg: C.green, activeText: '#FFFFFF',
   },
   {
-    value: 'בוטל',  label: 'בוטל',
+    value: 'בוטל', label: 'בוטל',
     bg: '#FFFFFF', text: C.red, border: C.borderSoft,
     activeBg: C.red, activeText: '#FFFFFF',
   },
@@ -53,43 +43,72 @@ export function PaymentStatusControl({
   onChange: (next: PaymentStatusValue) => void;
   disabled?: boolean;
 }) {
+  if (current === 'בארטר') {
+    return (
+      <span
+        className="inline-flex h-7 items-center rounded-lg px-2.5 text-[11px] font-bold"
+        style={{ backgroundColor: C.brandSoft, color: C.brand, border: `1px solid ${C.borderSoft}` }}
+      >
+        בארטר
+      </span>
+    );
+  }
+
+  const currentIdx = Math.max(0, CHIPS.findIndex(c => c.value === current));
+
   return (
     <div
-      className="inline-flex items-center gap-1.5 px-1.5 py-1 rounded-lg"
-      // Quiet pill-tray treatment so the payment row reads as a single
-      // unit, distinct from the order stepper above.
-      style={{ backgroundColor: C.surface, border: `1px solid ${C.borderSoft}` }}
+      className="inline-flex items-start max-w-full overflow-x-auto pb-0.5"
       role="radiogroup"
       aria-label="סטטוס תשלום"
     >
-      <span
-        className="inline-flex items-center justify-center text-[10.5px] font-bold"
-        style={{ color: C.textSoft }}
-        aria-hidden
-      >
-        ₪
-      </span>
-      {CHIPS.map(c => {
+      {CHIPS.map((c, idx) => {
         const active = current === c.value;
+        const reached = idx <= currentIdx;
         return (
-          <button
-            key={c.value}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (!active && !disabled) onChange(c.value);
-            }}
-            disabled={disabled || active}
-            role="radio"
-            aria-checked={active}
-            className="text-[10.5px] font-semibold px-2 h-6 rounded-md transition-colors disabled:cursor-default"
-            style={{
-              backgroundColor: active ? c.activeBg : 'transparent',
-              color:           active ? c.activeText : c.text,
-              border:          `1px solid ${active ? c.activeBg : 'transparent'}`,
-            }}
-          >
-            {c.label}
-          </button>
+          <Fragment key={c.value}>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!active && !disabled) onChange(c.value);
+              }}
+              disabled={disabled || active}
+              role="radio"
+              aria-checked={active}
+              className="flex flex-col items-center gap-0.5 flex-shrink-0 disabled:cursor-default"
+              style={{ minWidth: 38 }}
+            >
+              <span
+                className="flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-bold transition-all"
+                style={{
+                  backgroundColor: active ? c.activeBg : reached ? c.bg : C.card,
+                  color: active ? c.activeText : c.text,
+                  border: `1px solid ${active ? c.activeBg : c.border}`,
+                  boxShadow: active ? `0 0 0 3px ${c.activeBg}22` : 'none',
+                }}
+              >
+                {idx + 1}
+              </span>
+              <span
+                className="text-[9.5px] whitespace-nowrap"
+                style={{ color: active ? C.text : c.text, fontWeight: active ? 700 : 600 }}
+              >
+                {c.label}
+              </span>
+            </button>
+            {idx < CHIPS.length - 1 && (
+              <span
+                className="flex-shrink-0 rounded-full"
+                style={{
+                  width: 14,
+                  height: 2,
+                  marginTop: 9,
+                  backgroundColor: idx + 1 <= currentIdx ? c.activeBg : C.border,
+                }}
+                aria-hidden
+              />
+            )}
+          </Fragment>
         );
       })}
     </div>

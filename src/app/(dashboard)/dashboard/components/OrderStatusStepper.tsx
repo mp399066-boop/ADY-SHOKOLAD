@@ -26,9 +26,9 @@ const STEPS: { value: OrderStatusValue; label: string }[] = [
 ];
 
 const CIRCLE = {
-  past:    18,   // px
-  current: 22,
-  future:  18,
+  past:    16,
+  current: 20,
+  future:  16,
 };
 
 export function OrderStatusStepper({
@@ -66,7 +66,7 @@ export function OrderStatusStepper({
 
   return (
     <div
-      className="inline-flex items-start gap-0"
+      className="inline-flex items-start gap-0 max-w-full overflow-x-auto pb-0.5"
       role="radiogroup"
       aria-label="סטטוס הזמנה"
     >
@@ -88,11 +88,11 @@ export function OrderStatusStepper({
               role="radio"
               aria-checked={isCur}
               aria-label={`שינוי סטטוס ל${s.label}`}
-              className="flex flex-col items-center gap-1 flex-shrink-0 disabled:cursor-default group"
-              style={{ minWidth: 44 }}
+              className="flex flex-col items-center gap-0.5 flex-shrink-0 disabled:cursor-default group"
+              style={{ minWidth: 36 }}
             >
               <span
-                className="rounded-full flex items-center justify-center text-[9.5px] font-bold transition-all"
+                className="rounded-full flex items-center justify-center text-[9px] font-bold transition-all"
                 style={{
                   width:  size,
                   height: size,
@@ -102,7 +102,7 @@ export function OrderStatusStepper({
                   color:           past || isCur ? '#FFFFFF'  : C.textMuted,
                   border:          past || isCur ? `1px solid ${C.espresso}` : `1.5px solid ${C.border}`,
                   // Soft ring around the current step so it reads as the anchor
-                  boxShadow:       isCur ? `0 0 0 3px ${C.espresso}1F` : 'none',
+                  boxShadow:       isCur ? `0 0 0 3px ${C.espresso}1A` : 'none',
                 }}
               >
                 {past ? (
@@ -116,7 +116,7 @@ export function OrderStatusStepper({
                 )}
               </span>
               <span
-                className="text-[10px] whitespace-nowrap transition-colors"
+                className="text-[9.5px] whitespace-nowrap transition-colors"
                 style={{
                   color:      isCur ? C.text : past ? C.textSoft : C.textMuted,
                   fontWeight: isCur ? 700    : past ? 600        : 500,
@@ -131,7 +131,7 @@ export function OrderStatusStepper({
               <span
                 className="flex-shrink-0"
                 style={{
-                  width:           20,
+                  width:           14,
                   height:          2,
                   // marginTop centers the line on the smaller (past/future)
                   // circle vertical midline (18/2 - 2/2 = 8). Current step is

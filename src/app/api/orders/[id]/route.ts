@@ -67,8 +67,12 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
 }
 
 // Call Morning Edge Function for a specific document type.
-// Idempotency is enforced inside the Edge Function by (הזמנה_id + סוג_מסמך).
-async function callMorning(orderId: string, documentType: 'tax_invoice' | 'receipt'): Promise<void> {
+//
+// HARD RULE (mirrors src/lib/morning.ts): only `tax_invoice` is callable
+// from a status-driven trigger. PAYMENT_DOCS (receipt, invoice_receipt)
+// require an explicit payment_method which the EF now hard-requires — see
+// the receipt branch below for what we do instead.
+async function callMorning(orderId: string, documentType: 'tax_invoice'): Promise<void> {
   const supabaseUrl = process.env.SUPABASE_URL ?? '';
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
   const webhookSecret = process.env.WEBHOOK_SECRET ?? '';
@@ -291,12 +295,19 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     console.log('[inventory] should deduct: false — סאטמר order, no inventory deduction. order:', params.id);
   }
 
-  // קבלה / סאטמר: first time payment status → שולם. Same gating story.
+  // קבלה / סאטמר: first time payment status → שולם.
+  //
+  // Even when AUTO_CREATE_MORNING_DOCUMENTS is flipped back on, receipt
+  // auto-issuance stays disabled — there is no defensible payment method
+  // to send from a status trigger (the order's אופן_תשלום is unreliable;
+  // WooCommerce bacs orders silently labelled docs as bank transfer when
+  // we used to fall back to it). Receipts must be issued via POST
+  // /api/orders/[id]/create-document where the user picks the method.
   if (body.סטטוס_תשלום === 'שולם' && prevPaymentStatus !== 'שולם') {
     if (orderType === 'סאטמר') {
       await sendSatmarSummaryEmail(params.id);
     } else if (AUTO_CREATE_MORNING_DOCUMENTS) {
-      await callMorning(params.id, 'receipt');
+      console.error('[invoice] receipt auto-call is intentionally disabled — payment method required. issue manually. order:', params.id);
     } else {
       console.log('[invoice] auto-create OFF — skipping receipt on שולם. order:', params.id);
     }

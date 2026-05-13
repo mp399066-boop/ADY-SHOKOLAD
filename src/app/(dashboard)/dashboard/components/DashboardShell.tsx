@@ -12,7 +12,7 @@ export function DashboardShell({
 }) {
   return (
     <div
-      className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start"
+      className="grid grid-cols-1 xl:grid-cols-12 gap-3 items-start"
       // 3/4 + 1/4 split. The work queue takes the dominant column; the
       // attention rail is meant to sit quietly to the side.
     >

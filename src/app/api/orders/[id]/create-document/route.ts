@@ -129,9 +129,20 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   console.log('[manual-document] normalized document type:', documentType);
   console.log('[manual-document] morning document type:', { tax_invoice: 305, receipt: 400, invoice_receipt: 320 }[documentType]);
   console.log('[manual-document] requires payment:', PAYMENT_DOCS.has(documentType));
-  console.log('[manual-document] raw payment method:', paymentMethod || 'none');
-  console.log('[manual-document] mapped payment type:', canonicalMethod ?? 'n/a');
+  console.log('[manual-document] raw payment method (from UI):', JSON.stringify(paymentMethod ?? null));
+  console.log('[manual-document] canonicalized method (sent to Morning):', JSON.stringify(canonicalMethod));
   console.log('[manual-document] force:', !!force);
+  // Defensive belt-and-suspenders. The schema + canonicalization above
+  // already guarantees this for PAYMENT_DOCS, but a final assertion makes
+  // it impossible to ever forward a PAYMENT_DOC without a method — even if
+  // the validation block above is later refactored.
+  if (PAYMENT_DOCS.has(documentType) && !canonicalMethod) {
+    console.error('[manual-document] refusing — PAYMENT_DOC without canonical method (should be unreachable)');
+    return NextResponse.json(
+      { error: 'יש לבחור אמצעי תשלום תקין לפני הפקת המסמך.' },
+      { status: 400 },
+    );
+  }
 
   const supabaseUrl    = process.env.SUPABASE_URL ?? '';
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
