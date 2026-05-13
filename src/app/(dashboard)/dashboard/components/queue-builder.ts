@@ -1,0 +1,256 @@
+// Pure builder — turns the raw dashboard data into a flat list of work-queue
+// items, bucketed into 3 urgency groups: דחוף עכשיו / להיום / למעקב.
+//
+// Design rules:
+//   - Filter aggressively. The dashboard is NOT a directory. Show only what
+//     requires action right now. Cancelled / completed / archived rows are
+//     dropped at the source.
+//   - Each item is reduced to a single primary action ("פעולה אחת ברורה").
+//   - One item per real-world thing — an order doesn't show twice in the
+//     same group, even if it's both unpaid AND in preparation.
+
+import { formatCurrency } from '@/lib/utils';
+import type { Delivery, Stock, TodayOrder } from './types';
+
+export type QueueItemType = 'order' | 'delivery' | 'payment' | 'stock';
+export type QueueUrgency  = 'urgent_now' | 'today' | 'follow_up';
+export type QueueAction =
+  | { kind: 'advance_order';  payload: TodayOrder }      // המשך טיפול / השלב הבא
+  | { kind: 'open_order';     payload: TodayOrder }      // פתח הזמנה
+  | { kind: 'mark_paid';      payload: TodayOrder }      // סמני שולם
+  | { kind: 'send_to_courier'; payload: Delivery }       // שלח לשליח
+  | { kind: 'open_delivery';  payload: Delivery }        // פתח משלוח
+  | { kind: 'open_inventory'; payload?: undefined };     // פתח מלאי
+
+export interface QueueItem {
+  id: string;
+  type: QueueItemType;
+  urgency: QueueUrgency;
+  title: string;            // customer name / item name
+  meta: string;             // order # · time · status · etc
+  amount?: string;          // formatted currency, when relevant
+  action: { label: string; verb: QueueAction };
+  // Optional accent — currently used by stock items
+  severity?: 'critical' | 'low';
+}
+
+interface Inputs {
+  liveOrders: TodayOrder[];          // already excludes בוטלה / טיוטה
+  todayDeliveries: Delivery[];
+  stock: Stock;
+  todayISO: string;
+}
+
+const ACTION_LABEL: Record<QueueAction['kind'], string> = {
+  advance_order:    'המשך טיפול',
+  open_order:       'פתח הזמנה',
+  mark_paid:        'סמני שולם',
+  send_to_courier:  'שלח לשליח',
+  open_delivery:    'פתח משלוח',
+  open_inventory:   'פתח מלאי',
+};
+
+function customerName(o: TodayOrder): string {
+  const c = o.לקוחות;
+  if (c) return `${c.שם_פרטי} ${c.שם_משפחה}`.trim() || 'לקוח';
+  return o.שם_מקבל || 'לקוח';
+}
+
+function deliveryRecipient(d: Delivery): string {
+  const o = d.הזמנות;
+  const c = o?.לקוחות;
+  return o?.שם_מקבל || (c ? `${c.שם_פרטי} ${c.שם_משפחה}`.trim() : '') || 'לקוח';
+}
+
+function isUnpaid(o: TodayOrder): boolean {
+  return o.סטטוס_תשלום !== 'שולם' && o.סטטוס_תשלום !== 'בארטר' && o.סטטוס_תשלום !== 'בוטל';
+}
+
+function nextAdvanceLabel(o: TodayOrder): string {
+  // Local copy of the verb logic — UI-facing labels only. Status values
+  // sent to the server still come from the page.tsx getNextOrderStatus.
+  const isPickup = (o.סוג_אספקה ?? '') === 'איסוף עצמי';
+  switch (o.סטטוס_הזמנה) {
+    case 'חדשה':         return 'התחילי הכנה';
+    case 'בהכנה':        return isPickup ? 'סמני מוכנה לאיסוף' : 'סמני מוכנה למשלוח';
+    case 'מוכנה למשלוח': return isPickup ? 'סמני נמסרה' : 'סמני נשלחה';
+    case 'נשלחה':        return 'סמני הושלמה';
+    default:             return 'המשך טיפול';
+  }
+}
+
+function hasNextStep(o: TodayOrder): boolean {
+  return o.סטטוס_הזמנה === 'חדשה'
+      || o.סטטוס_הזמנה === 'בהכנה'
+      || o.סטטוס_הזמנה === 'מוכנה למשלוח'
+      || o.סטטוס_הזמנה === 'נשלחה';
+}
+
+export function buildQueueItems({ liveOrders, todayDeliveries, stock, todayISO }: Inputs): QueueItem[] {
+  const items: QueueItem[] = [];
+  const seenOrderIds = new Set<string>();
+  const seenDeliveryIds = new Set<string>();
+  const seenStockIds = new Set<string>();
+
+  // ── 1. Urgent orders — always first, regardless of date ──────────────────
+  for (const o of liveOrders.filter(o => o.הזמנה_דחופה).slice(0, 6)) {
+    if (seenOrderIds.has(o.id)) continue;
+    seenOrderIds.add(o.id);
+    const advance = hasNextStep(o);
+    items.push({
+      id: `o-${o.id}`,
+      type: 'order',
+      urgency: 'urgent_now',
+      title: customerName(o),
+      meta: `${o.מספר_הזמנה} · ${o.שעת_אספקה || '—'} · ${o.סטטוס_הזמנה}`,
+      amount: formatCurrency(o.סך_הכל_לתשלום),
+      action: advance
+        ? { label: nextAdvanceLabel(o),     verb: { kind: 'advance_order', payload: o } }
+        : { label: ACTION_LABEL.open_order, verb: { kind: 'open_order',    payload: o } },
+    });
+  }
+
+  // ── 2. Critical stock (אזל מהמלאי) — blocks preparation ─────────────────
+  const allStock: { id: string; שם: string; status: string; quantity: number; kind: string }[] = [
+    ...stock.raw.map(r => ({ ...r, kind: 'גלם' })),
+    ...stock.products.map(r => ({ ...r, kind: 'מוצר' })),
+    ...stock.petitFours.map(r => ({ ...r, kind: 'פטיפור' })),
+  ];
+  const outItems = allStock.filter(s => s.status === 'אזל מהמלאי');
+  for (const s of outItems.slice(0, 4)) {
+    const key = `s-${s.kind}-${s.id}`;
+    if (seenStockIds.has(key)) continue;
+    seenStockIds.add(key);
+    items.push({
+      id: key,
+      type: 'stock',
+      urgency: 'urgent_now',
+      title: s.שם,
+      meta: `${s.kind} · אזל מהמלאי · נותר ${s.quantity}`,
+      action: { label: ACTION_LABEL.open_inventory, verb: { kind: 'open_inventory' } },
+      severity: 'critical',
+    });
+  }
+
+  // ── 3. Today's pending orders (חדשה / בהכנה) ─────────────────────────────
+  const todayPending = liveOrders.filter(o =>
+    o.תאריך_אספקה === todayISO
+    && (o.סטטוס_הזמנה === 'חדשה' || o.סטטוס_הזמנה === 'בהכנה')
+    && !seenOrderIds.has(o.id),
+  );
+  for (const o of todayPending) {
+    seenOrderIds.add(o.id);
+    items.push({
+      id: `o-${o.id}`,
+      type: 'order',
+      urgency: 'today',
+      title: customerName(o),
+      meta: `${o.מספר_הזמנה} · ${o.שעת_אספקה || '—'} · ${o.סטטוס_הזמנה}`,
+      amount: formatCurrency(o.סך_הכל_לתשלום),
+      action: { label: nextAdvanceLabel(o), verb: { kind: 'advance_order', payload: o } },
+    });
+  }
+
+  // ── 4. Today's pending deliveries ────────────────────────────────────────
+  const todayDeliveriesPending = todayDeliveries.filter(d => d.סטטוס_משלוח === 'ממתין');
+  for (const d of todayDeliveriesPending) {
+    seenDeliveryIds.add(d.id);
+    const o = d.הזמנות;
+    items.push({
+      id: `d-${d.id}`,
+      type: 'delivery',
+      urgency: 'today',
+      title: deliveryRecipient(d),
+      meta: `היום · ${d.כתובת ?? ''}${d.עיר ? ' · ' + d.עיר : ''}${o?.מספר_הזמנה ? ' · ' + o.מספר_הזמנה : ''}`,
+      action: { label: ACTION_LABEL.send_to_courier, verb: { kind: 'send_to_courier', payload: d } },
+    });
+  }
+
+  // ── 5. Today's "מוכנה למשלוח" — needs send/handoff ───────────────────────
+  const todayReady = liveOrders.filter(o =>
+    o.תאריך_אספקה === todayISO
+    && o.סטטוס_הזמנה === 'מוכנה למשלוח'
+    && !seenOrderIds.has(o.id),
+  );
+  for (const o of todayReady) {
+    seenOrderIds.add(o.id);
+    items.push({
+      id: `o-${o.id}`,
+      type: 'order',
+      urgency: 'today',
+      title: customerName(o),
+      meta: `${o.מספר_הזמנה} · ${o.שעת_אספקה || '—'} · מוכנה`,
+      amount: formatCurrency(o.סך_הכל_לתשלום),
+      action: { label: nextAdvanceLabel(o), verb: { kind: 'advance_order', payload: o } },
+    });
+  }
+
+  // ── 6. Follow-up: in-transit deliveries (waiting courier confirm) ───────
+  const inTransit = todayDeliveries.filter(d => d.סטטוס_משלוח === 'נאסף' && !seenDeliveryIds.has(d.id));
+  for (const d of inTransit.slice(0, 3)) {
+    seenDeliveryIds.add(d.id);
+    items.push({
+      id: `d-${d.id}`,
+      type: 'delivery',
+      urgency: 'follow_up',
+      title: deliveryRecipient(d),
+      meta: `נאסף · ממתין לאישור מסירה מהשליח${d.עיר ? ' · ' + d.עיר : ''}`,
+      action: { label: ACTION_LABEL.open_delivery, verb: { kind: 'open_delivery', payload: d } },
+    });
+  }
+
+  // ── 7. Follow-up: unpaid orders not from today ──────────────────────────
+  const unpaidLater = liveOrders.filter(o =>
+    isUnpaid(o)
+    && o.תאריך_אספקה !== todayISO
+    && !seenOrderIds.has(o.id),
+  ).slice(0, 5);
+  for (const o of unpaidLater) {
+    seenOrderIds.add(o.id);
+    items.push({
+      id: `o-${o.id}`,
+      type: 'payment',
+      urgency: 'follow_up',
+      title: customerName(o),
+      meta: `${o.מספר_הזמנה} · ${o.תאריך_אספקה ?? '—'} · ${o.סטטוס_תשלום}`,
+      amount: formatCurrency(o.סך_הכל_לתשלום),
+      action: { label: ACTION_LABEL.mark_paid, verb: { kind: 'mark_paid', payload: o } },
+    });
+  }
+
+  // ── 8. Follow-up: critical stock (קריטי) — not the same as אזל ──────────
+  const critItems = allStock.filter(s => s.status === 'קריטי');
+  for (const s of critItems.slice(0, 3)) {
+    const key = `s-${s.kind}-${s.id}`;
+    if (seenStockIds.has(key)) continue;
+    seenStockIds.add(key);
+    items.push({
+      id: key,
+      type: 'stock',
+      urgency: 'follow_up',
+      title: s.שם,
+      meta: `${s.kind} · קריטי · נותר ${s.quantity}`,
+      action: { label: ACTION_LABEL.open_inventory, verb: { kind: 'open_inventory' } },
+      severity: 'critical',
+    });
+  }
+
+  // ── 9. Follow-up: low stock ────────────────────────────────────────────
+  const lowItems = allStock.filter(s => s.status === 'מלאי נמוך');
+  for (const s of lowItems.slice(0, 3)) {
+    const key = `s-${s.kind}-${s.id}`;
+    if (seenStockIds.has(key)) continue;
+    seenStockIds.add(key);
+    items.push({
+      id: key,
+      type: 'stock',
+      urgency: 'follow_up',
+      title: s.שם,
+      meta: `${s.kind} · מלאי נמוך · נותר ${s.quantity}`,
+      action: { label: ACTION_LABEL.open_inventory, verb: { kind: 'open_inventory' } },
+      severity: 'low',
+    });
+  }
+
+  return items;
+}
