@@ -9,16 +9,18 @@ import { PageLoading } from '@/components/ui/LoadingSpinner';
 import toast from 'react-hot-toast';
 import type { BusinessSettings } from '@/types/database';
 
-const SETTINGS_TABS = [
-  { href: '/settings',       label: 'הגדרות עסק'      },
-  { href: '/settings/users', label: 'משתמשים והרשאות' },
-];
+const SETTINGS_TABS_BASE = [
+  { href: '/settings',       label: 'הגדרות עסק',       adminOnly: false },
+  { href: '/settings/users', label: 'משתמשים והרשאות',  adminOnly: false },
+  { href: '/settings/system-control', label: 'מרכז בקרה', adminOnly: true },
+] as const;
 
-function SettingsTabs() {
+function SettingsTabs({ activeHref = '/settings', isAdmin = false }: { activeHref?: string; isAdmin?: boolean }) {
+  const tabs = SETTINGS_TABS_BASE.filter(t => !t.adminOnly || isAdmin);
   return (
     <div className="flex gap-1 mb-6 border-b" style={{ borderColor: '#EAE0D4' }}>
-      {SETTINGS_TABS.map(tab => {
-        const isActive = tab.href === '/settings';
+      {tabs.map(tab => {
+        const isActive = tab.href === activeHref;
         return (
           <Link
             key={tab.href}
@@ -36,12 +38,17 @@ function SettingsTabs() {
   );
 }
 
+// SettingsTabs is also defined locally inside settings/users and
+// settings/system-control. Not re-exported here because Next.js page.tsx
+// files only allow the page-shape exports.
+
 export default function SettingsPage() {
   const [settings, setSettings] = useState<BusinessSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [form, setForm] = useState<Partial<BusinessSettings>>({});
+  const [isAdmin, setIsAdmin] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -49,6 +56,9 @@ export default function SettingsPage() {
       .then(r => r.json())
       .then(({ data }) => { setSettings(data); setForm(data || {}); })
       .finally(() => setLoading(false));
+    // Role lookup — only used to decide whether the "מרכז בקרה" tab shows.
+    // Falls through silently if /api/me fails (tab just won't appear).
+    fetch('/api/me').then(r => r.ok ? r.json() : null).then(j => { if (j?.role === 'admin') setIsAdmin(true); }).catch(() => {});
   }, []);
 
   const set = (field: keyof BusinessSettings, value: string) => setForm(prev => ({ ...prev, [field]: value }));
@@ -104,7 +114,7 @@ export default function SettingsPage() {
 
   return (
     <div className="max-w-3xl space-y-5">
-      <SettingsTabs />
+      <SettingsTabs activeHref="/settings" isAdmin={isAdmin} />
       {/* Logo */}
       <Card>
         <CardHeader><CardTitle>לוגו העסק</CardTitle></CardHeader>

@@ -44,6 +44,22 @@ export async function requireManagementUser(): Promise<AuthorizedUser | null> {
   return user;
 }
 
+/**
+ * Strict admin gate. Used by the system-control routes (`/api/system/...`)
+ * — toggling automation switches must never be available to staff/delivery
+ * roles, even if they're authenticated.
+ */
+export async function requireAdminUser(): Promise<AuthorizedUser | null> {
+  const user = await requireAuthorizedUser();
+  if (!user) return null;
+  if (user.role !== 'admin') return null;
+  return user;
+}
+
+export function forbiddenAdminResponse(): NextResponse {
+  return NextResponse.json({ error: 'גישה למרכז הבקרה מוגבלת לאדמין בלבד.' }, { status: 403 });
+}
+
 export function unauthorizedResponse(): NextResponse {
   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 }

@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
+import { isServiceEnabled, logServiceRun } from '@/lib/system-services';
 import { randomBytes } from 'crypto';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -213,8 +214,25 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   let whatsappUrl: string | null = null;
   let sendError: string | null = null;
 
+  // Control-center kill-switch for courier notifications. The status flip
+  // itself still happens (admin might pause WhatsApp temporarily for testing
+  // but still want to record that a delivery was picked up). Skipped runs
+  // are logged so the operator can see exactly which dispatches went silent.
+  const notificationsEnabled = await isServiceEnabled(supabase, 'delivery_notifications');
+
   if (!courier) {
     console.log('[delivery PATCH] no courier assigned — skip auto-send');
+  } else if (!notificationsEnabled) {
+    console.log('[delivery PATCH] delivery_notifications is OFF in control center — courier NOT messaged');
+    sendError = 'שירות שליחת קישור לשליח כבוי במרכז הבקרה';
+    await logServiceRun(supabase, {
+      serviceKey:  'delivery_notifications',
+      action:      'send_courier_link',
+      status:      'disabled',
+      relatedType: 'delivery',
+      relatedId:   deliveryId,
+      message:     `WhatsApp NOT sent to ${courier.שם_שליח}`,
+    });
   } else if (courier.טלפון_שליח) {
     // Always rebuild the URL on every status→נאסף transition. The "don't reopen
     // on refresh" semantics is enforced on the frontend (only fires inside the
@@ -229,6 +247,14 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     );
     updatePayload.whatsapp_sent_at = new Date().toISOString();
     console.log('[delivery PATCH] WhatsApp URL built for courier:', courier.שם_שליח);
+    await logServiceRun(supabase, {
+      serviceKey:  'delivery_notifications',
+      action:      'send_courier_link',
+      status:      'success',
+      relatedType: 'delivery',
+      relatedId:   deliveryId,
+      message:     `WhatsApp link generated for ${courier.שם_שליח}`,
+    });
   } else {
     sendError = 'חסר טלפון לשליח';
     console.warn('[delivery PATCH] courier has no phone:', courier.שם_שליח);

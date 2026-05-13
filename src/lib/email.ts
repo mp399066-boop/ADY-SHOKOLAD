@@ -307,6 +307,26 @@ export async function sendOrderEmail(
   const from = process.env.FROM_EMAIL;
   if (!apiKey || !from) return;
 
+  // System-control center kill-switch. The admin can pause customer order
+  // confirmations from the UI. Skipped runs are logged so the panel shows
+  // exactly what was suppressed and when.
+  try {
+    const { isServiceEnabled, logServiceRun } = await import('@/lib/system-services');
+    const adminClient = createAdminClient();
+    if (!(await isServiceEnabled(adminClient, 'customer_order_emails'))) {
+      console.log('[email] sendOrderEmail skipped — service "customer_order_emails" is OFF in control center. to:', to, '| order:', context?.orderId || 'none');
+      await logServiceRun(adminClient, {
+        serviceKey:  'customer_order_emails',
+        action:      'send_order_confirmation',
+        status:      'disabled',
+        relatedType: context?.orderId ? 'order' : 'customer',
+        relatedId:   context?.orderId || context?.customerId || null,
+        message:     `email NOT sent to ${to}`,
+      });
+      return;
+    }
+  } catch { /* gate is observability — never block the email on a gate-check failure */ }
+
   sgMail.setApiKey(apiKey);
 
   const subject = orderData

@@ -5,6 +5,7 @@ import { generateOrderNumber } from '@/lib/utils';
 import { sendOrderEmail, isInternalEmail, type OrderEmailData, type EmailContext } from '@/lib/email';
 import { sendAdminNewOrderAlert } from '@/lib/admin-alert-email';
 import { deductOrderInventory } from '@/lib/inventory-deduct';
+import { isServiceEnabled, logServiceRun } from '@/lib/system-services';
 
 const PAID_STATUSES = new Set(['processing', 'completed']);
 
@@ -78,6 +79,26 @@ export async function POST(req: Request) {
     const wcOrderId = wc.id as number | undefined;
     console.log('[wc-webhook] order id:', wcOrderId, '| status:', wc.status);
     console.log('[wc-webhook] line_items:', JSON.stringify(wc.line_items ?? 'MISSING'));
+
+    // Control-center kill-switch. We still 200-OK to WooCommerce so it
+    // doesn't retry the webhook indefinitely; we just don't create the order.
+    // The skipped run is logged so the admin page surfaces what was dropped.
+    {
+      const supabaseGate = createAdminClient();
+      if (!(await isServiceEnabled(supabaseGate, 'woocommerce_orders'))) {
+        console.log('[wc-webhook] service "woocommerce_orders" is OFF in control center — skipping order creation');
+        await logServiceRun(supabaseGate, {
+          serviceKey:  'woocommerce_orders',
+          action:      'create_order_from_wc',
+          status:      'disabled',
+          relatedType: 'wc_order',
+          relatedId:   String(wcOrderId ?? ''),
+          message:     `WC order #${wcOrderId ?? '?'} ignored — service disabled`,
+          metadata:    { wc_status: wc.status ?? null },
+        });
+        return Response.json({ success: true, skipped: true, reason: 'service_disabled' });
+      }
+    }
 
     if (!wcOrderId) {
       console.log('[wc-webhook] STOP: no order ID in payload');

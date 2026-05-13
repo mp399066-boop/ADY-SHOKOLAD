@@ -26,6 +26,8 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
+import { createAdminClient } from '@/lib/supabase/server';
+import { isServiceEnabled, logServiceRun, SERVICE_DISABLED_MESSAGE } from '@/lib/system-services';
 
 // Document types that require a payment block. Mirrors PAYMENT_DOCS in the
 // Edge Function — keep these two sets in sync.
@@ -103,6 +105,27 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const { documentType, paymentMethod, paymentMethodSource, force } = parsed.data;
   const orderId = params.id;
+
+  // ── CONTROL CENTER GATE ────────────────────────────────────────────────
+  // Admin can pause document issuance entirely from /settings/system-control.
+  // Runs first — before the provenance gate, before Morning — so the operator
+  // gets a clear "service is off" message instead of a confusing payment-method
+  // refusal.
+  {
+    const supabaseAdmin = createAdminClient();
+    if (!(await isServiceEnabled(supabaseAdmin, 'morning_documents'))) {
+      console.log('[PAYMENT API] morning_documents is OFF — aborting before Morning call. order:', orderId);
+      await logServiceRun(supabaseAdmin, {
+        serviceKey:  'morning_documents',
+        action:      `issue_${documentType}`,
+        status:      'disabled',
+        relatedType: 'order',
+        relatedId:   orderId,
+        message:     'document NOT issued — service disabled in control center',
+      });
+      return NextResponse.json({ error: SERVICE_DISABLED_MESSAGE }, { status: 503 });
+    }
+  }
 
   // ── PROVENANCE GATE ────────────────────────────────────────────────────
   // PAYMENT_DOCS may only be issued when the request carries the explicit

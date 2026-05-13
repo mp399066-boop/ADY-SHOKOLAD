@@ -341,6 +341,24 @@ export async function sendAdminNewOrderAlert(orderId: string, options: AdminAler
 
   const supabase = createAdminClient();
 
+  // System-control center kill-switch. Lets the owner pause internal
+  // alerts (e.g. for testing) without disabling the customer-facing email.
+  try {
+    const { isServiceEnabled, logServiceRun } = await import('@/lib/system-services');
+    if (!(await isServiceEnabled(supabase, 'admin_alerts'))) {
+      console.log('[admin-alert] skipped — service "admin_alerts" is OFF in control center. order:', orderId);
+      await logServiceRun(supabase, {
+        serviceKey:  'admin_alerts',
+        action:      'send_admin_alert',
+        status:      'disabled',
+        relatedType: 'order',
+        relatedId:   orderId,
+        message:     'admin alert NOT sent',
+      });
+      return;
+    }
+  } catch { /* gate failure must not block the alert */ }
+
   const { data: order, error: orderErr } = await supabase
     .from('הזמנות')
     .select(`

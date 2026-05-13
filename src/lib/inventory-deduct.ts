@@ -22,6 +22,7 @@
 
 import { createAdminClient } from '@/lib/supabase/server';
 import { recordStockMovement } from '@/lib/inventory-movements';
+import { isServiceEnabled, logServiceRun } from '@/lib/system-services';
 
 // ─── Policy switches ────────────────────────────────────────────────────────
 
@@ -55,6 +56,23 @@ export async function deductOrderInventory(
 ): Promise<DeductionResult> {
   if (!DEDUCT_INVENTORY_ON_PAYMENT_PAID) {
     console.log('[inventory] deduction skipped — DEDUCT_INVENTORY_ON_PAYMENT_PAID is false. order:', orderId);
+    return { deducted: false, reason: 'flag_off' };
+  }
+
+  // System-control center kill-switch. The constant flag above is a code-level
+  // policy; this is the runtime override the admin can flip from the UI.
+  // Logged so the operator sees skipped runs in the control center.
+  const enabled = await isServiceEnabled(supabase, 'inventory_deduction');
+  if (!enabled) {
+    console.log('[inventory] deduction skipped — service "inventory_deduction" is OFF in control center. order:', orderId);
+    await logServiceRun(supabase, {
+      serviceKey:  'inventory_deduction',
+      action:      'deduct_order',
+      status:      'disabled',
+      relatedType: 'order',
+      relatedId:   orderId,
+      message:     'service disabled — inventory was NOT deducted',
+    });
     return { deducted: false, reason: 'flag_off' };
   }
 
@@ -191,5 +209,16 @@ export async function deductOrderInventory(
   }
 
   console.log('[inventory] deduction completed. order:', orderId, '| products:', productCount, '| petit-four types:', petitFourTypes);
+  // Best-effort run record — observability for the admin control center.
+  // No-op if the system_service_runs table is missing.
+  await logServiceRun(supabase, {
+    serviceKey:  'inventory_deduction',
+    action:      'deduct_order',
+    status:      'success',
+    relatedType: 'order',
+    relatedId:   orderId,
+    message:     `מוצרים: ${productCount} · פטיפורים: ${petitFourTypes}`,
+    metadata:    { productCount, petitFourTypes },
+  });
   return { deducted: true, productCount, petitFourTypes };
 }

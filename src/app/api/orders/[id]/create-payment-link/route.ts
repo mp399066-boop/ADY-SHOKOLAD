@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
+import { isServiceEnabled, logServiceRun, SERVICE_DISABLED_MESSAGE } from '@/lib/system-services';
 
 const PAYPLUS_API_URL = process.env.PAYPLUS_API_URL || 'https://restapi.payplus.co.il';
 const PAYPLUS_API_KEY = process.env.PAYPLUS_API_KEY;
@@ -28,6 +29,20 @@ export async function POST(
     const supabase = createAdminClient();
     const orderId = params.id;
     console.log('[create-payment-link] order id:', orderId);
+
+    // Control-center kill-switch.
+    if (!(await isServiceEnabled(supabase, 'payplus_payments'))) {
+      console.log('[create-payment-link] payplus_payments OFF in control center — refusing.');
+      await logServiceRun(supabase, {
+        serviceKey:  'payplus_payments',
+        action:      'create_payment_link',
+        status:      'disabled',
+        relatedType: 'order',
+        relatedId:   orderId,
+        message:     'PayPlus link NOT created — service disabled',
+      });
+      return NextResponse.json({ error: SERVICE_DISABLED_MESSAGE }, { status: 503 });
+    }
 
     const { data: order, error: orderErr } = await supabase
       .from('הזמנות')
