@@ -6,7 +6,15 @@ import { useRouter } from 'next/navigation';
 const STORAGE_KEY = 'global-search-recent-v1';
 const MAX_RECENT = 3;
 
-type ResultType = 'customer' | 'order' | 'product' | 'package';
+type ResultType =
+  | 'customer'
+  | 'order'
+  | 'invoice'
+  | 'product'
+  | 'package'
+  | 'petitFour'
+  | 'inventory'
+  | 'delivery';
 
 interface SearchResult {
   type: ResultType;
@@ -19,19 +27,31 @@ interface SearchResult {
 }
 
 const TYPE_LABEL: Record<ResultType, string> = {
-  customer: 'לקוחות',
-  order:    'הזמנות',
-  product:  'מוצרים',
-  package:  'מארזים',
+  customer:  'לקוחות',
+  order:     'הזמנות',
+  invoice:   'מסמכים פיננסיים',
+  product:   'מוצרים',
+  package:   'מארזים',
+  petitFour: 'פטיפורים',
+  inventory: 'מלאי / חומרי גלם',
+  delivery:  'משלוחים',
 };
 
-const TYPE_ORDER: ResultType[] = ['customer', 'order', 'product', 'package'];
+// Render order in the dropdown — most operationally common first.
+const TYPE_ORDER: ResultType[] = [
+  'customer', 'order', 'invoice', 'delivery',
+  'product', 'package', 'petitFour', 'inventory',
+];
 
 const BADGE_COLOR: Record<ResultType, { bg: string; fg: string }> = {
-  customer: { bg: '#EAF2FB', fg: '#1E4E8C' },
-  order:    { bg: '#FFF4E0', fg: '#8A5A18' },
-  product:  { bg: '#E8F4EC', fg: '#1F6B3E' },
-  package:  { bg: '#FBE9E7', fg: '#A03C2C' },
+  customer:  { bg: '#EAF2FB', fg: '#1E4E8C' },
+  order:     { bg: '#FFF4E0', fg: '#8A5A18' },
+  invoice:   { bg: '#F1ECF7', fg: '#5B3A8C' },
+  product:   { bg: '#E8F4EC', fg: '#1F6B3E' },
+  package:   { bg: '#FBE9E7', fg: '#A03C2C' },
+  petitFour: { bg: '#FCEEE2', fg: '#8B4A1F' },
+  inventory: { bg: '#FDF2D8', fg: '#7A5820' },
+  delivery:  { bg: '#E5EEF1', fg: '#496D7D' },
 };
 
 const kbdStyle: React.CSSProperties = {
@@ -129,8 +149,12 @@ export default function GlobalSearch() {
   }, [query, open]);
 
   const grouped = useMemo(() => {
-    const g: Record<ResultType, SearchResult[]> = { customer: [], order: [], product: [], package: [] };
-    for (const r of results) g[r.type].push(r);
+    const g: Record<ResultType, SearchResult[]> = {
+      customer: [], order: [], invoice: [],
+      product: [], package: [], petitFour: [],
+      inventory: [], delivery: [],
+    };
+    for (const r of results) (g[r.type] ||= []).push(r);
     return g;
   }, [results]);
 
@@ -207,7 +231,7 @@ export default function GlobalSearch() {
             value={query}
             onChange={e => setQuery(e.target.value)}
             onKeyDown={onInputKey}
-            placeholder="חפשי לקוח, הזמנה, מוצר, מארז או טלפון..."
+            placeholder="חפשי לקוח, הזמנה, מוצר, פטיפור, מלאי, משלוח, מסמך או טלפון…"
             maxLength={80}
             style={{
               flex: 1,
