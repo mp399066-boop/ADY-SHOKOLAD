@@ -124,6 +124,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   console.log('[manual-document] order id:', orderId);
   console.log('[manual-document] requested document type:', documentType);
+  // documentType passes through 1:1 to the Edge Function — no remapping —
+  // but log it explicitly so any future translation layer is auditable.
+  console.log('[manual-document] normalized document type:', documentType);
   console.log('[manual-document] morning document type:', { tax_invoice: 305, receipt: 400, invoice_receipt: 320 }[documentType]);
   console.log('[manual-document] raw payment method:', paymentMethod || 'none');
   console.log('[manual-document] mapped payment type:', canonicalMethod ?? 'n/a');

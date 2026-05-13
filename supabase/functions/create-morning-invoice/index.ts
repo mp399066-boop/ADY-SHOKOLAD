@@ -83,10 +83,23 @@ serve(async (req: Request) => {
     // `force=true` to bypass the (הזמנה_id, סוג_מסמך) idempotency guard
     // when the user explicitly opts in to a duplicate.
     const documentType: string = payload.document_type ?? 'tax_invoice';
+    console.log('[morning] received document_type:', documentType);
+
     const morningDocType = DOC_TYPE[documentType];
     if (!morningDocType) {
-      return new Response(JSON.stringify({ error: `Unknown document_type: ${documentType}` }), { status: 400 });
+      // Friendly Hebrew error so the toast in the UI reads cleanly. Lists
+      // the supported types so the operator can self-diagnose.
+      const supported = Object.keys(DOC_TYPE).join(', ');
+      console.error('[morning] resolved morning type: NONE — unsupported document_type:', documentType);
+      return new Response(
+        JSON.stringify({
+          error: `סוג המסמך לא נתמך במערכת: ${documentType}. סוגים נתמכים: ${supported}.`,
+        }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } },
+      );
     }
+    console.log('[morning] resolved morning type:', morningDocType);
+
     const paymentMethodOverride: string | null =
       typeof payload.payment_method === 'string' && payload.payment_method.trim()
         ? payload.payment_method.trim()
