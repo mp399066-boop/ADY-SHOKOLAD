@@ -222,6 +222,24 @@ function nextDeliveryAction(d: Delivery): { label: string; newStatus: 'נאסף'
   }
 }
 
+// Pure helper — returns the next forward status for the work-mode Kanban
+// "העבר לשלב הבא" button. Mirrors the verb logic in nextOrderAction but
+// strips the label/confirm fields. Pickup orders skip 'נשלחה' and go
+// straight to 'הושלמה בהצלחה'. The receipt/invoice triggers in the route
+// are unchanged — that's enforced by routing this through patchOrder + the
+// existing confirm wrappers, never by writing to Supabase from the card.
+function getNextOrderStatus(order: TodayOrder): OrderStatus | null {
+  const status = order.סטטוס_הזמנה as OrderStatus;
+  const isPickup = (order.סוג_אספקה ?? '') === 'איסוף עצמי';
+  switch (status) {
+    case 'חדשה':         return 'בהכנה';
+    case 'בהכנה':        return 'מוכנה למשלוח';
+    case 'מוכנה למשלוח': return isPickup ? 'הושלמה בהצלחה' : 'נשלחה';
+    case 'נשלחה':        return 'הושלמה בהצלחה';
+    default:             return null;
+  }
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
@@ -614,11 +632,17 @@ export default function DashboardPage() {
         />
       </section>
 
-      {/* ════════ TWO-COLUMN MAIN AREA ════════ */}
-      <section className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+      {/* ════════ MAIN AREA — work=Kanban full-width, management=2/3+1/3 ═══ */}
+      {/* Layout split:
+          Work mode: orders area takes full width so the 5 Kanban columns
+          have breathing room; deliveries + stock land in a 2-col block
+          below it.
+          Management mode: keeps the classic 2/3 (orders list) + 1/3 (aside
+          with deliveries + stock) split, matching the oversight-first feel. */}
+      <section className={mode === 'work' ? 'grid grid-cols-1 gap-5' : 'grid grid-cols-1 lg:grid-cols-3 gap-5'}>
 
-        {/* ── PRIMARY COLUMN: Today orders (lg: 2/3) ────────────────────── */}
-        <div ref={ordersRef} className="lg:col-span-2 space-y-3 scroll-mt-4">
+        {/* ── PRIMARY COLUMN ────────────────────────────────────────────── */}
+        <div ref={ordersRef} className={`${mode === 'management' ? 'lg:col-span-2' : ''} space-y-3 scroll-mt-4`}>
           <SectionHeader
             title="הזמנות לטיפול היום"
             count={visibleOrders.length}
@@ -652,19 +676,17 @@ export default function DashboardPage() {
               hintOnClick={filter !== 'all' ? () => setFilter('all') : undefined}
             />
           ) : mode === 'work' ? (
-            <div className="space-y-3">
-              {visibleOrders.map(o => (
-                <OrderActionCard
-                  key={o.id}
-                  order={o}
-                  updating={updatingId === o.id}
-                  onOpen={() => router.push(`/orders/${o.id}`)}
-                  onMoreActions={() => setMoreActionsOrder(o)}
-                  onPickOrderStatus={s => onPickOrderStatus(o, s)}
-                  onPickPaymentStatus={s => onPickPaymentStatus(o, s)}
-                />
-              ))}
-            </div>
+            // Work mode = Kanban board grouped by סטטוס_הזמנה. Each card has
+            // a single primary "העבר לשלב הבא" action; the in-card stepper
+            // is gone because the column itself IS the stepper.
+            <KanbanBoard
+              orders={visibleOrders}
+              updatingId={updatingId}
+              onAdvance={(o) => onPickOrderStatus(o, getNextOrderStatus(o)!)}
+              onMarkPaid={(o) => setMarkPaidOrder(o)}
+              onOpen={(o) => router.push(`/orders/${o.id}`)}
+              onMoreActions={(o) => setMoreActionsOrder(o)}
+            />
           ) : (
             // Management mode — compact one-line rows. No big primary CTA;
             // actions live in the existing מצמן modal accessible via "עוד".
@@ -682,15 +704,40 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* ── SECONDARY COLUMN: Deliveries + Stock (lg: 1/3) ───────────── */}
-        <aside className="space-y-5">
-          {/* Today deliveries */}
+        {/* ── SECONDARY COLUMN — only in management mode (1/3 aside) ───── */}
+        {mode === 'management' && (
+          <aside className="space-y-5">
+            <div ref={deliveriesRef} className="space-y-3 scroll-mt-4">
+              <SectionHeader title="משלוחים היום" count={todayDeliveries.length} href="/deliveries" />
+              {todayDeliveries.length === 0 ? (
+                <EmptyInline icon="truck" title="אין משלוחים מתוכננים להיום" hint="ניהול משלוחים" hintHref="/deliveries" />
+              ) : (
+                <div className="space-y-2.5">
+                  {todayDeliveries.map(d => (
+                    <DeliveryActionCard
+                      key={d.id}
+                      delivery={d}
+                      updating={updatingId === d.id}
+                      onPrimary={(next) => patchDelivery(d.id, next, d.סטטוס_משלוח)}
+                      onOpen={() => d.הזמנות?.id && router.push(`/orders/${d.הזמנות.id}`)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+            <div ref={inventoryRef} className="space-y-3 scroll-mt-4">
+              <SectionHeader title="מלאי דורש טיפול" count={stockTotal} href="/inventory" />
+              <StockAttentionCard stock={stock} total={stockTotal} expanded={activeKpi === 'inventory'} />
+            </div>
+          </aside>
+        )}
+      </section>
+
+      {/* ════════ WORK-ONLY: Deliveries + Stock as a 2-col row below the Kanban ═ */}
+      {mode === 'work' && (
+        <section className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           <div ref={deliveriesRef} className="space-y-3 scroll-mt-4">
-            <SectionHeader
-              title="משלוחים היום"
-              count={todayDeliveries.length}
-              href="/deliveries"
-            />
+            <SectionHeader title="משלוחים היום" count={todayDeliveries.length} href="/deliveries" />
             {todayDeliveries.length === 0 ? (
               <EmptyInline icon="truck" title="אין משלוחים מתוכננים להיום" hint="ניהול משלוחים" hintHref="/deliveries" />
             ) : (
@@ -707,18 +754,12 @@ export default function DashboardPage() {
               </div>
             )}
           </div>
-
-          {/* Stock attention — single card, three internal sections */}
           <div ref={inventoryRef} className="space-y-3 scroll-mt-4">
-            <SectionHeader
-              title="מלאי דורש טיפול"
-              count={stockTotal}
-              href="/inventory"
-            />
+            <SectionHeader title="מלאי דורש טיפול" count={stockTotal} href="/inventory" />
             <StockAttentionCard stock={stock} total={stockTotal} expanded={activeKpi === 'inventory'} />
           </div>
-        </aside>
-      </section>
+        </section>
+      )}
 
       {/* ════════ MANAGEMENT-ONLY: Recent activity + admin links ════════ */}
       {mode === 'management' && (
@@ -1036,102 +1077,128 @@ function OrderActionCard({
 
   return (
     <div
-      className="rounded-xl px-5 py-4 transition-shadow hover:shadow-sm"
+      className="rounded-2xl relative overflow-hidden transition-all duration-200 hover:-translate-y-px"
       style={{
-        backgroundColor: C.card,
+        backgroundColor: C.cardSoft,
         border: `1px solid ${C.border}`,
-        boxShadow: '0 1px 2px rgba(58,42,26,0.03)',
+        // Multi-layer shadow: tight 1px lift + ambient soft drop
+        boxShadow: '0 1px 2px rgba(58,42,26,0.04), 0 4px 16px rgba(58,42,26,0.04)',
       }}
     >
-      {/* ── Header: identification + meta ────────────────────────────────── */}
-      <div className="flex items-start justify-between gap-3 mb-4">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 mb-0.5">
-            <span className="font-mono text-[11px] font-semibold tracking-wide" style={{ color: C.brand }}>
-              {order.מספר_הזמנה}
-            </span>
-            {order.הזמנה_דחופה && <UrgentBadge />}
-          </div>
-          <p className="text-[16px] font-semibold leading-tight truncate" style={{ color: C.text, letterSpacing: '-0.01em' }}>
-            {customerName}
-          </p>
-          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[12px] mt-1.5" style={{ color: C.textSoft }}>
-            <Meta icon="clock" text={order.שעת_אספקה || '—'} mono />
-            <Sep />
-            <Meta icon={isDelivery ? 'truck' : 'box'} text={isDelivery ? 'משלוח' : 'איסוף'} />
-            <Sep />
-            <span className="tabular-nums font-semibold" style={{ color: C.text }}>
-              {formatCurrency(order.סך_הכל_לתשלום)}
-            </span>
-            {order.טלפון_מקבל && (
-              <>
-                <Sep />
-                <a
-                  href={`tel:${order.טלפון_מקבל}`}
-                  onClick={e => e.stopPropagation()}
-                  className="inline-flex items-center gap-1 hover:underline tabular-nums"
-                  style={{ color: C.blue }}
-                >
-                  <Icon name="phone" className="w-3 h-3" />
-                  {order.טלפון_מקבל}
-                </a>
-              </>
-            )}
-            {note && (
-              <>
-                <Sep />
-                <span className="inline-flex items-center gap-1 max-w-[28ch]" style={{ color: C.amber }} title={note}>
-                  <Icon name="note" className="w-3 h-3 flex-shrink-0" />
-                  <span className="truncate">{note}</span>
-                </span>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
+      {/* Urgent edge marker — single 3px bar on the start (right in RTL). */}
+      {order.הזמנה_דחופה && (
+        <div
+          className="absolute top-0 right-0 bottom-0"
+          style={{ width: 3, backgroundColor: '#C75F4D', opacity: 0.85 }}
+          aria-hidden
+        />
+      )}
 
-      {/* ── Order status stepper (or exception banner) ───────────────────── */}
-      <div className="mb-4">
-        {cancelledOrDraft ? (
-          <ExceptionStateBanner status={order.סטטוס_הזמנה as 'בוטלה' | 'טיוטה'} />
-        ) : (
-          <OrderStatusStepper
+      <div className="px-6 py-5">
+        {/* ── Row 1: customer name (dominant) · ORD# (gold, top-right) ───── */}
+        <div className="flex items-start justify-between gap-4 mb-1.5">
+          <h3
+            className="text-[18px] font-semibold leading-tight truncate flex-1 min-w-0"
+            style={{ color: C.text, letterSpacing: '-0.015em' }}
+          >
+            {customerName}
+          </h3>
+          <span
+            className="font-mono text-[10px] font-semibold uppercase whitespace-nowrap mt-1 flex-shrink-0"
+            style={{ color: C.gold, letterSpacing: '0.06em' }}
+          >
+            {order.מספר_הזמנה}
+          </span>
+        </div>
+
+        {/* ── Row 2: refined meta line (no icons, dot separators, mono nums) ─ */}
+        <div className="flex items-center flex-wrap gap-x-2.5 gap-y-1 text-[12.5px] mb-5" style={{ color: C.textSoft }}>
+          <span className="tabular-nums font-medium" style={{ color: C.text }}>
+            {order.שעת_אספקה || '—'}
+          </span>
+          <DotSep />
+          <span>{isDelivery ? 'משלוח' : 'איסוף'}</span>
+          <DotSep />
+          <span className="tabular-nums font-semibold" style={{ color: C.text }}>
+            {formatCurrency(order.סך_הכל_לתשלום)}
+          </span>
+          {order.טלפון_מקבל && (
+            <>
+              <DotSep />
+              <a
+                href={`tel:${order.טלפון_מקבל}`}
+                onClick={e => e.stopPropagation()}
+                className="hover:underline tabular-nums"
+                style={{ color: C.textSoft }}
+              >
+                {order.טלפון_מקבל}
+              </a>
+            </>
+          )}
+          {order.הזמנה_דחופה && (
+            <>
+              <DotSep />
+              <span className="font-semibold uppercase tracking-wider text-[10.5px]" style={{ color: '#A8442D' }}>
+                דחוף
+              </span>
+            </>
+          )}
+        </div>
+
+        {/* ── Optional note: subtle dashed callout ─────────────────────────── */}
+        {note && (
+          <div
+            className="flex items-start gap-2 px-3 py-2 rounded-lg mb-5"
+            style={{ backgroundColor: C.goldSoft, border: `1px dashed #DCC8A2` }}
+          >
+            <Icon name="note" className="w-3 h-3 flex-shrink-0 mt-1" style={{ color: C.gold }} />
+            <span className="text-[12px] leading-relaxed flex-1 truncate" style={{ color: C.text }}>{note}</span>
+          </div>
+        )}
+
+        {/* ── Order status stepper (or exception banner) ───────────────────── */}
+        <div className="mb-5">
+          {cancelledOrDraft ? (
+            <ExceptionStateBanner status={order.סטטוס_הזמנה as 'בוטלה' | 'טיוטה'} />
+          ) : (
+            <OrderStatusStepper
+              order={order}
+              updating={updating}
+              onPick={onPickOrderStatus}
+            />
+          )}
+        </div>
+
+        {/* ── Hairline ─────────────────────────────────────────────────────── */}
+        <div className="h-px mb-4" style={{ backgroundColor: C.borderSoft }} />
+
+        {/* ── Payment stepper ─────────────────────────────────────────────── */}
+        <div className="mb-3">
+          <PaymentStatusStepper
             order={order}
             updating={updating}
-            onPick={onPickOrderStatus}
+            onPick={onPickPaymentStatus}
           />
-        )}
-      </div>
+        </div>
 
-      {/* ── Hairline divider between order/payment progress ──────────────── */}
-      <div className="h-px mb-3" style={{ backgroundColor: C.borderSoft }} />
-
-      {/* ── Payment stepper ─────────────────────────────────────────────── */}
-      <div className="mb-3">
-        <PaymentStatusStepper
-          order={order}
-          updating={updating}
-          onPick={onPickPaymentStatus}
-        />
-      </div>
-
-      {/* ── Footer: tertiary links ──────────────────────────────────────── */}
-      <div className="flex items-center justify-end gap-2 pt-1">
-        <button
-          onClick={onMoreActions}
-          className="text-[11px] font-medium hover:underline transition-colors px-1"
-          style={{ color: C.textSoft }}
-        >
-          עוד פעולות
-        </button>
-        <span className="text-[11px]" style={{ color: C.borderSoft }}>·</span>
-        <button
-          onClick={onOpen}
-          className="text-[11px] font-medium hover:underline transition-colors px-1"
-          style={{ color: C.brand }}
-        >
-          פרטים →
-        </button>
+        {/* ── Footer: tertiary links with refined separator dot ────────────── */}
+        <div className="flex items-center justify-end gap-3 pt-2">
+          <button
+            onClick={onMoreActions}
+            className="text-[11px] font-medium hover:underline transition-colors"
+            style={{ color: C.textSoft, letterSpacing: '0.01em' }}
+          >
+            עוד פעולות
+          </button>
+          <span className="w-1 h-1 rounded-full" style={{ backgroundColor: C.border }} />
+          <button
+            onClick={onOpen}
+            className="text-[11px] font-semibold hover:underline transition-colors"
+            style={{ color: C.brand, letterSpacing: '0.01em' }}
+          >
+            פרטים ←
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -1139,6 +1206,265 @@ function OrderActionCard({
 
 function Sep() {
   return <span style={{ color: C.borderSoft }}>·</span>;
+}
+
+// Refined dot separator for the meta line — small filled circle instead of
+// the standard middle-dot character. Reads cleaner at 12px than "·".
+function DotSep() {
+  return <span className="inline-block rounded-full flex-shrink-0" style={{ width: 3, height: 3, backgroundColor: C.border }} />;
+}
+
+// ─── Kanban (work mode) ──────────────────────────────────────────────────
+// 5 columns matching the order-status enum exactly. Each card has ONE
+// primary action ("העבר לשלב הבא") computed from getNextOrderStatus, plus
+// the secondary "סמני שולם" + small overflow "עוד" + "פרטים". Compact —
+// ~150-180px tall — so multiple cards stack cleanly inside a column even
+// when there's only one in the whole board.
+
+const KANBAN_COLUMNS: { value: OrderStatus; label: string; tone: Tone }[] = [
+  { value: 'חדשה',          label: 'חדשה',   tone: ORDER_STATUS_TONES['חדשה'] },
+  { value: 'בהכנה',         label: 'בהכנה',  tone: ORDER_STATUS_TONES['בהכנה'] },
+  { value: 'מוכנה למשלוח',  label: 'מוכנה',  tone: ORDER_STATUS_TONES['מוכנה למשלוח'] },
+  { value: 'נשלחה',         label: 'נשלחה',  tone: ORDER_STATUS_TONES['נשלחה'] },
+  { value: 'הושלמה בהצלחה', label: 'הושלמה', tone: ORDER_STATUS_TONES['הושלמה בהצלחה'] },
+];
+
+interface KanbanProps {
+  orders: TodayOrder[];
+  updatingId: string | null;
+  onAdvance: (o: TodayOrder) => void;
+  onMarkPaid: (o: TodayOrder) => void;
+  onOpen: (o: TodayOrder) => void;
+  onMoreActions: (o: TodayOrder) => void;
+}
+
+function KanbanBoard({ orders, updatingId, onAdvance, onMarkPaid, onOpen, onMoreActions }: KanbanProps) {
+  // Group orders by status. Cancelled / draft are out of the regular ladder
+  // — the upstream filter already excludes them, so this reduce is safe.
+  const byStatus = new Map<OrderStatus, TodayOrder[]>();
+  KANBAN_COLUMNS.forEach(c => byStatus.set(c.value, []));
+  for (const o of orders) {
+    const arr = byStatus.get(o.סטטוס_הזמנה as OrderStatus);
+    if (arr) arr.push(o);
+  }
+
+  return (
+    <div
+      className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5"
+      // On md and below the columns wrap into 2 columns then 1 on mobile —
+      // tablet still gets a usable layout without horizontal scroll.
+    >
+      {KANBAN_COLUMNS.map(col => (
+        <KanbanColumn
+          key={col.value}
+          column={col}
+          items={byStatus.get(col.value) ?? []}
+          updatingId={updatingId}
+          onAdvance={onAdvance}
+          onMarkPaid={onMarkPaid}
+          onOpen={onOpen}
+          onMoreActions={onMoreActions}
+        />
+      ))}
+    </div>
+  );
+}
+
+function KanbanColumn({
+  column, items, updatingId, onAdvance, onMarkPaid, onOpen, onMoreActions,
+}: {
+  column: typeof KANBAN_COLUMNS[number];
+  items: TodayOrder[];
+  updatingId: string | null;
+  onAdvance: (o: TodayOrder) => void;
+  onMarkPaid: (o: TodayOrder) => void;
+  onOpen: (o: TodayOrder) => void;
+  onMoreActions: (o: TodayOrder) => void;
+}) {
+  return (
+    <div
+      className="rounded-xl px-2 pt-3 pb-2 flex flex-col"
+      style={{
+        backgroundColor: column.tone.bg,
+        border: `1px solid ${column.tone.border}`,
+        minHeight: 220,
+      }}
+    >
+      {/* Column header — status name + count */}
+      <header className="flex items-center justify-between mb-2.5 px-1.5">
+        <span className="text-[12px] font-bold tracking-tight" style={{ color: column.tone.text }}>
+          {column.label}
+        </span>
+        <span
+          className="text-[10px] font-semibold tabular-nums px-1.5 py-0.5 rounded-md"
+          style={{ backgroundColor: 'rgba(255,255,255,0.7)', color: column.tone.text }}
+        >
+          {items.length}
+        </span>
+      </header>
+
+      {items.length === 0 ? (
+        <div
+          className="flex-1 flex items-center justify-center text-[10.5px] py-4 px-2 rounded-md"
+          style={{ color: column.tone.text, opacity: 0.5 }}
+        >
+          ריק
+        </div>
+      ) : (
+        <div className="space-y-2 flex-1">
+          {items.map(o => (
+            <OrderKanbanCard
+              key={o.id}
+              order={o}
+              updating={updatingId === o.id}
+              onAdvance={() => onAdvance(o)}
+              onMarkPaid={() => onMarkPaid(o)}
+              onOpen={() => onOpen(o)}
+              onMoreActions={() => onMoreActions(o)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function OrderKanbanCard({
+  order, updating, onAdvance, onMarkPaid, onOpen, onMoreActions,
+}: {
+  order: TodayOrder;
+  updating: boolean;
+  onAdvance: () => void;
+  onMarkPaid: () => void;
+  onOpen: () => void;
+  onMoreActions: () => void;
+}) {
+  const c = order.לקוחות;
+  const customerName = c ? `${c.שם_פרטי} ${c.שם_משפחה}` : (order.שם_מקבל || 'לקוח');
+  const isDelivery = (order.סוג_אספקה ?? '') === 'משלוח';
+  const action = nextOrderAction(order);
+  const paid = order.סטטוס_תשלום === 'שולם' || order.סטטוס_תשלום === 'בארטר';
+
+  return (
+    <div
+      className="rounded-lg px-3 py-2.5 transition-shadow hover:shadow-sm relative overflow-hidden"
+      style={{
+        backgroundColor: C.card,
+        border: `1px solid ${C.border}`,
+        boxShadow: '0 1px 2px rgba(58,42,26,0.05)',
+      }}
+    >
+      {order.הזמנה_דחופה && (
+        <div className="absolute top-0 right-0 bottom-0" style={{ width: 2.5, backgroundColor: '#C75F4D' }} aria-hidden />
+      )}
+
+      {/* Top row: ord# + urgent flag */}
+      <div className="flex items-baseline justify-between gap-2 mb-1">
+        <span className="font-mono text-[10px] font-semibold uppercase truncate" style={{ color: C.gold, letterSpacing: '0.04em' }}>
+          {order.מספר_הזמנה}
+        </span>
+        {order.הזמנה_דחופה && (
+          <span className="text-[9px] font-bold uppercase tracking-wider flex-shrink-0" style={{ color: '#C75F4D' }}>
+            דחוף
+          </span>
+        )}
+      </div>
+
+      {/* Customer name */}
+      <p className="text-[13.5px] font-semibold leading-tight truncate mb-1.5" style={{ color: C.text, letterSpacing: '-0.01em' }}>
+        {customerName}
+      </p>
+
+      {/* Meta line */}
+      <div className="flex items-center gap-x-2 gap-y-0.5 text-[11px] flex-wrap mb-2" style={{ color: C.textSoft }}>
+        <span className="tabular-nums font-medium" style={{ color: C.text }}>
+          {order.שעת_אספקה || '—'}
+        </span>
+        <DotSep />
+        <span>{isDelivery ? 'משלוח' : 'איסוף'}</span>
+        <DotSep />
+        <span className="tabular-nums font-semibold" style={{ color: C.text }}>
+          {formatCurrency(order.סך_הכל_לתשלום)}
+        </span>
+      </div>
+
+      {order.טלפון_מקבל && (
+        <a
+          href={`tel:${order.טלפון_מקבל}`}
+          onClick={e => e.stopPropagation()}
+          className="text-[11px] hover:underline tabular-nums block mb-2 truncate"
+          style={{ color: C.textSoft }}
+        >
+          {order.טלפון_מקבל}
+        </a>
+      )}
+
+      {/* Payment indicator — pill-style; small mark-paid affordance inline */}
+      <div className="mb-2.5">
+        {paid ? (
+          <PremiumBadge status={order.סטטוס_תשלום} kind="payment" size="sm" />
+        ) : (
+          <div
+            className="flex items-center justify-between gap-2 px-2 py-1 rounded-md"
+            style={{ backgroundColor: '#FBF1DC', border: '1px solid #EAC78C' }}
+          >
+            <span className="text-[10.5px] font-semibold" style={{ color: '#92602A' }}>
+              ממתין לתשלום
+            </span>
+            <button
+              onClick={e => { e.stopPropagation(); onMarkPaid(); }}
+              disabled={updating}
+              className="text-[10px] font-semibold px-2 h-5 rounded-md text-white transition-colors disabled:opacity-60"
+              style={{ backgroundColor: C.green }}
+            >
+              סמני שולם
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Primary advance button + tertiary links */}
+      <div className="flex items-center gap-1.5">
+        {action ? (
+          <button
+            onClick={onAdvance}
+            disabled={updating}
+            className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-md text-[12px] font-semibold text-white transition-colors disabled:opacity-60"
+            style={{ backgroundColor: C.brand }}
+          >
+            <span>{updating ? '...' : action.label}</span>
+            <Icon name="arrow" className="w-3 h-3 rtl-flip" />
+          </button>
+        ) : (
+          <span
+            className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-md text-[11px] font-medium"
+            style={{ backgroundColor: C.brandSoft, color: C.brand }}
+          >
+            <Icon name="check" className="w-3 h-3" /> בוצעו כל השלבים
+          </span>
+        )}
+      </div>
+
+      {/* Footer micro-links */}
+      <div className="flex items-center justify-end gap-2 mt-2 pt-2 border-t" style={{ borderColor: C.borderSoft }}>
+        <button
+          onClick={onMoreActions}
+          className="text-[10.5px] hover:underline transition-colors"
+          style={{ color: C.textSoft }}
+        >
+          עוד
+        </button>
+        <span className="w-0.5 h-0.5 rounded-full" style={{ backgroundColor: C.border }} />
+        <button
+          onClick={onOpen}
+          className="text-[10.5px] font-semibold hover:underline transition-colors"
+          style={{ color: C.brand }}
+        >
+          פרטים
+        </button>
+      </div>
+    </div>
+  );
 }
 
 // ─── OrderStatusStepper ──────────────────────────────────────────────────
@@ -1176,73 +1502,91 @@ function OrderStatusStepper({
     : ORDER_STEPS;
   const lastIdx = steps.length - 1;
 
+  const currentLabel = steps[currentIdx]?.label ?? steps[0].label;
+
   return (
-    <div className="flex items-start" dir="rtl">
-      {steps.map((step, idx) => {
-        const isPast    = idx <  currentIdx;
-        const isCurrent = idx === currentIdx;
-        const isFuture  = idx >  currentIdx;
-        // Past steps use matte gold (lighter than brand brown) so the
-        // current step stays the visual anchor. Future steps are cream.
-        const circleBg     = isCurrent ? C.brand : isPast ? C.gold : C.cardSoft;
-        const circleColor  = isPast || isCurrent ? '#FFFFFF' : C.textSoft;
-        const circleBorder = isCurrent ? C.brand : isPast ? C.gold : C.border;
-        return (
-          <Fragment key={step.value}>
-            <button
-              onClick={() => !isCurrent && onPick(step.value)}
-              disabled={updating || isCurrent}
-              className="flex flex-col items-center gap-1.5 flex-shrink-0 disabled:cursor-default group transition-transform hover:-translate-y-px"
-              style={{ minWidth: 60 }}
-              aria-label={`שינוי סטטוס ל${step.label}`}
-              aria-current={isCurrent ? 'step' : undefined}
-            >
-              <span
-                className="rounded-full flex items-center justify-center text-[11px] font-semibold transition-all"
-                style={{
-                  width:           isCurrent ? 36 : 32,
-                  height:          isCurrent ? 36 : 32,
-                  backgroundColor: circleBg,
-                  color:           circleColor,
-                  border:          `1px solid ${circleBorder}`,
-                  boxShadow: isCurrent
-                    ? `0 0 0 4px ${C.brand}1A, 0 1px 2px rgba(58,42,26,0.10)`
-                    : isPast
-                    ? `0 1px 2px rgba(184,152,112,0.20)`
-                    : 'none',
-                }}
+    <div>
+      {/* ── Status callout: makes the current step unmistakable without
+            making the user decode the dots first. ──────────────────────── */}
+      <div className="flex items-baseline justify-between mb-3">
+        <div className="flex items-baseline gap-2">
+          <span className="text-[10px] uppercase font-semibold" style={{ color: C.textSoft, letterSpacing: '0.1em' }}>
+            סטטוס
+          </span>
+          <span className="text-[14px] font-bold" style={{ color: C.text, letterSpacing: '-0.005em' }}>
+            {currentLabel}
+          </span>
+        </div>
+        <span className="text-[10px] font-medium tabular-nums" style={{ color: C.textSoft }}>
+          שלב {currentIdx + 1} מתוך {steps.length}
+        </span>
+      </div>
+
+      {/* ── Stepper ─────────────────────────────────────────────────────── */}
+      <div className="flex items-start" dir="rtl">
+        {steps.map((step, idx) => {
+          const isPast    = idx <  currentIdx;
+          const isCurrent = idx === currentIdx;
+          const isFuture  = idx >  currentIdx;
+          const circleBg     = isCurrent ? C.brand : isPast ? C.gold : C.cardSoft;
+          const circleColor  = isPast || isCurrent ? '#FFFFFF' : C.textSoft;
+          const circleBorder = isCurrent ? C.brand : isPast ? C.gold : C.border;
+          return (
+            <Fragment key={step.value}>
+              <button
+                onClick={() => !isCurrent && onPick(step.value)}
+                disabled={updating || isCurrent}
+                className="flex flex-col items-center gap-2 flex-shrink-0 disabled:cursor-default group transition-transform hover:-translate-y-px"
+                style={{ minWidth: 60 }}
+                aria-label={`שינוי סטטוס ל${step.label}`}
+                aria-current={isCurrent ? 'step' : undefined}
               >
-                {isPast ? <Icon name="check" className="w-3.5 h-3.5" /> : idx + 1}
-              </span>
-              <span
-                className="text-[11px] whitespace-nowrap transition-colors"
-                style={{
-                  color: isCurrent ? C.text : isPast ? C.text : C.textSoft,
-                  fontWeight: isCurrent ? 700 : isPast ? 600 : 500,
-                  letterSpacing: '0.01em',
-                }}
-              >
-                {step.label}
-              </span>
-            </button>
-            {idx < lastIdx && (
-              <div
-                className="flex-1 transition-colors"
-                style={{
-                  backgroundColor: idx < currentIdx ? C.gold : C.border,
-                  height: 2,
-                  minWidth: 12,
-                  // Align the connector with the centerline of the smaller
-                  // (32px) circles. Current step is slightly larger so it
-                  // overflows the line — that's intentional, it makes the
-                  // active node read as a focal anchor.
-                  marginTop: 16,
-                }}
-              />
-            )}
-          </Fragment>
-        );
-      })}
+                <span
+                  className="rounded-full flex items-center justify-center font-semibold transition-all"
+                  style={{
+                    width:           28,
+                    height:          28,
+                    backgroundColor: circleBg,
+                    color:           circleColor,
+                    border:          `1.5px solid ${circleBorder}`,
+                    fontSize:        11,
+                    boxShadow: isCurrent
+                      ? `0 0 0 5px ${C.brand}12, 0 2px 4px rgba(58,42,26,0.14)`
+                      : isPast
+                      ? `0 1px 2px rgba(184,152,112,0.25)`
+                      : 'none',
+                  }}
+                >
+                  {isPast ? <Icon name="check" className="w-3 h-3" /> : idx + 1}
+                </span>
+                <span
+                  className="text-[10.5px] whitespace-nowrap transition-colors"
+                  style={{
+                    color: isCurrent ? C.text : C.textSoft,
+                    fontWeight: isCurrent ? 700 : isPast ? 500 : 400,
+                    letterSpacing: '0.01em',
+                    opacity: isFuture ? 0.7 : 1,
+                  }}
+                >
+                  {step.label}
+                </span>
+              </button>
+              {idx < lastIdx && (
+                <div
+                  className="flex-1 transition-colors"
+                  style={{
+                    backgroundColor: idx < currentIdx ? C.gold : C.border,
+                    height: 2,
+                    minWidth: 12,
+                    // 28px circle / 2 - 2px line / 2 = 13
+                    marginTop: 13,
+                  }}
+                />
+              )}
+            </Fragment>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -1453,26 +1797,45 @@ function DeliveryActionCard({
         )}
       </div>
 
+      {/* Action area — three distinct visual states matching the spec:
+          ממתין → primary button (triggers PATCH which auto-opens WhatsApp
+                  if the courier has a phone)
+          נאסף  → status text only ("ממתין לאישור מסירה מהשליח") + tiny
+                  manual override link "סמן ידנית" for exception cases
+          נמסר  → green "נמסר" pill, no primary action */}
       <div className="flex items-center gap-2">
-        {action ? (
+        {delivery.סטטוס_משלוח === 'ממתין' && action && (
           <button
             onClick={() => onPrimary(action.newStatus)}
             disabled={updating}
-            className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg text-[12px] font-semibold text-white transition-colors disabled:opacity-60"
+            className="flex-1 inline-flex items-center justify-center gap-1.5 h-10 rounded-lg text-[12px] font-semibold text-white transition-colors disabled:opacity-60"
             style={{ backgroundColor: C.brand }}
           >
-            <Icon name={action.newStatus === 'נמסר' ? 'check' : 'truck'} className="w-3.5 h-3.5" />
-            {updating ? '...' : action.label}
+            <Icon name="truck" className="w-3.5 h-3.5" />
+            {updating ? '...' : 'סמן נאסף ושלח לשליח'}
           </button>
-        ) : (
+        )}
+
+        {delivery.סטטוס_משלוח === 'נאסף' && (
           <div
-            className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg text-[12px] font-medium"
+            className="flex-1 inline-flex items-center justify-center gap-1.5 h-10 px-3 rounded-lg text-[11.5px] font-semibold"
+            style={{ backgroundColor: '#DBEAFE', color: '#1E40AF', border: '1px solid #BFD2F2' }}
+          >
+            <Icon name="truck" className="w-3.5 h-3.5" />
+            נאסף · ממתין לאישור מסירה מהשליח
+          </div>
+        )}
+
+        {delivery.סטטוס_משלוח === 'נמסר' && (
+          <div
+            className="flex-1 inline-flex items-center justify-center gap-1.5 h-10 rounded-lg text-[12px] font-semibold"
             style={{ backgroundColor: C.greenSoft, color: C.green }}
           >
             <Icon name="check" className="w-3.5 h-3.5" />
             נמסר
           </div>
         )}
+
         <button
           onClick={onOpen}
           className="text-[11px] font-medium hover:underline flex-shrink-0"
@@ -1481,6 +1844,20 @@ function DeliveryActionCard({
           הזמנה →
         </button>
       </div>
+
+      {/* Exception escape hatch — only when נאסף, only as a tiny text link */}
+      {delivery.סטטוס_משלוח === 'נאסף' && (
+        <div className="text-end mt-1.5">
+          <button
+            onClick={() => onPrimary('נמסר')}
+            disabled={updating}
+            className="text-[10.5px] hover:underline disabled:opacity-50"
+            style={{ color: C.textSoft }}
+          >
+            סמן נמסר ידנית (חריג)
+          </button>
+        </div>
+      )}
     </div>
   );
 }
