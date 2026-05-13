@@ -53,6 +53,10 @@ type Delivery = {
 type StockRow = { id: string; שם: string; status: string; quantity: number };
 
 type Mode = 'work' | 'management';
+// Sub-view inside work mode: 'table' is the default premium command-center
+// table; 'flow' shows the older Kanban board for users who want to see all
+// orders grouped visually by status.
+type WorkView = 'table' | 'flow';
 
 // Action-verb filter buckets — chips read like the next verb the user has
 // to do, not like a database status. The user almost never wants to see
@@ -136,6 +140,9 @@ const C = {
   text:     '#2B1B12',
   textSoft: '#8A735F',
   brand:    '#8B5E34',
+  // Espresso — used for primary actions in the new command-center layout.
+  // Slightly deeper than `brand` so primary buttons read with more weight.
+  espresso: '#7A4A27',
   brandSoft:'#FAF5E9',
   // Matte gold — used for stepper steps that are completed. Softer than
   // the brand brown so the current step still pops as the focal point.
@@ -246,6 +253,7 @@ export default function DashboardPage() {
   const router = useRouter();
 
   const [mode, setMode] = useState<Mode>('work');
+  const [workView, setWorkView] = useState<WorkView>('table');
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [todayOrders, setTodayOrders] = useState<TodayOrder[]>([]);
   const [todayDeliveries, setTodayDeliveries] = useState<Delivery[]>([]);
@@ -285,6 +293,14 @@ export default function DashboardPage() {
   useEffect(() => {
     try { window.localStorage.setItem('dashboard-mode', mode); } catch { /* no-op */ }
   }, [mode]);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const v = window.localStorage.getItem('dashboard-work-view');
+    if (v === 'table' || v === 'flow') setWorkView(v);
+  }, []);
+  useEffect(() => {
+    try { window.localStorage.setItem('dashboard-work-view', workView); } catch { /* no-op */ }
+  }, [workView]);
 
   // ─── Data fetching ──────────────────────────────────────────────────────
 
@@ -549,57 +565,64 @@ export default function DashboardPage() {
   return (
     <div dir="rtl" className="mx-auto max-w-[1500px] space-y-5 pb-10">
 
-      {/* ════════ HEADER (compact) ════════ */}
-      <header className="flex items-center justify-between gap-4 flex-wrap">
+      {/* ════════ HERO ════════ */}
+      {/* Compact-but-anchored. Greeting + meta on the right (RTL start),
+          primary CTA + utilities on the left. No oversized chrome — just
+          enough breathing room to feel premium. */}
+      <header className="flex items-end justify-between gap-4 flex-wrap pb-1 border-b" style={{ borderColor: C.borderSoft }}>
         <div className="min-w-0">
-          <h1 className="text-lg sm:text-xl font-semibold leading-tight" style={{ color: C.text, letterSpacing: '-0.01em' }}>
+          <h1 className="text-[22px] sm:text-[26px] font-bold leading-tight" style={{ color: C.text, letterSpacing: '-0.022em' }}>
             {mode === 'work'
               ? `${greeting}, מה צריך לבצע היום?`
               : 'סקירת פעילות יומית'}
           </h1>
-          <p className="text-[11px] mt-1" style={{ color: C.textSoft }}>
-            <span>{dateStr}</span>
+          <p className="text-[12px] mt-1.5" style={{ color: C.textSoft, letterSpacing: '0.005em' }}>
+            <span className="font-medium" style={{ color: C.text }}>{dateStr}</span>
             <span className="mx-1.5">·</span>
-            <span>{mode === 'work' ? 'תצוגת עבודה — מותאם לטאבלט במטבח' : 'תצוגת ניהול — מבט עסקי'}</span>
+            <span>{mode === 'work' ? 'לוח עבודה יומי — הזמנות, תשלומים, משלוחים, מלאי' : 'מבט עסקי — KPI, פעילות אחרונה, ניהול'}</span>
           </p>
         </div>
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2 pb-2">
+          <button
+            onClick={() => fetchAll(false)}
+            className="inline-flex items-center justify-center w-10 h-10 rounded-lg border transition-colors"
+            style={{ borderColor: C.border, color: C.textSoft, backgroundColor: C.card }}
+            aria-label="רענון נתונים"
+            title="רענון נתונים"
+          >
+            <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 12a9 9 0 0 1-9 9c-2.4 0-4.6-.9-6.3-2.4" />
+              <path d="M3 12a9 9 0 0 1 9-9c2.4 0 4.6.9 6.3 2.4" />
+              <polyline points="3 18 3 12 9 12" />
+              <polyline points="21 6 21 12 15 12" />
+            </svg>
+          </button>
           <ModeToggle mode={mode} onChange={setMode} />
           <Link
             href="/orders/new"
-            className="inline-flex items-center gap-1.5 px-3.5 h-10 text-sm font-semibold rounded-xl transition-colors"
-            style={{ backgroundColor: C.brand, color: '#FFFFFF' }}
+            className="inline-flex items-center gap-1.5 px-4 h-10 text-[13px] font-semibold rounded-lg transition-colors shadow-sm"
+            style={{ backgroundColor: C.espresso, color: '#FFFFFF' }}
           >
             <Icon name="plus" className="w-3.5 h-3.5" /> הזמנה חדשה
           </Link>
         </div>
       </header>
 
-      {/* ════════ KPI STRIP — compact, clickable ═══════════════════════════ */}
-      {/* Work mode shows 4 action-oriented KPIs (no revenue card); management
-          mode adds the revenue card for an oversight angle. */}
-      <section className={`grid gap-2 ${mode === 'work' ? 'grid-cols-2 md:grid-cols-4' : 'grid-cols-2 md:grid-cols-3 lg:grid-cols-5'}`}>
+      {/* ════════ KPI STRIP — 5 compact cards, always ═══════════════════════ */}
+      {/* Same 5 metrics in both modes. The KPI strip is navigation, not the
+          centerpiece — a click scrolls the corresponding section into view
+          and (for orders/payment) sets the chip filter. */}
+      <section className="grid gap-2 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
         <KpiCard
           icon="bag"
           label="הזמנות היום"
           value={String(stats?.ordersToday ?? liveOrders.length)}
-          accent={C.brand}
+          accent={C.espresso}
           sub={`${liveOrders.length} פעילות${stats?.ordersTomorrow ? ` · ${stats.ordersTomorrow} מחר` : ''}`}
           active={activeKpi === 'orders'}
           onClick={() => onKpiClick('orders')}
-          compact={mode === 'work'}
+          compact
         />
-        {mode === 'management' && (
-          <KpiCard
-            icon="wallet"
-            label="הכנסה צפויה היום"
-            value={formatCurrency(expectedRevenue)}
-            accent={C.green}
-            sub={liveOrders.length > 0 ? `ממוצע ${formatCurrency(expectedRevenue / liveOrders.length)}` : 'אין הזמנות פעילות'}
-            active={activeKpi === 'revenue'}
-            onClick={() => onKpiClick('revenue')}
-          />
-        )}
         <KpiCard
           icon="clock"
           label="ממתין לתשלום"
@@ -608,7 +631,7 @@ export default function DashboardPage() {
           sub={(stats?.unpaidOrders ?? 0) > 0 ? `${stats?.unpaidOrders} הזמנות פתוחות` : 'הכל סגור'}
           active={activeKpi === 'unpaid'}
           onClick={() => onKpiClick('unpaid')}
-          compact={mode === 'work'}
+          compact
         />
         <KpiCard
           icon="truck"
@@ -618,7 +641,7 @@ export default function DashboardPage() {
           sub={`${stats?.deliveriesDelivered ?? 0} נמסרו · ${stats?.deliveriesCollected ?? 0} נאספו`}
           active={activeKpi === 'deliveries'}
           onClick={() => onKpiClick('deliveries')}
-          compact={mode === 'work'}
+          compact
         />
         <KpiCard
           icon="alert"
@@ -628,84 +651,155 @@ export default function DashboardPage() {
           sub={stockTotal === 0 ? 'הכל תקין' : `${stock.raw.length} גלם · ${stock.products.length} מוצר · ${stock.petitFours.length} פטיפור`}
           active={activeKpi === 'inventory'}
           onClick={() => onKpiClick('inventory')}
-          compact={mode === 'work'}
+          compact
+        />
+        <KpiCard
+          icon="wallet"
+          label="הכנסה צפויה היום"
+          value={formatCurrency(expectedRevenue)}
+          accent={C.green}
+          sub={liveOrders.length > 0 ? `ממוצע ${formatCurrency(expectedRevenue / liveOrders.length)}` : 'אין הזמנות פעילות'}
+          active={activeKpi === 'revenue'}
+          onClick={() => onKpiClick('revenue')}
+          compact
         />
       </section>
 
-      {/* ════════ MAIN AREA — work=Kanban full-width, management=2/3+1/3 ═══ */}
-      {/* Layout split:
-          Work mode: orders area takes full width so the 5 Kanban columns
-          have breathing room; deliveries + stock land in a 2-col block
-          below it.
-          Management mode: keeps the classic 2/3 (orders list) + 1/3 (aside
-          with deliveries + stock) split, matching the oversight-first feel. */}
-      <section className={mode === 'work' ? 'grid grid-cols-1 gap-5' : 'grid grid-cols-1 lg:grid-cols-3 gap-5'}>
+      {/* ════════ WORK MODE — Command Center layout ═══════════════════════ */}
+      {mode === 'work' && (
+        <>
+          <section ref={ordersRef} className="grid grid-cols-1 lg:grid-cols-3 gap-5 scroll-mt-4">
 
-        {/* ── PRIMARY COLUMN ────────────────────────────────────────────── */}
-        <div ref={ordersRef} className={`${mode === 'management' ? 'lg:col-span-2' : ''} space-y-3 scroll-mt-4`}>
-          <SectionHeader
-            title="הזמנות לטיפול היום"
-            count={visibleOrders.length}
-            href="/orders?filter=today"
-          />
+            {/* ── Main orders surface (col-span-2) ─────────────────────── */}
+            <div className="lg:col-span-2 space-y-3">
 
-          {/* Action-verb chips. Each one filters the cards below to the orders
-              that share the same next-step verb, so clicking "להתחיל הכנה"
-              shows just the orders whose primary button is "התחילי הכנה". */}
-          <div className="space-y-1.5">
-            <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: C.textSoft, letterSpacing: '0.08em' }}>
-              מה דורש טיפול עכשיו?
-            </p>
-            <div className="flex flex-wrap items-center gap-1.5">
-              <FilterChip label="הכל"             count={filterCounts.all}         active={filter === 'all'}         onClick={() => setFilterFromChip('all')} />
-              <FilterChip label="להתחיל הכנה"     count={filterCounts.start}       active={filter === 'start'}       onClick={() => setFilterFromChip('start')}       tone="amber" />
-              <FilterChip label="לסמן מוכנות"     count={filterCounts.mark_ready}  active={filter === 'mark_ready'}  onClick={() => setFilterFromChip('mark_ready')}  tone="amber" />
-              <FilterChip label="מוכנות לאספקה"   count={filterCounts.ready_to_go} active={filter === 'ready_to_go'} onClick={() => setFilterFromChip('ready_to_go')} />
-              <FilterChip label="ממתינות לתשלום"  count={filterCounts.unpaid}      active={filter === 'unpaid'}      onClick={() => setFilterFromChip('unpaid')}      tone="amber" />
-              <FilterChip label="דחופות"          count={filterCounts.urgent}      active={filter === 'urgent'}      onClick={() => setFilterFromChip('urgent')}      tone="red" />
+              {/* Section header — title + view toggle (table/flow) */}
+              <div className="flex items-end justify-between gap-3 flex-wrap">
+                <div className="flex items-baseline gap-2">
+                  <h2 className="text-[15px] font-bold tracking-tight" style={{ color: C.text }}>הזמנות לטיפול היום</h2>
+                  <span className="text-[10px] font-semibold tabular-nums px-1.5 py-0.5 rounded-md" style={{ backgroundColor: C.brandSoft, color: C.brand }}>
+                    {visibleOrders.length}
+                  </span>
+                </div>
+                <WorkViewToggle view={workView} onChange={setWorkView} />
+              </div>
+
+              {/* Filter chips — same data, refined spacing */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <FilterChip label="הכל"             count={filterCounts.all}         active={filter === 'all'}         onClick={() => setFilterFromChip('all')} />
+                <FilterChip label="להתחיל הכנה"     count={filterCounts.start}       active={filter === 'start'}       onClick={() => setFilterFromChip('start')}       tone="amber" />
+                <FilterChip label="לסמן מוכנות"     count={filterCounts.mark_ready}  active={filter === 'mark_ready'}  onClick={() => setFilterFromChip('mark_ready')}  tone="amber" />
+                <FilterChip label="מוכנות לאספקה"   count={filterCounts.ready_to_go} active={filter === 'ready_to_go'} onClick={() => setFilterFromChip('ready_to_go')} />
+                <FilterChip label="ממתינות לתשלום"  count={filterCounts.unpaid}      active={filter === 'unpaid'}      onClick={() => setFilterFromChip('unpaid')}      tone="amber" />
+                <FilterChip label="דחופות"          count={filterCounts.urgent}      active={filter === 'urgent'}      onClick={() => setFilterFromChip('urgent')}      tone="red" />
+              </div>
+
+              {/* Orders surface — table (default) or Kanban (sub-view) */}
+              {visibleOrders.length === 0 ? (
+                <EmptyInline
+                  icon="check"
+                  title={filter === 'all' ? 'אין הזמנות פעילות להיום' : 'אין התאמות לסינון הנוכחי'}
+                  hint={filter === 'all' ? 'צפה בכל ההזמנות' : 'נקי את הסינון'}
+                  hintHref={filter === 'all' ? '/orders' : undefined}
+                  hintOnClick={filter !== 'all' ? () => setFilter('all') : undefined}
+                />
+              ) : workView === 'table' ? (
+                <OrdersWorkTable
+                  orders={visibleOrders}
+                  updatingId={updatingId}
+                  onAdvance={(o) => onPickOrderStatus(o, getNextOrderStatus(o)!)}
+                  onMarkPaid={(o) => setMarkPaidOrder(o)}
+                  onOpen={(o) => router.push(`/orders/${o.id}`)}
+                  onMoreActions={(o) => setMoreActionsOrder(o)}
+                />
+              ) : (
+                <KanbanBoard
+                  orders={visibleOrders}
+                  updatingId={updatingId}
+                  onAdvance={(o) => onPickOrderStatus(o, getNextOrderStatus(o)!)}
+                  onMarkPaid={(o) => setMarkPaidOrder(o)}
+                  onOpen={(o) => router.push(`/orders/${o.id}`)}
+                  onMoreActions={(o) => setMoreActionsOrder(o)}
+                />
+              )}
             </div>
+
+            {/* ── AttentionPanel (col-span-1) ──────────────────────────── */}
+            <AttentionPanel
+              stats={stats}
+              liveOrders={liveOrders}
+              todayDeliveries={todayDeliveries}
+              stockTotal={stockTotal}
+              onJumpUnpaid={() => onKpiClick('unpaid')}
+              onJumpDeliveries={() => onKpiClick('deliveries')}
+              onJumpInventory={() => onKpiClick('inventory')}
+              onJumpUrgent={() => { setFilterFromChip('urgent'); ordersRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}
+            />
+          </section>
+
+          {/* ════════ BOTTOM PANELS — 3 in a row ═══════════════════════════ */}
+          <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <PanelDeliveries
+              innerRef={deliveriesRef}
+              deliveries={todayDeliveries}
+              updatingId={updatingId}
+              onPrimary={(d, next) => patchDelivery(d.id, next, d.סטטוס_משלוח)}
+              onOpen={(d) => d.הזמנות?.id && router.push(`/orders/${d.הזמנות.id}`)}
+            />
+            <PanelStock
+              innerRef={inventoryRef}
+              stock={stock}
+              total={stockTotal}
+              expanded={activeKpi === 'inventory'}
+            />
+            <PanelPayments
+              orders={liveOrders}
+              onMarkPaid={(o) => setMarkPaidOrder(o)}
+            />
+          </section>
+        </>
+      )}
+
+      {/* ════════ MANAGEMENT MODE — classic 2/3 + 1/3 split ════════════════ */}
+      {mode === 'management' && (
+        <section className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+
+          <div ref={ordersRef} className="lg:col-span-2 space-y-3 scroll-mt-4">
+            <SectionHeader title="הזמנות לטיפול היום" count={visibleOrders.length} href="/orders?filter=today" />
+            <div className="space-y-1.5">
+              <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: C.textSoft, letterSpacing: '0.08em' }}>מה דורש טיפול עכשיו?</p>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <FilterChip label="הכל"             count={filterCounts.all}         active={filter === 'all'}         onClick={() => setFilterFromChip('all')} />
+                <FilterChip label="להתחיל הכנה"     count={filterCounts.start}       active={filter === 'start'}       onClick={() => setFilterFromChip('start')}       tone="amber" />
+                <FilterChip label="לסמן מוכנות"     count={filterCounts.mark_ready}  active={filter === 'mark_ready'}  onClick={() => setFilterFromChip('mark_ready')}  tone="amber" />
+                <FilterChip label="מוכנות לאספקה"   count={filterCounts.ready_to_go} active={filter === 'ready_to_go'} onClick={() => setFilterFromChip('ready_to_go')} />
+                <FilterChip label="ממתינות לתשלום"  count={filterCounts.unpaid}      active={filter === 'unpaid'}      onClick={() => setFilterFromChip('unpaid')}      tone="amber" />
+                <FilterChip label="דחופות"          count={filterCounts.urgent}      active={filter === 'urgent'}      onClick={() => setFilterFromChip('urgent')}      tone="red" />
+              </div>
+            </div>
+            {visibleOrders.length === 0 ? (
+              <EmptyInline
+                icon="check"
+                title={filter === 'all' ? 'אין הזמנות פעילות להיום' : 'אין התאמות לסינון הנוכחי'}
+                hint={filter === 'all' ? 'צפה בכל ההזמנות' : 'נקי את הסינון'}
+                hintHref={filter === 'all' ? '/orders' : undefined}
+                hintOnClick={filter !== 'all' ? () => setFilter('all') : undefined}
+              />
+            ) : (
+              <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: C.card, border: `1px solid ${C.border}` }}>
+                {visibleOrders.map((o, idx) => (
+                  <OrderRow
+                    key={o.id}
+                    order={o}
+                    isLast={idx === visibleOrders.length - 1}
+                    onOpen={() => router.push(`/orders/${o.id}`)}
+                    onMoreActions={() => setMoreActionsOrder(o)}
+                  />
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* Order cards */}
-          {visibleOrders.length === 0 ? (
-            <EmptyInline
-              icon="check"
-              title={filter === 'all' ? 'אין הזמנות פעילות להיום' : 'אין התאמות לסינון הנוכחי'}
-              hint={filter === 'all' ? 'צפה בכל ההזמנות' : 'נקי את הסינון'}
-              hintHref={filter === 'all' ? '/orders' : undefined}
-              hintOnClick={filter !== 'all' ? () => setFilter('all') : undefined}
-            />
-          ) : mode === 'work' ? (
-            // Work mode = Kanban board grouped by סטטוס_הזמנה. Each card has
-            // a single primary "העבר לשלב הבא" action; the in-card stepper
-            // is gone because the column itself IS the stepper.
-            <KanbanBoard
-              orders={visibleOrders}
-              updatingId={updatingId}
-              onAdvance={(o) => onPickOrderStatus(o, getNextOrderStatus(o)!)}
-              onMarkPaid={(o) => setMarkPaidOrder(o)}
-              onOpen={(o) => router.push(`/orders/${o.id}`)}
-              onMoreActions={(o) => setMoreActionsOrder(o)}
-            />
-          ) : (
-            // Management mode — compact one-line rows. No big primary CTA;
-            // actions live in the existing מצמן modal accessible via "עוד".
-            <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: C.card, border: `1px solid ${C.border}` }}>
-              {visibleOrders.map((o, idx) => (
-                <OrderRow
-                  key={o.id}
-                  order={o}
-                  isLast={idx === visibleOrders.length - 1}
-                  onOpen={() => router.push(`/orders/${o.id}`)}
-                  onMoreActions={() => setMoreActionsOrder(o)}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* ── SECONDARY COLUMN — only in management mode (1/3 aside) ───── */}
-        {mode === 'management' && (
           <aside className="space-y-5">
             <div ref={deliveriesRef} className="space-y-3 scroll-mt-4">
               <SectionHeader title="משלוחים היום" count={todayDeliveries.length} href="/deliveries" />
@@ -730,34 +824,6 @@ export default function DashboardPage() {
               <StockAttentionCard stock={stock} total={stockTotal} expanded={activeKpi === 'inventory'} />
             </div>
           </aside>
-        )}
-      </section>
-
-      {/* ════════ WORK-ONLY: Deliveries + Stock as a 2-col row below the Kanban ═ */}
-      {mode === 'work' && (
-        <section className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          <div ref={deliveriesRef} className="space-y-3 scroll-mt-4">
-            <SectionHeader title="משלוחים היום" count={todayDeliveries.length} href="/deliveries" />
-            {todayDeliveries.length === 0 ? (
-              <EmptyInline icon="truck" title="אין משלוחים מתוכננים להיום" hint="ניהול משלוחים" hintHref="/deliveries" />
-            ) : (
-              <div className="space-y-2.5">
-                {todayDeliveries.map(d => (
-                  <DeliveryActionCard
-                    key={d.id}
-                    delivery={d}
-                    updating={updatingId === d.id}
-                    onPrimary={(next) => patchDelivery(d.id, next, d.סטטוס_משלוח)}
-                    onOpen={() => d.הזמנות?.id && router.push(`/orders/${d.הזמנות.id}`)}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-          <div ref={inventoryRef} className="space-y-3 scroll-mt-4">
-            <SectionHeader title="מלאי דורש טיפול" count={stockTotal} href="/inventory" />
-            <StockAttentionCard stock={stock} total={stockTotal} expanded={activeKpi === 'inventory'} />
-          </div>
         </section>
       )}
 
@@ -2329,5 +2395,625 @@ function MoreActionsModal({
         </button>
       </div>
     </Modal>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Command Center components — added in the v2 dashboard rewrite. Pure UI;
+// no logic, no fetches, no writes — they all delegate to the parent's
+// existing handlers (patchOrder / patchDelivery / setMarkPaidOrder /
+// setMoreActionsOrder), which means every button still flows through
+// PATCH /api/orders/[id] and PATCH /api/deliveries/[id] exactly as before.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ─── WorkViewToggle — flips between the dense table view and the Kanban ──
+
+function WorkViewToggle({ view, onChange }: { view: WorkView; onChange: (v: WorkView) => void }) {
+  const opt = (val: WorkView, label: string, icon: React.ReactNode) => {
+    const active = view === val;
+    return (
+      <button
+        key={val}
+        onClick={() => onChange(val)}
+        className="inline-flex items-center gap-1.5 px-2.5 h-7 text-[11px] font-semibold rounded-md transition-colors"
+        style={{
+          backgroundColor: active ? C.card : 'transparent',
+          color: active ? C.text : C.textSoft,
+          boxShadow: active ? '0 1px 2px rgba(58,42,26,0.06)' : undefined,
+        }}
+        aria-pressed={active}
+      >
+        {icon}
+        {label}
+      </button>
+    );
+  };
+  const tableIcon = (
+    <svg viewBox="0 0 24 24" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 6h18M3 12h18M3 18h18" />
+    </svg>
+  );
+  const flowIcon = (
+    <svg viewBox="0 0 24 24" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="4" width="5" height="16" rx="1.5" />
+      <rect x="10" y="4" width="5" height="11" rx="1.5" />
+      <rect x="17" y="4" width="4" height="7" rx="1.5" />
+    </svg>
+  );
+  return (
+    <div
+      className="inline-flex p-0.5 rounded-lg"
+      style={{ backgroundColor: '#F3EBDD', border: `1px solid ${C.border}` }}
+      role="group"
+      aria-label="תצוגת עבודה"
+    >
+      {opt('table', 'טבלה', tableIcon)}
+      {opt('flow', 'זרימה', flowIcon)}
+    </div>
+  );
+}
+
+// ─── OrdersWorkTable — premium dense work table ───────────────────────────
+// 7 columns: order# / customer / time / type / amount / status+payment /
+// next-step + actions. Hover highlights the row, the action column shows
+// the next forward verb computed by nextOrderAction (so the user never has
+// to think about which status comes next). Mark-paid lives inline on the
+// payment cell when payment is open.
+
+function OrdersWorkTable({
+  orders, updatingId, onAdvance, onMarkPaid, onOpen, onMoreActions,
+}: {
+  orders: TodayOrder[];
+  updatingId: string | null;
+  onAdvance: (o: TodayOrder) => void;
+  onMarkPaid: (o: TodayOrder) => void;
+  onOpen: (o: TodayOrder) => void;
+  onMoreActions: (o: TodayOrder) => void;
+}) {
+  return (
+    <div
+      className="rounded-xl overflow-hidden"
+      style={{
+        backgroundColor: C.card,
+        border: `1px solid ${C.border}`,
+        boxShadow: '0 1px 2px rgba(58,42,26,0.04), 0 4px 16px rgba(58,42,26,0.04)',
+      }}
+    >
+      {/* Header strip */}
+      <div
+        className="grid items-center gap-3 px-4 py-2.5 text-[10px] uppercase font-semibold"
+        style={{
+          backgroundColor: '#F8F1E2',
+          color: C.textSoft,
+          letterSpacing: '0.08em',
+          gridTemplateColumns: '74px minmax(0,1.6fr) 56px 64px 80px minmax(0,1fr) auto',
+          borderBottom: `1px solid ${C.borderSoft}`,
+        }}
+      >
+        <span>הזמנה</span>
+        <span>לקוח</span>
+        <span>שעה</span>
+        <span>אספקה</span>
+        <span>סכום</span>
+        <span>סטטוס</span>
+        <span className="text-end">פעולה</span>
+      </div>
+
+      {/* Rows */}
+      {orders.map((o, idx) => {
+        const isLast = idx === orders.length - 1;
+        const customer = o.לקוחות;
+        const customerName = customer ? `${customer.שם_פרטי} ${customer.שם_משפחה}` : (o.שם_מקבל || 'לקוח');
+        const isDelivery = (o.סוג_אספקה ?? '') === 'משלוח';
+        const action = nextOrderAction(o);
+        const paid = o.סטטוס_תשלום === 'שולם' || o.סטטוס_תשלום === 'בארטר';
+        const updating = updatingId === o.id;
+        return (
+          <div
+            key={o.id}
+            className="grid items-center gap-3 px-4 py-3 transition-colors hover:bg-amber-50/50 group relative"
+            style={{
+              gridTemplateColumns: '74px minmax(0,1.6fr) 56px 64px 80px minmax(0,1fr) auto',
+              borderBottom: isLast ? 'none' : `1px solid ${C.borderSoft}`,
+            }}
+          >
+            {o.הזמנה_דחופה && (
+              <div
+                className="absolute top-0 right-0 bottom-0"
+                style={{ width: 2, backgroundColor: '#C75F4D' }}
+                aria-hidden
+              />
+            )}
+
+            {/* Order # */}
+            <button
+              onClick={() => onOpen(o)}
+              className="font-mono text-[10.5px] font-semibold text-start hover:underline transition-colors uppercase"
+              style={{ color: C.gold, letterSpacing: '0.04em' }}
+              title={`פתח הזמנה ${o.מספר_הזמנה}`}
+            >
+              {o.מספר_הזמנה.replace(/^ORD-/, '')}
+            </button>
+
+            {/* Customer + tags */}
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="text-[13.5px] font-semibold truncate" style={{ color: C.text, letterSpacing: '-0.005em' }}>
+                  {customerName}
+                </span>
+                {o.הזמנה_דחופה && (
+                  <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded flex-shrink-0" style={{ color: '#A8442D', backgroundColor: '#FEE7E2' }}>
+                    דחוף
+                  </span>
+                )}
+              </div>
+              {o.טלפון_מקבל && (
+                <a
+                  href={`tel:${o.טלפון_מקבל}`}
+                  onClick={e => e.stopPropagation()}
+                  className="text-[10.5px] hover:underline tabular-nums truncate inline-block"
+                  style={{ color: C.textSoft }}
+                >
+                  {o.טלפון_מקבל}
+                </a>
+              )}
+            </div>
+
+            {/* Time */}
+            <span className="tabular-nums text-[12px] font-medium" style={{ color: C.text }}>
+              {o.שעת_אספקה || '—'}
+            </span>
+
+            {/* Delivery type */}
+            <span
+              className="inline-flex items-center justify-center text-[10px] font-semibold px-2 py-1 rounded-md w-fit"
+              style={{
+                backgroundColor: isDelivery ? C.blueSoft : C.brandSoft,
+                color: isDelivery ? C.blue : C.brand,
+              }}
+            >
+              {isDelivery ? 'משלוח' : 'איסוף'}
+            </span>
+
+            {/* Amount */}
+            <span className="tabular-nums text-[13px] font-bold" style={{ color: C.text }}>
+              {formatCurrency(o.סך_הכל_לתשלום)}
+            </span>
+
+            {/* Status badges + inline mark-paid */}
+            <div className="flex items-center gap-1.5 min-w-0">
+              <PremiumBadge status={o.סטטוס_הזמנה} kind="order" size="sm" />
+              {paid ? (
+                <PremiumBadge status={o.סטטוס_תשלום} kind="payment" size="sm" />
+              ) : (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onMarkPaid(o); }}
+                  disabled={updating}
+                  className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-md transition-colors disabled:opacity-60"
+                  style={{ backgroundColor: '#FBF1DC', color: '#92602A', border: '1px solid #EAC78C' }}
+                  title="סמני שולם"
+                >
+                  <Icon name="wallet" className="w-2.5 h-2.5" />
+                  שולם
+                </button>
+              )}
+            </div>
+
+            {/* Primary action + overflow */}
+            <div className="flex items-center gap-1 justify-end flex-shrink-0">
+              {action ? (
+                <button
+                  onClick={() => onAdvance(o)}
+                  disabled={updating}
+                  className="inline-flex items-center gap-1 h-8 px-3 text-[11.5px] font-semibold text-white rounded-md transition-colors disabled:opacity-60"
+                  style={{ backgroundColor: C.espresso }}
+                >
+                  <span>{updating ? '...' : action.label}</span>
+                  <Icon name="arrow" className="w-3 h-3 rtl-flip" />
+                </button>
+              ) : (
+                <span
+                  className="inline-flex items-center gap-1 h-8 px-2.5 text-[10.5px] font-medium rounded-md"
+                  style={{ backgroundColor: C.brandSoft, color: C.brand }}
+                >
+                  <Icon name="check" className="w-3 h-3" />
+                  הושלם
+                </span>
+              )}
+              <button
+                onClick={() => onMoreActions(o)}
+                className="inline-flex items-center justify-center w-7 h-8 rounded-md transition-colors hover:bg-amber-100/50"
+                style={{ color: C.textSoft }}
+                title="עוד פעולות"
+                aria-label="עוד פעולות"
+              >
+                <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor"><circle cx="12" cy="5" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="12" cy="19" r="1.5" /></svg>
+              </button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── AttentionPanel — sidebar of urgent items requiring attention ────────
+
+function AttentionPanel({
+  stats, liveOrders, todayDeliveries, stockTotal,
+  onJumpUnpaid, onJumpDeliveries, onJumpInventory, onJumpUrgent,
+}: {
+  stats: DashboardStats | null;
+  liveOrders: TodayOrder[];
+  todayDeliveries: Delivery[];
+  stockTotal: number;
+  onJumpUnpaid: () => void;
+  onJumpDeliveries: () => void;
+  onJumpInventory: () => void;
+  onJumpUrgent: () => void;
+}) {
+  const urgentCount = liveOrders.filter(o => o.הזמנה_דחופה).length;
+  const unpaidCount = stats?.unpaidOrders ?? 0;
+  const unpaidAmount = stats?.unpaidAmount ?? 0;
+  const pendingDeliveryCount = todayDeliveries.filter(d => d.סטטוס_משלוח === 'ממתין').length;
+  const collectedNotDeliveredCount = todayDeliveries.filter(d => d.סטטוס_משלוח === 'נאסף').length;
+
+  type AttentionItem = {
+    key: string;
+    severity: 'red' | 'amber' | 'blue';
+    title: string;
+    sub: string;
+    onAction: () => void;
+    actionLabel: string;
+  };
+  const items: AttentionItem[] = [];
+
+  if (urgentCount > 0) {
+    items.push({
+      key: 'urgent',
+      severity: 'red',
+      title: `${urgentCount} הזמנות דחופות`,
+      sub: 'מסומנות לטיפול מיידי',
+      onAction: onJumpUrgent,
+      actionLabel: 'הצג',
+    });
+  }
+  if (unpaidCount > 0) {
+    items.push({
+      key: 'unpaid',
+      severity: 'amber',
+      title: `${unpaidCount} ממתינות לתשלום`,
+      sub: `סך פתוח ${formatCurrency(unpaidAmount)}`,
+      onAction: onJumpUnpaid,
+      actionLabel: 'גבה',
+    });
+  }
+  if (stockTotal > 0) {
+    items.push({
+      key: 'stock',
+      severity: 'red',
+      title: `${stockTotal} פריטי מלאי קריטיים`,
+      sub: 'לבדוק לפני המשך הכנה',
+      onAction: onJumpInventory,
+      actionLabel: 'בדוק',
+    });
+  }
+  if (pendingDeliveryCount > 0) {
+    items.push({
+      key: 'pending-delivery',
+      severity: 'amber',
+      title: `${pendingDeliveryCount} משלוחים ממתינים`,
+      sub: 'טרם נאספו על ידי שליח',
+      onAction: onJumpDeliveries,
+      actionLabel: 'שלח',
+    });
+  }
+  if (collectedNotDeliveredCount > 0) {
+    items.push({
+      key: 'in-transit',
+      severity: 'blue',
+      title: `${collectedNotDeliveredCount} משלוחים בדרך`,
+      sub: 'ממתינים לאישור מסירה מהשליח',
+      onAction: onJumpDeliveries,
+      actionLabel: 'מעקב',
+    });
+  }
+
+  const sevTone: Record<AttentionItem['severity'], { bar: string; chip: string; chipText: string }> = {
+    red:   { bar: '#C75F4D', chip: '#FEE4E2', chipText: '#991B1B' },
+    amber: { bar: '#D9A655', chip: '#FBF1DC', chipText: '#92602A' },
+    blue:  { bar: '#5B8FB8', chip: '#DBEAFE', chipText: '#1E40AF' },
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-baseline gap-2">
+        <h2 className="text-[15px] font-bold tracking-tight" style={{ color: C.text }}>דורש תשומת לב</h2>
+        <span className="text-[10px] font-semibold tabular-nums px-1.5 py-0.5 rounded-md" style={{ backgroundColor: items.length > 0 ? '#FEE4E2' : C.brandSoft, color: items.length > 0 ? '#991B1B' : C.brand }}>
+          {items.length}
+        </span>
+      </div>
+
+      {items.length === 0 ? (
+        <div
+          className="rounded-xl px-4 py-8 text-center"
+          style={{ backgroundColor: C.card, border: `1px solid ${C.border}` }}
+        >
+          <div
+            className="w-9 h-9 mx-auto rounded-full flex items-center justify-center mb-2"
+            style={{ backgroundColor: C.greenSoft, color: C.green }}
+          >
+            <Icon name="check" className="w-4 h-4" />
+          </div>
+          <p className="text-[13px] font-semibold" style={{ color: C.text }}>הכל בשליטה</p>
+          <p className="text-[11px] mt-1" style={{ color: C.textSoft }}>אין פריטים שדורשים טיפול דחוף</p>
+        </div>
+      ) : (
+        <div
+          className="rounded-xl overflow-hidden"
+          style={{
+            backgroundColor: C.card,
+            border: `1px solid ${C.border}`,
+            boxShadow: '0 1px 2px rgba(58,42,26,0.04)',
+          }}
+        >
+          {items.map((it, idx) => {
+            const tone = sevTone[it.severity];
+            const isLast = idx === items.length - 1;
+            return (
+              <div
+                key={it.key}
+                className="flex items-stretch transition-colors hover:bg-amber-50/40"
+                style={{ borderBottom: isLast ? 'none' : `1px solid ${C.borderSoft}` }}
+              >
+                <div style={{ width: 3, backgroundColor: tone.bar }} aria-hidden />
+                <div className="flex-1 px-3 py-3 flex items-center gap-3 min-w-0">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13px] font-semibold truncate" style={{ color: C.text }}>{it.title}</p>
+                    <p className="text-[11px] mt-0.5 truncate" style={{ color: C.textSoft }}>{it.sub}</p>
+                  </div>
+                  <button
+                    onClick={it.onAction}
+                    className="inline-flex items-center text-[11px] font-semibold px-2.5 h-7 rounded-md transition-colors flex-shrink-0"
+                    style={{ backgroundColor: tone.chip, color: tone.chipText }}
+                  >
+                    {it.actionLabel}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── PanelDeliveries / PanelStock / PanelPayments — bottom 3-panel row ───
+
+function BottomPanelShell({
+  innerRef, title, count, href, children,
+}: {
+  innerRef?: React.RefObject<HTMLDivElement | null>;
+  title: string;
+  count: number;
+  href: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div ref={innerRef as React.RefObject<HTMLDivElement>} className="space-y-3 scroll-mt-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-baseline gap-2">
+          <h3 className="text-[13px] font-bold tracking-tight" style={{ color: C.text }}>{title}</h3>
+          <span className="text-[10px] font-semibold tabular-nums px-1.5 py-0.5 rounded-md" style={{ backgroundColor: C.brandSoft, color: C.brand }}>
+            {count}
+          </span>
+        </div>
+        <Link href={href} className="text-[10.5px] font-medium hover:underline" style={{ color: C.textSoft }}>
+          לרשימה המלאה →
+        </Link>
+      </div>
+      <div
+        className="rounded-xl"
+        style={{
+          backgroundColor: C.card,
+          border: `1px solid ${C.border}`,
+          boxShadow: '0 1px 2px rgba(58,42,26,0.04)',
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function PanelDeliveries({
+  innerRef, deliveries, updatingId, onPrimary, onOpen,
+}: {
+  innerRef: React.RefObject<HTMLDivElement | null>;
+  deliveries: Delivery[];
+  updatingId: string | null;
+  onPrimary: (d: Delivery, next: 'נאסף' | 'נמסר') => void;
+  onOpen: (d: Delivery) => void;
+}) {
+  const top = deliveries.slice(0, 4);
+  return (
+    <BottomPanelShell innerRef={innerRef} title="משלוחים היום" count={deliveries.length} href="/deliveries">
+      {top.length === 0 ? (
+        <div className="px-4 py-5 text-center text-[12px]" style={{ color: C.textSoft }}>
+          אין משלוחים מתוכננים להיום
+        </div>
+      ) : (
+        <ul>
+          {top.map((d, idx) => {
+            const o = d.הזמנות;
+            const c = o?.לקוחות;
+            const recipient = o?.שם_מקבל || (c ? `${c.שם_פרטי} ${c.שם_משפחה}` : 'לקוח');
+            const isLast = idx === top.length - 1;
+            const status = d.סטטוס_משלוח;
+            const updating = updatingId === d.id;
+            return (
+              <li
+                key={d.id}
+                className="flex items-center gap-3 px-3 py-2.5 transition-colors hover:bg-amber-50/40"
+                style={{ borderBottom: isLast ? 'none' : `1px solid ${C.borderSoft}` }}
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="text-[12.5px] font-semibold truncate" style={{ color: C.text }}>{recipient}</p>
+                  <p className="text-[10.5px] truncate" style={{ color: C.textSoft }}>
+                    {[d.כתובת, d.עיר].filter(Boolean).join(', ') || 'אין כתובת'}
+                  </p>
+                </div>
+                {status === 'ממתין' && (
+                  <button
+                    onClick={() => onPrimary(d, 'נאסף')}
+                    disabled={updating}
+                    className="inline-flex items-center gap-1 text-[10.5px] font-semibold px-2.5 h-7 rounded-md text-white transition-colors disabled:opacity-60 flex-shrink-0"
+                    style={{ backgroundColor: C.espresso }}
+                  >
+                    <Icon name="truck" className="w-3 h-3" />
+                    שלח לשליח
+                  </button>
+                )}
+                {status === 'נאסף' && (
+                  <span
+                    className="text-[10.5px] font-semibold px-2 py-1 rounded-md flex-shrink-0"
+                    style={{ backgroundColor: '#DBEAFE', color: '#1E40AF' }}
+                  >
+                    בדרך
+                  </span>
+                )}
+                {status === 'נמסר' && (
+                  <span
+                    className="inline-flex items-center gap-1 text-[10.5px] font-semibold px-2 py-1 rounded-md flex-shrink-0"
+                    style={{ backgroundColor: C.greenSoft, color: C.green }}
+                  >
+                    <Icon name="check" className="w-3 h-3" />
+                    נמסר
+                  </span>
+                )}
+                <button
+                  onClick={() => onOpen(d)}
+                  className="text-[10px] font-medium hover:underline flex-shrink-0"
+                  style={{ color: C.textSoft }}
+                >
+                  →
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </BottomPanelShell>
+  );
+}
+
+function PanelStock({
+  innerRef, stock, total, expanded,
+}: {
+  innerRef: React.RefObject<HTMLDivElement | null>;
+  stock: { raw: StockRow[]; products: StockRow[]; petitFours: StockRow[] };
+  total: number;
+  expanded: boolean;
+}) {
+  // Flatten alerts ordered by severity (אזל → קריטי → מלאי נמוך).
+  const all: (StockRow & { kind: string })[] = [
+    ...stock.raw.map(r => ({ ...r, kind: 'גלם' })),
+    ...stock.products.map(r => ({ ...r, kind: 'מוצר' })),
+    ...stock.petitFours.map(r => ({ ...r, kind: 'פטיפור' })),
+  ];
+  const severityRank: Record<string, number> = { 'אזל מהמלאי': 0, 'קריטי': 1, 'מלאי נמוך': 2 };
+  all.sort((a, b) => (severityRank[a.status] ?? 3) - (severityRank[b.status] ?? 3));
+  const top = expanded ? all : all.slice(0, 4);
+
+  return (
+    <BottomPanelShell innerRef={innerRef} title="מלאי דורש טיפול" count={total} href="/inventory">
+      {top.length === 0 ? (
+        <div className="px-4 py-5 text-center text-[12px]" style={{ color: C.green }}>
+          ✓ כל המלאי בטווח התקין
+        </div>
+      ) : (
+        <ul>
+          {top.map((it, idx) => {
+            const isLast = idx === top.length - 1;
+            const tone = it.status === 'אזל מהמלאי'
+              ? { chip: '#FEE4E2', chipText: '#991B1B' }
+              : it.status === 'קריטי'
+              ? { chip: '#FFEFD5', chipText: '#92400E' }
+              : { chip: '#FBF1DC', chipText: '#92602A' };
+            return (
+              <li
+                key={`${it.kind}-${it.id}`}
+                className="flex items-center gap-2 px-3 py-2.5 transition-colors hover:bg-amber-50/40"
+                style={{ borderBottom: isLast ? 'none' : `1px solid ${C.borderSoft}` }}
+              >
+                <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded flex-shrink-0" style={{ color: C.textSoft, backgroundColor: C.borderSoft, letterSpacing: '0.04em' }}>
+                  {it.kind}
+                </span>
+                <span className="text-[12.5px] font-semibold truncate flex-1 min-w-0" style={{ color: C.text }}>{it.שם}</span>
+                <span className="text-[10.5px] font-semibold tabular-nums" style={{ color: C.textSoft }}>{it.quantity}</span>
+                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded flex-shrink-0" style={{ backgroundColor: tone.chip, color: tone.chipText }}>
+                  {it.status}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </BottomPanelShell>
+  );
+}
+
+function PanelPayments({
+  orders, onMarkPaid,
+}: {
+  orders: TodayOrder[];
+  onMarkPaid: (o: TodayOrder) => void;
+}) {
+  const unpaid = orders.filter(o => o.סטטוס_תשלום !== 'שולם' && o.סטטוס_תשלום !== 'בארטר');
+  const top = unpaid.slice(0, 4);
+  const totalOpen = unpaid.reduce((s, o) => s + (o.סך_הכל_לתשלום || 0), 0);
+
+  return (
+    <BottomPanelShell title={`תשלומים פתוחים${totalOpen > 0 ? ` · ${formatCurrency(totalOpen)}` : ''}`} count={unpaid.length} href="/orders?filter=unpaid">
+      {top.length === 0 ? (
+        <div className="px-4 py-5 text-center text-[12px]" style={{ color: C.green }}>
+          ✓ כל ההזמנות שולמו
+        </div>
+      ) : (
+        <ul>
+          {top.map((o, idx) => {
+            const c = o.לקוחות;
+            const name = c ? `${c.שם_פרטי} ${c.שם_משפחה}` : (o.שם_מקבל || 'לקוח');
+            const isLast = idx === top.length - 1;
+            return (
+              <li
+                key={o.id}
+                className="flex items-center gap-2 px-3 py-2.5 transition-colors hover:bg-amber-50/40"
+                style={{ borderBottom: isLast ? 'none' : `1px solid ${C.borderSoft}` }}
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="text-[12.5px] font-semibold truncate" style={{ color: C.text }}>{name}</p>
+                  <p className="text-[10px] tabular-nums" style={{ color: C.textSoft }}>
+                    {o.מספר_הזמנה} · {o.שעת_אספקה || '—'}
+                  </p>
+                </div>
+                <span className="text-[12px] tabular-nums font-bold flex-shrink-0" style={{ color: C.text }}>
+                  {formatCurrency(o.סך_הכל_לתשלום)}
+                </span>
+                <button
+                  onClick={() => onMarkPaid(o)}
+                  className="inline-flex items-center gap-1 text-[10.5px] font-semibold px-2.5 h-7 rounded-md text-white transition-colors flex-shrink-0"
+                  style={{ backgroundColor: C.green }}
+                >
+                  <Icon name="wallet" className="w-3 h-3" />
+                  שולם
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </BottomPanelShell>
   );
 }
