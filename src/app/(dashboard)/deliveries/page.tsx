@@ -182,11 +182,37 @@ function DeliveriesContent() {
     if (!deletingDelivery) return;
     const target = deletingDelivery;
 
-    // Synthetic row — nothing to delete in the DB. Just hide it locally.
+    // Synthetic row — there's no משלוחים row to DELETE; the row is
+    // re-generated from the order on every refetch. To make the dismissal
+    // stick, mark the order itself with hide_from_deliveries=true so the
+    // placeholder query in /api/deliveries skips it forever (added in
+    // migration 031). Then refetch — proves the row really is gone.
     if (target._noRecord || target.id.startsWith('no-record-')) {
-      setDeliveries(prev => prev.filter(d => d.id !== target.id));
-      setDeletingDelivery(null);
-      toast.success('המשלוח הוסר מהתצוגה');
+      const orderId = target.הזמנה_id;
+      if (!orderId) {
+        toast.error('לא ניתן למחוק — חסר מזהה הזמנה.');
+        return;
+      }
+      setDeleting(true);
+      try {
+        const res = await fetch(`/api/orders/${orderId}`, {
+          method:  'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ hide_from_deliveries: true }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          toast.error(json.error || 'לא ניתן להסיר את המשלוח. נסי שוב.');
+          return;
+        }
+        setDeletingDelivery(null);
+        toast.success('המשלוח נמחק בהצלחה');
+        await loadDeliveries(); // Refetch — proves it's gone, not just hidden in state.
+      } catch {
+        toast.error('לא ניתן להסיר את המשלוח. נסי שוב.');
+      } finally {
+        setDeleting(false);
+      }
       return;
     }
 
@@ -198,9 +224,9 @@ function DeliveriesContent() {
         toast.error(json.error || 'לא ניתן למחוק את המשלוח. נסי שוב.');
         return;
       }
-      setDeliveries(prev => prev.filter(d => d.id !== target.id));
       setDeletingDelivery(null);
       toast.success('המשלוח נמחק בהצלחה');
+      await loadDeliveries(); // Refetch — confirms the row is gone server-side.
     } catch {
       toast.error('לא ניתן למחוק את המשלוח. נסי שוב.');
     } finally {
@@ -228,19 +254,28 @@ function DeliveriesContent() {
     return () => { window.clearTimeout(t); window.clearTimeout(clearAt); };
   }, [highlight, loading, deliveries]);
 
-  // Load deliveries on filter change
-  useEffect(() => {
+  // Reload deliveries from the server. Extracted so the delete handler
+  // can refetch after a synthetic-row dismissal — without a refetch the
+  // placeholder query would re-generate the row from scratch and the
+  // operator would see it come back.
+  const loadDeliveries = async () => {
     setLoading(true);
     const params = new URLSearchParams();
     if (date) params.set('date', date);
     if (statusFilter) params.set('status', statusFilter);
-    fetch(`/api/deliveries?${params}`)
-      .then(r => r.json())
-      .then(({ data, error }) => {
-        console.log('[deliveries] received:', (data || []).length, 'rows | date filter:', date || 'none', '| error:', error || 'none');
-        setDeliveries(data || []);
-      })
-      .finally(() => setLoading(false));
+    try {
+      const res = await fetch(`/api/deliveries?${params}`);
+      const { data, error } = await res.json();
+      console.log('[deliveries] received:', (data || []).length, 'rows | date filter:', date || 'none', '| error:', error || 'none');
+      setDeliveries(data || []);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadDeliveries();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date, statusFilter]);
 
   // Try to open WhatsApp; returns false if browser blocked the popup.

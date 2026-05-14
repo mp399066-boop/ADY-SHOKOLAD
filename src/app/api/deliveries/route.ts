@@ -114,6 +114,10 @@ export async function GET(req: NextRequest) {
     .or('סוג_אספקה.eq.משלוח,כתובת_מקבל_ההזמנה.not.is.null,דמי_משלוח.gt.0')
     .neq('סטטוס_הזמנה', 'הושלמה בהצלחה')
     .neq('סטטוס_הזמנה', 'בוטלה')
+    // Operator dismissed this order from the deliveries dashboard. We hide
+    // the placeholder forever rather than just from local state — that's
+    // what makes "delete a synthetic row" actually persist across refresh.
+    .neq('hide_from_deliveries', true)
     .order('תאריך_אספקה', { ascending: true });
   if (date) placeholderOrdersQuery = placeholderOrdersQuery.eq('תאריך_אספקה', date);
 
