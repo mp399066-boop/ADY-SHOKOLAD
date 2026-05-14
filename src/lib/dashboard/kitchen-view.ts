@@ -40,9 +40,11 @@ const UNPAID_STATUSES = ['ממתין', 'חלקי'];
 const ACTIVE_DELIVERY_STATUSES = ['ממתין', 'נאסף'];
 
 function customerName(order: TodayOrder): string {
-  if (order.שם_מקבל?.trim()) return order.שם_מקבל.trim();
   const c = order.לקוחות;
-  return c ? `${c.שם_פרטי} ${c.שם_משפחה}`.trim() : 'לקוח';
+  const name = c ? `${c.שם_פרטי} ${c.שם_משפחה}`.trim() : '';
+  if (name) return name;
+  if (order.שם_מקבל?.trim()) return order.שם_מקבל.trim();
+  return 'לקוח';
 }
 
 function dueLabel(order: TodayOrder, todayISO: string): string {
