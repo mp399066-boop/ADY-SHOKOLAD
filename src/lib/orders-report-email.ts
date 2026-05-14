@@ -23,11 +23,6 @@ export interface ReportInput {
   // above the order cards. Optional; empty/missing = no banner. Not stored
   // anywhere; lives only inside the request that produced the report.
   note?: string | null;
-  // Per-order delivery-time override map (orderId → free text). Replaces
-  // the order's stored שעת_אספקה for *this report only* — never written
-  // back to the DB. Empty / missing entries fall through to the original
-  // value, which then itself falls through describeOrderTime's heuristic.
-  timeOverrides?: Record<string, string> | null;
 }
 
 export interface ReportSummary {
@@ -152,13 +147,8 @@ function esc(s: unknown): string {
     .replace(/"/g, '&quot;');
 }
 
-// Decides what to print for the time row. There is no per-order "flexible"
-// flag in the schema (owner declined a migration), so this is a heuristic
-// over the existing שעת_אספקה text:
-//   - empty/null            → "לא צוינה שעה"
-//   - "HH:MM[:SS]" prefix   → "HH:MM"           (strong = bolder)
-//   - contains a flex marker→ "גמיש"            (e.g. "גמיש", "כל היום")
-//   - anything else         → the raw text       (operator-written window)
+// Decides what to print for the time row. The flexible-time flag is rendered
+// separately so it never replaces or rewrites the actual שעת_אספקה value.
 function describeOrderTime(
   rawTime: string | null | undefined,
   isDelivery: boolean,
@@ -172,9 +162,6 @@ function describeOrderTime(
   // the operator's intent reads back verbatim.
   const exactTime = t.match(/^(\d{1,2}):(\d{2})(:\d{2})?$/);
   if (exactTime) return { label, value: `${exactTime[1].padStart(2, '0')}:${exactTime[2]}`, strong: true };
-  if (/גמיש|במהלך היום|כל היום|בערך|flex/i.test(t)) {
-    return { label, value: 'גמיש', strong: false };
-  }
   return { label, value: t, strong: false };
 }
 
@@ -255,7 +242,6 @@ function paymentBadge(status: string): string {
 function orderCard(
   order: RawOrder,
   items: Record<string, unknown>[],
-  timeOverride?: string,
   actionLinks?: EmployeeReportActionLinks,
 ): string {
   const customer = order['לקוחות'] as Record<string, unknown> | null;
@@ -278,14 +264,13 @@ function orderCard(
     : '';
   // Pickup orders carry the same שעת_אספקה field but operationally that's
   // when the customer arrives — relabel so the report reads correctly.
-  // describeOrderTime also normalises empty / "גמיש" / free-text values so
+  // describeOrderTime also normalises empty / free-text values so
   // the row never reads "—" silently when a window wasn't pinned down.
-  // The per-report time override (operator-typed, this report only) wins
-  // over the stored value when present. Empty override = use stored value.
-  const overrideTrim = (timeOverride ?? '').trim();
-  const effectiveTime = overrideTrim || (order['שעת_אספקה'] as string | null | undefined);
-  const timeInfo = describeOrderTime(effectiveTime, isDelivery);
+  const timeInfo = describeOrderTime(order['שעת_אספקה'] as string | null | undefined, isDelivery);
   const timeLine = `<tr><td style="padding:4px 10px;color:#8E7D6A">${timeInfo.label}</td><td style="padding:4px 10px;color:#2B1A10;font-weight:${timeInfo.strong ? 700 : 600}">${esc(timeInfo.value)}</td></tr>`;
+  const flexibleLine = order.delivery_time_flexible === true
+    ? `<tr><td style="padding:4px 10px;color:#8E7D6A">גמיש</td><td style="padding:4px 10px;color:#2B1A10;font-weight:600">כן</td></tr>`
+    : '';
   const deliveryInstructionsLine = isDelivery && order['הוראות_משלוח']
     ? `<tr><td style="padding:4px 10px;color:#8E7D6A">הוראות משלוח</td><td style="padding:4px 10px;color:#5C3D22">${esc(order['הוראות_משלוח'])}</td></tr>`
     : '';
@@ -326,6 +311,7 @@ function orderCard(
     <table style="width:100%;border-collapse:collapse;font-size:12px;background:#FAF7F0;border-radius:6px;padding:6px 10px;margin-bottom:6px">
       <tr><td style="padding:4px 10px;color:#8E7D6A;width:38%">תאריך אספקה</td><td style="padding:4px 10px;color:#2B1A10;font-weight:600">${esc(formatHebrewDate(String(order['תאריך_אספקה'] || '')))}</td></tr>
       ${timeLine}
+      ${flexibleLine}
       <tr><td style="padding:4px 10px;color:#8E7D6A">סוג אספקה</td><td style="padding:4px 10px;color:#2B1A10;font-weight:600">${esc(order['סוג_אספקה'])}</td></tr>
       ${recipientLine}
       ${addressLine}
@@ -347,14 +333,12 @@ export function buildReportHtml(
   itemsByOrder: Record<string, Record<string, unknown>[]>,
   forDownload = false,
   note?: string | null,
-  timeOverrides?: Record<string, string> | null,
   actionLinksByOrder?: Record<string, EmployeeReportActionLinks>,
 ): string {
   const cards = orders.length
     ? orders.map(o => orderCard(
       o,
       itemsByOrder[String(o.id)] || [],
-      timeOverrides?.[String(o.id)],
       actionLinksByOrder?.[String(o.id)],
     )).join('')
     : `<div style="background:#FFFFFF;border:1px dashed #EDE0CE;border-radius:10px;padding:32px;text-align:center;color:#8E7D6A;font-size:14px">אין הזמנות בטווח שנבחר</div>`;
@@ -464,7 +448,6 @@ export async function generateOrdersReport(
     itemsByOrder,
     opts.forDownload === true,
     input.note,
-    input.timeOverrides,
     actionLinksByOrder,
   );
   const subject = `דוח הזמנות — ${label} — ${BUSINESS}`;

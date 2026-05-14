@@ -12,6 +12,7 @@ export type EmployeeReportActionLinks = {
 export type EmployeeReportActionResult =
   | { status: 'invalid' }
   | { status: 'expired' }
+  | { status: 'already_done'; action: EmployeeReportAction }
   | { status: 'success'; action: EmployeeReportAction };
 
 const READY_FOR_DELIVERY_STATUS = 'מוכנה למשלוח';
@@ -62,7 +63,10 @@ export async function createEmployeeReportActionLinks({
   recipientEmail: string;
 }): Promise<Record<string, EmployeeReportActionLinks>> {
   const base = appBaseUrl();
-  if (!base || orderIds.length === 0) return {};
+  if (orderIds.length === 0) return {};
+  if (!base) {
+    throw new Error('APP_URL או NEXT_PUBLIC_APP_URL חסר - לא ניתן ליצור קישורי פעולה חתומים');
+  }
 
   const expires = String(Date.now() + EXPIRES_IN_MS);
   const links: Record<string, EmployeeReportActionLinks> = {};
@@ -107,17 +111,10 @@ export async function performEmployeeReportAction({
   if (!order) return { status: 'invalid' };
 
   const orderNumber = String(order['מספר_הזמנה'] || '');
-
-  if (normalizedAction === 'ready_for_delivery' && order['סטטוס_הזמנה'] !== READY_FOR_DELIVERY_STATUS) {
-    await supabase
-      .from('הזמנות')
-      .update({ סטטוס_הזמנה: READY_FOR_DELIVERY_STATUS, תאריך_עדכון: new Date().toISOString() })
-      .eq('id', orderId);
-  }
-
   const activityAction = normalizedAction === 'acknowledged'
       ? 'employee_order_acknowledged'
       : 'employee_marked_order_ready_for_delivery';
+
   const { data: existingLog } = await supabase
     .from('system_activity_logs')
     .select('id')
@@ -127,6 +124,28 @@ export async function performEmployeeReportAction({
     .eq('status', 'success')
     .limit(1)
     .maybeSingle();
+
+  if (existingLog && normalizedAction === 'acknowledged') {
+    return { status: 'already_done', action: normalizedAction };
+  }
+
+  if (
+    existingLog
+    && normalizedAction === 'ready_for_delivery'
+    && order['סטטוס_הזמנה'] === READY_FOR_DELIVERY_STATUS
+  ) {
+    return { status: 'already_done', action: normalizedAction };
+  }
+
+  if (normalizedAction === 'ready_for_delivery' && order['סטטוס_הזמנה'] !== READY_FOR_DELIVERY_STATUS) {
+    const { error: updateError } = await supabase
+      .from('הזמנות')
+      .update({ סטטוס_הזמנה: READY_FOR_DELIVERY_STATUS, תאריך_עדכון: new Date().toISOString() })
+      .eq('id', orderId);
+    if (updateError) {
+      throw new Error(`עדכון סטטוס ההזמנה נכשל: ${updateError.message}`);
+    }
+  }
 
   if (!existingLog) {
     void logActivity({

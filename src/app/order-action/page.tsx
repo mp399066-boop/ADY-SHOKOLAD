@@ -7,6 +7,7 @@ type PageProps = {
     orderId?: string;
     action?: string;
     exp?: string;
+    expires?: string;
     sig?: string;
   };
 };
@@ -21,9 +22,16 @@ function messageFor(result: Awaited<ReturnType<typeof performEmployeeReportActio
   }
   if (result.status === 'invalid') {
     return {
-      title: 'הקישור אינו תקין או שפג תוקפו.',
+      title: 'הקישור אינו תקין.',
       text: 'לא ניתן לבצע את הפעולה מהקישור הזה.',
       tone: 'error' as const,
+    };
+  }
+  if (result.status === 'already_done') {
+    return {
+      title: 'הפעולה כבר בוצעה.',
+      text: 'העדכון כבר שמור במערכת.',
+      tone: 'success' as const,
     };
   }
   if (result.action === 'acknowledged') {
@@ -44,7 +52,7 @@ export default async function OrderActionPage({ searchParams }: PageProps) {
   const result = await performEmployeeReportAction({
     orderId: searchParams.orderId || '',
     action: searchParams.action || '',
-    expires: searchParams.exp || '',
+    expires: searchParams.expires || searchParams.exp || '',
     sig: searchParams.sig || '',
   });
   const msg = messageFor(result);

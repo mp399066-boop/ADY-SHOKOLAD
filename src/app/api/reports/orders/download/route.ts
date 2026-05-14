@@ -19,8 +19,6 @@ const bodySchema = z.object({
   // Same optional note shape as the other two routes — kept in sync so the
   // download body and the email body match the preview iframe exactly.
   note: z.string().max(2000).optional(),
-  // Per-order time overrides — same shape as preview/send.
-  timeOverrides: z.record(z.string().max(80)).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -39,7 +37,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.errors[0]?.message || 'נתונים לא תקינים' }, { status: 400 });
   }
 
-  const { range, date, filters, note, timeOverrides } = parsed.data;
+  const { range, date, filters, note } = parsed.data;
   if (range === 'custom' && !date) {
     return NextResponse.json({ error: 'בטווח מותאם — חובה לבחור תאריך' }, { status: 400 });
   }
@@ -47,7 +45,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'לא ניתן לבחור גם משלוחים בלבד וגם איסוף בלבד' }, { status: 400 });
   }
 
-  const input: ReportInput = { range, date, filters, note, timeOverrides };
+  const input: ReportInput = { range, date, filters, note };
 
   try {
     const { html, summary } = await generateOrdersReport(input, { forDownload: true });

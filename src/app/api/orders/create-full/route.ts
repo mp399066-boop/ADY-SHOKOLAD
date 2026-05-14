@@ -108,6 +108,7 @@ export async function POST(req: NextRequest) {
       תאריך_הזמנה: הזמנה?.תאריך_הזמנה || new Date().toISOString().split('T')[0],
       תאריך_אספקה: הזמנה?.תאריך_אספקה || null,
       שעת_אספקה: הזמנה?.שעת_אספקה || null,
+      delivery_time_flexible: הזמנה?.delivery_time_flexible === true,
       סוג_אספקה: הזמנה?.סוג_אספקה || 'איסוף עצמי',
       שם_מקבל: הזמנה?.שם_מקבל || null,
       טלפון_מקבל: הזמנה?.טלפון_מקבל || null,

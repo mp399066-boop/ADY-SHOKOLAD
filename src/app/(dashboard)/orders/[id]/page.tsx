@@ -22,6 +22,7 @@ interface EditForm {
   סוג_אספקה: 'משלוח' | 'איסוף עצמי';
   תאריך_אספקה: string;
   שעת_אספקה: string;
+  delivery_time_flexible: boolean;
   מקור_ההזמנה: string;
   שם_מקבל: string;
   טלפון_מקבל: string;
@@ -320,6 +321,7 @@ export default function OrderDetailPage() {
     סוג_אספקה: 'איסוף עצמי',
     תאריך_אספקה: '',
     שעת_אספקה: '',
+    delivery_time_flexible: false,
     מקור_ההזמנה: '',
     שם_מקבל: '',
     טלפון_מקבל: '',
@@ -421,6 +423,7 @@ export default function OrderDetailPage() {
       סוג_אספקה: order.סוג_אספקה ?? 'איסוף עצמי',
       תאריך_אספקה: order.תאריך_אספקה ?? '',
       שעת_אספקה: order.שעת_אספקה ?? '',
+      delivery_time_flexible: order.delivery_time_flexible ?? false,
       מקור_ההזמנה: order.מקור_ההזמנה ?? '',
       שם_מקבל: order.שם_מקבל ?? '',
       טלפון_מקבל: order.טלפון_מקבל ?? '',
@@ -496,6 +499,7 @@ export default function OrderDetailPage() {
         סוג_אספקה: editForm.סוג_אספקה,
         תאריך_אספקה: editForm.תאריך_אספקה || null,
         שעת_אספקה: editForm.שעת_אספקה || null,
+        delivery_time_flexible: editForm.delivery_time_flexible,
         מקור_ההזמנה: editForm.מקור_ההזמנה || null,
         ברכה_טקסט: editForm.ברכה_טקסט || null,
         הערות_להזמנה: editForm.הערות_להזמנה || null,
@@ -797,6 +801,9 @@ export default function OrderDetailPage() {
                 <Icon name="clock" className="w-3 h-3" />
                 <span>{order.שעת_אספקה}</span>
               </div>
+            )}
+            {order.delivery_time_flexible && (
+              <div className="text-xs mt-1 font-medium" style={{ color: '#476D53' }}>גמיש</div>
             )}
           </div>
           <div className="text-right">
@@ -1280,6 +1287,15 @@ export default function OrderDetailPage() {
                 <FieldInput label="תאריך אספקה" type="date" value={editForm.תאריך_אספקה} onChange={v => setEditForm(f => ({ ...f, תאריך_אספקה: v }))} />
                 <FieldInput label="שעת אספקה" type="time" value={editForm.שעת_אספקה} onChange={v => setEditForm(f => ({ ...f, שעת_אספקה: v }))} />
               </div>
+              <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: '#2B1A10' }}>
+                <input
+                  type="checkbox"
+                  checked={editForm.delivery_time_flexible}
+                  onChange={e => setEditForm(f => ({ ...f, delivery_time_flexible: e.target.checked }))}
+                  className="w-4 h-4"
+                />
+                גמיש
+              </label>
 
               {editForm.סוג_אספקה === 'משלוח' && (
                 <div className="space-y-3">

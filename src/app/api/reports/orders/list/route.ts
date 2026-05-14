@@ -8,10 +8,8 @@ import { fetchOrdersForReport, resolveRange, type ReportInput, type ReportFilter
 // POST /api/reports/orders/list
 //
 // Lightweight read-only projection of the same orders fetchOrdersForReport
-// returns — used by the report page to render per-order time-override
-// inputs *before* the operator hits "תצוגה מוקדמת". Returns the minimal
-// fields the editor needs (no items, no html), so this stays cheap to call
-// every time the range/filters change.
+// returns. Kept as a cheap list endpoint for report-related UI; it never
+// writes to orders or changes delivery time.
 const bodySchema = z.object({
   range: z.enum(['today', 'tomorrow', 'week', 'custom']),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),

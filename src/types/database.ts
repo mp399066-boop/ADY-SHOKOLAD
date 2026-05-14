@@ -145,6 +145,7 @@ export interface Order {
   תאריך_הזמנה: string;
   תאריך_אספקה: string | null;
   שעת_אספקה: string | null;
+  delivery_time_flexible: boolean;
   סוג_אספקה: 'משלוח' | 'איסוף עצמי';
   שם_מקבל: string | null;
   טלפון_מקבל: string | null;

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -45,19 +45,6 @@ interface PreviewData {
   html: string;
 }
 
-// Lightweight order row returned by /api/reports/orders/list. Used to
-// render the per-order delivery-time editor on the page itself, before the
-// operator opens the preview modal.
-interface ListedOrder {
-  id: string;
-  orderNumber: string;
-  customerName: string;
-  deliveryDate: string | null;
-  deliveryTime: string | null;
-  deliveryType: string | null;
-  urgent: boolean;
-}
-
 export default function OrdersReportPage() {
   const [range, setRange] = useState<Range>('today');
   const [date, setDate] = useState<string>(todayISO());
@@ -70,14 +57,6 @@ export default function OrdersReportPage() {
   const [previewing, setPreviewing] = useState(false);   // currently fetching the preview
   const [preview, setPreview]       = useState<PreviewData | null>(null);
   const [acting, setActing]         = useState(false);   // download/send in flight from inside the modal
-
-  // Per-order time editor state. `loadedOrders` is the list shown on the
-  // page; `timeOverrides` is operator-typed text keyed by order id.
-  // Overrides are kept in local state only — never persisted, never sent
-  // to the order PATCH endpoint, only forwarded with preview/send/download.
-  const [loadedOrders, setLoadedOrders] = useState<ListedOrder[] | null>(null);
-  const [loadingOrders, setLoadingOrders] = useState(false);
-  const [timeOverrides, setTimeOverrides] = useState<Record<string, string>>({});
 
   const toggleFilter = (k: keyof typeof filters) => {
     setFilters(prev => {
@@ -97,14 +76,6 @@ export default function OrdersReportPage() {
   };
 
   const buildBody = (extra?: Record<string, unknown>) => {
-    // Strip empty/whitespace overrides so the backend doesn't see them as
-    // intentional blanks (which would otherwise be a no-op anyway, but
-    // smaller bodies = simpler logs).
-    const trimmedOverrides: Record<string, string> = {};
-    for (const [id, val] of Object.entries(timeOverrides)) {
-      const v = val.trim();
-      if (v) trimmedOverrides[id] = v;
-    }
     return {
       range,
       date: range === 'custom' ? date : undefined,
@@ -112,53 +83,9 @@ export default function OrdersReportPage() {
       // Trim before sending. An all-whitespace note becomes undefined so the
       // banner doesn't render in the report.
       note: note.trim() ? note.trim() : undefined,
-      timeOverrides: Object.keys(trimmedOverrides).length ? trimmedOverrides : undefined,
       ...extra,
     };
   };
-
-  // Load (or reload) the orders list for the current range/filters. We
-  // intentionally do NOT auto-load on every keystroke — the explicit button
-  // makes the cost of the call visible and avoids surprise re-fetches that
-  // would clobber operator edits.
-  const loadOrders = async () => {
-    if (!validateRange()) return;
-    setLoadingOrders(true);
-    try {
-      const res = await fetch('/api/reports/orders/list', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          range,
-          date: range === 'custom' ? date : undefined,
-          filters,
-        }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'שגיאה בטעינת הזמנות');
-      setLoadedOrders(json.orders as ListedOrder[]);
-      // Keep existing overrides for orders still in the list; drop ones for
-      // orders that fell out of the new range/filter set.
-      const validIds = new Set((json.orders as ListedOrder[]).map(o => o.id));
-      setTimeOverrides(prev => {
-        const next: Record<string, string> = {};
-        for (const [id, v] of Object.entries(prev)) if (validIds.has(id)) next[id] = v;
-        return next;
-      });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'שגיאה');
-    } finally {
-      setLoadingOrders(false);
-    }
-  };
-
-  // Whenever the range/date/filters change, the previously loaded list is
-  // stale — drop it so the operator has to explicitly reload (and isn't
-  // tricked into editing rows that no longer match the report scope).
-  // Overrides for ids not in the new list are pruned by loadOrders itself.
-  useEffect(() => {
-    setLoadedOrders(null);
-  }, [range, date, filters.urgentOnly, filters.unpaidOnly, filters.deliveryOnly, filters.pickupOnly]);
 
   // Open the preview modal — fetches a summary + first 5 orders so the user
   // can see what they're about to download/send before committing. Uses
@@ -323,66 +250,6 @@ export default function OrdersReportPage() {
         <p className="text-xs mt-3" style={{ color: '#B0A090' }}>
           ניתן לסנן רק לפי משלוחים <em>או</em> רק לפי איסוף — לא שניהם יחד.
         </p>
-      </Card>
-
-      <Card>
-        <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
-          <CardTitle>שעת אספקה לדוח (לפי הזמנה)</CardTitle>
-          <Button onClick={loadOrders} loading={loadingOrders} variant="outline" size="sm">
-            {loadedOrders ? '🔄 רענן רשימה' : '📋 טען הזמנות לעריכה'}
-          </Button>
-        </div>
-        <p className="text-xs mb-3" style={{ color: '#8A7664' }}>
-          ניתן להחליף את שעת האספקה/איסוף עבור הדוח הנוכחי בלבד. דוגמאות: <span dir="ltr" className="font-mono">11:00</span>, <span>גמיש</span>, <span dir="ltr" className="font-mono">עד 12:00</span>, <span dir="ltr" className="font-mono">09:00–11:00</span>. ההזמנה עצמה לא משתנה.
-        </p>
-
-        {!loadedOrders ? (
-          <div className="rounded-lg p-5 text-center text-sm" style={{ backgroundColor: '#FAF7F0', color: '#9B7A5A' }}>
-            לחצי "טען הזמנות לעריכה" כדי לראות את ההזמנות בטווח שנבחר.
-          </div>
-        ) : loadedOrders.length === 0 ? (
-          <div className="rounded-lg p-5 text-center text-sm" style={{ backgroundColor: '#FAF7F0', color: '#9B7A5A' }}>
-            אין הזמנות בטווח שנבחר.
-          </div>
-        ) : (
-          <div className="rounded-lg border overflow-hidden" style={{ borderColor: '#EDE0CE' }}>
-            <div className="grid grid-cols-12 gap-2 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider" style={{ backgroundColor: '#FAF7F0', color: '#8A7664', borderBottom: '1px solid #EDE0CE' }}>
-              <div className="col-span-2">הזמנה</div>
-              <div className="col-span-4">לקוח</div>
-              <div className="col-span-2">סוג</div>
-              <div className="col-span-4">שעת אספקה בדוח</div>
-            </div>
-            <div className="max-h-[420px] overflow-y-auto">
-              {loadedOrders.map(o => {
-                const isDelivery = o.deliveryType === 'משלוח';
-                const label = isDelivery ? 'שעת אספקה' : 'שעת איסוף';
-                const overrideValue = timeOverrides[o.id] ?? '';
-                return (
-                  <div key={o.id} className="grid grid-cols-12 gap-2 px-3 py-2 items-center text-xs border-b" style={{ borderColor: '#F5ECD8', backgroundColor: o.urgent ? '#FFF8F4' : '#FFFFFF' }}>
-                    <div className="col-span-2 font-mono font-semibold" style={{ color: '#5C3410' }}>{o.orderNumber}</div>
-                    <div className="col-span-4 truncate" style={{ color: '#2B1A10' }}>
-                      {o.customerName}
-                      {o.urgent && <span className="ms-1.5 text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: '#FEE2E2', color: '#991B1B' }}>דחוף</span>}
-                    </div>
-                    <div className="col-span-2" style={{ color: '#6B4A2D' }}>{o.deliveryType || '—'}</div>
-                    <div className="col-span-4">
-                      <input
-                        type="text"
-                        value={overrideValue}
-                        onChange={e => setTimeOverrides(prev => ({ ...prev, [o.id]: e.target.value }))}
-                        placeholder={o.deliveryTime || `${label} — גמיש / עד 12:00 / 09:00–11:00`}
-                        maxLength={80}
-                        dir="rtl"
-                        className="w-full border rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-1"
-                        style={{ borderColor: overrideValue ? '#C9A46A' : '#E8DED2', backgroundColor: overrideValue ? '#FBF3E8' : '#FFFFFF' }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
       </Card>
 
       <Card>

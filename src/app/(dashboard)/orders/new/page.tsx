@@ -126,6 +126,7 @@ export default function NewOrderPage() {
   const [isUrgent, setIsUrgent] = useState(false);
   const [deliveryDate, setDeliveryDate] = useState('');
   const [deliveryTime, setDeliveryTime] = useState('');
+  const [deliveryTimeFlexible, setDeliveryTimeFlexible] = useState(false);
   const [deliveryType, setDeliveryType] = useState<'משלוח' | 'איסוף עצמי'>('משלוח');
   const [recipientType, setRecipientType] = useState<'customer' | 'other'>('customer');
   const [recipientName, setRecipientName] = useState('');
@@ -201,6 +202,7 @@ export default function NewOrderPage() {
         setIsUrgent(o.הזמנה_דחופה || false);
         setDeliveryDate(o.תאריך_אספקה || '');
         setDeliveryTime(o.שעת_אספקה || '');
+        setDeliveryTimeFlexible(o.delivery_time_flexible || false);
         setDeliveryType(o.סוג_אספקה === 'איסוף עצמי' ? 'איסוף עצמי' : 'משלוח');
         if (o.delivery_recipient_type) setRecipientType(o.delivery_recipient_type);
         setRecipientName(o.שם_מקבל || '');
@@ -338,6 +340,7 @@ export default function NewOrderPage() {
     return () => { if (autoSaveTimeoutRef.current) clearTimeout(autoSaveTimeoutRef.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCustomer, orderItems, packageItems, deliveryDate, deliveryTime, deliveryType,
+      deliveryTimeFlexible,
       recipientName, recipientPhone, recipientAddress, recipientCity, deliveryInstructions,
       deliveryFee, paymentMethod, paymentStatus, greetingText, notes, discountType,
       discountValue, orderSource, orderType, isUrgent, savedOrderId]);
@@ -629,6 +632,7 @@ export default function NewOrderPage() {
       הזמנה_דחופה: isUrgent,
       תאריך_אספקה: deliveryDate || null,
       שעת_אספקה: deliveryTime || null,
+      delivery_time_flexible: deliveryTimeFlexible,
       סוג_אספקה: deliveryType,
       שם_מקבל: recipientName || null,
       טלפון_מקבל: recipientPhone || null,
@@ -846,6 +850,15 @@ export default function NewOrderPage() {
                 value={deliveryTime}
                 onChange={e => setDeliveryTime(e.target.value)}
               />
+              <label className="flex items-center gap-2 self-end pb-2 text-sm cursor-pointer" style={{ color: '#2B1A10' }}>
+                <input
+                  type="checkbox"
+                  checked={deliveryTimeFlexible}
+                  onChange={e => setDeliveryTimeFlexible(e.target.checked)}
+                  className="w-4 h-4"
+                />
+                גמיש
+              </label>
               <div className="col-span-2">
                 <label className="block text-xs font-medium mb-2" style={{ color: '#6B4A2D' }}>סוג אספקה</label>
                 <DeliveryTypeCards

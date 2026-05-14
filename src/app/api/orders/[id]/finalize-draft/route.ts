@@ -55,6 +55,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       הזמנה_דחופה: הזמנה?.הזמנה_דחופה ?? existingOrder.הזמנה_דחופה,
       תאריך_אספקה: הזמנה?.תאריך_אספקה ?? existingOrder.תאריך_אספקה,
       שעת_אספקה: הזמנה?.שעת_אספקה ?? existingOrder.שעת_אספקה,
+      delivery_time_flexible: הזמנה?.delivery_time_flexible ?? existingOrder.delivery_time_flexible ?? false,
       סוג_אספקה: הזמנה?.סוג_אספקה ?? existingOrder.סוג_אספקה,
       שם_מקבל: הזמנה?.שם_מקבל ?? existingOrder.שם_מקבל,
       טלפון_מקבל: הזמנה?.טלפון_מקבל ?? existingOrder.טלפון_מקבל,
