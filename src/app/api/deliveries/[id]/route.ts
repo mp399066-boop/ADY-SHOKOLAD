@@ -13,23 +13,33 @@ function buildOrigin(req: NextRequest): string {
   return req.headers.get('origin') || process.env.NEXT_PUBLIC_APP_URL || '';
 }
 
+// Courier WhatsApp message. Deliberately impersonal — no "היי", no courier
+// name, no recipient details inline. The link is the courier's full view
+// of the delivery (recipient, phone, address, items, notes, mark-delivered
+// button). Keeping the WhatsApp body short avoids leaking customer info
+// into the courier's chat history and makes the link the only action.
+//
+// `courierName / recipientName / address / recipientPhone` are intentionally
+// no longer part of the message body; the parameters are kept on the
+// signature for back-compat with existing call sites and are unused here.
 function buildWaUrl(
   phone: string,
-  courierName: string,
-  recipientName: string,
-  address: string | null,
-  recipientPhone: string | null,
+  _courierName: string,
+  _recipientName: string,
+  _address: string | null,
+  _recipientPhone: string | null,
   link: string,
 ): string {
   let p = phone.replace(/[^0-9]/g, '');
   if (p.startsWith('0')) p = '972' + p.slice(1);
   const lines = [
-    `היי ${courierName},`,
-    `משלוח עבור ${recipientName}`,
+    'משלוח חדש מעדי תכשיט שוקולד',
+    '',
+    'לצפייה בפרטי המשלוח וההזמנה ולסימון מסירה:',
+    link,
+    '',
+    'יש לפתוח את הקישור כדי לראות שם מקבל, כתובת, טלפון, הערות ופרטי הזמנה.',
   ];
-  if (address) lines.push(`כתובת: ${address}`);
-  if (recipientPhone) lines.push(`טלפון: ${recipientPhone}`);
-  lines.push('', 'לעדכון "נמסר":', link);
   return `https://wa.me/${p}?text=${encodeURIComponent(lines.join('\n'))}`;
 }
 

@@ -418,21 +418,17 @@ function DeliveriesContent() {
         link = `${window.location.origin}/delivery-update/${token}`;
       }
 
-      const order = (delivery as DeliveryWithCourier & { הזמנות?: OrderJoin }).הזמנות;
-      const recipientName =
-        order?.שם_מקבל ||
-        (order?.לקוחות ? `${order.לקוחות.שם_פרטי} ${order.לקוחות.שם_משפחה}` : '') ||
-        'לקוח';
-
+      // Same impersonal copy as the API-side buildWaUrl — link only,
+      // no greeting / courier name / customer details inline. The
+      // courier opens the link to see everything.
       const lines = [
-        `היי ${courier.שם_שליח},`,
-        `משלוח עבור ${recipientName}`,
+        'משלוח חדש מעדי תכשיט שוקולד',
+        '',
+        'לצפייה בפרטי המשלוח וההזמנה ולסימון מסירה:',
+        link,
+        '',
+        'יש לפתוח את הקישור כדי לראות שם מקבל, כתובת, טלפון, הערות ופרטי הזמנה.',
       ];
-      const addrStreet = delivery.כתובת || null;
-      const addrCity   = delivery.עיר   || null;
-      const addr = [addrStreet, addrCity].filter(Boolean).join(', ');
-      if (addr) lines.push(`כתובת: ${addr}`);
-      lines.push('', 'לעדכון "נמסר":', link);
       const message = lines.join('\n');
 
       let phone = courier.טלפון_שליח.replace(/[^0-9]/g, '');
