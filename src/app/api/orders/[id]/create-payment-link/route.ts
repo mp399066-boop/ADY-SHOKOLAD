@@ -18,8 +18,12 @@ export async function POST(
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
   try {
-    console.log('[create-payment-link] called');
-    console.log('[create-payment-link] env check — API_KEY:', PAYPLUS_API_KEY ? 'SET' : 'MISSING', '| SECRET_KEY:', PAYPLUS_SECRET_KEY ? 'SET' : 'MISSING', '| PAGE_UID:', PAYPLUS_PAGE_UID ? 'SET' : 'MISSING');
+    console.log('[PayPlus] route called', { orderId: params.id });
+    console.log('[PayPlus] env exists', {
+      apiKey:         Boolean(process.env.PAYPLUS_API_KEY),
+      secretKey:      Boolean(process.env.PAYPLUS_SECRET_KEY),
+      paymentPageUid: Boolean(process.env.PAYPLUS_PAYMENT_PAGE_UID || process.env.PAYPLUS_PAGE_UID),
+    });
 
     if (!PAYPLUS_API_KEY || !PAYPLUS_SECRET_KEY || !PAYPLUS_PAGE_UID) {
       const missing = [
@@ -88,51 +92,57 @@ export async function POST(
 
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://localhost:3000';
 
+    // Build customer block, omitting empty email/phone — PayPlus 422s on
+    // empty-string emails ("not a valid email") and we don't want to send
+    // junk just to fill a field.
+    const customerName  = customer ? `${customer.שם_פרטי || ''} ${customer.שם_משפחה || ''}`.trim() : '';
+    const customerEmail = (customer?.אימייל || '').trim();
+    const customerPhone = (customer?.טלפון  || '').trim();
+    const ppCustomer: Record<string, unknown> = {
+      customer_name: customerName || 'לקוח',
+      notify_by_email:    false,
+      notify_by_sms:      false,
+      send_url_by_email:  false,
+      send_url_by_sms:    false,
+    };
+    if (customerEmail) ppCustomer.email = customerEmail;
+    if (customerPhone) ppCustomer.phone = customerPhone;
+
     const ppBody = {
       payment_page_uid: PAYPLUS_PAGE_UID,
-      // more_info is echoed back in the IPN webhook (transaction.more_info).
-      // Carrying our orderId here lets /api/webhooks/payplus look up the
-      // order without needing a payment_page_request_uid round-trip.
-      more_info: orderId,
-      refURL_success: `${baseUrl}/orders/${orderId}?payment=success`,
-      refURL_failure: `${baseUrl}/orders/${orderId}?payment=failure`,
-      refURL_callback: `${baseUrl}/api/webhooks/payplus`,
-      charge_method: 1,
+      // amount at the TOP level is required by PaymentPages/generateLink.
+      // items[].price alone isn't enough — PayPlus rejects with 422 when
+      // amount is missing.
+      amount,
       currency_code: 'ILS',
+      // more_info is echoed back in the IPN webhook (transaction.more_info).
+      more_info: orderId,
+      refURL_success:  `${baseUrl}/orders/${orderId}?payment=success`,
+      refURL_failure:  `${baseUrl}/orders/${orderId}?payment=failure`,
+      refURL_callback: `${baseUrl}/api/webhooks/payplus`,
+      charge_method:   1,
       sendEmailApproval: false,
-      sendEmailFailure: false,
+      sendEmailFailure:  false,
       full_payment: true,
-      payments: 1,
-      customer: {
-        customer_name: customer
-          ? `${customer.שם_פרטי} ${customer.שם_משפחה}`
-          : 'לקוח',
-        email: customer?.אימייל || '',
-        phone: customer?.טלפון || '',
-        notify_by_email: false,
-        notify_by_sms: false,
-        send_url_by_email: false,
-        send_url_by_sms: false,
-      },
+      payments:     1,
+      customer: ppCustomer,
       items: [
         {
-          name: `הזמנה ${order.מספר_הזמנה}`,
+          name:     `הזמנה ${order.מספר_הזמנה}`,
           quantity: 1,
-          price: amount,
-          vatType: 0,
+          price:    amount,
+          vat_type: 0,
         },
       ],
     };
 
     const ppEndpoint = `${PAYPLUS_API_URL}/api/v1.0/PaymentPages/generateLink`;
 
-    // Log endpoint + body (no headers — keys must never appear in logs,
-    // not even prefixed). Body intentionally includes customer name/phone/
-    // email — those are PII but not credentials, and they're needed when
-    // diagnosing why PayPlus rejects a request.
-    console.log('[create-payment-link] → URL:', ppEndpoint);
-    console.log('[create-payment-link] → page_uid present:', Boolean(PAYPLUS_PAGE_UID), '| amount:', amount, '| currency: ILS');
-    console.log('[create-payment-link] → body:', JSON.stringify(ppBody));
+    // Body — no API key / secret in this object, safe to log. Customer
+    // name/phone/email are PII but not credentials; needed for diagnosis
+    // when PayPlus rejects a request.
+    console.log('[PayPlus] amount', amount);
+    console.log('[PayPlus] request body', ppBody);
 
     const ppRes = await fetch(ppEndpoint, {
       method: 'POST',
@@ -145,8 +155,8 @@ export async function POST(
     });
 
     const ppRawText = await ppRes.text();
-    console.log('[create-payment-link] ← status:', ppRes.status);
-    console.log('[create-payment-link] ← body:', ppRawText);
+    console.log('[PayPlus] response status', ppRes.status);
+    console.log('[PayPlus] response body', ppRawText);
 
     let ppJson: Record<string, unknown>;
     try {
@@ -164,19 +174,23 @@ export async function POST(
 
     if (!isSuccess) {
       const ppResults = ppJson.results as Record<string, unknown> | undefined;
-      const ppMessage = (ppResults?.message as string | undefined)
-                       || (ppResults?.code    as string | undefined)
-                       || `HTTP ${ppRes.status}`;
-      console.error('[create-payment-link] PayPlus rejected — HTTP status:', ppRes.status, '| msg:', ppMessage);
-      console.error('[create-payment-link] PayPlus raw body (full):', ppRawText);
-      // Give the operator a Hebrew-prefixed message that includes the real
-      // upstream reason — far more useful than a generic "PayPlus error".
+      // PayPlus puts the human-readable reason under different keys
+      // depending on the failure mode — gather them all for the toast.
+      const ppMessage = (ppResults?.message       as string | undefined)
+                     || (ppResults?.description   as string | undefined)
+                     || (ppResults?.error_message as string | undefined)
+                     || (ppResults?.code          as string | undefined)
+                     || `HTTP ${ppRes.status}`;
+      console.error('[PayPlus] rejected — status', ppRes.status, '| msg:', ppMessage);
+      console.error('[PayPlus] full response body', ppRawText);
       return NextResponse.json(
         {
-          error: `PayPlus דחה את הבקשה: ${ppMessage}`,
+          error: `PayPlus דחה את הבקשה (HTTP ${ppRes.status}): ${ppMessage}`,
           debug: {
             payplus_http_status: ppRes.status,
             payplus_results:     ppJson.results ?? null,
+            // Trimmed body so it's safe to surface in a toast / network tab.
+            payplus_body:        ppRawText.slice(0, 1500),
           },
         },
         { status: 502 },
