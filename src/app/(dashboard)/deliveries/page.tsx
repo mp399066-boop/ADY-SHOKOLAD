@@ -14,7 +14,7 @@ import { IconEye, IconExport, IconEdit, IconTrash, IconWhatsApp } from '@/compon
 import type { Delivery, Courier } from '@/types/database';
 import Link from 'next/link';
 import { exportToCsv } from '@/lib/exportCsv';
-import { buildCourierDeliveryMessage } from '@/lib/courier-notification';
+import { buildCourierWhatsAppMessage, type CourierItem } from '@/lib/courier-notification';
 import toast from 'react-hot-toast';
 
 // ─── Status config ─────────────────────────────────────────────────────────
@@ -419,10 +419,41 @@ function DeliveriesContent() {
         link = `${window.location.origin}/delivery-update/${token}`;
       }
 
-      // Body comes from the shared courier-notification helper — same source
-      // the API-side buildWaUrl + the courier email use, so all three
-      // channels render identical wording.
-      const message = buildCourierDeliveryMessage({ deliveryUpdateUrl: link });
+      // Pull full delivery + order details from the public token endpoint
+      // (same source the courier link page uses) so the WhatsApp body and
+      // the courier page render identical content. Best-effort — if the
+      // fetch fails the message degrades to "open the link".
+      type DetailsResponse = {
+        delivery?: {
+          recipientName?: string | null; recipientPhone?: string | null;
+          addressStreet?: string | null; addressCity?: string | null;
+          deliveryDate?: string | null;  deliveryTime?: string | null;
+          deliveryNotes?: string | null;
+          orderNumber?: string | null;
+          items?: CourierItem[];
+        };
+      };
+      let details: DetailsResponse['delivery'] = {};
+      try {
+        const r = await fetch(`/api/delivery-update/${token}`);
+        if (r.ok) {
+          const j = (await r.json()) as DetailsResponse;
+          details = j.delivery || {};
+        }
+      } catch { /* fall through with empty details */ }
+
+      const message = buildCourierWhatsAppMessage({
+        deliveryUpdateUrl: link,
+        recipientName:  details?.recipientName  ?? null,
+        recipientPhone: details?.recipientPhone ?? null,
+        addressStreet:  details?.addressStreet  ?? null,
+        addressCity:    details?.addressCity    ?? null,
+        deliveryDate:   details?.deliveryDate   ?? null,
+        deliveryTime:   details?.deliveryTime   ?? null,
+        orderNumber:    details?.orderNumber    ?? null,
+        items:          details?.items          ?? [],
+        deliveryNotes:  details?.deliveryNotes  ?? null,
+      });
 
       let phone = courier.טלפון_שליח.replace(/[^0-9]/g, '');
       if (phone.startsWith('0')) phone = '972' + phone.slice(1);

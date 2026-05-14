@@ -5,7 +5,7 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { isServiceEnabled, logServiceRun } from '@/lib/system-services';
 import { logActivity, userActor } from '@/lib/activity-log';
-import { buildCourierDeliveryMessage } from '@/lib/courier-notification';
+import { buildCourierWhatsAppMessage } from '@/lib/courier-notification';
 import { randomBytes } from 'crypto';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -15,20 +15,18 @@ function buildOrigin(req: NextRequest): string {
 }
 
 // Courier WhatsApp URL — body comes from the shared courier-notification
-// helper so WhatsApp + email can never drift apart. The unused name /
-// address / phone params are kept on the signature for back-compat with
-// existing call sites and are intentionally ignored here.
+// helper so WhatsApp + email can never drift apart. The body now includes
+// the actual delivery details (recipient/phone/address/items/notes) so the
+// courier sees what to do without opening the link first; the link is the
+// last line for marking delivered.
 function buildWaUrl(
   phone: string,
-  _courierName: string,
-  _recipientName: string,
-  _address: string | null,
-  _recipientPhone: string | null,
   link: string,
+  details: import('@/lib/courier-notification').CourierDeliveryDetails,
 ): string {
   let p = phone.replace(/[^0-9]/g, '');
   if (p.startsWith('0')) p = '972' + p.slice(1);
-  const text = buildCourierDeliveryMessage({ deliveryUpdateUrl: link });
+  const text = buildCourierWhatsAppMessage({ ...details, deliveryUpdateUrl: link });
   return `https://wa.me/${p}?text=${encodeURIComponent(text)}`;
 }
 
@@ -157,8 +155,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     .select(`
       id, סטטוס_משלוח, delivery_token,
       courier_id, whatsapp_sent_at, email_sent_at,
-      כתובת, עיר,
-      הזמנות(שם_מקבל, טלפון_מקבל, כתובת_מקבל_ההזמנה, עיר, לקוחות(שם_פרטי, שם_משפחה)),
+      כתובת, עיר, תאריך_משלוח, שעת_משלוח, הוראות_משלוח,
+      הזמנות(id, מספר_הזמנה, שם_מקבל, טלפון_מקבל, כתובת_מקבל_ההזמנה, עיר, הוראות_משלוח, לקוחות(שם_פרטי, שם_משפחה)),
       שליחים!courier_id(*)
     `)
     .eq('id', deliveryId)
@@ -219,10 +217,13 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   // 3. Resolve recipient name + address + phone (delivery's own address takes precedence over the order's)
   type OrderJoin = {
+    id?: string | null;
+    מספר_הזמנה?: string | null;
     שם_מקבל?: string | null;
     טלפון_מקבל?: string | null;
     כתובת_מקבל_ההזמנה?: string | null;
     עיר?: string | null;
+    הוראות_משלוח?: string | null;
     לקוחות?: { שם_פרטי: string; שם_משפחה: string } | null;
   };
   const order = existing.הזמנות as OrderJoin | null;
@@ -230,11 +231,40 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     order?.שם_מקבל ||
     (order?.לקוחות ? `${order.לקוחות.שם_פרטי} ${order.לקוחות.שם_משפחה}` : '') ||
     'לקוח';
-  const deliveryRow = existing as { כתובת?: string | null; עיר?: string | null };
+  const deliveryRow = existing as {
+    כתובת?: string | null; עיר?: string | null;
+    תאריך_משלוח?: string | null; שעת_משלוח?: string | null; הוראות_משלוח?: string | null;
+  };
   const addrStreet = deliveryRow.כתובת || order?.כתובת_מקבל_ההזמנה || null;
   const addrCity   = deliveryRow.עיר   || order?.עיר                  || null;
   const fullAddress = [addrStreet, addrCity].filter(Boolean).join(', ') || null;
   const recipientPhone = order?.טלפון_מקבל || null;
+  const deliveryNotes = deliveryRow.הוראות_משלוח || order?.הוראות_משלוח || null;
+
+  // 3b. Order items for the WhatsApp summary. Best-effort — if the query
+  //     fails, the message degrades gracefully to "open the link".
+  let courierItems: Array<{ name: string; quantity: number; petitFours?: { name: string; quantity: number }[] }> = [];
+  if (order?.id) {
+    const { data: itemsData } = await supabase
+      .from('מוצרים_בהזמנה')
+      .select('id, סוג_שורה, גודל_מארז, כמות, הערות_לשורה, מוצרים_למכירה(שם_מוצר), בחירת_פטיפורים_בהזמנה(כמות, סוגי_פטיפורים(שם_פטיפור))')
+      .eq('הזמנה_id', order.id);
+    type ItemRow = {
+      סוג_שורה: string | null; גודל_מארז: number | null; כמות: number | null; הערות_לשורה: string | null;
+      מוצרים_למכירה?: { שם_מוצר?: string | null } | null;
+      בחירת_פטיפורים_בהזמנה?: Array<{ כמות: number | null; סוגי_פטיפורים?: { שם_פטיפור?: string | null } | null }> | null;
+    };
+    courierItems = ((itemsData || []) as unknown as ItemRow[]).map(it => {
+      const isPackage = it.סוג_שורה === 'מארז';
+      const name = isPackage
+        ? `מארז ${it.גודל_מארז ?? ''} פטיפורים`.trim()
+        : (it.מוצרים_למכירה?.שם_מוצר || 'פריט');
+      const petitFours = (it.בחירת_פטיפורים_בהזמנה || [])
+        .map(s => ({ name: s.סוגי_פטיפורים?.שם_פטיפור || '', quantity: Number(s.כמות || 0) }))
+        .filter(p => p.name && p.quantity > 0);
+      return { name, quantity: Number(it.כמות || 1), ...(petitFours.length > 0 ? { petitFours } : {}) };
+    });
+  }
 
   // 4. Build update payload
   const updatePayload: Record<string, unknown> = {
@@ -273,14 +303,20 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     // Always rebuild the URL on every status→נאסף transition. The "don't reopen
     // on refresh" semantics is enforced on the frontend (only fires inside the
     // PATCH callback of a real status change). whatsapp_sent_at is informational.
-    whatsappUrl = buildWaUrl(
-      courier.טלפון_שליח,
-      courier.שם_שליח,
+    whatsappUrl = buildWaUrl(courier.טלפון_שליח, deliveryLink, {
       recipientName,
-      fullAddress,
       recipientPhone,
-      deliveryLink,
-    );
+      addressStreet: addrStreet,
+      addressCity:   addrCity,
+      deliveryDate:  deliveryRow.תאריך_משלוח || null,
+      deliveryTime:  deliveryRow.שעת_משלוח   || null,
+      orderNumber:   order?.מספר_הזמנה       || null,
+      items:         courierItems,
+      deliveryNotes,
+    });
+    // fullAddress is consumed by the helper via addressStreet/City — kept
+    // assigned earlier in case future loggers want the joined string.
+    void fullAddress;
     updatePayload.whatsapp_sent_at = new Date().toISOString();
     console.log('[delivery PATCH] WhatsApp URL built for courier:', courier.שם_שליח);
     await logServiceRun(supabase, {

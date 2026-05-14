@@ -6,9 +6,10 @@ import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireA
 import sgMail from '@sendgrid/mail';
 import { randomBytes } from 'crypto';
 import {
-  buildCourierDeliveryMessage,
+  buildCourierWhatsAppMessage,
   buildCourierDeliveryEmailHtml,
   COURIER_EMAIL_SUBJECT,
+  type CourierItem,
 } from '@/lib/courier-notification';
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
@@ -16,11 +17,17 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
 
-  // 1. Fetch delivery (just the fields the email needs — no recipient/customer
-  //    names, those go on the link page, not the email body).
+  // 1. Fetch delivery + linked order. Wider select than before — the email
+  //    now includes the actual delivery details (recipient, phone, address,
+  //    items, notes), not just a generic "open the link" body. Mirrors the
+  //    select used by the WhatsApp builder in PATCH /api/deliveries/[id].
   const { data: delivery, error: deliveryError } = await supabase
     .from('משלוחים')
-    .select('id, delivery_token, courier_id')
+    .select(`
+      id, delivery_token, courier_id,
+      כתובת, עיר, תאריך_משלוח, שעת_משלוח, הוראות_משלוח,
+      הזמנות(id, מספר_הזמנה, שם_מקבל, טלפון_מקבל, כתובת_מקבל_ההזמנה, עיר, הוראות_משלוח, לקוחות(שם_פרטי, שם_משפחה))
+    `)
     .eq('id', params.id)
     .single();
 
@@ -57,12 +64,67 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const origin = req.headers.get('origin') || process.env.NEXT_PUBLIC_APP_URL || '';
   const link = `${origin}/delivery-update/${token}`;
 
-  // 5. Build email content via the shared helper. WhatsApp + email cannot
-  //    drift apart now — both render the same neutral wording from the
-  //    same source. NO greeting, NO courier name, link is the only action.
-  const subject = COURIER_EMAIL_SUBJECT;
-  const textContent = buildCourierDeliveryMessage({ deliveryUpdateUrl: link });
-  const htmlContent = buildCourierDeliveryEmailHtml({ deliveryUpdateUrl: link });
+  // 4b. Resolve recipient + address + items for the message body. Mirrors
+  //     the resolution in PATCH /api/deliveries/[id]: delivery row's address
+  //     wins over the order's; recipient name falls back to the customer.
+  type OrderJoin = {
+    id?: string | null; מספר_הזמנה?: string | null; שם_מקבל?: string | null; טלפון_מקבל?: string | null;
+    כתובת_מקבל_ההזמנה?: string | null; עיר?: string | null; הוראות_משלוח?: string | null;
+    לקוחות?: { שם_פרטי?: string | null; שם_משפחה?: string | null } | null;
+  };
+  const order = (delivery as Record<string, unknown>)['הזמנות'] as OrderJoin | null;
+  const cust = order?.לקוחות || null;
+  const recipientName  = order?.שם_מקבל || (cust ? `${cust.שם_פרטי || ''} ${cust.שם_משפחה || ''}`.trim() : '') || null;
+  const recipientPhone = order?.טלפון_מקבל || null;
+  const addrStreet     = (delivery as Record<string, unknown>)['כתובת'] as string | null || order?.כתובת_מקבל_ההזמנה || null;
+  const addrCity       = (delivery as Record<string, unknown>)['עיר']   as string | null || order?.עיר                  || null;
+  const deliveryNotes  = (delivery as Record<string, unknown>)['הוראות_משלוח'] as string | null || order?.הוראות_משלוח || null;
+  const deliveryDate   = (delivery as Record<string, unknown>)['תאריך_משלוח'] as string | null;
+  const deliveryTime   = (delivery as Record<string, unknown>)['שעת_משלוח']   as string | null;
+
+  // 4c. Order items — best-effort. Failure here only degrades the message
+  //     ("open the link" without an items list); never blocks the email.
+  let courierItems: CourierItem[] = [];
+  if (order?.id) {
+    try {
+      const { data: itemsData } = await supabase
+        .from('מוצרים_בהזמנה')
+        .select('id, סוג_שורה, גודל_מארז, כמות, הערות_לשורה, מוצרים_למכירה(שם_מוצר), בחירת_פטיפורים_בהזמנה(כמות, סוגי_פטיפורים(שם_פטיפור))')
+        .eq('הזמנה_id', order.id);
+      type ItemRow = {
+        סוג_שורה: string | null; גודל_מארז: number | null; כמות: number | null; הערות_לשורה: string | null;
+        מוצרים_למכירה?: { שם_מוצר?: string | null } | null;
+        בחירת_פטיפורים_בהזמנה?: Array<{ כמות: number | null; סוגי_פטיפורים?: { שם_פטיפור?: string | null } | null }> | null;
+      };
+      courierItems = ((itemsData || []) as unknown as ItemRow[]).map(it => {
+        const isPackage = it.סוג_שורה === 'מארז';
+        const name = isPackage
+          ? `מארז ${it.גודל_מארז ?? ''} פטיפורים`.trim()
+          : (it.מוצרים_למכירה?.שם_מוצר || 'פריט');
+        const petitFours = (it.בחירת_פטיפורים_בהזמנה || [])
+          .map(s => ({ name: s.סוגי_פטיפורים?.שם_פטיפור || '', quantity: Number(s.כמות || 0) }))
+          .filter(p => p.name && p.quantity > 0);
+        return { name, quantity: Number(it.כמות || 1), ...(petitFours.length > 0 ? { petitFours } : {}) };
+      });
+    } catch (err) {
+      console.warn('[send-courier-email] items fetch failed (continuing):', err instanceof Error ? err.message : err);
+    }
+  }
+
+  // 5. Build email content via the shared helper. Same source as the
+  //    WhatsApp builder + the manual UI flow — all three render identical
+  //    details from one place. NO greeting, NO courier name.
+  const details = {
+    recipientName, recipientPhone,
+    addressStreet: addrStreet, addressCity: addrCity,
+    deliveryDate,  deliveryTime,
+    orderNumber:   order?.מספר_הזמנה || null,
+    items:         courierItems,
+    deliveryNotes,
+  };
+  const subject     = COURIER_EMAIL_SUBJECT;
+  const textContent = buildCourierWhatsAppMessage({ ...details, deliveryUpdateUrl: link });
+  const htmlContent = buildCourierDeliveryEmailHtml({ ...details, deliveryUpdateUrl: link });
 
   // 7. Send via SendGrid
   const apiKey = process.env.SENDGRID_API_KEY;
