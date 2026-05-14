@@ -458,8 +458,28 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
 
   console.log('[delivery DELETE] deleting delivery row',
     '| id:', existing.id,
-    '| order id (kept untouched):', existing.הזמנה_id,
+    '| order id:', existing.הזמנה_id,
     '| status was:', existing.סטטוס_משלוח);
+
+  // Mark the linked order so the deliveries-dashboard placeholder query
+  // doesn't resurrect the row as a synthetic on the next refetch. This
+  // happens BEFORE the delete: if it fails, we'd rather leave the
+  // delivery row in place than end up with an order that's hidden from
+  // the dashboard but still has its real משלוחים row visible.
+  if (existing.הזמנה_id) {
+    const { error: hideErr } = await supabase
+      .from('הזמנות')
+      .update({ hide_from_deliveries: true, תאריך_עדכון: new Date().toISOString() })
+      .eq('id', existing.הזמנה_id);
+    if (hideErr) {
+      console.error('[delivery DELETE] order hide_from_deliveries flag failed:', hideErr.message);
+      return NextResponse.json(
+        { error: `לא ניתן למחוק את המשלוח: עדכון ההזמנה נכשל (${hideErr.message})` },
+        { status: 500 },
+      );
+    }
+    console.log('[delivery DELETE] order flagged hide_from_deliveries=true | order:', existing.הזמנה_id);
+  }
 
   const { error: deleteErr } = await supabase
     .from('משלוחים')
@@ -468,6 +488,15 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
 
   if (deleteErr) {
     console.error('[delivery DELETE] delete failed:', deleteErr.message);
+    // Best-effort rollback of the hide flag so the operator can retry
+    // without the order silently staying hidden after a failed delete.
+    if (existing.הזמנה_id) {
+      const { error: rollbackErr } = await supabase
+        .from('הזמנות')
+        .update({ hide_from_deliveries: false })
+        .eq('id', existing.הזמנה_id);
+      if (rollbackErr) console.error('[delivery DELETE] rollback of hide flag failed (continuing):', rollbackErr.message);
+    }
     // Surface FK / constraint failures verbatim so the operator (and a future
     // reader of the logs) can see exactly what blocked the delete. Owner
     // policy: do not run a migration to relax a constraint without approval.
