@@ -38,6 +38,7 @@ export type StockRow = {
   שם: string;
   status: string;
   quantity: number;
+  unit?: string | null;
 };
 
 // Tab IDs for the dashboard's primary navigation. The order matches the

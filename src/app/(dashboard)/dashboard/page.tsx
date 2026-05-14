@@ -22,15 +22,19 @@ import toast from 'react-hot-toast';
 import { PageLoading } from '@/components/ui/LoadingSpinner';
 import { Modal } from '@/components/ui/Modal';
 
-import type { DashboardStats, Courier } from '@/types/database';
+import type { DashboardStats, Courier, RawMaterial, Recipe } from '@/types/database';
 import type { TodayOrder, Delivery, Stock, StockRow } from './components/types';
 
 import { CommandHeader } from './components/CommandHeader';
 import { FocusStrip } from './components/FocusStrip';
 import { DashboardShell } from './components/DashboardShell';
+import { DashboardViewSwitcher } from './components/DashboardViewSwitcher';
 import { WorkQueue } from './components/WorkQueue';
 import { AttentionPanel } from './components/AttentionPanel';
 import { buildQueueItems, type QueueItem } from './components/queue-builder';
+import { buildKitchenView } from '@/lib/dashboard/kitchen-view';
+import { KitchenView } from './components/KitchenView';
+import { ProductionRecipeModal } from './components/ProductionRecipeModal';
 import { C } from './components/theme';
 
 // ─── Constants ────────────────────────────────────────────────────────────
@@ -141,6 +145,8 @@ export default function DashboardPage() {
   const [todayDeliveries, setTodayDeliveries] = useState<Delivery[]>([]);
   const [stock, setStock] = useState<Stock>({ raw: [], products: [], petitFours: [] });
   const [activeOrders, setActiveOrders] = useState<TodayOrder[]>([]);
+  const [rawMaterials, setRawMaterials] = useState<RawMaterial[]>([]);
+  const [recipes, setRecipes] = useState<Recipe[]>([]);
   // Active couriers — used by the assign-courier modal triggered from the
   // queue's "שייך שליח" action. Loaded once with the rest of the dashboard.
   const [couriers, setCouriers] = useState<Courier[]>([]);
@@ -151,6 +157,8 @@ export default function DashboardPage() {
   const [confirmAction, setConfirmAction] = useState<{ text: string; cta: string; onConfirm: () => Promise<void> | void } | null>(null);
   const [markPaidOrder, setMarkPaidOrder] = useState<TodayOrder | null>(null);
   const [moreActionsOrder, setMoreActionsOrder] = useState<TodayOrder | null>(null);
+  const [dashboardMode, setDashboardMode] = useState<'management' | 'kitchen'>('management');
+  const [productionModalOpen, setProductionModalOpen] = useState(false);
   // The delivery the operator is about to assign a courier to. Null = closed.
   const [assignCourierFor, setAssignCourierFor] = useState<Delivery | null>(null);
 
@@ -165,7 +173,7 @@ export default function DashboardPage() {
     if (!silent) setLoading(true);
     try {
       const today = todayIsraelISO();
-      const [dash, ordersTodayRes, ordersAllRes, deliveriesRes, rawRes, prodsRes, pfRes, couriersRes] = await Promise.all([
+      const [dash, ordersTodayRes, ordersAllRes, deliveriesRes, rawRes, prodsRes, pfRes, couriersRes, recipesRes] = await Promise.all([
         fetch('/api/dashboard').then(r => r.json()),
         fetch('/api/orders?filter=today&limit=100').then(r => r.json()),
         // All active orders (excludes drafts/archive based on the orders API
@@ -181,6 +189,7 @@ export default function DashboardPage() {
         // picker. Cheap call (one row per courier), batched with everything
         // else so the dashboard doesn't fan out a second wave.
         fetch('/api/couriers').then(r => r.json()),
+        fetch('/api/recipes').then(r => r.json()),
       ]);
 
       const todayOrderRows = (ordersTodayRes?.data || []) as TodayOrder[];
@@ -195,7 +204,7 @@ export default function DashboardPage() {
       setTodayDeliveries((deliveriesRes?.data || []) as Delivery[]);
 
       type RawRow = Record<string, unknown>;
-      const filterAlerts = (rows: RawRow[], nameKey: string): StockRow[] =>
+      const filterAlerts = (rows: RawRow[], nameKey: string, unitKey?: string): StockRow[] =>
         (rows || [])
           .filter(r => STOCK_ALERT_STATES.includes(String(r['סטטוס_מלאי'] ?? '')))
           .map(r => ({
@@ -203,10 +212,13 @@ export default function DashboardPage() {
             שם: String(r[nameKey] ?? ''),
             status: String(r['סטטוס_מלאי'] ?? ''),
             quantity: Number(r['כמות_במלאי'] ?? 0),
+            unit: unitKey ? String(r[unitKey] ?? '') : null,
           }));
 
+      setRawMaterials((rawRes?.data || []) as RawMaterial[]);
+      setRecipes((recipesRes?.data || []) as Recipe[]);
       setStock({
-        raw:        filterAlerts((rawRes?.data || []) as RawRow[],   'שם_חומר_גלם'),
+        raw:        filterAlerts((rawRes?.data || []) as RawRow[],   'שם_חומר_גלם', 'יחידת_מידה'),
         products:   filterAlerts((prodsRes?.data || []) as RawRow[], 'שם_מוצר'),
         petitFours: filterAlerts((pfRes?.data || []) as RawRow[],    'שם_פטיפור'),
       });
@@ -446,6 +458,21 @@ export default function DashboardPage() {
     });
   }, [activeOrders, todayDeliveries, stock]);
 
+  const kitchenData = useMemo(() => {
+    const live = activeOrders.filter(o =>
+      o.סטטוס_הזמנה !== 'בוטלה'
+      && o.סטטוס_הזמנה !== 'טיוטה'
+      && o.סטטוס_הזמנה !== 'הושלמה בהצלחה',
+    );
+    return buildKitchenView({
+      liveOrders: live,
+      todayOrders,
+      todayDeliveries,
+      stock,
+      todayISO: todayIsraelISO(),
+    });
+  }, [activeOrders, todayOrders, todayDeliveries, stock]);
+
   // Today-only counts for the focus strip.
   const today = todayIsraelISO();
   const ordersTodayCount = todayOrders.filter(o =>
@@ -516,65 +543,90 @@ export default function DashboardPage() {
         onRefresh={() => fetchAll(false)}
       />
 
-      <FocusStrip
-        ordersTodayCount={ordersTodayCount}
-        deliveriesTodayCount={deliveriesTodayActive}
-        unpaidAmount={stats?.unpaidAmount ?? 0}
-        unpaidCount={stats?.unpaidOrders ?? 0}
-        criticalStockCount={criticalStockCount}
-        ordersTomorrow={stats?.ordersTomorrow ?? 0}
-        onJumpOrders={() => router.push('/orders?filter=today')}
-        onJumpDeliveries={() => router.push('/deliveries')}
-        onJumpUnpaid={() => router.push('/orders?filter=unpaid')}
-        onJumpStock={() => router.push('/inventory')}
-      />
+      <DashboardViewSwitcher mode={dashboardMode} onChange={setDashboardMode} />
 
-      <DashboardShell
-        main={
-          <WorkQueue
-            items={queueItems}
-            updatingId={updatingId}
-            handlers={{
-              onAction: onQueueAction,
-              onRowClick: (item) => {
-                // Where each row navigates to. Stops short of opening
-                // anything for stock items where the action button (פתח מלאי)
-                // already does the routing.
-                if (item.entity?.kind === 'order') {
-                  router.push(`/orders/${item.entity.data.id}`);
-                  return;
-                }
-                if (item.entity?.kind === 'delivery') {
-                  const orderId = item.entity.data.הזמנות?.id;
-                  if (orderId) router.push(`/orders/${orderId}`);
-                  else router.push('/deliveries');
-                  return;
-                }
-                if (item.type === 'stock') {
-                  router.push('/inventory');
-                }
-              },
-              onChangeOrderStatus: onPickOrderStatus,
-              onChangePaymentStatus: onPickPaymentStatus,
-              onChangeDeliveryStatus: (delivery, next) => patchDelivery(delivery.id, next, delivery.סטטוס_משלוח),
-            }}
-          />
-        }
-        side={
-          <AttentionPanel
-            liveOrders={activeOrders}
-            todayDeliveries={todayDeliveries}
-            stock={stock}
+      {dashboardMode === 'management' ? (
+        <>
+          <FocusStrip
+            ordersTodayCount={ordersTodayCount}
+            deliveriesTodayCount={deliveriesTodayActive}
             unpaidAmount={stats?.unpaidAmount ?? 0}
             unpaidCount={stats?.unpaidOrders ?? 0}
-            updatingId={updatingId}
-            onChangePaymentStatus={onPickPaymentStatus}
-            onPatchDelivery={(delivery, next) => patchDelivery(delivery.id, next, delivery.סטטוס_משלוח)}
+            criticalStockCount={criticalStockCount}
+            ordersTomorrow={stats?.ordersTomorrow ?? 0}
+            onJumpOrders={() => router.push('/orders?filter=today')}
+            onJumpDeliveries={() => router.push('/deliveries')}
+            onJumpUnpaid={() => router.push('/orders?filter=unpaid')}
+            onJumpStock={() => router.push('/inventory')}
           />
-        }
-      />
+
+          <DashboardShell
+            main={
+              <WorkQueue
+                items={queueItems}
+                updatingId={updatingId}
+                handlers={{
+                  onAction: onQueueAction,
+                  onRowClick: (item) => {
+                    // Where each row navigates to. Stops short of opening
+                    // anything for stock items where the action button (פתח מלאי)
+                    // already does the routing.
+                    if (item.entity?.kind === 'order') {
+                      router.push(`/orders/${item.entity.data.id}`);
+                      return;
+                    }
+                    if (item.entity?.kind === 'delivery') {
+                      const orderId = item.entity.data.הזמנות?.id;
+                      if (orderId) router.push(`/orders/${orderId}`);
+                      else router.push('/deliveries');
+                      return;
+                    }
+                    if (item.type === 'stock') {
+                      router.push('/inventory');
+                    }
+                  },
+                  onChangeOrderStatus: onPickOrderStatus,
+                  onChangePaymentStatus: onPickPaymentStatus,
+                  onChangeDeliveryStatus: (delivery, next) => patchDelivery(delivery.id, next, delivery.סטטוס_משלוח),
+                }}
+              />
+            }
+            side={
+              <AttentionPanel
+                liveOrders={activeOrders}
+                todayDeliveries={todayDeliveries}
+                stock={stock}
+                unpaidAmount={stats?.unpaidAmount ?? 0}
+                unpaidCount={stats?.unpaidOrders ?? 0}
+                updatingId={updatingId}
+                onChangePaymentStatus={onPickPaymentStatus}
+                onPatchDelivery={(delivery, next) => patchDelivery(delivery.id, next, delivery.סטטוס_משלוח)}
+              />
+            }
+          />
+        </>
+      ) : (
+        <KitchenView
+          data={kitchenData}
+          updatingId={updatingId}
+          onNavigate={(path) => router.push(path)}
+          onProduction={() => setProductionModalOpen(true)}
+          onOrderStatus={onPickOrderStatus}
+          onPaymentStatus={onPickPaymentStatus}
+          onDeliveryStatus={(delivery, next) => patchDelivery(delivery.id, next, delivery.סטטוס_משלוח)}
+          onOpenOrder={(order) => router.push(`/orders/${order.id}`)}
+        />
+      )}
 
       {/* Modals — kept inline because they're cross-cutting state */}
+      <ProductionRecipeModal
+        open={productionModalOpen}
+        recipes={recipes}
+        rawMaterials={rawMaterials}
+        onClose={() => setProductionModalOpen(false)}
+        onDone={() => fetchAll(false)}
+      />
+
       {confirmAction && (
         <ConfirmActionModal
           title="אישור פעולה"
