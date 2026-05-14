@@ -9,6 +9,8 @@ export type KitchenTask = {
   delivery: Delivery | null;
   type: KitchenTaskType;
   title: string;
+  customerName: string;
+  recipientName: string | null;
   meta: string;
   dueLabel: string;
   needsAttention: boolean;
@@ -39,12 +41,28 @@ const PREP_STATUSES = ['חדשה', 'בהכנה'];
 const UNPAID_STATUSES = ['ממתין', 'חלקי'];
 const ACTIVE_DELIVERY_STATUSES = ['ממתין', 'נאסף'];
 
-function customerName(order: TodayOrder): string {
+function cleanName(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function orderCustomerName(order: TodayOrder, delivery: Delivery | null): string {
   const c = order.לקוחות;
   const name = c ? `${c.שם_פרטי} ${c.שם_משפחה}`.trim() : '';
   if (name) return name;
-  if (order.שם_מקבל?.trim()) return order.שם_מקבל.trim();
-  return 'לקוח';
+
+  const looseOrder = order as TodayOrder & { customer_name?: string | null; customerName?: string | null };
+  const customerName = cleanName(looseOrder.customer_name) || cleanName(looseOrder.customerName);
+  if (customerName) return customerName;
+
+  const recipient = recipientName(order, delivery);
+  return recipient || 'לקוחה ללא שם';
+}
+
+function recipientName(order: TodayOrder, delivery: Delivery | null): string | null {
+  const fromOrder = cleanName(order.שם_מקבל);
+  if (fromOrder) return fromOrder;
+  const fromDeliveryOrder = cleanName(delivery?.הזמנות?.שם_מקבל);
+  return fromDeliveryOrder || null;
 }
 
 function dueLabel(order: TodayOrder, todayISO: string): string {
@@ -108,7 +126,13 @@ export function buildKitchenView({
       order,
       delivery,
       type,
-      title: customerName(order),
+      title: orderCustomerName(order, delivery),
+      customerName: orderCustomerName(order, delivery),
+      recipientName: (() => {
+        const customer = orderCustomerName(order, delivery);
+        const recipient = recipientName(order, delivery);
+        return recipient && recipient !== customer ? recipient : null;
+      })(),
       meta: `הזמנה #${order.מספר_הזמנה}`,
       dueLabel: dueLabel(order, todayISO),
       needsAttention: unpaid || activeDelivery || missingDate,

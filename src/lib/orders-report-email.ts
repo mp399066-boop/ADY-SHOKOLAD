@@ -1,8 +1,10 @@
 // Builds and sends a styled HTML report of orders within a date range.
-// Read-only: never updates DB, never creates invoices, never changes statuses.
+// Sending the employee email creates signed action links; preview/download
+// remain read-only and never create invoices or change statuses.
 
 import sgMail from '@sendgrid/mail';
 import { createAdminClient } from '@/lib/supabase/server';
+import { createEmployeeReportActionLinks, type EmployeeReportActionLinks } from '@/lib/employee-report-actions';
 
 export type ReportRange = 'today' | 'tomorrow' | 'week' | 'custom';
 
@@ -254,6 +256,7 @@ function orderCard(
   order: RawOrder,
   items: Record<string, unknown>[],
   timeOverride?: string,
+  actionLinks?: EmployeeReportActionLinks,
 ): string {
   const customer = order['לקוחות'] as Record<string, unknown> | null;
   const customerName = customer
@@ -297,6 +300,12 @@ function orderCard(
   const urgentBadge = urgent
     ? `<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;background:#FBE9E7;color:#A03C2C;margin-right:6px">⚡ דחוף</span>`
     : '';
+  const actionButtons = actionLinks?.acknowledgedUrl && actionLinks?.readyUrl
+    ? `<div style="margin-top:12px;padding-top:10px;border-top:1px solid #F0E5D8">
+        <a href="${esc(actionLinks.acknowledgedUrl)}" style="display:inline-block;margin:0 0 6px 6px;background:#F3E4D0;color:#5A3424;text-decoration:none;border-radius:8px;padding:9px 14px;font-size:13px;font-weight:700;border:1px solid #E0C49F">ההזמנה התקבלה</a>
+        <a href="${esc(actionLinks.readyUrl)}" style="display:inline-block;margin:0 0 6px 0;background:#476D53;color:#FFFFFF;text-decoration:none;border-radius:8px;padding:9px 14px;font-size:13px;font-weight:700;border:1px solid #476D53">מוכן למשלוח</a>
+      </div>`
+    : '';
 
   return `
   <div class="report-card" style="background:#FFFFFF;border:1px solid ${urgent ? '#E8B5A8' : '#EDE0CE'};border-radius:10px;padding:16px 18px;margin-bottom:12px${urgent ? ';box-shadow:0 0 0 1px rgba(160,60,44,0.06)' : ''}">
@@ -328,6 +337,7 @@ function orderCard(
 
     ${notesLine}
     ${greetingLine}
+    ${actionButtons}
   </div>`;
 }
 
@@ -338,10 +348,17 @@ export function buildReportHtml(
   forDownload = false,
   note?: string | null,
   timeOverrides?: Record<string, string> | null,
+  actionLinksByOrder?: Record<string, EmployeeReportActionLinks>,
 ): string {
   const cards = orders.length
-    ? orders.map(o => orderCard(o, itemsByOrder[String(o.id)] || [], timeOverrides?.[String(o.id)])).join('')
+    ? orders.map(o => orderCard(
+      o,
+      itemsByOrder[String(o.id)] || [],
+      timeOverrides?.[String(o.id)],
+      actionLinksByOrder?.[String(o.id)],
+    )).join('')
     : `<div style="background:#FFFFFF;border:1px dashed #EDE0CE;border-radius:10px;padding:32px;text-align:center;color:#8E7D6A;font-size:14px">אין הזמנות בטווח שנבחר</div>`;
+  const hasActionLinks = !!actionLinksByOrder && Object.keys(actionLinksByOrder).length > 0;
 
   // Print-friendly toolbar + @media print rules — only injected for download mode
   const printExtras = forDownload ? `
@@ -415,7 +432,7 @@ export function buildReportHtml(
         <!-- Footer -->
         <tr><td style="background:#FDFAF5;border:1px solid #EDE0CE;border-top:none;border-radius:0 0 12px 12px;padding:16px 24px;text-align:center">
           <div style="font-size:12px;color:#8A7664">דוח אוטומטי — ${esc(BUSINESS)}</div>
-          <div style="font-size:11px;color:#B0A090;margin-top:3px">דוח קריאה בלבד — לא בוצעו שינויים במערכת</div>
+          <div style="font-size:11px;color:#B0A090;margin-top:3px">${hasActionLinks ? 'כפתורי הפעולה מאובטחים בקישור חתום ומוגבלים לפעולות הדוח בלבד' : 'דוח קריאה בלבד — לא בוצעו שינויים במערכת'}</div>
         </td></tr>
 
       </table>
@@ -428,14 +445,28 @@ export function buildReportHtml(
 // Pass forDownload=true to inject the print toolbar and @media print rules.
 export async function generateOrdersReport(
   input: ReportInput,
-  opts: { forDownload?: boolean } = {},
+  opts: { forDownload?: boolean; recipientEmail?: string | null; includeEmployeeActions?: boolean } = {},
 ): Promise<{ html: string; summary: ReportSummary; subject: string }> {
   const { startDate, endDate, label } = resolveRange(input);
   const filters = input.filters || {};
   const { orders, itemsByOrder, summary: counts } = await fetchOrdersForReport(startDate, endDate, filters);
+  const actionLinksByOrder = opts.includeEmployeeActions && opts.recipientEmail
+    ? await createEmployeeReportActionLinks({
+      orderIds: orders.map(order => String(order.id)),
+      recipientEmail: opts.recipientEmail,
+    })
+    : undefined;
 
   const summary: ReportSummary = { ...counts, startDate, endDate, rangeLabel: label };
-  const html = buildReportHtml(summary, orders, itemsByOrder, opts.forDownload === true, input.note, input.timeOverrides);
+  const html = buildReportHtml(
+    summary,
+    orders,
+    itemsByOrder,
+    opts.forDownload === true,
+    input.note,
+    input.timeOverrides,
+    actionLinksByOrder,
+  );
   const subject = `דוח הזמנות — ${label} — ${BUSINESS}`;
   return { html, summary, subject };
 }
@@ -444,7 +475,10 @@ export async function sendOrdersReport(
   recipientEmail: string,
   input: ReportInput,
 ): Promise<{ summary: ReportSummary; subject: string }> {
-  const { html, summary, subject } = await generateOrdersReport(input);
+  const { html, summary, subject } = await generateOrdersReport(input, {
+    recipientEmail,
+    includeEmployeeActions: true,
+  });
 
   const apiKey = process.env.SENDGRID_API_KEY;
   const from = process.env.FROM_EMAIL;

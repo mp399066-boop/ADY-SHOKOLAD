@@ -45,7 +45,7 @@ function StatusRail<T extends string>({
         type="button"
         disabled={disabled}
         onClick={() => setOpen(curr => !curr)}
-        className="h-8 min-w-[86px] rounded-full border px-3 text-xs font-bold transition-colors disabled:cursor-default disabled:opacity-60"
+        className="h-7 min-w-[74px] rounded-md border px-2 text-[11px] font-bold transition-colors disabled:cursor-default disabled:opacity-60"
         style={{ backgroundColor: tone.bg, borderColor: tone.border, color: tone.color }}
         title={label}
       >
@@ -54,10 +54,10 @@ function StatusRail<T extends string>({
 
       {open && (
         <div
-          className="absolute left-0 top-10 z-30 w-[min(360px,calc(100vw-32px))] rounded-lg border p-3 shadow-lg"
+          className="absolute left-0 top-8 z-30 w-[min(330px,calc(100vw-24px))] rounded-md border p-2.5 shadow-lg"
           style={{ backgroundColor: C.card, borderColor: C.border }}
         >
-          <div className="mb-2 text-right text-xs font-bold" style={{ color: C.textSoft }}>
+          <div className="mb-2 text-right text-[11px] font-bold" style={{ color: C.textSoft }}>
             {label}
           </div>
           <div className="flex items-start justify-between gap-1" dir="rtl">
@@ -77,12 +77,12 @@ function StatusRail<T extends string>({
                 >
                   {index > 0 && (
                     <span
-                      className="absolute right-[calc(-50%+14px)] top-[11px] h-px w-[calc(100%-28px)]"
+                      className="absolute right-[calc(-50%+12px)] top-[10px] h-px w-[calc(100%-24px)]"
                       style={{ backgroundColor: index <= activeIndex ? C.gold : C.border }}
                     />
                   )}
                   <span
-                    className="relative z-10 flex h-6 w-6 items-center justify-center rounded-full border text-[11px] font-bold"
+                    className="relative z-10 flex h-5 w-5 items-center justify-center rounded-full border text-[10px] font-bold"
                     style={{
                       backgroundColor: active ? statusColors.color : C.card,
                       borderColor: active ? statusColors.color : C.border,
@@ -92,7 +92,7 @@ function StatusRail<T extends string>({
                     {index + 1}
                   </span>
                   <span
-                    className="max-w-[74px] truncate text-[11px] font-bold leading-4"
+                    className="max-w-[68px] truncate text-[10px] font-bold leading-3"
                     style={{ color: active ? statusColors.color : C.textSoft }}
                   >
                     {status}
@@ -126,16 +126,21 @@ export function KitchenTaskRow({
 
   return (
     <div
-      className="grid grid-cols-1 lg:grid-cols-[minmax(260px,1fr)_auto] gap-2 border-b px-1 py-2.5 last:border-b-0"
+      className="grid min-h-[54px] grid-cols-1 items-center gap-1 border-b px-1 py-1.5 last:border-b-0 lg:grid-cols-[minmax(320px,1fr)_auto]"
       style={{ borderColor: C.borderSoft }}
     >
       <div className="min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: task.needsAttention ? C.amber : C.border }} />
-          <span className="truncate text-[15px] font-bold leading-6" style={{ color: C.text }}>{task.title}</span>
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: task.needsAttention ? C.amber : C.border }} />
+          <span className="truncate text-sm font-bold leading-5" style={{ color: C.text }}>{task.customerName}</span>
+          {task.recipientName && (
+            <span className="truncate text-[11px] font-semibold" style={{ color: C.textSoft }}>
+              מקבל: {task.recipientName}
+            </span>
+          )}
         </div>
-        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 pr-4 text-xs">
-          <span className="font-mono" style={{ color: C.textSoft }}>{task.meta}</span>
+        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 pr-3 text-[11px] leading-4">
+          <span className="font-mono" style={{ color: C.textSoft }}>{task.meta.replace('הזמנה #', '')}</span>
           <span style={{ color: C.textMuted }}>·</span>
           <span className="font-semibold" style={{ color: C.cocoa }}>{task.dueLabel}</span>
           <span style={{ color: C.textMuted }}>·</span>
@@ -143,7 +148,7 @@ export function KitchenTaskRow({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-1.5">
         <StatusRail
           label="סטטוס הזמנה"
           value={task.order.סטטוס_הזמנה}
@@ -173,11 +178,11 @@ export function KitchenTaskRow({
         <button
           type="button"
           onClick={() => onOpenOrder(task.order)}
-          className="h-8 rounded-full border px-3 text-xs font-bold flex items-center gap-1.5"
+          className="flex h-7 items-center gap-1 rounded-md border px-2 text-[11px] font-bold"
           style={{ backgroundColor: C.card, borderColor: C.border, color: C.espresso }}
           title="פתח הזמנה מלאה"
         >
-          <ExternalLink size={13} />
+          <ExternalLink size={12} />
           פתח
         </button>
       </div>

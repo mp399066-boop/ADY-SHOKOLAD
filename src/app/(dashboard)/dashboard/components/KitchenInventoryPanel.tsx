@@ -24,16 +24,16 @@ export function KitchenInventoryPanel({
   onOpenInventory: () => void;
 }) {
   return (
-    <section className="rounded-lg border p-4" style={{ backgroundColor: C.card, borderColor: C.border }}>
-      <div className="mb-3 flex items-center justify-between gap-3">
+    <section className="rounded-lg border p-3" style={{ backgroundColor: C.card, borderColor: C.border }}>
+      <div className="mb-2 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <Warehouse size={18} color={C.cocoa} />
-          <h2 className="text-lg font-bold" style={{ color: C.text }}>חומרי גלם ומלאי</h2>
+          <Warehouse size={16} color={C.cocoa} />
+          <h2 className="text-base font-bold" style={{ color: C.text }}>חומרי גלם ומלאי</h2>
         </div>
         <button
           type="button"
           onClick={onOpenInventory}
-          className="h-8 rounded-full border px-3 text-xs font-bold"
+          className="h-7 rounded-md border px-2.5 text-[11px] font-bold"
           style={{ backgroundColor: C.brandSoft, borderColor: C.border, color: C.text }}
         >
           הצג את כל המלאי
@@ -45,33 +45,33 @@ export function KitchenInventoryPanel({
           אין כרגע התראות מלאי חשובות.
         </div>
       ) : (
-        <div className="rounded-lg border px-3" style={{ borderColor: C.borderSoft, backgroundColor: C.cardSoft }}>
+        <div className="grid grid-cols-2 gap-1.5 md:grid-cols-3 xl:grid-cols-6">
           {items.map(item => {
             const label = statusLabel(item.status);
             const colors = statusColors(label);
             return (
               <div
                 key={`${item.kind}-${item.id}`}
-                className="flex flex-col gap-2 border-b py-2.5 last:border-b-0 sm:flex-row sm:items-center sm:justify-between"
-                style={{ borderColor: C.borderSoft }}
+                className="rounded-md border p-2"
+                style={{ borderColor: C.borderSoft, backgroundColor: C.cardSoft }}
               >
-                <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-                  <p className="min-w-[160px] truncate text-sm font-bold" style={{ color: C.text }}>{item.שם}</p>
-                  <p className="text-xs font-semibold" style={{ color: C.textSoft }}>
-                    נותר: {item.quantity.toLocaleString('he-IL')} {item.unit || ''}
-                  </p>
-                  <span className="rounded-full px-2 py-0.5 text-[11px] font-bold" style={{ backgroundColor: colors.bg, color: colors.color }}>
+                <div className="mb-1 flex min-w-0 items-start justify-between gap-1.5">
+                  <p className="truncate text-xs font-bold leading-5" style={{ color: C.text }}>{item.שם}</p>
+                  <span className="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold" style={{ backgroundColor: colors.bg, color: colors.color }}>
                     {label}
                   </span>
                 </div>
+                <p className="mb-1.5 truncate text-[11px] font-semibold" style={{ color: C.textSoft }}>
+                  {item.quantity.toLocaleString('he-IL')} {item.unit || ''}{item.quantity === 0 ? ' · חסר' : ''}
+                </p>
                 <button
                   type="button"
                   onClick={onOpenInventory}
-                  className="h-8 w-fit rounded-full border px-3 text-xs font-bold flex items-center gap-1.5"
+                  className="flex h-6 w-fit items-center gap-1 rounded-md border px-2 text-[10px] font-bold"
                   style={{ borderColor: C.border, color: C.cocoa, backgroundColor: C.brandSoft }}
                 >
-                  <Pencil size={13} />
-                  עדכן כמות
+                  <Pencil size={11} />
+                  עדכן
                 </button>
               </div>
             );

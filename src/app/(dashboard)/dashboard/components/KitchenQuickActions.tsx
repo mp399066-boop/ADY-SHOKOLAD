@@ -33,7 +33,7 @@ export function KitchenQuickActions({
   ];
 
   return (
-    <div className="relative flex flex-wrap items-center gap-2 pb-1">
+    <div className="relative flex flex-wrap items-center gap-1.5">
       {primaryActions.map(action => {
         const Icon = action.icon;
         return (
@@ -41,16 +41,16 @@ export function KitchenQuickActions({
             key={action.label}
             type="button"
             onClick={action.onClick}
-            className="h-10 rounded-lg border px-3 text-sm font-semibold transition-colors flex items-center gap-2 whitespace-nowrap"
+            className="flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-xs font-semibold transition-colors whitespace-nowrap"
             style={{
               backgroundColor: action.primary ? C.espresso : C.card,
               color: action.primary ? '#FFFFFF' : C.text,
               borderColor: action.primary ? C.espresso : C.border,
-              boxShadow: action.primary ? '0 8px 18px rgba(47, 27, 20, 0.10)' : 'none',
+              boxShadow: action.primary ? '0 4px 10px rgba(47, 27, 20, 0.08)' : 'none',
             }}
             title={action.label}
           >
-            <Icon size={16} />
+            <Icon size={14} />
             <span>{action.label}</span>
           </button>
         );
@@ -59,7 +59,7 @@ export function KitchenQuickActions({
       <button
         type="button"
         onClick={() => setOpen(curr => !curr)}
-        className="h-10 rounded-lg border px-3 text-sm font-bold transition-colors"
+        className="h-8 rounded-md border px-2.5 text-xs font-bold transition-colors"
         style={{ backgroundColor: C.card, color: C.textSoft, borderColor: C.border }}
       >
         עוד פעולות
@@ -67,7 +67,7 @@ export function KitchenQuickActions({
 
       {open && (
         <div
-          className="absolute right-0 top-12 z-20 w-56 rounded-lg border p-1.5 shadow-lg"
+          className="absolute right-0 top-9 z-20 w-52 rounded-md border p-1 shadow-lg"
           style={{ backgroundColor: C.card, borderColor: C.border }}
         >
           {secondaryActions.map(action => {
@@ -80,11 +80,11 @@ export function KitchenQuickActions({
                 setOpen(false);
                 action.onClick();
               }}
-              className="flex h-9 w-full items-center gap-2 rounded-md px-2 text-right text-sm font-semibold"
+              className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-right text-xs font-semibold"
               style={{ color: C.text }}
               title={action.label}
             >
-              <Icon size={15} color={C.cocoa} />
+              <Icon size={14} color={C.cocoa} />
               <span>{action.label}</span>
             </button>
           );

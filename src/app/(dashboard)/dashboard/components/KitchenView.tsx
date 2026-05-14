@@ -62,14 +62,14 @@ export function KitchenView({
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       <KitchenQuickActions onNavigate={onNavigate} onProduction={onProduction} />
 
-      <section className="rounded-lg border p-4" style={{ backgroundColor: C.card, borderColor: C.border }}>
-        <div className="mb-3 flex flex-col xl:flex-row xl:items-end justify-between gap-3">
+      <section className="rounded-lg border p-3" style={{ backgroundColor: C.card, borderColor: C.border }}>
+        <div className="mb-2 flex flex-col xl:flex-row xl:items-end justify-between gap-2">
           <div>
-            <h2 className="text-lg font-bold" style={{ color: C.text }}>משימות תפעול להיום</h2>
-            <p className="text-xs" style={{ color: C.textSoft }}>שם לקוחה, זמן, סטטוס ופעולה. זה הכל.</p>
+            <h2 className="text-base font-bold" style={{ color: C.text }}>משימות תפעול להיום</h2>
+            <p className="text-[11px]" style={{ color: C.textSoft }}>שם לקוחה, זמן, סטטוס ופעולה.</p>
           </div>
           <div className="flex overflow-x-auto gap-1 pb-1">
             {TABS.map(tab => {
@@ -80,7 +80,7 @@ export function KitchenView({
                   key={tab.id}
                   type="button"
                   onClick={() => setActiveTab(tab.id)}
-                  className="h-8 rounded-full border px-3 text-xs font-bold whitespace-nowrap"
+                  className="h-7 rounded-md border px-2.5 text-[11px] font-bold whitespace-nowrap"
                   style={{
                     backgroundColor: active ? C.espresso : C.cardSoft,
                     borderColor: active ? C.espresso : C.border,
@@ -99,7 +99,7 @@ export function KitchenView({
             אין משימות פתוחות בטאב הזה.
           </div>
         ) : (
-          <div className="rounded-lg border px-3" style={{ borderColor: C.borderSoft, backgroundColor: C.cardSoft }}>
+          <div className="rounded-md border px-2" style={{ borderColor: C.borderSoft, backgroundColor: C.cardSoft }}>
             {visibleTasks.map(task => (
               <KitchenTaskRow
                 key={task.id}
