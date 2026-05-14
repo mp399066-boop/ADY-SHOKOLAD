@@ -434,12 +434,22 @@ export async function generateOrdersReport(
   const { startDate, endDate, label } = resolveRange(input);
   const filters = input.filters || {};
   const { orders, itemsByOrder, summary: counts } = await fetchOrdersForReport(startDate, endDate, filters);
-  const actionLinksByOrder = opts.includeEmployeeActions && opts.recipientEmail
-    ? await createEmployeeReportActionLinks({
-      orderIds: orders.map(order => String(order.id)),
-      recipientEmail: opts.recipientEmail,
-    })
-    : undefined;
+  // Best-effort. If REPORT_ACTION_SECRET / APP_URL are missing the helper
+  // throws — we log + render the email WITHOUT buttons rather than block
+  // the whole report from going out. The thrown error is what tells the
+  // operator to set the env var; the email still arrives so the worker
+  // can read the report.
+  let actionLinksByOrder: Record<string, EmployeeReportActionLinks> | undefined;
+  if (opts.includeEmployeeActions && opts.recipientEmail) {
+    try {
+      actionLinksByOrder = await createEmployeeReportActionLinks({
+        orderIds: orders.map(order => String(order.id)),
+        recipientEmail: opts.recipientEmail,
+      });
+    } catch (err) {
+      console.error('[orders-report] action-links generation failed (continuing without buttons):', err instanceof Error ? err.message : err);
+    }
+  }
 
   const summary: ReportSummary = { ...counts, startDate, endDate, rangeLabel: label };
   const html = buildReportHtml(
