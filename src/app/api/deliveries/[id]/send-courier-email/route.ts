@@ -5,21 +5,22 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import sgMail from '@sendgrid/mail';
 import { randomBytes } from 'crypto';
-
-type OrderJoin = {
-  שם_מקבל?: string | null;
-  לקוחות?: { שם_פרטי: string; שם_משפחה: string } | null;
-};
+import {
+  buildCourierDeliveryMessage,
+  buildCourierDeliveryEmailHtml,
+  COURIER_EMAIL_SUBJECT,
+} from '@/lib/courier-notification';
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
 
-  // 1. Fetch delivery + order
+  // 1. Fetch delivery (just the fields the email needs — no recipient/customer
+  //    names, those go on the link page, not the email body).
   const { data: delivery, error: deliveryError } = await supabase
     .from('משלוחים')
-    .select('id, delivery_token, courier_id, הזמנות(שם_מקבל, לקוחות(שם_פרטי, שם_משפחה))')
+    .select('id, delivery_token, courier_id')
     .eq('id', params.id)
     .single();
 
@@ -56,33 +57,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const origin = req.headers.get('origin') || process.env.NEXT_PUBLIC_APP_URL || '';
   const link = `${origin}/delivery-update/${token}`;
 
-  // 5. Resolve recipient name
-  const order = delivery.הזמנות as OrderJoin | null;
-  const recipientName =
-    order?.שם_מקבל ||
-    (order?.לקוחות ? `${order.לקוחות.שם_פרטי} ${order.לקוחות.שם_משפחה}` : '') ||
-    'לקוח';
-
-  // 6. Build email
-  const subject = 'עדכון משלוח';
-  const textContent = `היי ${courier.שם_שליח},\nיש לך משלוח למסירה עבור ${recipientName}.\n\nלאחר המסירה, לחץ כאן כדי לעדכן:\n${link}\n\nתודה!`;
-  const htmlContent = `
-<html dir="rtl">
-<body style="font-family:Arial,Helvetica,sans-serif;direction:rtl;text-align:right;padding:32px 24px;color:#2B1A10;max-width:520px;margin:0 auto">
-  <p style="font-size:16px">היי <strong>${courier.שם_שליח}</strong>,</p>
-  <p style="font-size:15px">יש לך משלוח למסירה עבור <strong>${recipientName}</strong>.</p>
-  <p style="font-size:15px">לאחר המסירה, לחץ כאן כדי לעדכן:</p>
-  <p style="margin:28px 0">
-    <a href="${link}"
-       style="display:inline-block;padding:14px 28px;background:#065F46;color:white;border-radius:10px;text-decoration:none;font-weight:bold;font-size:16px">
-      ✓ סמן כנמסר
-    </a>
-  </p>
-  <p style="font-size:15px">תודה!</p>
-  <hr style="border:none;border-top:1px solid #E5DDD3;margin:24px 0">
-  <p style="color:#9B7A5A;font-size:12px">עדי תכשיט שוקולד</p>
-</body>
-</html>`;
+  // 5. Build email content via the shared helper. WhatsApp + email cannot
+  //    drift apart now — both render the same neutral wording from the
+  //    same source. NO greeting, NO courier name, link is the only action.
+  const subject = COURIER_EMAIL_SUBJECT;
+  const textContent = buildCourierDeliveryMessage({ deliveryUpdateUrl: link });
+  const htmlContent = buildCourierDeliveryEmailHtml({ deliveryUpdateUrl: link });
 
   // 7. Send via SendGrid
   const apiKey = process.env.SENDGRID_API_KEY;

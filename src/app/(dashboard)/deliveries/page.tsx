@@ -14,6 +14,7 @@ import { IconEye, IconExport, IconEdit, IconTrash, IconWhatsApp } from '@/compon
 import type { Delivery, Courier } from '@/types/database';
 import Link from 'next/link';
 import { exportToCsv } from '@/lib/exportCsv';
+import { buildCourierDeliveryMessage } from '@/lib/courier-notification';
 import toast from 'react-hot-toast';
 
 // ─── Status config ─────────────────────────────────────────────────────────
@@ -418,18 +419,10 @@ function DeliveriesContent() {
         link = `${window.location.origin}/delivery-update/${token}`;
       }
 
-      // Same impersonal copy as the API-side buildWaUrl — link only,
-      // no greeting / courier name / customer details inline. The
-      // courier opens the link to see everything.
-      const lines = [
-        'משלוח חדש מעדי תכשיט שוקולד',
-        '',
-        'לצפייה בפרטי המשלוח וההזמנה ולסימון מסירה:',
-        link,
-        '',
-        'יש לפתוח את הקישור כדי לראות שם מקבל, כתובת, טלפון, הערות ופרטי הזמנה.',
-      ];
-      const message = lines.join('\n');
+      // Body comes from the shared courier-notification helper — same source
+      // the API-side buildWaUrl + the courier email use, so all three
+      // channels render identical wording.
+      const message = buildCourierDeliveryMessage({ deliveryUpdateUrl: link });
 
       let phone = courier.טלפון_שליח.replace(/[^0-9]/g, '');
       if (phone.startsWith('0')) phone = '972' + phone.slice(1);

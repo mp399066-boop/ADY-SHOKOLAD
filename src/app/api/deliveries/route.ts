@@ -162,7 +162,24 @@ export async function POST(req: NextRequest) {
   const supabase = createAdminClient();
   const body = await req.json();
   if (!body.הזמנה_id) return NextResponse.json({ error: 'הזמנה היא שדה חובה' }, { status: 400 });
+
+  // Dedup guard: one active delivery per order. If a delivery already exists
+  // for this order id, RETURN that row instead of inserting a duplicate.
+  // This is the open-POST equivalent of the same check inside
+  // PATCH /api/deliveries/[id] (the no-record-{orderId} branch). Both paths
+  // converge on "one delivery per order" without a destructive DB constraint.
+  const { data: existing } = await supabase
+    .from('משלוחים')
+    .select('*')
+    .eq('הזמנה_id', body.הזמנה_id)
+    .maybeSingle();
+  if (existing) {
+    console.log('[deliveries POST] dedup — existing delivery for order', body.הזמנה_id, '— returning existing id', existing.id);
+    return NextResponse.json({ data: existing, deduped: true }, { status: 200 });
+  }
+
   const { data, error } = await supabase.from('משלוחים').insert(body).select().single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  console.log('[deliveries POST] created delivery id', data?.id, 'for order', body.הזמנה_id);
   return NextResponse.json({ data }, { status: 201 });
 }

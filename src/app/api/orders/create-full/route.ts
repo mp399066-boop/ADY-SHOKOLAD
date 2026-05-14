@@ -234,16 +234,36 @@ export async function POST(req: NextRequest) {
   // and (c) sit in a state that the WhatsApp-to-courier trigger expects to
   // *transition into*. Status is only allowed to advance via the dedicated
   // PATCH /api/deliveries/[id] flow, never at creation.
+  //
+  // Dedup guard: even though create-full runs on a brand-new order id, the
+  // check costs ~1ms and prevents duplicates if a future caller ever
+  // resubmits with the same order id (the 60s in-memory idempotency cache
+  // covers this for repeat clients, but defense-in-depth is cheap).
   if (!isDraft && משלוח) {
-    await supabase.from('משלוחים').insert({
-      הזמנה_id: order!.id,
-      סטטוס_משלוח: 'ממתין',
-      תאריך_משלוח: order!.תאריך_אספקה || null,
-      שעת_משלוח: order!.שעת_אספקה || null,
-      כתובת: משלוח.כתובת || order!.כתובת_מקבל_ההזמנה || null,
-      עיר: משלוח.עיר || order!.עיר || null,
-      הוראות_משלוח: משלוח.הוראות_משלוח || order!.הוראות_משלוח || null,
-    });
+    const { data: existingDelivery } = await supabase
+      .from('משלוחים').select('id').eq('הזמנה_id', order!.id).maybeSingle();
+    if (existingDelivery) {
+      console.log('[create-full] delivery already exists for order — skipping insert. order:', order!.id, '| delivery:', existingDelivery.id);
+    } else {
+      const { data: createdDelivery, error: deliveryErr } = await supabase
+        .from('משלוחים')
+        .insert({
+          הזמנה_id: order!.id,
+          סטטוס_משלוח: 'ממתין',
+          תאריך_משלוח: order!.תאריך_אספקה || null,
+          שעת_משלוח: order!.שעת_אספקה || null,
+          כתובת: משלוח.כתובת || order!.כתובת_מקבל_ההזמנה || null,
+          עיר: משלוח.עיר || order!.עיר || null,
+          הוראות_משלוח: משלוח.הוראות_משלוח || order!.הוראות_משלוח || null,
+        })
+        .select('id')
+        .single();
+      if (deliveryErr) {
+        console.error('[create-full] delivery insert failed:', deliveryErr.message);
+      } else {
+        console.log('[create-full] delivery created. order:', order!.id, '| delivery:', createdDelivery?.id);
+      }
+    }
   }
 
   // 8. Create payment record (skip for drafts)

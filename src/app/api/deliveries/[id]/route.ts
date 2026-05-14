@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { isServiceEnabled, logServiceRun } from '@/lib/system-services';
 import { logActivity, userActor } from '@/lib/activity-log';
+import { buildCourierDeliveryMessage } from '@/lib/courier-notification';
 import { randomBytes } from 'crypto';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -13,15 +14,10 @@ function buildOrigin(req: NextRequest): string {
   return req.headers.get('origin') || process.env.NEXT_PUBLIC_APP_URL || '';
 }
 
-// Courier WhatsApp message. Deliberately impersonal — no "היי", no courier
-// name, no recipient details inline. The link is the courier's full view
-// of the delivery (recipient, phone, address, items, notes, mark-delivered
-// button). Keeping the WhatsApp body short avoids leaking customer info
-// into the courier's chat history and makes the link the only action.
-//
-// `courierName / recipientName / address / recipientPhone` are intentionally
-// no longer part of the message body; the parameters are kept on the
-// signature for back-compat with existing call sites and are unused here.
+// Courier WhatsApp URL — body comes from the shared courier-notification
+// helper so WhatsApp + email can never drift apart. The unused name /
+// address / phone params are kept on the signature for back-compat with
+// existing call sites and are intentionally ignored here.
 function buildWaUrl(
   phone: string,
   _courierName: string,
@@ -32,15 +28,8 @@ function buildWaUrl(
 ): string {
   let p = phone.replace(/[^0-9]/g, '');
   if (p.startsWith('0')) p = '972' + p.slice(1);
-  const lines = [
-    'משלוח חדש מעדי תכשיט שוקולד',
-    '',
-    'לצפייה בפרטי המשלוח וההזמנה ולסימון מסירה:',
-    link,
-    '',
-    'יש לפתוח את הקישור כדי לראות שם מקבל, כתובת, טלפון, הערות ופרטי הזמנה.',
-  ];
-  return `https://wa.me/${p}?text=${encodeURIComponent(lines.join('\n'))}`;
+  const text = buildCourierDeliveryMessage({ deliveryUpdateUrl: link });
+  return `https://wa.me/${p}?text=${encodeURIComponent(text)}`;
 }
 
 // ─── PATCH ────────────────────────────────────────────────────────────────────
