@@ -78,7 +78,32 @@ export async function POST(req: Request) {
 
     console.log('[wc-webhook] START webhook processing');
     const wcOrderId = wc.id as number | undefined;
-    console.log('[wc-webhook] order id:', wcOrderId, '| status:', wc.status);
+
+    // Verbose top-of-handler dump — the user needs this to confirm the
+    // payment-success webhook actually arrives and carries the meta we
+    // need. Includes every field used in routing decisions; nothing
+    // sensitive.
+    type WcMeta = { key?: string; value?: unknown };
+    const wcMetaDump = (wc.meta_data ?? []) as WcMeta[];
+    const crmOrderIdFromMeta    = (wcMetaDump.find(m => m.key === 'crm_order_id')?.value     ?? null) as string | null;
+    const crmPaymentOnlyFromMeta = (wcMetaDump.find(m => m.key === 'crm_payment_only')?.value ?? null) as string | null;
+    const crmOrderNumberFromMeta = (wcMetaDump.find(m => m.key === 'crm_order_number')?.value ?? null) as string | null;
+    const crmTotalChargedFromMeta = (wcMetaDump.find(m => m.key === 'crm_total_charged')?.value ?? null) as string | null;
+
+    console.log('[wc-webhook] ── EVENT DUMP ─────────────────────────────');
+    console.log('[wc-webhook]   wc_order_id      :', wcOrderId);
+    console.log('[wc-webhook]   wc_status        :', wc.status);
+    console.log('[wc-webhook]   payment_method   :', wc.payment_method);
+    console.log('[wc-webhook]   payment_method_t :', wc.payment_method_title);
+    console.log('[wc-webhook]   date_paid        :', wc.date_paid ?? wc.date_paid_gmt ?? null);
+    console.log('[wc-webhook]   transaction_id   :', wc.transaction_id);
+    console.log('[wc-webhook]   total            :', wc.total);
+    console.log('[wc-webhook]   meta_data keys   :', wcMetaDump.map(m => m.key).join(', ') || '(none)');
+    console.log('[wc-webhook]   crm_order_id     :', crmOrderIdFromMeta);
+    console.log('[wc-webhook]   crm_payment_only :', crmPaymentOnlyFromMeta);
+    console.log('[wc-webhook]   crm_order_number :', crmOrderNumberFromMeta);
+    console.log('[wc-webhook]   crm_total_charged:', crmTotalChargedFromMeta);
+    console.log('[wc-webhook] ───────────────────────────────────────────');
     console.log('[wc-webhook] line_items:', JSON.stringify(wc.line_items ?? 'MISSING'));
 
     // Control-center kill-switch. We still 200-OK to WooCommerce so it
@@ -116,10 +141,6 @@ export async function POST(req: Request) {
     // the webhook back, we MUST recognize the event as "payment update
     // for an existing CRM order" — not as a new website order — or we
     // duplicate the row in הזמנות.
-    type WcMeta = { key?: string; value?: unknown };
-    const wcMeta = (wc.meta_data ?? []) as WcMeta[];
-    const crmOrderIdFromMeta = (wcMeta.find(m => m.key === 'crm_order_id')?.value ?? null) as string | null;
-
     if (crmOrderIdFromMeta) {
       console.log('[wc-webhook] SOURCE = CRM payment callback | crm_order_id:', crmOrderIdFromMeta, '| wc_order_id:', wcOrderId, '| wc_status:', wc.status);
 
@@ -129,90 +150,130 @@ export async function POST(req: Request) {
         .eq('id', crmOrderIdFromMeta)
         .maybeSingle();
 
+      console.log('[wc-webhook]   crm_order lookup — found:', Boolean(crmOrder), '| current סטטוס_תשלום:', crmOrder?.סטטוס_תשלום ?? '(n/a)', '| err:', crmErr?.message ?? 'none');
+
       if (crmErr || !crmOrder) {
-        // CRM order was deleted between our create-payment-link call and
-        // this webhook. Refuse to create a stand-in row — that would be a
-        // ghost order. Log loudly and 200-OK so WC doesn't retry forever.
-        console.error('[wc-webhook] CRM order from meta not found — refusing to create duplicate. crm_order_id:', crmOrderIdFromMeta, '| err:', crmErr?.message);
-        return Response.json({ success: true, skipped: true, reason: 'crm_order_not_found', crm_order_id: crmOrderIdFromMeta });
+        console.error('[wc-webhook] CRM order from meta not found — refusing to create duplicate. crm_order_id:', crmOrderIdFromMeta);
+        return Response.json({
+          ok: false,
+          source: 'CRM_payment_callback',
+          wc_order_id: wcOrderId,
+          wc_status: wc.status,
+          crm_order_id: crmOrderIdFromMeta,
+          was_paid_before: null,
+          updated_order_paid: false,
+          updated_payment_row: false,
+          reason_if_not_updated: 'crm_order_not_found',
+        });
       }
 
-      const isPaidNow = PAID_STATUSES.has((wc.status as string) ?? '');
-      const wasPaid   = crmOrder.סטטוס_תשלום === 'שולם';
+      const isPaidNow  = PAID_STATUSES.has((wc.status as string) ?? '');
+      const wasPaid    = crmOrder.סטטוס_תשלום === 'שולם';
       const grandTotal = parseFloat((wc.total as string) ?? '0') || 0;
 
-      // Idempotent: if already paid, just acknowledge and skip the writes.
+      console.log('[wc-webhook]   isPaidNow:', isPaidNow, '(PAID_STATUSES =', Array.from(PAID_STATUSES).join('/'), ') | wasPaid:', wasPaid);
+
+      // Idempotent: if already paid, acknowledge and skip the writes.
       if (wasPaid) {
         console.log('[wc-webhook] CRM order already שולם — no-op. crm_order_id:', crmOrderIdFromMeta);
-        return Response.json({ success: true, already_paid: true, crm_order_id: crmOrderIdFromMeta });
-      }
-
-      if (isPaidNow) {
-        // Flip the order's payment status. We mirror the same column the
-        // operator's manual mark-paid would write to. No separate field
-        // for wc_order_id on הזמנות — record it in the תשלומים row +
-        // activity log so audit can trace it.
-        const { error: updErr } = await supabase
-          .from('הזמנות')
-          .update({ סטטוס_תשלום: 'שולם', תאריך_עדכון: new Date().toISOString() })
-          .eq('id', crmOrderIdFromMeta);
-        if (updErr) {
-          console.error('[wc-webhook] CRM order paid-flip failed:', updErr.message);
-          return Response.json({ success: true, error: 'paid_flip_failed', detail: updErr.message });
-        }
-
-        // Update the existing pending תשלומים row inserted by
-        // create-payment-link. Best-effort — failure is logged but
-        // doesn't roll back the order flip.
-        const { error: payRowErr } = await supabase
-          .from('תשלומים')
-          .update({
-            סטטוס_תשלום: 'שולם',
-            תאריך_תשלום: new Date().toISOString(),
-            הערות:        `wc_order_id:${wcOrderId} · paid via WC webhook`,
-          })
-          .eq('הזמנה_id', crmOrderIdFromMeta)
-          .eq('אמצעי_תשלום', 'WooCommerce')
-          .eq('סטטוס_תשלום', 'ממתין');
-        if (payRowErr) console.warn('[wc-webhook] תשלומים row update failed (continuing):', payRowErr.message);
-
-        // Inventory deduction — same helper the regular WC path uses.
-        // Idempotent (checks תנועות_מלאי for a prior 'יציאה' on this order).
-        await deductOrderInventory(supabase, crmOrderIdFromMeta);
-
-        void logActivity({
-          actor:       WEBHOOK_ACTOR_WC,
-          module:      'finance',
-          action:      'crm_order_paid_via_woocommerce',
-          status:      'success',
-          entityType:  'order',
-          entityId:    crmOrderIdFromMeta,
-          entityLabel: crmOrder.מספר_הזמנה || `WC #${wcOrderId}`,
-          title:       'הזמנה שולמה דרך WooCommerce/PayPlus',
-          description: `WC #${wcOrderId} השלים תשלום — סטטוס_תשלום עודכן ל"שולם".`,
-          metadata:    { wc_order_id: wcOrderId, wc_total: grandTotal, source: 'wc_webhook_crm_callback' },
-          request:     req,
-        });
-
-        console.log('[wc-webhook] CRM order updated to שולם. crm_order_id:', crmOrderIdFromMeta, '| wc_order_id:', wcOrderId, '| total:', grandTotal);
         return Response.json({
-          success: true,
-          updated_crm_order: true,
-          crm_order_id: crmOrderIdFromMeta,
+          ok: true,
+          source: 'CRM_payment_callback',
           wc_order_id: wcOrderId,
+          wc_status: wc.status,
+          crm_order_id: crmOrderIdFromMeta,
+          was_paid_before: true,
+          updated_order_paid: false,
+          updated_payment_row: false,
+          reason_if_not_updated: 'already_paid',
         });
       }
 
-      // Non-paid status (pending / on-hold / cancelled). Just log and
-      // 200-OK — we don't write anything. The operator's manual mark-paid
-      // path stays the source of truth for non-success transitions.
-      console.log('[wc-webhook] CRM order callback with non-paid status — no DB write. wc_status:', wc.status);
+      if (!isPaidNow) {
+        console.log('[wc-webhook] CRM order callback with non-paid status — no DB write. wc_status:', wc.status);
+        return Response.json({
+          ok: true,
+          source: 'CRM_payment_callback',
+          wc_order_id: wcOrderId,
+          wc_status: wc.status,
+          crm_order_id: crmOrderIdFromMeta,
+          was_paid_before: false,
+          updated_order_paid: false,
+          updated_payment_row: false,
+          reason_if_not_updated: `wc_status_not_in_PAID_SET (${wc.status})`,
+        });
+      }
+
+      // ── Paid path ──────────────────────────────────────────────────────
+      const { error: updErr } = await supabase
+        .from('הזמנות')
+        .update({ סטטוס_תשלום: 'שולם', תאריך_עדכון: new Date().toISOString() })
+        .eq('id', crmOrderIdFromMeta);
+
+      if (updErr) {
+        console.error('[wc-webhook] CRM order paid-flip FAILED:', updErr.message);
+        return Response.json({
+          ok: false,
+          source: 'CRM_payment_callback',
+          wc_order_id: wcOrderId,
+          wc_status: wc.status,
+          crm_order_id: crmOrderIdFromMeta,
+          was_paid_before: false,
+          updated_order_paid: false,
+          updated_payment_row: false,
+          reason_if_not_updated: `db_update_failed: ${updErr.message}`,
+        });
+      }
+      console.log('[wc-webhook]   ✓ הזמנות.סטטוס_תשלום updated to שולם. crm_order_id:', crmOrderIdFromMeta);
+
+      const wcTxnId = (wc.transaction_id as string | undefined) || '';
+      const { data: payRow, error: payRowErr } = await supabase
+        .from('תשלומים')
+        .update({
+          סטטוס_תשלום: 'שולם',
+          תאריך_תשלום: new Date().toISOString(),
+          הערות:        `wc_order_id:${wcOrderId}${wcTxnId ? ` · txn:${wcTxnId}` : ''} · paid via WC webhook`,
+        })
+        .eq('הזמנה_id', crmOrderIdFromMeta)
+        .eq('אמצעי_תשלום', 'WooCommerce')
+        .eq('סטטוס_תשלום', 'ממתין')
+        .select('id');
+      const updatedPaymentRow = !payRowErr && Array.isArray(payRow) && payRow.length > 0;
+      if (payRowErr) console.warn('[wc-webhook]   תשלומים row update failed (continuing):', payRowErr.message);
+      else console.log('[wc-webhook]   תשלומים rows updated:', payRow?.length ?? 0);
+
+      try {
+        await deductOrderInventory(supabase, crmOrderIdFromMeta);
+        console.log('[wc-webhook]   ✓ deductOrderInventory ran (idempotent)');
+      } catch (invErr) {
+        console.warn('[wc-webhook]   inventory deduction failed (continuing):', invErr instanceof Error ? invErr.message : invErr);
+      }
+
+      void logActivity({
+        actor:       WEBHOOK_ACTOR_WC,
+        module:      'finance',
+        action:      'crm_order_paid_via_woocommerce',
+        status:      'success',
+        entityType:  'order',
+        entityId:    crmOrderIdFromMeta,
+        entityLabel: crmOrder.מספר_הזמנה || `WC #${wcOrderId}`,
+        title:       'הזמנה שולמה דרך WooCommerce/PayPlus',
+        description: `WC #${wcOrderId} השלים תשלום — סטטוס_תשלום עודכן ל"שולם".`,
+        metadata:    { wc_order_id: wcOrderId, wc_total: grandTotal, wc_transaction_id: wcTxnId || null, source: 'wc_webhook_crm_callback' },
+        request:     req,
+      });
+
+      console.log('[wc-webhook] DONE — CRM order paid. crm_order_id:', crmOrderIdFromMeta, '| wc_order_id:', wcOrderId, '| total:', grandTotal);
       return Response.json({
-        success: true,
-        skipped: true,
-        reason: 'crm_callback_non_paid_status',
-        crm_order_id: crmOrderIdFromMeta,
+        ok: true,
+        source: 'CRM_payment_callback',
+        wc_order_id: wcOrderId,
         wc_status: wc.status,
+        crm_order_id: crmOrderIdFromMeta,
+        was_paid_before: false,
+        updated_order_paid: true,
+        updated_payment_row: updatedPaymentRow,
+        reason_if_not_updated: null,
       });
     }
 

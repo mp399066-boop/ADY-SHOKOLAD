@@ -141,6 +141,12 @@ export async function POST(
       meta_data: [
         { key: 'crm_order_id',     value: orderId },
         { key: 'crm_order_number', value: String(order.מספר_הזמנה || '') },
+        // Explicit flag — the WC webhook uses this (alongside crm_order_id)
+        // to know "this is a payment shell for an existing CRM order, do
+        // NOT create a new הזמנות row". crm_order_id alone is enough, but
+        // the explicit flag makes the intent obvious to anyone reading
+        // the WC order in the WP admin.
+        { key: 'crm_payment_only', value: 'true' },
         // Audit marker — anyone inspecting the WC order can see exactly
         // which CRM-computed total we shipped. Useful when reconciling.
         { key: 'crm_total_charged', value: amountStr },
