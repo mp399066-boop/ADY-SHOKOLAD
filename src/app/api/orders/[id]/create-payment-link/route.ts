@@ -105,20 +105,26 @@ export async function POST(
       phone:      (customer?.טלפון    || '').trim(),
     };
 
-    // We carry the CRM order total via fee_lines, NOT line_items.
+    // ──────────────────────────────────────────────────────────────────────
+    // SOURCE-OF-TRUTH RULE: the CRM is the only authority for the payable
+    // amount. `amount` already includes VAT, discounts, delivery fees, and
+    // customer-tier pricing — all computed by the CRM and stored on
+    // הזמנות.סך_הכל_לתשלום. WooCommerce must NOT recompute any of these.
     //
-    // line_items in the WC REST API requires either product_id or sku for
-    // every line; sending name+price alone returns
-    //   woocommerce_rest_required_product_reference / "נדרש ID או מק\"ט של המוצר"
-    // We don't have a real WC product mirror — the CRM is the source of
-    // truth for what was ordered, WC is just a payment shell. fee_lines
-    // is the documented escape hatch: a flat-amount line with a name,
-    // no product reference required.
+    // To prevent WC from touching the total we:
+    //   • carry the amount via fee_lines (no product → no product-side tax
+    //     rules apply) with tax_status='none' and explicit zero tax fields
+    //   • DO NOT send any coupon_lines (so WC can't apply discounts)
+    //   • DO NOT enable WC's tax-calculation flags on the order
+    //   • Mirror the same tax_status='none' on the line_items fallback
     //
-    // Optional fallback: if WOOCOMMERCE_PAYMENT_PRODUCT_ID is set in the
-    // env, use a real product line_item instead. Useful if the storefront
-    // requires every order to carry a product (some plugins enforce this).
+    // Optional fallback: if WOOCOMMERCE_PAYMENT_PRODUCT_ID is set, we use
+    // a real WC product line_item instead. Useful if the storefront has
+    // plugins that enforce a product on every order. Same tax-disabling
+    // rules apply on this path.
+    // ──────────────────────────────────────────────────────────────────────
     const paymentProductId = Number(process.env.WOOCOMMERCE_PAYMENT_PRODUCT_ID || 0);
+    const amountStr = amount.toFixed(2);
 
     const wcBody: Record<string, unknown> = {
       status:               'pending',
@@ -127,9 +133,17 @@ export async function POST(
       payment_method:       'payplus-payment-gateway',
       payment_method_title: 'PayPlus',
       billing,
+      // No coupons, no discounts — explicit zeros tell WC not to compute.
+      discount_total:    '0.00',
+      discount_tax:      '0.00',
+      shipping_total:    '0.00',
+      shipping_tax:      '0.00',
       meta_data: [
         { key: 'crm_order_id',     value: orderId },
         { key: 'crm_order_number', value: String(order.מספר_הזמנה || '') },
+        // Audit marker — anyone inspecting the WC order can see exactly
+        // which CRM-computed total we shipped. Useful when reconciling.
+        { key: 'crm_total_charged', value: amountStr },
       ],
     };
 
@@ -138,16 +152,22 @@ export async function POST(
         {
           product_id: paymentProductId,
           quantity:   1,
-          subtotal:   amount.toFixed(2),
-          total:      amount.toFixed(2),
+          subtotal:     amountStr,
+          total:        amountStr,
+          subtotal_tax: '0.00',
+          total_tax:    '0.00',
+          tax_status:  'none',
+          tax_class:   '',
         },
       ];
     } else {
       wcBody.fee_lines = [
         {
-          name:       `תשלום עבור הזמנה ${order.מספר_הזמנה || orderId}`,
-          total:      amount.toFixed(2),
-          tax_status: 'none',
+          name:        `תשלום עבור הזמנה ${order.מספר_הזמנה || orderId}`,
+          total:        amountStr,
+          total_tax:   '0.00',
+          tax_status:  'none',
+          tax_class:   '',
         },
       ];
     }
@@ -212,8 +232,29 @@ export async function POST(
     const payment_url = wcJson.payment_url as string | undefined;
     const wcOrderId   = wcJson.id          as number | string | undefined;
     const wcOrderKey  = wcJson.order_key   as string | undefined;
+    const wcTotal     = wcJson.total       as string | number | undefined;
 
-    console.log('[WC payment-link] success — wc id:', wcOrderId, '| payment_url:', payment_url);
+    // CRM-vs-WC total cross-check. If WC returned a total that doesn't match
+    // what we sent, some store-level setting (taxes, fees, plugins) is
+    // mutating the amount silently — the customer would be charged the
+    // wrong number. We log loudly so it shows up in Vercel function logs;
+    // the operator can then audit the WC side. We DO NOT block the flow
+    // on a mismatch (would leave the customer with no way to pay), but we
+    // do attach a `total_mismatch` field to the response so the UI can
+    // surface a warning later if we want.
+    const wcTotalNum    = typeof wcTotal === 'number' ? wcTotal : Number(String(wcTotal ?? '').replace(/[^0-9.\-]/g, ''));
+    const totalMismatch = Number.isFinite(wcTotalNum) && Math.abs(wcTotalNum - amount) > 0.005;
+    if (totalMismatch) {
+      console.error(
+        '[WC payment-link] ⚠ TOTAL MISMATCH — CRM amount:', amount,
+        '| WC returned total:', wcTotal,
+        '| order:', orderId,
+        '| wc_id:', wcOrderId,
+        '— check WooCommerce tax / fee plugins; the customer may be charged the wrong amount.',
+      );
+    } else {
+      console.log('[WC payment-link] success — wc id:', wcOrderId, '| total matches CRM:', amount, '| payment_url:', payment_url);
+    }
 
     if (!payment_url) {
       return NextResponse.json(
@@ -240,7 +281,14 @@ export async function POST(
       הערות:        wcOrderId ? `wc_order_id:${wcOrderId}${wcOrderKey ? ` · key:${wcOrderKey}` : ''}` : null,
     });
 
-    return NextResponse.json({ ok: true, payment_url, wc_order_id: wcOrderId });
+    return NextResponse.json({
+      ok: true,
+      payment_url,
+      wc_order_id: wcOrderId,
+      crm_amount:  amount,
+      wc_total:    wcTotal ?? null,
+      ...(totalMismatch ? { total_mismatch: true } : {}),
+    });
   } catch (err) {
     console.error('[WC payment-link] unexpected error:', err);
     return NextResponse.json({ error: String(err) }, { status: 500 });
