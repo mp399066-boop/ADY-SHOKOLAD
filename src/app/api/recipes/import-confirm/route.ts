@@ -71,15 +71,26 @@ export async function POST(req: NextRequest) {
       rawMaterialsReused += 1;
       continue;
     }
-    // Create. NEVER include price (per spec: no financial fields on auto-created
+    // Create. Schema has several NOT NULL columns with table-level DEFAULTs
+    // (כמות_במלאי DEFAULT 0, יחידת_מידה DEFAULT 'ק"ג', סף_מלאי_נמוך DEFAULT 0,
+    // סף_מלאי_קריטי DEFAULT 0). DB defaults only apply when a column is OMITTED
+    // from the INSERT — sending an explicit `null` still trips the NOT NULL
+    // check. So we coerce every NOT NULL field to a safe value here.
+    //
+    // NEVER include price (per spec: no financial fields on auto-created
     // raw materials). Auto-created note tells the operator where it came from.
+    const initialStock = Number.isFinite(Number(raw.initialStock)) ? Number(raw.initialStock) : 0;
+    const minThreshold = Number.isFinite(Number(raw.minThreshold)) ? Number(raw.minThreshold) : 0;
+    const unit         = (raw.unit && raw.unit.trim()) || 'ק"ג';
+
     const { data: created, error: createErr } = await supabase
       .from('מלאי_חומרי_גלם')
       .insert({
         שם_חומר_גלם:    raw.name,
-        כמות_במלאי:     raw.initialStock || 0,
-        יחידת_מידה:     raw.unit || '',
-        סף_מלאי_נמוך:   raw.minThreshold ?? null,
+        כמות_במלאי:     initialStock,
+        יחידת_מידה:     unit,
+        סף_מלאי_נמוך:   minThreshold,
+        סף_מלאי_קריטי:  0,
         הערות:          raw.notes,
       })
       .select('id')

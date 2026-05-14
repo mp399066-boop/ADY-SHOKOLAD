@@ -542,7 +542,10 @@ function RecipeImportFlow() {
           {/* Raw materials table */}
           {preview.rawMaterials.length > 0 && (
             <Card>
-              <h3 className="text-sm font-semibold mb-3" style={{ color: '#2B1A10' }}>חומרי גלם ({preview.rawMaterials.length})</h3>
+              <h3 className="text-sm font-semibold mb-2" style={{ color: '#2B1A10' }}>חומרי גלם ({preview.rawMaterials.length})</h3>
+              <p className="text-[11px] mb-3" style={{ color: '#7B604D' }}>
+                חומרי גלם ללא כמות התחלתית ייווצרו במלאי עם כמות 0.
+              </p>
               <div className="overflow-x-auto max-h-80 overflow-y-auto">
                 <table className="w-full text-xs border-collapse" dir="rtl">
                   <thead>
@@ -556,8 +559,8 @@ function RecipeImportFlow() {
                     {preview.rawMaterials.map((r, i) => (
                       <tr key={i} style={{ backgroundColor: i % 2 === 0 ? '#FFFFFF' : '#FBF7F2' }}>
                         <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>{r.name}</td>
-                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>{r.unit || '—'}</td>
-                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>{r.initialStock || '—'}</td>
+                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>{r.unit || 'ק"ג'}</td>
+                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>{Number.isFinite(Number(r.initialStock)) ? Number(r.initialStock) : 0}</td>
                         <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE' }}>{rawStatusBadge(r.status)}</td>
                         <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#92400E' }}>{r.warnings.join(' | ')}</td>
                       </tr>
