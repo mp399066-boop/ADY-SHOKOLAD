@@ -51,7 +51,7 @@ export interface CourierNotificationOptions extends CourierDeliveryDetails {
 }
 
 export const COURIER_EMAIL_SUBJECT       = 'משלוח חדש מעדי תכשיט שוקולד';
-export const COURIER_EMAIL_BUTTON_LABEL  = 'פתיחת פרטי משלוח וסימון נמסר';
+export const COURIER_EMAIL_BUTTON_LABEL  = 'סמן נמסר';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -203,8 +203,7 @@ export function buildCourierDeliveryEmailHtml(opts: CourierNotificationOptions):
         <!-- Intro -->
         <tr><td style="background-color:#FFFDF9;padding:20px 24px 4px;border-right:1px solid #E8DED2;border-left:1px solid #E8DED2">
           <p style="margin:0;font-size:14px;line-height:1.55;color:#3A2A1A">
-            פרטי המשלוח מופיעים כאן למטה.<br>
-            לאחר המסירה יש לפתוח את הקישור ולסמן "נמסר".
+            פרטי המשלוח מופיעים כאן למטה.
           </p>
         </td></tr>
 
@@ -228,14 +227,13 @@ export function buildCourierDeliveryEmailHtml(opts: CourierNotificationOptions):
             </td></tr>
           </table>
           <div style="font-size:11px;color:#7B604D;margin-top:4px">
-            קישור ישיר:<br>
-            <a href="${escapeAttr(opts.deliveryUpdateUrl)}" style="color:#5B3926;text-decoration:underline;word-break:break-all" target="_blank" rel="noopener noreferrer">${escapeText(opts.deliveryUpdateUrl)}</a>
+            לאחר המסירה, לחצו על הכפתור כדי לעדכן את המערכת.
           </div>
         </td></tr>
 
         <!-- Footer -->
         <tr><td style="background-color:#FDFAF5;border:1px solid #E8DED2;border-top:none;border-radius:0 0 14px 14px;padding:14px 24px;text-align:center">
-          <div style="font-size:11px;color:#A89882">קישור פרטי לשליח · אין צורך בסיסמה</div>
+          <div style="font-size:11px;color:#A89882">אין צורך בסיסמה</div>
         </td></tr>
 
       </table>
