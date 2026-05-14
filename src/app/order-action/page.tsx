@@ -36,8 +36,8 @@ function messageFor(result: Awaited<ReturnType<typeof performEmployeeReportActio
   }
   if (result.action === 'acknowledged') {
     return {
-      title: 'ההזמנה סומנה כהתקבלה',
-      text: 'תודה, העדכון נשמר במערכת.',
+      title: 'ההזמנה סומנה כבהכנה',
+      text: 'תודה, סטטוס ההזמנה עודכן במערכת.',
       tone: 'success' as const,
     };
   }
