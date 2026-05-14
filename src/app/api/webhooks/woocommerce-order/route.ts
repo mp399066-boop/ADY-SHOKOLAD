@@ -110,7 +110,115 @@ export async function POST(req: Request) {
     const supabase = createAdminClient();
     const warnings: string[] = [];
 
-    // ── 1. Idempotency ──────────────────────────────────────────────────────
+    // ── 1a. Is this our own CRM-originated WC mirror? ───────────────────────
+    // /api/orders/[id]/create-payment-link attaches meta_data.crm_order_id
+    // to every WC order it creates. When PayPlus completes and WC fires
+    // the webhook back, we MUST recognize the event as "payment update
+    // for an existing CRM order" — not as a new website order — or we
+    // duplicate the row in הזמנות.
+    type WcMeta = { key?: string; value?: unknown };
+    const wcMeta = (wc.meta_data ?? []) as WcMeta[];
+    const crmOrderIdFromMeta = (wcMeta.find(m => m.key === 'crm_order_id')?.value ?? null) as string | null;
+
+    if (crmOrderIdFromMeta) {
+      console.log('[wc-webhook] SOURCE = CRM payment callback | crm_order_id:', crmOrderIdFromMeta, '| wc_order_id:', wcOrderId, '| wc_status:', wc.status);
+
+      const { data: crmOrder, error: crmErr } = await supabase
+        .from('הזמנות')
+        .select('id, מספר_הזמנה, סטטוס_תשלום, סוג_הזמנה')
+        .eq('id', crmOrderIdFromMeta)
+        .maybeSingle();
+
+      if (crmErr || !crmOrder) {
+        // CRM order was deleted between our create-payment-link call and
+        // this webhook. Refuse to create a stand-in row — that would be a
+        // ghost order. Log loudly and 200-OK so WC doesn't retry forever.
+        console.error('[wc-webhook] CRM order from meta not found — refusing to create duplicate. crm_order_id:', crmOrderIdFromMeta, '| err:', crmErr?.message);
+        return Response.json({ success: true, skipped: true, reason: 'crm_order_not_found', crm_order_id: crmOrderIdFromMeta });
+      }
+
+      const isPaidNow = PAID_STATUSES.has((wc.status as string) ?? '');
+      const wasPaid   = crmOrder.סטטוס_תשלום === 'שולם';
+      const grandTotal = parseFloat((wc.total as string) ?? '0') || 0;
+
+      // Idempotent: if already paid, just acknowledge and skip the writes.
+      if (wasPaid) {
+        console.log('[wc-webhook] CRM order already שולם — no-op. crm_order_id:', crmOrderIdFromMeta);
+        return Response.json({ success: true, already_paid: true, crm_order_id: crmOrderIdFromMeta });
+      }
+
+      if (isPaidNow) {
+        // Flip the order's payment status. We mirror the same column the
+        // operator's manual mark-paid would write to. No separate field
+        // for wc_order_id on הזמנות — record it in the תשלומים row +
+        // activity log so audit can trace it.
+        const { error: updErr } = await supabase
+          .from('הזמנות')
+          .update({ סטטוס_תשלום: 'שולם', תאריך_עדכון: new Date().toISOString() })
+          .eq('id', crmOrderIdFromMeta);
+        if (updErr) {
+          console.error('[wc-webhook] CRM order paid-flip failed:', updErr.message);
+          return Response.json({ success: true, error: 'paid_flip_failed', detail: updErr.message });
+        }
+
+        // Update the existing pending תשלומים row inserted by
+        // create-payment-link. Best-effort — failure is logged but
+        // doesn't roll back the order flip.
+        const { error: payRowErr } = await supabase
+          .from('תשלומים')
+          .update({
+            סטטוס_תשלום: 'שולם',
+            תאריך_תשלום: new Date().toISOString(),
+            הערות:        `wc_order_id:${wcOrderId} · paid via WC webhook`,
+          })
+          .eq('הזמנה_id', crmOrderIdFromMeta)
+          .eq('אמצעי_תשלום', 'WooCommerce')
+          .eq('סטטוס_תשלום', 'ממתין');
+        if (payRowErr) console.warn('[wc-webhook] תשלומים row update failed (continuing):', payRowErr.message);
+
+        // Inventory deduction — same helper the regular WC path uses.
+        // Idempotent (checks תנועות_מלאי for a prior 'יציאה' on this order).
+        await deductOrderInventory(supabase, crmOrderIdFromMeta);
+
+        void logActivity({
+          actor:       WEBHOOK_ACTOR_WC,
+          module:      'finance',
+          action:      'crm_order_paid_via_woocommerce',
+          status:      'success',
+          entityType:  'order',
+          entityId:    crmOrderIdFromMeta,
+          entityLabel: crmOrder.מספר_הזמנה || `WC #${wcOrderId}`,
+          title:       'הזמנה שולמה דרך WooCommerce/PayPlus',
+          description: `WC #${wcOrderId} השלים תשלום — סטטוס_תשלום עודכן ל"שולם".`,
+          metadata:    { wc_order_id: wcOrderId, wc_total: grandTotal, source: 'wc_webhook_crm_callback' },
+          request:     req,
+        });
+
+        console.log('[wc-webhook] CRM order updated to שולם. crm_order_id:', crmOrderIdFromMeta, '| wc_order_id:', wcOrderId, '| total:', grandTotal);
+        return Response.json({
+          success: true,
+          updated_crm_order: true,
+          crm_order_id: crmOrderIdFromMeta,
+          wc_order_id: wcOrderId,
+        });
+      }
+
+      // Non-paid status (pending / on-hold / cancelled). Just log and
+      // 200-OK — we don't write anything. The operator's manual mark-paid
+      // path stays the source of truth for non-success transitions.
+      console.log('[wc-webhook] CRM order callback with non-paid status — no DB write. wc_status:', wc.status);
+      return Response.json({
+        success: true,
+        skipped: true,
+        reason: 'crm_callback_non_paid_status',
+        crm_order_id: crmOrderIdFromMeta,
+        wc_status: wc.status,
+      });
+    }
+
+    console.log('[wc-webhook] SOURCE = website (no crm_order_id in meta_data) | wc_order_id:', wcOrderId);
+
+    // ── 1b. Idempotency for true website orders ─────────────────────────────
     console.log('[wc-webhook] checking duplicate for sourceKey:', sourceKey);
     const { data: existing, error: dupErr } = await supabase
       .from('הזמנות')
