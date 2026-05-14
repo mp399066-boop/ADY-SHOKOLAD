@@ -195,6 +195,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'ישות ושורות הן חובה' }, { status: 400 });
   }
 
+  // Recipes are NOT a flat single-sheet import — refuse and point the
+  // caller at the multi-sheet flow. This is a safety net: the UI already
+  // routes 'מתכונים' to /api/recipes/import-preview + /api/recipes/import-confirm.
+  if (entity === 'מתכונים') {
+    return NextResponse.json({
+      error: 'ייבוא מתכונים מצריך קובץ Excel רב־גיליונות (מתכונים, רכיבי מתכון, וחומרי גלם אופציונלי). השתמשו בתהליך ייבוא המתכונים בדף ייבוא נתונים.',
+    }, { status: 400 });
+  }
+
   // Special handler: finished-product stock — match existing products by name and
   // update כמות_במלאי. Does NOT insert new products.
   if (entity === 'מלאי מוצרים מוגמרים') {

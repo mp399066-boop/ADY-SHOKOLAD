@@ -136,6 +136,477 @@ function applyMapping(row: ParsedRow, mapping: Record<string, string>): ParsedRo
   return out;
 }
 
+// ─── Recipe (multi-sheet) import flow ─────────────────────────────────────
+// Recipes can't ride the generic flat-table flow — the workbook has 3
+// sheets (מתכונים / רכיבי מתכון / חומרי גלם) that have to be parsed
+// together, validated cross-sheet, and persisted in dependency order.
+// When entity === 'מתכונים' the GeneralImportTab swaps in this component
+// instead of the file-picker / column-mapping UI.
+
+interface RecipePreviewRecipe {
+  rowNumber: number;
+  code: string;
+  name: string;
+  yieldQty: number;
+  yieldUnit: string;
+  status: 'new' | 'update' | 'error';
+  errors: string[];
+}
+interface RecipePreviewIngredient {
+  rowNumber: number;
+  recipeCode: string;
+  rawName: string;
+  qty: number;
+  unit: string;
+  status: 'ok' | 'error';
+  errors: string[];
+}
+interface RecipePreviewRaw {
+  name: string;
+  unit: string;
+  initialStock: number;
+  status: 'new' | 'existing' | 'updated' | 'warning';
+  warnings: string[];
+}
+interface RecipePreviewError { sheet: string; rowNumber: number | null; field: string | null; message: string; }
+interface RecipePreviewWarning { sheet: string; rowNumber: number | null; message: string; }
+interface RecipePreviewSummary {
+  totalRecipes: number; newRecipes: number; updatedRecipes: number; erroredRecipes: number;
+  totalIngredients: number; erroredIngredients: number;
+  totalRawMaterials: number; newRawMaterials: number; existingRawMaterials: number; warningRawMaterials: number;
+  errors: number; warnings: number; canImport: boolean;
+}
+interface RecipePreviewResponse {
+  recipes:      RecipePreviewRecipe[];
+  ingredients:  RecipePreviewIngredient[];
+  rawMaterials: RecipePreviewRaw[];
+  errors:       RecipePreviewError[];
+  warnings:     RecipePreviewWarning[];
+  summary:      RecipePreviewSummary;
+  sheetsFound:  string[];
+}
+interface RecipeImportSummary {
+  recipesCreated: number; recipesUpdated: number; ingredientsImported: number;
+  rawMaterialsCreated: number; rawMaterialsReused: number; warningsCount: number;
+}
+
+function RecipeImportFlow() {
+  const [file, setFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<RecipePreviewResponse | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [result, setResult] = useState<RecipeImportSummary | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  // Visible runtime confirmation that this component is the one rendering.
+  // Logged once on mount to the browser console so the operator can prove
+  // the recipe flow (not the legacy generic flow) is active.
+  useEffect(() => {
+    // eslint-disable-next-line no-console
+    console.log('[RecipeImportFlow] mounted — multi-sheet recipe import active');
+  }, []);
+
+  const reset = () => {
+    setFile(null); setPreview(null); setResult(null);
+    if (fileRef.current) fileRef.current.value = '';
+  };
+
+  const handleFile = async (f: File) => {
+    if (!f.name.toLowerCase().match(/\.xlsx?$/)) {
+      toast.error('סוג קובץ לא נתמך. נדרש קובץ Excel (.xlsx)');
+      return;
+    }
+    setFile(f);
+    setPreview(null);
+    setResult(null);
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.append('file', f);
+      // eslint-disable-next-line no-console
+      console.log('[RecipeImportFlow] POST /api/recipes/import-preview — file:', f.name, f.size, 'bytes');
+      const res = await fetch('/api/recipes/import-preview', { method: 'POST', body: form });
+      const json = await res.json();
+      // eslint-disable-next-line no-console
+      console.log('[RecipeImportFlow] preview response — sheetsFound:', json?.sheetsFound, 'recipes:', json?.recipes?.length, 'ingredients:', json?.ingredients?.length, 'rawMaterials:', json?.rawMaterials?.length, 'errors:', json?.errors?.length);
+      if (!res.ok) { toast.error(json.error || 'שגיאה בקריאת הקובץ'); return; }
+      setPreview(json as RecipePreviewResponse);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[RecipeImportFlow] upload error:', err);
+      toast.error('שגיאה בהעלאת הקובץ');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleConfirm = async () => {
+    if (!file || !preview?.summary.canImport) return;
+    setImporting(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch('/api/recipes/import-confirm', { method: 'POST', body: form });
+      const json = await res.json();
+      if (!res.ok) { toast.error(json.error || 'שגיאה בייבוא'); return; }
+      setResult(json.summary as RecipeImportSummary);
+      toast.success('ייבוא מתכונים הושלם');
+    } catch {
+      toast.error('שגיאה בייבוא המתכונים');
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const recipeStatusBadge = (s: RecipePreviewRecipe['status']) => {
+    const map: Record<typeof s, { bg: string; fg: string; label: string }> = {
+      new:    { bg: '#DCFCE7', fg: '#166534', label: 'חדש' },
+      update: { bg: '#DBEAFE', fg: '#1E40AF', label: 'עדכון' },
+      error:  { bg: '#FEE2E2', fg: '#991B1B', label: 'שגיאה' },
+    };
+    const m = map[s];
+    return <span className="px-1.5 py-0.5 rounded text-xs font-medium" style={{ backgroundColor: m.bg, color: m.fg }}>{m.label}</span>;
+  };
+
+  const rawStatusBadge = (s: RecipePreviewRaw['status']) => {
+    const map: Record<typeof s, { bg: string; fg: string; label: string }> = {
+      new:      { bg: '#DCFCE7', fg: '#166534', label: 'חדש' },
+      existing: { bg: '#E5E7EB', fg: '#374151', label: 'קיים' },
+      updated:  { bg: '#DBEAFE', fg: '#1E40AF', label: 'עדכון' },
+      warning:  { bg: '#FEF3C7', fg: '#92400E', label: 'אזהרה' },
+    };
+    const m = map[s];
+    return <span className="px-1.5 py-0.5 rounded text-xs font-medium" style={{ backgroundColor: m.bg, color: m.fg }}>{m.label}</span>;
+  };
+
+  // Result screen
+  if (result) {
+    return (
+      <Card>
+        <div className="flex flex-col items-center py-6 gap-4">
+          <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ backgroundColor: '#DCFCE7' }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#166534" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+          </div>
+          <h3 className="text-base font-semibold" style={{ color: '#2B1A10' }}>ייבוא מתכונים הושלם</h3>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+            <div className="p-3 rounded-lg text-center" style={{ backgroundColor: '#F0FDF4' }}>
+              <div className="text-2xl font-bold" style={{ color: '#166534' }}>{result.recipesCreated}</div>
+              <div className="text-xs" style={{ color: '#166534' }}>מתכונים נוצרו</div>
+            </div>
+            <div className="p-3 rounded-lg text-center" style={{ backgroundColor: '#EFF6FF' }}>
+              <div className="text-2xl font-bold" style={{ color: '#1E40AF' }}>{result.recipesUpdated}</div>
+              <div className="text-xs" style={{ color: '#1E40AF' }}>מתכונים עודכנו</div>
+            </div>
+            <div className="p-3 rounded-lg text-center" style={{ backgroundColor: '#FAF7F0' }}>
+              <div className="text-2xl font-bold" style={{ color: '#5C3410' }}>{result.ingredientsImported}</div>
+              <div className="text-xs" style={{ color: '#5C3410' }}>שורות רכיבים</div>
+            </div>
+            <div className="p-3 rounded-lg text-center" style={{ backgroundColor: '#FFF7ED' }}>
+              <div className="text-2xl font-bold" style={{ color: '#9A3412' }}>{result.rawMaterialsCreated}</div>
+              <div className="text-xs" style={{ color: '#9A3412' }}>חומרי גלם חדשים</div>
+            </div>
+            <div className="p-3 rounded-lg text-center" style={{ backgroundColor: '#F5F3FF' }}>
+              <div className="text-2xl font-bold" style={{ color: '#5B21B6' }}>{result.rawMaterialsReused}</div>
+              <div className="text-xs" style={{ color: '#5B21B6' }}>חומרי גלם קיימים</div>
+            </div>
+            {result.warningsCount > 0 && (
+              <div className="p-3 rounded-lg text-center" style={{ backgroundColor: '#FFFBEB' }}>
+                <div className="text-2xl font-bold" style={{ color: '#92400E' }}>{result.warningsCount}</div>
+                <div className="text-xs" style={{ color: '#92400E' }}>אזהרות</div>
+              </div>
+            )}
+          </div>
+          <Button type="button" variant="outline" onClick={reset}>ייבוא קובץ נוסף</Button>
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Instructions + template download */}
+      <Card>
+        <CardHeader>
+          <CardTitle>
+            <span className="inline-block ml-2 px-2 py-0.5 rounded text-[10px] align-middle font-medium" style={{ backgroundColor: '#DCFCE7', color: '#166534' }}>
+              ✓ תהליך רב־גיליונות פעיל
+            </span>
+            ייבוא מתכונים
+          </CardTitle>
+          <a
+            href="/api/recipes/import-template"
+            className="text-xs px-3 py-1.5 rounded-lg border font-medium"
+            style={{ borderColor: '#C7A46B', color: '#8B5E34', backgroundColor: '#FFFFFF' }}
+          >
+            הורדת תבנית מתכונים
+          </a>
+        </CardHeader>
+        <p className="text-xs mb-3 p-2 rounded" style={{ backgroundColor: '#EFF6FF', color: '#1E3A8A' }}>
+          ייבוא מתכונים קורא כמה גיליונות מהקובץ: <strong>מתכונים</strong>, <strong>רכיבי מתכון</strong>, וחומרי גלם אופציונלי.
+        </p>
+        <ul className="text-xs space-y-1" style={{ color: '#6B5744' }}>
+          <li>• מתכון מזוהה לפי <strong>קוד מתכון</strong> ייחודי. אם הקוד כבר קיים — המתכון יעודכן.</li>
+          <li>• <strong>עדכון מתכון קיים יחליף את רשימת הרכיבים שלו לפי הקובץ.</strong></li>
+          <li>• חומרי גלם נוצרים אוטומטית משמות הרכיבים — אין צורך להוסיף ידנית.</li>
+          <li>• הגיליונות "הוראות" ו-"רשימות" אינם נקראים — הם רק לעזרה במילוי התבנית.</li>
+          <li>• אם בקובץ יש שגיאות חוסמות — לא ניתן לייבא. אזהרות בלבד — אפשר לייבא.</li>
+        </ul>
+      </Card>
+
+      {/* Upload */}
+      {!preview && (
+        <Card>
+          <label
+            className="flex flex-col items-center justify-center gap-2 border-2 border-dashed rounded-lg p-10 cursor-pointer transition-colors"
+            style={{ borderColor: uploading ? '#C9A46A' : '#DDD0BE', backgroundColor: '#FBF7F2' }}
+          >
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#C9A46A" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            <span className="text-sm font-medium" style={{ color: '#5C3410' }}>
+              {uploading ? 'מעבד את הקובץ...' : 'לחץ לבחירת קובץ Excel'}
+            </span>
+            <span className="text-xs" style={{ color: '#8A7664' }}>.xlsx / .xls</span>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".xlsx,.xls"
+              className="hidden"
+              onChange={e => { if (e.target.files?.[0]) handleFile(e.target.files[0]); }}
+              disabled={uploading}
+            />
+          </label>
+        </Card>
+      )}
+
+      {/* Preview */}
+      {preview && (
+        <>
+          {/* Summary header + actions */}
+          <Card>
+            <CardHeader>
+              <CardTitle>תצוגה מקדימה — {file?.name}</CardTitle>
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={reset}>החלף קובץ</Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={!preview.summary.canImport || importing}
+                  loading={importing}
+                  onClick={handleConfirm}
+                >
+                  אישור וייבוא
+                </Button>
+              </div>
+            </CardHeader>
+            {/* Sheets-found diagnostic — proves the parser actually opened the
+                multi-sheet workbook and shows which sheets are being read vs
+                which (הוראות / רשימות) are intentionally ignored. */}
+            {preview.sheetsFound?.length > 0 && (
+              <div className="mb-3 text-xs p-2 rounded" style={{ backgroundColor: '#FAF7F0', color: '#5C3410' }}>
+                גיליונות שנמצאו בקובץ ({preview.sheetsFound.length}):{' '}
+                {preview.sheetsFound.map((s, i) => {
+                  const isRead = ['מתכונים', 'רכיבי מתכון', 'חומרי גלם'].some(x => s.replace(/\s+/g, ' ').trim() === x);
+                  return (
+                    <span
+                      key={i}
+                      className="inline-block mx-1 px-1.5 py-0.5 rounded text-[11px] font-medium"
+                      style={isRead
+                        ? { backgroundColor: '#DCFCE7', color: '#166534' }
+                        : { backgroundColor: '#E5E7EB', color: '#374151' }}
+                    >
+                      {s} {isRead ? '✓' : '(לא נקרא)'}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+              <div className="p-3 rounded-lg" style={{ backgroundColor: '#F0FDF4' }}>
+                <div className="text-xs" style={{ color: '#166534' }}>מתכונים</div>
+                <div className="text-base font-semibold" style={{ color: '#166534' }}>
+                  {preview.summary.totalRecipes}
+                  <span className="mr-2 text-xs font-normal">({preview.summary.newRecipes} חדשים, {preview.summary.updatedRecipes} עדכונים)</span>
+                </div>
+              </div>
+              <div className="p-3 rounded-lg" style={{ backgroundColor: '#FAF7F0' }}>
+                <div className="text-xs" style={{ color: '#5C3410' }}>שורות רכיבים</div>
+                <div className="text-base font-semibold" style={{ color: '#5C3410' }}>{preview.summary.totalIngredients}</div>
+              </div>
+              <div className="p-3 rounded-lg" style={{ backgroundColor: '#FFF7ED' }}>
+                <div className="text-xs" style={{ color: '#9A3412' }}>חומרי גלם</div>
+                <div className="text-base font-semibold" style={{ color: '#9A3412' }}>
+                  {preview.summary.totalRawMaterials}
+                  <span className="mr-2 text-xs font-normal">({preview.summary.newRawMaterials} חדשים, {preview.summary.existingRawMaterials} קיימים)</span>
+                </div>
+              </div>
+              <div className="p-3 rounded-lg" style={{ backgroundColor: preview.summary.errors > 0 ? '#FEF2F2' : '#F0FDF4' }}>
+                <div className="text-xs" style={{ color: preview.summary.errors > 0 ? '#B91C1C' : '#166534' }}>שגיאות / אזהרות</div>
+                <div className="text-base font-semibold" style={{ color: preview.summary.errors > 0 ? '#B91C1C' : '#166534' }}>
+                  {preview.summary.errors} / {preview.summary.warnings}
+                </div>
+              </div>
+            </div>
+            {preview.summary.updatedRecipes > 0 && (
+              <p className="text-xs mt-3 p-2 rounded" style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}>
+                <strong>שימו לב:</strong> עדכון מתכון קיים יחליף את רשימת הרכיבים שלו לפי הקובץ.
+              </p>
+            )}
+            {!preview.summary.canImport && (
+              <p className="text-xs mt-3 p-2 rounded" style={{ backgroundColor: '#FEE2E2', color: '#991B1B' }}>
+                לא ניתן לייבא — נמצאו שגיאות חוסמות. תקנו את הקובץ והעלו מחדש.
+              </p>
+            )}
+          </Card>
+
+          {/* Errors */}
+          {preview.errors.length > 0 && (
+            <Card>
+              <h3 className="text-sm font-semibold mb-3" style={{ color: '#B91C1C' }}>
+                שגיאות ({preview.errors.length})
+              </h3>
+              <div className="overflow-x-auto max-h-64 overflow-y-auto">
+                <table className="w-full text-xs border-collapse" dir="rtl">
+                  <thead>
+                    <tr style={{ backgroundColor: '#FEF2F2' }}>
+                      <th className="border px-2 py-1 text-right" style={{ borderColor: '#FECACA' }}>גיליון</th>
+                      <th className="border px-2 py-1 text-right" style={{ borderColor: '#FECACA' }}>שורה</th>
+                      <th className="border px-2 py-1 text-right" style={{ borderColor: '#FECACA' }}>שגיאה</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preview.errors.map((err, i) => (
+                      <tr key={i} style={{ backgroundColor: '#FFF5F5' }}>
+                        <td className="border px-2 py-1" style={{ borderColor: '#FECACA', color: '#7F1D1D' }}>{err.sheet || '—'}</td>
+                        <td className="border px-2 py-1" style={{ borderColor: '#FECACA', color: '#7F1D1D' }}>{err.rowNumber ?? '—'}</td>
+                        <td className="border px-2 py-1" style={{ borderColor: '#FECACA', color: '#B91C1C' }}>{err.message}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
+
+          {/* Warnings */}
+          {preview.warnings.length > 0 && (
+            <Card>
+              <h3 className="text-sm font-semibold mb-3" style={{ color: '#92400E' }}>
+                אזהרות ({preview.warnings.length}) — לא חוסמות ייבוא
+              </h3>
+              <div className="space-y-1 max-h-48 overflow-y-auto">
+                {preview.warnings.map((w, i) => (
+                  <div key={i} className="text-xs p-2 rounded" style={{ backgroundColor: '#FFFBEB', color: '#78350F' }}>
+                    [{w.sheet}{w.rowNumber ? ` · שורה ${w.rowNumber}` : ''}] {w.message}
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+
+          {/* Recipes table */}
+          {preview.recipes.length > 0 && (
+            <Card>
+              <h3 className="text-sm font-semibold mb-3" style={{ color: '#2B1A10' }}>מתכונים ({preview.recipes.length})</h3>
+              <div className="overflow-x-auto max-h-80 overflow-y-auto">
+                <table className="w-full text-xs border-collapse" dir="rtl">
+                  <thead>
+                    <tr style={{ backgroundColor: '#F5EFE6' }}>
+                      {['שורה', 'קוד', 'שם', 'כמות', 'יחידה', 'סטטוס', 'שגיאות'].map(h => (
+                        <th key={h} className="border px-2 py-1 text-right" style={{ borderColor: '#DDD0BE', color: '#5C3410' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preview.recipes.map((r, i) => (
+                      <tr key={i} style={{ backgroundColor: i % 2 === 0 ? '#FFFFFF' : '#FBF7F2' }}>
+                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#6B5744' }}>{r.rowNumber}</td>
+                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>{r.code}</td>
+                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>{r.name}</td>
+                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>{r.yieldQty}</td>
+                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>{r.yieldUnit}</td>
+                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE' }}>{recipeStatusBadge(r.status)}</td>
+                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#B91C1C' }}>{r.errors.join(' | ')}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
+
+          {/* Raw materials table */}
+          {preview.rawMaterials.length > 0 && (
+            <Card>
+              <h3 className="text-sm font-semibold mb-3" style={{ color: '#2B1A10' }}>חומרי גלם ({preview.rawMaterials.length})</h3>
+              <div className="overflow-x-auto max-h-80 overflow-y-auto">
+                <table className="w-full text-xs border-collapse" dir="rtl">
+                  <thead>
+                    <tr style={{ backgroundColor: '#F5EFE6' }}>
+                      {['שם', 'יחידה', 'כמות התחלתית', 'סטטוס', 'אזהרות'].map(h => (
+                        <th key={h} className="border px-2 py-1 text-right" style={{ borderColor: '#DDD0BE', color: '#5C3410' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preview.rawMaterials.map((r, i) => (
+                      <tr key={i} style={{ backgroundColor: i % 2 === 0 ? '#FFFFFF' : '#FBF7F2' }}>
+                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>{r.name}</td>
+                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>{r.unit || '—'}</td>
+                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>{r.initialStock || '—'}</td>
+                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE' }}>{rawStatusBadge(r.status)}</td>
+                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#92400E' }}>{r.warnings.join(' | ')}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
+
+          {/* Ingredients table */}
+          {preview.ingredients.length > 0 && (
+            <Card>
+              <h3 className="text-sm font-semibold mb-3" style={{ color: '#2B1A10' }}>רכיבי מתכון ({preview.ingredients.length})</h3>
+              <div className="overflow-x-auto max-h-80 overflow-y-auto">
+                <table className="w-full text-xs border-collapse" dir="rtl">
+                  <thead>
+                    <tr style={{ backgroundColor: '#F5EFE6' }}>
+                      {['שורה', 'קוד מתכון', 'חומר גלם', 'כמות', 'יחידה', 'סטטוס'].map(h => (
+                        <th key={h} className="border px-2 py-1 text-right" style={{ borderColor: '#DDD0BE', color: '#5C3410' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preview.ingredients.map((ing, i) => (
+                      <tr key={i} style={{ backgroundColor: i % 2 === 0 ? '#FFFFFF' : '#FBF7F2' }}>
+                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#6B5744' }}>{ing.rowNumber}</td>
+                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>{ing.recipeCode}</td>
+                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>{ing.rawName}</td>
+                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>{ing.qty}</td>
+                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>{ing.unit}</td>
+                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE' }}>
+                          {ing.status === 'error'
+                            ? <span className="px-1.5 py-0.5 rounded text-xs font-medium" style={{ backgroundColor: '#FEE2E2', color: '#991B1B' }}>{ing.errors.join(' | ') || 'שגיאה'}</span>
+                            : <span className="px-1.5 py-0.5 rounded text-xs font-medium" style={{ backgroundColor: '#DCFCE7', color: '#166534' }}>תקין</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 // ─── General import tab ────────────────────────────────────────────────────
 
 type InventoryTarget = 'חומרי גלם' | 'מוצרים מוגמרים';
@@ -210,6 +681,8 @@ function GeneralImportTab() {
   };
 
   const handleEntityChange = (newEntity: EntityType) => {
+    // eslint-disable-next-line no-console
+    console.log('[import] selected entity:', newEntity, '— isRecipe?', newEntity === 'מתכונים');
     setEntity(newEntity);
     setResult(null);
     if (headers.length > 0) setColumnMapping(buildMapping(headers, ENTITY_TABLE[newEntity]));
@@ -276,20 +749,31 @@ function GeneralImportTab() {
           </Select>
           <div className="space-y-1">
             <label className="block text-sm font-medium" style={{ color: '#2B1A10' }}>קובץ</label>
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".csv,.xlsx,.xls,.json"
-              className="hidden"
-              onChange={e => { if (e.target.files?.[0]) handleFileChange(e.target.files[0]); }}
-            />
-            <button
-              onClick={() => fileRef.current?.click()}
-              className="w-full px-3 py-2 text-sm rounded-lg border text-right transition-colors"
-              style={{ borderColor: '#C7A46B', color: '#8B5E34', backgroundColor: '#FFFFFF' }}
-            >
-              {fileName || 'בחר קובץ CSV / XLSX / JSON...'}
-            </button>
+            {entity === 'מתכונים' ? (
+              <div
+                className="w-full px-3 py-2 text-xs rounded-lg border text-right"
+                style={{ borderColor: '#E7D2A6', color: '#6B4A2D', backgroundColor: '#FAF7F0' }}
+              >
+                ייבוא מתכונים משתמש בתהליך רב־גיליונות נפרד — ראו למטה
+              </div>
+            ) : (
+              <>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept=".csv,.xlsx,.xls,.json"
+                  className="hidden"
+                  onChange={e => { if (e.target.files?.[0]) handleFileChange(e.target.files[0]); }}
+                />
+                <button
+                  onClick={() => fileRef.current?.click()}
+                  className="w-full px-3 py-2 text-sm rounded-lg border text-right transition-colors"
+                  style={{ borderColor: '#C7A46B', color: '#8B5E34', backgroundColor: '#FFFFFF' }}
+                >
+                  {fileName || 'בחר קובץ CSV / XLSX / JSON...'}
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -321,11 +805,15 @@ function GeneralImportTab() {
           </div>
         )}
         <div className="p-3 rounded-lg text-xs" style={{ backgroundColor: '#FAF7F0', color: '#6B4A2D' }}>
-          המערכת מזהה סוג הנתונים ומפה עמודות אוטומטית — אין צורך בהגדרה ידנית
+          {entity === 'מתכונים'
+            ? 'ייבוא מתכונים מצריך קובץ Excel רב־גיליונות (מתכונים, רכיבי מתכון, חומרי גלם). השתמשו בתבנית למטה.'
+            : 'המערכת מזהה סוג הנתונים ומפה עמודות אוטומטית — אין צורך בהגדרה ידנית'}
         </div>
       </Card>
 
-      {headers.length > 0 && (
+      {entity === 'מתכונים' && <RecipeImportFlow />}
+
+      {entity !== 'מתכונים' && headers.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>מיפוי עמודות אוטומטי</CardTitle>
@@ -427,7 +915,7 @@ function GeneralImportTab() {
         </Card>
       )}
 
-      {previewRows.length === 0 && !result && (
+      {entity !== 'מתכונים' && previewRows.length === 0 && !result && (
         <Card>
           <CardHeader><CardTitle>הוראות ייבוא</CardTitle></CardHeader>
           <div className="grid grid-cols-3 gap-4 text-sm" style={{ color: '#6B4A2D' }}>
