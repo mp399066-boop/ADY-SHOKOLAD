@@ -148,6 +148,40 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+  // ── Sync delivery row when delivery-relevant order fields change ─────
+  // Without this, editing an order's תאריך_אספקה / שעת_אספקה / address
+  // would leave the linked משלוחים row stale, causing the dashboard's
+  // "today" filter (which keys off משלוחים.תאריך_משלוח) to show the
+  // delivery on the WRONG day. We mirror only the fields that were
+  // actually present in the body (so a PATCH that only touched a
+  // status pill doesn't accidentally null out the delivery address).
+  const deliveryFieldMap: Array<[string, string]> = [
+    ['תאריך_אספקה',         'תאריך_משלוח'],
+    ['שעת_אספקה',           'שעת_משלוח'],
+    ['כתובת_מקבל_ההזמנה',   'כתובת'],
+    ['עיר',                  'עיר'],
+    ['הוראות_משלוח',        'הוראות_משלוח'],
+  ];
+  const deliveryUpdate: Record<string, unknown> = {};
+  for (const [orderField, deliveryField] of deliveryFieldMap) {
+    if (Object.prototype.hasOwnProperty.call(body, orderField)) {
+      deliveryUpdate[deliveryField] = body[orderField];
+    }
+  }
+  if (Object.keys(deliveryUpdate).length > 0) {
+    const { error: syncErr } = await supabase
+      .from('משלוחים')
+      .update(deliveryUpdate)
+      .eq('הזמנה_id', params.id);
+    if (syncErr) {
+      // Soft fail — the order update already succeeded; we don't want a
+      // sync glitch on the delivery row to look like an order-edit error.
+      console.error('[order PATCH] delivery row sync failed (continuing):', syncErr.message, '| order:', params.id, '| fields:', Object.keys(deliveryUpdate));
+    } else {
+      console.log('[order PATCH] synced delivery row — order:', params.id, '| fields:', Object.keys(deliveryUpdate));
+    }
+  }
+
   // ── Activity log: status transitions ─────────────────────────────────
   // Two separate rows when both fields move in one PATCH (each is a
   // distinct operator decision). Skipped silently when nothing changed.

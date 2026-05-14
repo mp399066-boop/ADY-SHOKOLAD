@@ -262,7 +262,14 @@ export async function POST(req: NextRequest) {
       if (deliveryErr) {
         console.error('[create-full] delivery insert failed:', deliveryErr.message);
       } else {
-        console.log('[create-full] delivery created. order:', order!.id, '| delivery:', createdDelivery?.id);
+        console.log(
+          '[create-full] delivery created.',
+          'order:',         order!.id,
+          '| delivery:',    createdDelivery?.id,
+          '| date:',        order!.תאריך_אספקה || null,
+          '| time:',        order!.שעת_אספקה   || null,
+          '| status: ממתין',
+        );
       }
     }
   }

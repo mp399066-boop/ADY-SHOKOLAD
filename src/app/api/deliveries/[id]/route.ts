@@ -91,7 +91,13 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
       deliveryId = created.id;
       wasCreated = true;
-      console.log('[delivery PATCH] auto-created delivery, new id:', deliveryId);
+      console.log(
+        '[delivery PATCH] auto-created delivery.',
+        'order:',     orderId,
+        '| delivery:', deliveryId,
+        '| date:',     order.תאריך_אספקה ?? null,
+        '| status: ממתין',
+      );
     }
   }
 

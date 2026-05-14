@@ -179,7 +179,27 @@ export async function POST(req: NextRequest) {
   }
 
   const { data, error } = await supabase.from('משלוחים').insert(body).select().single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  console.log('[deliveries POST] created delivery id', data?.id, 'for order', body.הזמנה_id);
+  if (error) {
+    // The UNIQUE constraint added in migration 030 surfaces here when
+    // two near-simultaneous POSTs slip past the maybeSingle dedup above.
+    // We turn that into a clean "already exists" return instead of a 500.
+    if (error.code === '23505') {
+      const { data: existing } = await supabase
+        .from('משלוחים')
+        .select('*')
+        .eq('הזמנה_id', body.הזמנה_id)
+        .single();
+      console.log('[deliveries POST] race-loss — UNIQUE rejected; returning existing for order', body.הזמנה_id);
+      return NextResponse.json({ data: existing, deduped: true }, { status: 200 });
+    }
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  console.log(
+    '[deliveries POST] created delivery.',
+    'order:',     body.הזמנה_id,
+    '| delivery:', data?.id,
+    '| date:',     data?.תאריך_משלוח ?? null,
+    '| status:',   data?.סטטוס_משלוח ?? null,
+  );
   return NextResponse.json({ data }, { status: 201 });
 }

@@ -125,18 +125,40 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   // mis-label the row as already-collected and skip the WhatsApp-on-pickup
   // trigger that lives in PATCH /api/deliveries/[id].
   if (משלוח) {
-    const { data: existingDelivery } = await supabase
-      .from('משלוחים').select('id').eq('הזמנה_id', orderId).single();
-    if (!existingDelivery) {
-      await supabase.from('משלוחים').insert({
-        הזמנה_id: orderId,
-        סטטוס_משלוח: 'ממתין',
-        תאריך_משלוח: הזמנה?.תאריך_אספקה || null,
-        שעת_משלוח: הזמנה?.שעת_אספקה || null,
-        כתובת: משלוח.כתובת || null,
-        עיר: משלוח.עיר || null,
-        הוראות_משלוח: משלוח.הוראות_משלוח || null,
-      });
+    // maybeSingle() — `single()` errors on both zero rows AND multi rows,
+    // which used to make `existingDelivery` falsy in the multi-row case
+    // and let us insert *yet another* duplicate. maybeSingle() is null
+    // on zero rows (clean insert) and errors only on multi (we bail).
+    const { data: existingDelivery, error: existingErr } = await supabase
+      .from('משלוחים').select('id').eq('הזמנה_id', orderId).maybeSingle();
+    if (existingErr) {
+      console.warn('[finalize-draft] delivery dedup check failed (refusing to insert):', existingErr.message);
+    } else if (!existingDelivery) {
+      const { data: created, error: insErr } = await supabase
+        .from('משלוחים')
+        .insert({
+          הזמנה_id: orderId,
+          סטטוס_משלוח: 'ממתין',
+          תאריך_משלוח: הזמנה?.תאריך_אספקה || null,
+          שעת_משלוח: הזמנה?.שעת_אספקה || null,
+          כתובת: משלוח.כתובת || null,
+          עיר: משלוח.עיר || null,
+          הוראות_משלוח: משלוח.הוראות_משלוח || null,
+        })
+        .select('id')
+        .single();
+      if (insErr && insErr.code !== '23505') {
+        // 23505 = the new UNIQUE constraint won the race; safe to ignore.
+        console.error('[finalize-draft] delivery insert failed:', insErr.message);
+      } else if (created) {
+        console.log(
+          '[finalize-draft] delivery created.',
+          'order:',     orderId,
+          '| delivery:', created.id,
+          '| date:',     הזמנה?.תאריך_אספקה ?? null,
+          '| status: ממתין',
+        );
+      }
     }
   }
 

@@ -1,0 +1,46 @@
+-- ============================================================================
+-- 030 — One delivery per order (UNIQUE constraint on משלוחים.הזמנה_id)
+-- ============================================================================
+-- The four code paths that insert into משלוחים all attempt a maybeSingle()
+-- "does a row already exist?" check before INSERT, but those checks have
+-- a race window. Two near-simultaneous requests (e.g. operator double-clicks
+-- "create order" + the PATCH path that auto-creates from a no-record-{id}
+-- placeholder) can both pass the check and both insert. The right fix is a
+-- DB-enforced uniqueness constraint.
+--
+-- ⚠️  IMPORTANT: this migration FAILS if any duplicate rows already exist.
+-- That is intentional — silent dedup would be data loss. Before running:
+--
+--   1. Inspect duplicates (read-only):
+--      SELECT הזמנה_id, count(*) AS dup_count
+--      FROM משלוחים
+--      GROUP BY הזמנה_id
+--      HAVING count(*) > 1
+--      ORDER BY dup_count DESC;
+--
+--   2. For each duplicated הזמנה_id, decide which row to keep. A reasonable
+--      "keep the most relevant row" rule:
+--      WITH ranked AS (
+--        SELECT
+--          id, הזמנה_id,
+--          ROW_NUMBER() OVER (
+--            PARTITION BY הזמנה_id
+--            ORDER BY
+--              CASE סטטוס_משלוח
+--                WHEN 'נמסר' THEN 0    -- already-delivered wins
+--                WHEN 'נאסף' THEN 1    -- in-transit beats pending
+--                ELSE 2
+--              END,
+--              delivered_at         DESC NULLS LAST,
+--              תאריך_עדכון          DESC NULLS LAST,
+--              תאריך_יצירה          DESC NULLS LAST
+--          ) AS rn
+--        FROM משלוחים
+--      )
+--      DELETE FROM משלוחים WHERE id IN (SELECT id FROM ranked WHERE rn > 1);
+--
+--   3. THEN run this migration to lock in the invariant.
+-- ============================================================================
+
+ALTER TABLE "משלוחים"
+  ADD CONSTRAINT "משלוחים_הזמנה_id_unique" UNIQUE ("הזמנה_id");
