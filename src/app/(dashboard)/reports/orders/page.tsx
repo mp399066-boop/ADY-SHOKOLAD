@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -26,6 +26,16 @@ const FILTER_OPTIONS: { key: 'urgentOnly' | 'unpaidOnly' | 'deliveryOnly' | 'pic
 function todayISO(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
 }
+
+// Lightweight email format check — same intent as the server's z.string().email().
+// We don't try to be RFC-perfect; we just guard against typos like "x@" or "foo".
+function isValidEmail(s: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim());
+}
+
+// Local-storage key for remembering the last recipient. Per-browser only —
+// no DB write — so multiple operators can keep their own defaults.
+const REPORT_RECIPIENT_LS_KEY = 'adi_orders_report_recipient_email';
 
 // Preview payload returned by /api/reports/orders/preview. The `html` field
 // is the actual report body the email/download will use — we iframe it in
@@ -57,6 +67,16 @@ export default function OrdersReportPage() {
   const [previewing, setPreviewing] = useState(false);   // currently fetching the preview
   const [preview, setPreview]       = useState<PreviewData | null>(null);
   const [acting, setActing]         = useState(false);   // download/send in flight from inside the modal
+
+  // Prefill from localStorage so the operator doesn't retype the recipient
+  // every visit. Run once on mount; SSR-safe via the typeof window guard.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const saved = window.localStorage.getItem(REPORT_RECIPIENT_LS_KEY);
+      if (saved) setRecipientEmail(saved);
+    } catch { /* localStorage unavailable — silent */ }
+  }, []);
 
   const toggleFilter = (k: keyof typeof filters) => {
     setFilters(prev => {
@@ -144,8 +164,13 @@ export default function OrdersReportPage() {
 
   // Confirmed send — same gate.
   const confirmSend = async () => {
-    if (!recipientEmail.trim()) {
-      toast.error('יש להזין כתובת מייל לנמען');
+    const email = recipientEmail.trim();
+    if (!email) {
+      toast.error('יש להזין כתובת מייל לשליחת הדוח.');
+      return;
+    }
+    if (!isValidEmail(email)) {
+      toast.error('כתובת המייל אינה תקינה.');
       return;
     }
     setActing(true);
@@ -153,10 +178,14 @@ export default function OrdersReportPage() {
       const res = await fetch('/api/reports/orders/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(buildBody({ recipientEmail: recipientEmail.trim() })),
+        body: JSON.stringify(buildBody({ recipientEmail: email })),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'שגיאה בשליחה');
+      // Persist successful recipient — only on send success so we never
+      // remember a typo'd address that the server rejected.
+      try { window.localStorage.setItem(REPORT_RECIPIENT_LS_KEY, email); }
+      catch { /* localStorage unavailable — silent */ }
       toast.success(`נשלח! ${json.summary?.total ?? 0} הזמנות בדוח`);
       setPreview(null);
     } catch (err) {
@@ -206,18 +235,6 @@ export default function OrdersReportPage() {
             />
           </div>
         )}
-      </Card>
-
-      <Card>
-        <CardHeader><CardTitle>נמען</CardTitle></CardHeader>
-        <Input
-          label="כתובת מייל"
-          type="email"
-          placeholder="example@adi-shokolad.co.il"
-          value={recipientEmail}
-          onChange={e => setRecipientEmail(e.target.value)}
-          required
-        />
       </Card>
 
       <Card>
@@ -325,25 +342,65 @@ export default function OrdersReportPage() {
               </div>
             )}
 
-            {/* Send-recipient hint when an email was typed on the page */}
-            {recipientEmail.trim() && (
-              <div className="text-xs" style={{ color: '#6B4A2D' }}>
-                שליחה תלך לכתובת: <span dir="ltr" className="font-semibold" style={{ color: '#8B5E34' }}>{recipientEmail.trim()}</span>
-              </div>
-            )}
+            {/* Recipient input — typed inside the modal so the operator can
+                pick the destination at send-time without an extra page-level
+                form. Prefilled from localStorage on mount; persisted on
+                successful send. The send button is gated on a valid email
+                format (plus server re-validates via z.string().email()). */}
+            {(() => {
+              const trimmedEmail = recipientEmail.trim();
+              const emailEmpty   = trimmedEmail.length === 0;
+              const emailInvalid = !emailEmpty && !isValidEmail(trimmedEmail);
+              const emailValid   = !emailEmpty && !emailInvalid;
+              return (
+                <div className="space-y-3 pt-2 border-t" style={{ borderColor: '#EDE0CE' }}>
+                  <div>
+                    <label
+                      htmlFor="report-recipient-email"
+                      className="block text-sm font-medium mb-1"
+                      style={{ color: '#3A2A1A' }}
+                    >
+                      שליחה אל
+                    </label>
+                    <input
+                      id="report-recipient-email"
+                      type="email"
+                      dir="ltr"
+                      value={recipientEmail}
+                      onChange={e => setRecipientEmail(e.target.value)}
+                      placeholder="הכניסי כתובת מייל לשליחת הדוח"
+                      autoComplete="email"
+                      className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
+                      style={{
+                        borderColor: emailInvalid ? '#D97A6A' : '#E7D2A6',
+                        color: '#2B1A10',
+                      }}
+                    />
+                    <p
+                      className="text-xs mt-1"
+                      style={{ color: emailInvalid ? '#B5564A' : '#9B7A5A' }}
+                    >
+                      {emailEmpty   && 'יש להזין כתובת מייל לשליחת הדוח.'}
+                      {emailInvalid && 'כתובת המייל אינה תקינה.'}
+                      {emailValid   && 'הדוח יישלח לכתובת זו.'}
+                    </p>
+                  </div>
 
-            {/* Action buttons */}
-            <div className="flex justify-end gap-2 flex-wrap pt-2 border-t" style={{ borderColor: '#EDE0CE' }}>
-              <Button onClick={() => setPreview(null)} variant="outline" disabled={acting}>
-                ביטול
-              </Button>
-              <Button onClick={confirmDownload} variant="outline" loading={acting}>
-                ⬇ הורידי דוח
-              </Button>
-              <Button onClick={confirmSend} loading={acting} disabled={!recipientEmail.trim()}>
-                ✉ שלחי במייל
-              </Button>
-            </div>
+                  {/* Action buttons */}
+                  <div className="flex justify-end gap-2 flex-wrap">
+                    <Button onClick={() => setPreview(null)} variant="outline" disabled={acting}>
+                      ביטול
+                    </Button>
+                    <Button onClick={confirmDownload} variant="outline" loading={acting}>
+                      ⬇ הורידי דוח
+                    </Button>
+                    <Button onClick={confirmSend} loading={acting} disabled={!emailValid || acting}>
+                      ✉ שלחי במייל
+                    </Button>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
       </Modal>
