@@ -72,6 +72,33 @@ function followUpsFor(intent: ParsedIntent): ClarifyOption[] {
         { label: `פטיפורים שהוזמנו ${r}`,        text: `איזה פטיפורים הוזמנו ${r}?` },
       ];
     }
+    case 'revenue_query':
+      return [
+        { label: 'ממתין לתשלום',         text: 'כמה כסף עדיין ממתין לתשלום?' },
+        { label: 'הכנסות החודש',          text: 'מה ההכנסות החודש?' },
+        { label: 'תני סיכום של היום',     text: 'תני לי סיכום של היום' },
+      ];
+    case 'customers_top':
+      return [
+        { label: 'תני סיכום של היום',     text: 'תני לי סיכום של היום' },
+        { label: 'מה במלאי נמוך?',         text: 'מה במלאי נמוך?' },
+      ];
+    case 'customer_lookup':
+      return [
+        { label: 'ההזמנות שלה',            text: `איזה הזמנות יש לה?` },
+        { label: 'הלקוחות הכי פעילים',    text: 'מי הלקוחות הכי פעילים?' },
+      ];
+    case 'deliveries_open':
+      return [
+        { label: 'תני סיכום של היום',     text: 'תני לי סיכום של היום' },
+        { label: 'הזמנות להיום',           text: 'איזה הזמנות יש היום?' },
+      ];
+    case 'daily_summary':
+      return [
+        { label: 'משלוחים פעילים',        text: 'אילו משלוחים עוד לא נמסרו?' },
+        { label: 'ממתין לתשלום',          text: 'כמה כסף עדיין ממתין לתשלום?' },
+        { label: 'מה במלאי נמוך?',         text: 'מה במלאי נמוך?' },
+      ];
     case 'download_orders_report':
     case 'send_orders_report':
     case 'request_report_action': {
@@ -682,6 +709,298 @@ async function actionRequestReportRange(): Promise<AssistantResponse> {
   };
 }
 
+// ────────────────────────────────────────────────────────────────────────
+// Additive read-only actions (May 2026) — revenue / customers / deliveries
+// / daily summary. All four reuse the existing Block types (stat / list /
+// insight / orders) so the AssistantDrawer renders them without any new
+// rendering code. None mutates DB.
+// ────────────────────────────────────────────────────────────────────────
+
+function fmtCurrency(n: number): string {
+  return `₪${n.toLocaleString('he-IL', { maximumFractionDigits: 0 })}`;
+}
+
+function fmtDateHe(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  } catch { return iso; }
+}
+
+function todayInTZ(): string {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
+}
+
+function startOfMonthISO(): string {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), 1).toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
+}
+
+function nDaysAgoISO(days: number): string {
+  const d = new Date(Date.now() - days * 86_400_000);
+  return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
+}
+
+async function actionRevenueQuery(scope: 'today' | 'week' | 'month' | 'pending'): Promise<AssistantResponse> {
+  const supabase = createAdminClient();
+  const today = todayInTZ();
+
+  // ── Pending receivables — sum of unpaid + partial outside cancelled/draft.
+  if (scope === 'pending') {
+    const { data, error } = await supabase
+      .from('הזמנות')
+      .select('סך_הכל_לתשלום')
+      .in('סטטוס_תשלום', ['ממתין', 'חלקי'])
+      .neq('סטטוס_הזמנה', 'בוטלה')
+      .neq('סטטוס_הזמנה', 'טיוטה')
+      .neq('סטטוס_הזמנה', 'הושלמה בהצלחה');
+    if (error) throw new Error(error.message);
+    const rows = (data || []) as Record<string, unknown>[];
+    const total = rows.reduce((s, r) => s + Number(r['סך_הכל_לתשלום'] || 0), 0);
+    return {
+      kind: 'answer',
+      blocks: [
+        { type: 'stat', label: 'ממתין לתשלום', value: fmtCurrency(total), sublabel: `${rows.length} הזמנות פתוחות`, emoji: '💰', tone: rows.length > 0 ? 'warn' : 'good' },
+      ],
+    };
+  }
+
+  // ── Income window — paid orders by delivery date.
+  const from =
+    scope === 'today' ? today
+    : scope === 'week' ? nDaysAgoISO(6)
+    : startOfMonthISO();
+  const scopeLabel = scope === 'today' ? 'היום' : scope === 'week' ? 'השבוע' : 'החודש';
+
+  const { data, error } = await supabase
+    .from('הזמנות')
+    .select('סך_הכל_לתשלום')
+    .eq('סטטוס_תשלום', 'שולם')
+    .gte('תאריך_אספקה', from)
+    .lte('תאריך_אספקה', today);
+  if (error) throw new Error(error.message);
+  const rows = (data || []) as Record<string, unknown>[];
+  const total = rows.reduce((s, r) => s + Number(r['סך_הכל_לתשלום'] || 0), 0);
+
+  if (rows.length === 0) {
+    return { kind: 'answer', blocks: [{ type: 'text', text: `לא מצאתי הכנסות ${scopeLabel} 😊` }] };
+  }
+  return {
+    kind: 'answer',
+    blocks: [
+      { type: 'stat', label: `הכנסות ${scopeLabel}`, value: fmtCurrency(total), sublabel: `${rows.length} הזמנות שולמו`, emoji: '💸', tone: 'good' },
+    ],
+  };
+}
+
+async function actionCustomersTop(scope: 'month' | 'all'): Promise<AssistantResponse> {
+  const supabase = createAdminClient();
+  // Default scope is "last 30 days". 'all' lifts the date filter for owner
+  // questions like "מי הלקוחות הכי טובים בכלל".
+  const from = scope === 'all' ? null : nDaysAgoISO(30);
+  let q = supabase
+    .from('הזמנות')
+    .select('לקוח_id, סך_הכל_לתשלום, לקוחות(שם_פרטי, שם_משפחה)')
+    .neq('סטטוס_הזמנה', 'בוטלה')
+    .neq('סטטוס_הזמנה', 'טיוטה');
+  if (from) q = q.gte('תאריך_אספקה', from);
+  const { data, error } = await q;
+  if (error) throw new Error(error.message);
+
+  type Row = { לקוח_id: string; סך_הכל_לתשלום: number | null; לקוחות?: { שם_פרטי?: string; שם_משפחה?: string } | null };
+  const rows = (data || []) as unknown as Row[];
+
+  const byCust = new Map<string, { id: string; name: string; orderCount: number; total: number }>();
+  for (const r of rows) {
+    if (!r.לקוח_id) continue;
+    const cur = byCust.get(r.לקוח_id) || {
+      id: r.לקוח_id,
+      name: r.לקוחות ? `${r.לקוחות.שם_פרטי || ''} ${r.לקוחות.שם_משפחה || ''}`.trim() : 'לקוח',
+      orderCount: 0,
+      total: 0,
+    };
+    cur.orderCount += 1;
+    cur.total += Number(r.סך_הכל_לתשלום || 0);
+    byCust.set(r.לקוח_id, cur);
+  }
+
+  const ranked = Array.from(byCust.values()).sort((a, b) => b.orderCount - a.orderCount || b.total - a.total).slice(0, 8);
+  if (ranked.length === 0) {
+    return { kind: 'answer', blocks: [{ type: 'text', text: 'לא מצאתי הזמנות בטווח שביקשת.' }] };
+  }
+  const items: ListItem[] = ranked.map((c, idx) => ({
+    label: `${idx + 1}. ${c.name || 'ללא שם'}`,
+    value: `${c.orderCount} הזמנות · ${fmtCurrency(c.total)}`,
+    tone: 'neutral',
+  }));
+  const scopeLabel = scope === 'all' ? 'בכלל' : 'ב-30 הימים האחרונים';
+  return {
+    kind: 'answer',
+    blocks: [
+      { type: 'list', title: `הלקוחות הכי פעילים ${scopeLabel}`, items },
+    ],
+  };
+}
+
+async function actionCustomerLookup(query: string): Promise<AssistantResponse> {
+  const q = sanitizeQuery(query);
+  if (q.length < 2) {
+    return { kind: 'clarify', message: 'את מי לחפש?', options: [{ label: 'הלקוחות הכי פעילים', text: 'מי הלקוחות הכי פעילים?' }] };
+  }
+  const supabase = createAdminClient();
+  const like = `%${q}%`;
+  const { data: customers } = await supabase
+    .from('לקוחות')
+    .select('id, שם_פרטי, שם_משפחה, טלפון, אימייל, סוג_לקוח')
+    .or(`שם_פרטי.ilike.${like},שם_משפחה.ilike.${like}`)
+    .limit(5);
+
+  type CustRow = { id: string; שם_פרטי?: string | null; שם_משפחה?: string | null; טלפון?: string | null; אימייל?: string | null; סוג_לקוח?: string | null };
+  const found = (customers || []) as CustRow[];
+  if (found.length === 0) {
+    return { kind: 'answer', blocks: [{ type: 'text', text: `לא מצאתי לקוחה בשם "${q}" 😊` }] };
+  }
+  if (found.length > 1) {
+    return {
+      kind: 'clarify',
+      message: 'מצאתי כמה לקוחות. את מי לפתוח?',
+      options: found.map(c => {
+        const name = `${c.שם_פרטי || ''} ${c.שם_משפחה || ''}`.trim() || 'ללא שם';
+        return { label: `${name}${c.טלפון ? ` · ${c.טלפון}` : ''}`, text: `פרטים על לקוחה ${name}` };
+      }),
+    };
+  }
+
+  const c = found[0];
+  const { data: orders } = await supabase
+    .from('הזמנות')
+    .select('מספר_הזמנה, תאריך_אספקה, סך_הכל_לתשלום, סטטוס_הזמנה, סטטוס_תשלום')
+    .eq('לקוח_id', c.id)
+    .order('תאריך_אספקה', { ascending: false });
+
+  type OrderRow = { מספר_הזמנה?: string; תאריך_אספקה?: string | null; סך_הכל_לתשלום?: number | null; סטטוס_הזמנה?: string; סטטוס_תשלום?: string };
+  const orderList = (orders || []) as OrderRow[];
+  const total = orderList.reduce((s, o) => s + Number(o.סך_הכל_לתשלום || 0), 0);
+  const lastOrder = orderList[0];
+  const fullName = `${c.שם_פרטי || ''} ${c.שם_משפחה || ''}`.trim() || 'לקוחה';
+
+  const blocks: Block[] = [
+    {
+      type: 'list',
+      title: fullName,
+      items: [
+        ...(c.טלפון  ? [{ label: 'טלפון', value: c.טלפון } as ListItem] : []),
+        ...(c.אימייל ? [{ label: 'אימייל', value: c.אימייל } as ListItem] : []),
+        { label: 'סוג לקוחה', value: c.סוג_לקוח || 'פרטי' },
+        { label: 'סך הכל הזמנות', value: String(orderList.length) },
+        { label: 'סך כל הסכומים', value: fmtCurrency(total) },
+        ...(lastOrder?.תאריך_אספקה ? [{ label: 'הזמנה אחרונה', value: `${fmtDateHe(lastOrder.תאריך_אספקה)} · ${fmtCurrency(Number(lastOrder.סך_הכל_לתשלום || 0))}` } as ListItem] : []),
+      ],
+    },
+  ];
+  return { kind: 'answer', blocks };
+}
+
+async function actionDeliveriesOpen(): Promise<AssistantResponse> {
+  const supabase = createAdminClient();
+  const { data, error } = await supabase
+    .from('משלוחים')
+    .select('id, סטטוס_משלוח, תאריך_משלוח, שעת_משלוח, כתובת, עיר, הזמנות!inner(מספר_הזמנה, שם_מקבל, סטטוס_הזמנה, לקוחות(שם_פרטי, שם_משפחה)), שליחים!courier_id(שם_שליח)')
+    .neq('סטטוס_משלוח', 'נמסר')
+    .neq('הזמנות.סטטוס_הזמנה', 'בוטלה')
+    .order('תאריך_משלוח', { ascending: true })
+    .limit(30);
+  if (error) throw new Error(error.message);
+
+  type DeliveryRow = {
+    id: string;
+    סטטוס_משלוח: string;
+    תאריך_משלוח: string | null;
+    שעת_משלוח: string | null;
+    כתובת: string | null;
+    עיר: string | null;
+    הזמנות?: { מספר_הזמנה?: string; שם_מקבל?: string | null; לקוחות?: { שם_פרטי?: string; שם_משפחה?: string } | null } | null;
+    שליחים?: { שם_שליח?: string } | null;
+  };
+  const rows = ((data || []) as unknown as DeliveryRow[]).filter(d => d.הזמנות != null);
+
+  if (rows.length === 0) {
+    return { kind: 'answer', blocks: [{ type: 'text', text: 'אין משלוחים פעילים כרגע 🟢' }] };
+  }
+
+  const items: ListItem[] = rows.slice(0, 15).map(d => {
+    const o = d.הזמנות;
+    const cust = o?.שם_מקבל
+      || (o?.לקוחות ? `${o.לקוחות.שם_פרטי || ''} ${o.לקוחות.שם_משפחה || ''}`.trim() : '')
+      || 'לקוח';
+    const addr = [d.כתובת, d.עיר].filter(Boolean).join(', ');
+    const courier = d.שליחים?.שם_שליח ? ` · שליח: ${d.שליחים.שם_שליח}` : '';
+    const tone: Tone = d.סטטוס_משלוח === 'נאסף' ? 'warn' : 'neutral';
+    return {
+      label: `${cust}${o?.מספר_הזמנה ? ` · ${o.מספר_הזמנה}` : ''}`,
+      value: d.סטטוס_משלוח,
+      sublabel: `${addr || '—'}${courier}`,
+      tone,
+      emoji: tone === 'warn' ? '🟡' : '⚪',
+    };
+  });
+  const blocks: Block[] = [
+    { type: 'list', title: `${rows.length} משלוחים פעילים`, items },
+  ];
+  if (rows.length > 15) {
+    blocks.push({ type: 'text', text: `מציגה 15 ראשונים מתוך ${rows.length}` });
+  }
+  return { kind: 'answer', blocks };
+}
+
+async function actionDailySummary(): Promise<AssistantResponse> {
+  const supabase = createAdminClient();
+  const today = todayInTZ();
+
+  // 5 lightweight reads in parallel — no joins, no big payloads.
+  const [
+    { count: ordersToday },
+    { count: urgentToday },
+    { count: unpaidActive },
+    { data: revenueRows },
+    { count: deliveriesActive },
+    { count: lowStockCount },
+  ] = await Promise.all([
+    supabase.from('הזמנות').select('*', { count: 'exact', head: true }).eq('תאריך_אספקה', today).neq('סטטוס_הזמנה', 'בוטלה').neq('סטטוס_הזמנה', 'טיוטה'),
+    supabase.from('הזמנות').select('*', { count: 'exact', head: true }).eq('תאריך_אספקה', today).eq('הזמנה_דחופה', true).neq('סטטוס_הזמנה', 'בוטלה').neq('סטטוס_הזמנה', 'טיוטה'),
+    supabase.from('הזמנות').select('*', { count: 'exact', head: true }).in('סטטוס_תשלום', ['ממתין', 'חלקי']).neq('סטטוס_הזמנה', 'בוטלה').neq('סטטוס_הזמנה', 'טיוטה').neq('סטטוס_הזמנה', 'הושלמה בהצלחה'),
+    supabase.from('הזמנות').select('סך_הכל_לתשלום').eq('תאריך_אספקה', today).eq('סטטוס_תשלום', 'שולם'),
+    supabase.from('משלוחים').select('*', { count: 'exact', head: true }).eq('תאריך_משלוח', today).neq('סטטוס_משלוח', 'נמסר'),
+    supabase.from('מלאי_חומרי_גלם').select('*', { count: 'exact', head: true }).in('סטטוס_מלאי', ['מלאי נמוך', 'קריטי', 'אזל מהמלאי']),
+  ]);
+
+  const revenueToday = ((revenueRows || []) as Record<string, unknown>[])
+    .reduce((s, r) => s + Number(r['סך_הכל_לתשלום'] || 0), 0);
+
+  const blocks: Block[] = [
+    { type: 'stat', label: 'הזמנות להיום', value: String(ordersToday ?? 0), emoji: '🧾', tone: 'neutral' },
+    {
+      type: 'list',
+      title: 'תמונת מצב',
+      items: [
+        { label: 'דחופות היום',         value: String(urgentToday ?? 0),       emoji: '⚡', tone: (urgentToday ?? 0) > 0 ? 'warn' : 'neutral' },
+        { label: 'ממתין לתשלום (פעיל)', value: String(unpaidActive ?? 0),      emoji: '💰', tone: (unpaidActive ?? 0) > 0 ? 'warn' : 'good' },
+        { label: 'הכנסות היום',          value: fmtCurrency(revenueToday),      emoji: '💸', tone: 'good' },
+        { label: 'משלוחים פעילים',       value: String(deliveriesActive ?? 0),  emoji: '🚚', tone: 'neutral' },
+        { label: 'מלאי בעייתי',          value: String(lowStockCount ?? 0),     emoji: '📦', tone: (lowStockCount ?? 0) > 0 ? 'warn' : 'good' },
+      ],
+    },
+  ];
+
+  if ((urgentToday ?? 0) > 0) {
+    blocks.push({ type: 'insight', text: `${urgentToday} הזמנות דחופות היום — שווה להתחיל מהן`, tone: 'warn', emoji: '⚡' });
+  }
+  if ((lowStockCount ?? 0) > 0) {
+    blocks.push({ type: 'insight', text: `${lowStockCount} פריטים במלאי דורשים תשומת לב`, tone: 'warn', emoji: '📦' });
+  }
+  return { kind: 'answer', blocks };
+}
+
 // Strip undefined/false flags so the JSON payload sent to the API stays
 // minimal. Returns undefined when no filter is active so the API receives
 // no `filters` key at all.
@@ -710,6 +1029,11 @@ async function dispatch(intent: ParsedIntent): Promise<AssistantResponse> {
     case 'send_orders_report':        return actionSendOrdersReport(intent.range, intent.filters, intent.recipientEmail);
     case 'request_report_action':     return actionRequestReportAction(intent.range, intent.filters);
     case 'request_report_range':      return actionRequestReportRange();
+    case 'revenue_query':             return actionRevenueQuery(intent.scope);
+    case 'customers_top':             return actionCustomersTop(intent.scope);
+    case 'customer_lookup':           return actionCustomerLookup(intent.query);
+    case 'deliveries_open':           return actionDeliveriesOpen();
+    case 'daily_summary':             return actionDailySummary();
     case 'unknown':
       return {
         kind: 'clarify',

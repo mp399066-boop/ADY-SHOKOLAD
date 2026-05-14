@@ -125,6 +125,18 @@ export interface ConversationContext {
 // 5 minutes — a follow-up beyond this window is treated as a fresh query.
 export const CONTEXT_TTL_MS = 5 * 60 * 1000;
 
+// Scope for revenue queries — interpreted server-side against תאריך_אספקה.
+//   today    — today only
+//   week     — last 7 days through today
+//   month    — current calendar month
+//   pending  — outstanding (סטטוס_תשלום in ['ממתין', 'חלקי'])
+export type RevenueScope = 'today' | 'week' | 'month' | 'pending';
+
+// Scope for customer-activity queries.
+//   month — last 30 days (default for "לקוחות הכי פעילים")
+//   all   — lifetime
+export type CustomerActivityScope = 'month' | 'all';
+
 export type ParsedIntent =
   | { type: 'count_orders'; range: Range; filters: Filters }
   | { type: 'find_orders'; range: Range; filters: Filters }
@@ -140,4 +152,15 @@ export type ParsedIntent =
   // a clarify with both options so the next round picks the path.
   | { type: 'request_report_action'; range: Range; filters: Filters }
   | { type: 'request_report_range' }
+  // ── Additive intents (May 2026) — answer business-data questions ─────
+  // Revenue / outstanding receivables.
+  | { type: 'revenue_query'; scope: RevenueScope }
+  // Top customers by order count + sum, optional scope.
+  | { type: 'customers_top'; scope: CustomerActivityScope }
+  // Look up a single customer by name fragment.
+  | { type: 'customer_lookup'; query: string }
+  // Active deliveries (status != 'נמסר').
+  | { type: 'deliveries_open' }
+  // Bundled snapshot — orders today + unpaid + low stock + active deliveries.
+  | { type: 'daily_summary' }
   | { type: 'unknown'; hint?: UnknownHint };

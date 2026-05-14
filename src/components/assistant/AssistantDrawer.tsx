@@ -35,11 +35,17 @@ function deriveContextFromIntent(intent: ParsedIntent): ConversationContext {
 }
 const MAX_RECENT       = 3;
 
-// Categorized quick-actions for the empty state
+// Categorized quick-actions for the empty state.
+// Includes the new business-data intents (revenue / customers / deliveries /
+// daily summary) so the operator discovers them without having to type the
+// exact phrase. Ordered top-to-bottom by usage frequency, not by feature age.
 const QUICK_ACTIONS: { title: string; chips: string[] }[] = [
-  { title: 'דוחות',   chips: ['דוח הזמנות להיום', 'דוח הזמנות למחר'] },
-  { title: 'הזמנות',  chips: ['איזה הזמנות יש היום?', 'הזמנות דחופות להיום', 'מה לא שולם?'] },
-  { title: 'מלאי',    chips: ['מה במלאי נמוך?', 'איזה סוגי פטיפורים קיימים?'] },
+  { title: 'תמונת מצב', chips: ['תני לי סיכום של היום', 'כמה הזמנות פתוחות יש?'] },
+  { title: 'תשלומים',   chips: ['כמה הזמנות ממתינות לתשלום?', 'מה ההכנסות החודש?'] },
+  { title: 'משלוחים',   chips: ['אילו משלוחים עוד לא נמסרו?'] },
+  { title: 'לקוחות',    chips: ['מי הלקוחות הכי פעילים?'] },
+  { title: 'מלאי',      chips: ['מה חסר במלאי?', 'איזה סוגי פטיפורים קיימים?'] },
+  { title: 'דוחות',     chips: ['דוח הזמנות להיום', 'דוח הזמנות למחר'] },
 ];
 
 type Message =

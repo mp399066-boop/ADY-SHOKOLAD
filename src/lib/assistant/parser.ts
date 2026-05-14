@@ -55,6 +55,43 @@ const SYN_LOW_STOCK = [
   'יש חוסרים', 'בעיות במלאי', 'בעיה במלאי',
 ];
 
+// ── Additive intent vocabulary (May 2026) ────────────────────────────────
+// Each block is checked alongside the existing routing — never replaces
+// existing precedence (low_stock + reports stay above).
+
+const SYN_REVENUE_HINT = [
+  'הכנסה', 'הכנסות', 'הכנסות החודש', 'הכנסות היום', 'הכנסות השבוע',
+  'כסף', 'כסף נכנס', 'נכנס היום', 'כמה נכנס',
+  'הכנסות', 'מכירות', 'סכום', 'סהכ',
+];
+const SYN_PENDING_PAYMENT = [
+  'ממתין לתשלום', 'ממתינות לתשלום', 'מחכה לתשלום', 'חוב', 'חובות',
+  'כמה כסף עדיין', 'כסף ממתין',
+];
+
+const SYN_CUSTOMERS_TOP = [
+  'הלקוחות הכי פעילים', 'לקוחות הכי פעילים', 'לקוחות פעילים',
+  'מי הזמין הכי הרבה', 'מי הלקוחות הכי', 'מי הזמין הכי',
+  'top customers', 'הלקוחות הטובים',
+];
+const SYN_CUSTOMER_LOOKUP = [
+  'פרטים על לקוח', 'פרטים על לקוחה',
+  'תני לי פרטים על', 'תני פרטים על',
+  'מתי הלקוחה', 'מתי הלקוח', 'מתי היא הזמינה', 'מתי הוא הזמין',
+  'לקוחה בשם', 'לקוח בשם',
+];
+
+const SYN_DELIVERIES_OPEN = [
+  'משלוחים שלא נמסרו', 'משלוחים פתוחים', 'משלוחים פעילים',
+  'משלוחים שעוד לא', 'איזה משלוחים יש', 'מי השליח',
+  'משלוחים עכשיו', 'משלוחים בדרך', 'משלוחים שנשלחו',
+];
+
+const SYN_DAILY_SUMMARY = [
+  'סיכום יומי', 'סיכום של היום', 'תני לי סיכום של היום', 'תני סיכום',
+  'סיכום היום', 'תמונת מצב', 'מה המצב היום', 'איך נראה היום',
+];
+
 // Follow-up phrases — only meaningful when there's a lastIntent
 const FOLLOWUP_REPLACE = ['ומה עם', 'ומה ', 'מה לגבי', 'גם עם', 'וגם ', 'גם '];
 const FOLLOWUP_REFINE  = ['רק '];
@@ -297,6 +334,41 @@ export function parseIntent(
 
   // 1. Low stock — highest priority
   if (hasLowStock) return { type: 'list_low_stock' };
+
+  // 1b. Daily summary — bundled snapshot. Checked early so a phrase like
+  //     "סיכום של היום" doesn't fall through to find_orders + range=today.
+  if (includesAny(text, SYN_DAILY_SUMMARY)) {
+    return { type: 'daily_summary' };
+  }
+
+  // 1c. Revenue queries. "ממתין לתשלום" maps to scope=pending; presence of
+  //     היום/השבוע/החודש pins the time window. Fall back to month.
+  if (includesAny(text, SYN_REVENUE_HINT) || includesAny(text, SYN_PENDING_PAYMENT)) {
+    if (includesAny(text, SYN_PENDING_PAYMENT)) return { type: 'revenue_query', scope: 'pending' };
+    if (includesAny(text, SYN_TODAY))           return { type: 'revenue_query', scope: 'today' };
+    if (includesAny(text, SYN_WEEK))            return { type: 'revenue_query', scope: 'week' };
+    return { type: 'revenue_query', scope: 'month' };
+  }
+
+  // 1d. Customers — top by activity, or single-customer lookup by name.
+  if (includesAny(text, SYN_CUSTOMER_LOOKUP)) {
+    // Pull whatever follows the trigger phrase as the name fragment.
+    const trigger = SYN_CUSTOMER_LOOKUP.find(p => text.includes(p))!;
+    const idx = text.indexOf(trigger);
+    const tail = text.slice(idx + trigger.length).trim();
+    const query = tail.split(/\s+/).slice(0, 4).join(' '); // up to 4 words
+    if (query.length >= 2) return { type: 'customer_lookup', query };
+    // Trigger matched but no name → fall through so the user gets a clarify.
+  }
+  if (includesAny(text, SYN_CUSTOMERS_TOP)) {
+    const scope = includesAny(text, ['החודש', 'חודש']) ? 'month' : 'month';
+    return { type: 'customers_top', scope };
+  }
+
+  // 1e. Active deliveries.
+  if (includesAny(text, SYN_DELIVERIES_OPEN)) {
+    return { type: 'deliveries_open' };
+  }
 
   // 2. Report intent
   // "דוח יומי" / "דוח להיום" / "תורידי דוח" / "שלחי דוח למייל X" etc.
