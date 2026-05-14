@@ -6,7 +6,10 @@ import { isServiceEnabled, logServiceRun, SERVICE_DISABLED_MESSAGE } from '@/lib
 const PAYPLUS_API_URL = process.env.PAYPLUS_API_URL || 'https://restapi.payplus.co.il';
 const PAYPLUS_API_KEY = process.env.PAYPLUS_API_KEY;
 const PAYPLUS_SECRET_KEY = process.env.PAYPLUS_SECRET_KEY;
-const PAYPLUS_PAGE_UID = process.env.PAYPLUS_PAGE_UID;
+// Accept either env-var name. PAYPLUS_PAYMENT_PAGE_UID is the canonical
+// one going forward; PAYPLUS_PAGE_UID is kept as a fallback so existing
+// Vercel deployments keep working without manual rename.
+const PAYPLUS_PAGE_UID = process.env.PAYPLUS_PAYMENT_PAGE_UID || process.env.PAYPLUS_PAGE_UID;
 
 export async function POST(
   _req: NextRequest,
@@ -21,7 +24,7 @@ export async function POST(
     if (!PAYPLUS_API_KEY || !PAYPLUS_SECRET_KEY || !PAYPLUS_PAGE_UID) {
       console.error('[create-payment-link] aborting — missing env vars');
       return NextResponse.json(
-        { error: 'חסרים פרטי PayPlus — יש להגדיר PAYPLUS_API_KEY, PAYPLUS_SECRET_KEY, PAYPLUS_PAGE_UID' },
+        { error: 'חסרים פרטי PayPlus — יש להגדיר PAYPLUS_API_KEY, PAYPLUS_SECRET_KEY, PAYPLUS_PAYMENT_PAGE_UID' },
         { status: 500 },
       );
     }
@@ -70,6 +73,10 @@ export async function POST(
 
     const ppBody = {
       payment_page_uid: PAYPLUS_PAGE_UID,
+      // more_info is echoed back in the IPN webhook (transaction.more_info).
+      // Carrying our orderId here lets /api/webhooks/payplus look up the
+      // order without needing a payment_page_request_uid round-trip.
+      more_info: orderId,
       refURL_success: `${baseUrl}/orders/${orderId}?payment=success`,
       refURL_failure: `${baseUrl}/orders/${orderId}?payment=failure`,
       refURL_callback: `${baseUrl}/api/webhooks/payplus`,
