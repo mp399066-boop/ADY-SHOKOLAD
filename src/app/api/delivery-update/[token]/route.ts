@@ -2,8 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
-import { logActivity, PUBLIC_TOKEN_ACTOR } from '@/lib/activity-log';
-import { sendSatmarSummaryEmail } from '@/lib/satmar-email';
+import { markDeliveryDeliveredByToken } from '@/lib/delivery-confirm';
 
 // What the courier sees when they open the public token link. Read-only.
 // Token is the only protection — no login. We never return prices,
@@ -133,99 +132,16 @@ export async function GET(_req: NextRequest, { params }: { params: { token: stri
 }
 
 export async function POST(req: NextRequest, { params }: { params: { token: string } }) {
-  if (!params.token) return NextResponse.json({ error: 'לא תקין' }, { status: 400 });
+  // All marking logic lives in markDeliveryDeliveredByToken so the JSON
+  // POST endpoint and the GET confirm page (used by the email button)
+  // can't drift apart.
+  const out = await markDeliveryDeliveredByToken(params.token, req);
 
-  const supabase = createAdminClient();
-  const { data: existing, error: fetchError } = await supabase
-    .from('משלוחים')
-    .select('id, הזמנה_id, סטטוס_משלוח')
-    .eq('delivery_token', params.token)
-    .single();
-
-  if (fetchError || !existing) {
+  if (!out.ok) {
     return NextResponse.json({ error: 'הקישור אינו תקין' }, { status: 404 });
   }
-
-  // Idempotent — second click returns ok/already without touching the DB
-  // again. The page renders the "already delivered" state on this 200.
-  if (existing.סטטוס_משלוח === 'נמסר') {
+  if (out.status === 'already') {
     return NextResponse.json({ ok: true, already: true });
   }
-
-  // 1. Mark the delivery row delivered.
-  const { error: updateError } = await supabase
-    .from('משלוחים')
-    .update({ סטטוס_משלוח: 'נמסר', delivered_at: new Date().toISOString() })
-    .eq('id', existing.id);
-
-  if (updateError) return NextResponse.json({ error: 'שגיאה בעדכון' }, { status: 500 });
-
-  void logActivity({
-    actor:       PUBLIC_TOKEN_ACTOR,
-    module:      'deliveries',
-    action:      'delivery_marked_delivered',
-    status:      'success',
-    entityType:  'delivery',
-    entityId:    String(existing.id),
-    title:       'משלוח סומן כנמסר דרך קישור שליח',
-    description: 'השליח סימן את המשלוח כנמסר דרך הקישור הציבורי',
-    request:     req,
-  });
-
-  // 2. Cascade to the linked order — flip סטטוס_הזמנה → 'הושלמה בהצלחה'
-  //    if it isn't there already. Mirrors the side effects of the
-  //    PATCH /api/orders/[id] path: ארכיון = true, satmar email when
-  //    relevant. Morning auto-issuance stays gated off (the manual
-  //    document-issuance modal is the sanctioned path for receipts).
-  let orderCompleted = false;
-  if (existing.הזמנה_id) {
-    const { data: orderRow } = await supabase
-      .from('הזמנות')
-      .select('id, מספר_הזמנה, סטטוס_הזמנה, סוג_הזמנה')
-      .eq('id', existing.הזמנה_id)
-      .maybeSingle();
-
-    if (orderRow && orderRow.סטטוס_הזמנה !== 'הושלמה בהצלחה') {
-      const { error: orderUpdateErr } = await supabase
-        .from('הזמנות')
-        .update({
-          סטטוס_הזמנה: 'הושלמה בהצלחה',
-          ארכיון:       true,
-          תאריך_עדכון:  new Date().toISOString(),
-        })
-        .eq('id', orderRow.id);
-
-      if (orderUpdateErr) {
-        console.error('[delivery-update] order completion failed:', orderUpdateErr.message);
-        // Delivery is already marked delivered — that's the courier-facing
-        // success. Surface the order failure in logs but don't undo the
-        // delivery flip (it's an accurate physical state).
-      } else {
-        orderCompleted = true;
-
-        // Mirror the satmar side-effect from PATCH /api/orders/[id].
-        if (orderRow.סוג_הזמנה === 'סאטמר') {
-          try { await sendSatmarSummaryEmail(orderRow.id); }
-          catch (err) { console.error('[delivery-update] satmar email failed:', err instanceof Error ? err.message : err); }
-        }
-
-        void logActivity({
-          actor:        PUBLIC_TOKEN_ACTOR,
-          module:       'orders',
-          action:       'order_completed_by_delivery',
-          status:       'success',
-          entityType:   'order',
-          entityId:     String(orderRow.id),
-          entityLabel:  orderRow.מספר_הזמנה || null,
-          title:        'הזמנה הושלמה בעקבות מסירת משלוח',
-          description:  'סטטוס ההזמנה עודכן להושלמה בהצלחה לאחר שהמשלוח סומן כנמסר',
-          oldValue:     { סטטוס_הזמנה: orderRow.סטטוס_הזמנה },
-          newValue:     { סטטוס_הזמנה: 'הושלמה בהצלחה' },
-          request:      req,
-        });
-      }
-    }
-  }
-
-  return NextResponse.json({ ok: true, delivered: true, orderCompleted });
+  return NextResponse.json({ ok: true, delivered: true, orderCompleted: out.orderCompleted });
 }

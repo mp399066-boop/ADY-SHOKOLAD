@@ -60,9 +60,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     await supabase.from('משלוחים').update({ delivery_token: token }).eq('id', params.id);
   }
 
-  // 4. Build link
+  // 4. Build links. Email button uses the one-click confirm URL — opening
+  //    it marks the delivery delivered immediately (no second click). The
+  //    plain details link is kept around for the WhatsApp body, where the
+  //    courier wants to see/copy the URL itself.
   const origin = req.headers.get('origin') || process.env.NEXT_PUBLIC_APP_URL || '';
-  const link = `${origin}/delivery-update/${token}`;
+  const link        = `${origin}/delivery-update/${token}`;
+  const confirmLink = `${origin}/delivery-update/${token}/confirm`;
 
   // 4b. Resolve recipient + address + items for the message body. Mirrors
   //     the resolution in PATCH /api/deliveries/[id]: delivery row's address
@@ -124,7 +128,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   };
   const subject     = COURIER_EMAIL_SUBJECT;
   const textContent = buildCourierWhatsAppMessage({ ...details, deliveryUpdateUrl: link });
-  const htmlContent = buildCourierDeliveryEmailHtml({ ...details, deliveryUpdateUrl: link });
+  const htmlContent = buildCourierDeliveryEmailHtml({ ...details, deliveryUpdateUrl: confirmLink });
 
   // 7. Send via SendGrid
   const apiKey = process.env.SENDGRID_API_KEY;
