@@ -105,30 +105,52 @@ export async function POST(
       phone:      (customer?.טלפון    || '').trim(),
     };
 
-    // Single line item carrying the full CRM order total. We don't try to
-    // mirror the per-product breakdown — the CRM is the source of truth
-    // for what was ordered; WC is just a payment shell. Amount as string
-    // because WC's REST contract treats line totals as decimal strings.
-    const wcBody = {
-      status:              'pending',
-      set_paid:            false,
-      currency:            'ILS',
-      payment_method:      'payplus-payment-gateway',
+    // We carry the CRM order total via fee_lines, NOT line_items.
+    //
+    // line_items in the WC REST API requires either product_id or sku for
+    // every line; sending name+price alone returns
+    //   woocommerce_rest_required_product_reference / "נדרש ID או מק\"ט של המוצר"
+    // We don't have a real WC product mirror — the CRM is the source of
+    // truth for what was ordered, WC is just a payment shell. fee_lines
+    // is the documented escape hatch: a flat-amount line with a name,
+    // no product reference required.
+    //
+    // Optional fallback: if WOOCOMMERCE_PAYMENT_PRODUCT_ID is set in the
+    // env, use a real product line_item instead. Useful if the storefront
+    // requires every order to carry a product (some plugins enforce this).
+    const paymentProductId = Number(process.env.WOOCOMMERCE_PAYMENT_PRODUCT_ID || 0);
+
+    const wcBody: Record<string, unknown> = {
+      status:               'pending',
+      set_paid:             false,
+      currency:             'ILS',
+      payment_method:       'payplus-payment-gateway',
       payment_method_title: 'PayPlus',
       billing,
-      line_items: [
-        {
-          name:     `הזמנה ${order.מספר_הזמנה || orderId}`,
-          quantity: 1,
-          subtotal: amount.toFixed(2),
-          total:    amount.toFixed(2),
-        },
-      ],
       meta_data: [
         { key: 'crm_order_id',     value: orderId },
         { key: 'crm_order_number', value: String(order.מספר_הזמנה || '') },
       ],
     };
+
+    if (paymentProductId > 0) {
+      wcBody.line_items = [
+        {
+          product_id: paymentProductId,
+          quantity:   1,
+          subtotal:   amount.toFixed(2),
+          total:      amount.toFixed(2),
+        },
+      ];
+    } else {
+      wcBody.fee_lines = [
+        {
+          name:       `תשלום עבור הזמנה ${order.מספר_הזמנה || orderId}`,
+          total:      amount.toFixed(2),
+          tax_status: 'none',
+        },
+      ];
+    }
 
     const wcEndpoint = `${WC_URL}/wp-json/wc/v3/orders`;
     const basicAuth  = Buffer.from(`${WC_KEY}:${WC_SECRET}`).toString('base64');
@@ -162,15 +184,21 @@ export async function POST(
     }
 
     if (!wcRes.ok) {
+      const wcCode    = wcJson.code    as string | undefined;
       const wcMessage = (wcJson.message as string | undefined)
-                     || (wcJson.code    as string | undefined)
+                     || wcCode
                      || `HTTP ${wcRes.status}`;
-      console.error('[WC payment-link] rejected — status', wcRes.status, '| msg:', wcMessage);
+      // Map a known WC error code to a more actionable Hebrew message.
+      const friendly = wcCode === 'woocommerce_rest_required_product_reference'
+        ? 'WooCommerce דורש product_id/sku עבור line_items. יש להגדיר WOOCOMMERCE_PAYMENT_PRODUCT_ID או להשאיר את fee_lines פעיל.'
+        : `WooCommerce דחה את הבקשה (HTTP ${wcRes.status}): ${wcMessage}`;
+      console.error('[WC payment-link] rejected — status', wcRes.status, '| code:', wcCode, '| msg:', wcMessage);
       return NextResponse.json(
         {
-          error: `WooCommerce דחה את הבקשה (HTTP ${wcRes.status}): ${wcMessage}`,
+          error: friendly,
           debug: {
             wc_http_status: wcRes.status,
+            wc_code:        wcCode ?? null,
             wc_body:        wcRawText.slice(0, 1500),
           },
         },
