@@ -22,9 +22,17 @@ export async function POST(
     console.log('[create-payment-link] env check — API_KEY:', PAYPLUS_API_KEY ? 'SET' : 'MISSING', '| SECRET_KEY:', PAYPLUS_SECRET_KEY ? 'SET' : 'MISSING', '| PAGE_UID:', PAYPLUS_PAGE_UID ? 'SET' : 'MISSING');
 
     if (!PAYPLUS_API_KEY || !PAYPLUS_SECRET_KEY || !PAYPLUS_PAGE_UID) {
-      console.error('[create-payment-link] aborting — missing env vars');
+      const missing = [
+        !PAYPLUS_API_KEY    && 'PAYPLUS_API_KEY',
+        !PAYPLUS_SECRET_KEY && 'PAYPLUS_SECRET_KEY',
+        !PAYPLUS_PAGE_UID   && 'PAYPLUS_PAYMENT_PAGE_UID',
+      ].filter(Boolean).join(', ');
+      console.error('[create-payment-link] aborting — missing env vars:', missing);
+      // Return the missing-var names in the response so the operator can
+      // see exactly what's not set in Vercel without opening function logs.
+      // Names only — no values.
       return NextResponse.json(
-        { error: 'חסרים פרטי PayPlus — יש להגדיר PAYPLUS_API_KEY, PAYPLUS_SECRET_KEY, PAYPLUS_PAYMENT_PAGE_UID' },
+        { error: `חסרים משתני סביבה ב-Vercel: ${missing}. הגדירו אותם ב-Vercel → Project Settings → Environment Variables ופרסו מחדש.` },
         { status: 500 },
       );
     }
@@ -57,9 +65,18 @@ export async function POST(
       return NextResponse.json({ error: 'הזמנה לא נמצאה' }, { status: 404 });
     }
 
-    const amount = order.סך_הכל_לתשלום || 0;
+    // Supabase NUMERIC columns can come back as either number or string
+    // depending on driver/cache. PayPlus rejects non-numeric `price`
+    // (and "₪123" definitely won't pass), so coerce defensively.
+    const rawAmount = order.סך_הכל_לתשלום;
+    const amountNum = typeof rawAmount === 'number' ? rawAmount : Number(String(rawAmount ?? '').replace(/[^0-9.\-]/g, ''));
+    const amount    = Number.isFinite(amountNum) ? Math.round(amountNum * 100) / 100 : 0;
+    console.log('[create-payment-link] amount — raw:', rawAmount, '| coerced:', amount, '| type:', typeof rawAmount);
     if (amount <= 0) {
-      return NextResponse.json({ error: 'סכום ההזמנה חייב להיות גדול מ-0' }, { status: 400 });
+      return NextResponse.json(
+        { error: `סכום ההזמנה חייב להיות גדול מ-0 (התקבל: ${JSON.stringify(rawAmount)})` },
+        { status: 400 },
+      );
     }
 
     const customer = order.לקוחות as {
@@ -109,13 +126,13 @@ export async function POST(
 
     const ppEndpoint = `${PAYPLUS_API_URL}/api/v1.0/PaymentPages/generateLink`;
 
+    // Log endpoint + body (no headers — keys must never appear in logs,
+    // not even prefixed). Body intentionally includes customer name/phone/
+    // email — those are PII but not credentials, and they're needed when
+    // diagnosing why PayPlus rejects a request.
     console.log('[create-payment-link] → URL:', ppEndpoint);
-    console.log('[create-payment-link] → headers:', {
-      'api-key': PAYPLUS_API_KEY ? `${PAYPLUS_API_KEY.slice(0, 6)}...` : 'MISSING',
-      'secret-key': PAYPLUS_SECRET_KEY ? '***' : 'MISSING',
-      'Content-Type': 'application/json',
-    });
-    console.log('[create-payment-link] → body:', JSON.stringify(ppBody, null, 2));
+    console.log('[create-payment-link] → page_uid present:', Boolean(PAYPLUS_PAGE_UID), '| amount:', amount, '| currency: ILS');
+    console.log('[create-payment-link] → body:', JSON.stringify(ppBody));
 
     const ppRes = await fetch(ppEndpoint, {
       method: 'POST',
@@ -146,19 +163,20 @@ export async function POST(
     const isSuccess = ppRes.ok && (resultsStatus === '1' || resultsStatus === 1);
 
     if (!isSuccess) {
-      const ppMessage = (ppJson.results as Record<string, unknown>)?.message as string | undefined;
-      console.error('[create-payment-link] PayPlus rejected — HTTP status:', ppRes.status);
+      const ppResults = ppJson.results as Record<string, unknown> | undefined;
+      const ppMessage = (ppResults?.message as string | undefined)
+                       || (ppResults?.code    as string | undefined)
+                       || `HTTP ${ppRes.status}`;
+      console.error('[create-payment-link] PayPlus rejected — HTTP status:', ppRes.status, '| msg:', ppMessage);
       console.error('[create-payment-link] PayPlus raw body (full):', ppRawText);
-      console.error('[create-payment-link] PayPlus parsed results:', JSON.stringify(ppJson.results ?? null));
-      console.error('[create-payment-link] PayPlus parsed data:', JSON.stringify(ppJson.data ?? null));
+      // Give the operator a Hebrew-prefixed message that includes the real
+      // upstream reason — far more useful than a generic "PayPlus error".
       return NextResponse.json(
         {
-          error: ppMessage || `PayPlus error (HTTP ${ppRes.status})`,
+          error: `PayPlus דחה את הבקשה: ${ppMessage}`,
           debug: {
             payplus_http_status: ppRes.status,
-            payplus_raw_body: ppRawText,
-            payplus_results: ppJson.results ?? null,
-            payplus_data: ppJson.data ?? null,
+            payplus_results:     ppJson.results ?? null,
           },
         },
         { status: 502 },

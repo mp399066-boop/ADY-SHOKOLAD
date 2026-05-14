@@ -750,8 +750,12 @@ export default function NewOrderPage() {
           toast.success('דף התשלום נפתח');
         }
       } catch (payErr: unknown) {
-        console.error('[new-order] payment link generation failed:', payErr instanceof Error ? payErr.message : payErr);
-        toast.error('לא הצלחנו לפתוח דף תשלום. בדקי את הגדרות PayPlus.', { duration: 8000 });
+        // Show the real upstream reason (env-var missing / PayPlus rejected
+        // amount / etc) instead of a generic message — the operator can see
+        // it and act on it without opening Vercel logs.
+        const reason = payErr instanceof Error ? payErr.message : String(payErr);
+        console.error('[new-order] payment link generation failed:', reason);
+        toast.error(`לא הצלחנו לפתוח דף תשלום: ${reason}`, { duration: 10000 });
       }
 
       // Land on the order card so the operator can review and (manually)

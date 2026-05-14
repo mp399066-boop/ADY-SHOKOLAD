@@ -1209,8 +1209,9 @@ export default function OrderDetailPage() {
                     if (!opened) toast.error('הדפדפן חסם את חלון התשלום');
                     else toast.success('דף התשלום נפתח');
                   } catch (err: unknown) {
-                    console.error('[order] payment-page retry failed:', err instanceof Error ? err.message : err);
-                    toast.error('לא הצלחנו לפתוח דף תשלום. בדקי את הגדרות PayPlus.');
+                    const reason = err instanceof Error ? err.message : String(err);
+                    console.error('[order] payment-page retry failed:', reason);
+                    toast.error(`לא הצלחנו לפתוח דף תשלום: ${reason}`, { duration: 10000 });
                   }
                 }}
                 className="mt-3 w-full px-3 py-2 rounded-lg text-xs font-semibold transition-colors"
