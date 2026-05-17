@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
-import { deductOrderInventory } from '@/lib/inventory-deduct';
+import { restoreOrderInventory } from '@/lib/inventory-deduct';
 
 export async function POST(req: NextRequest) {
   const auth = await requireManagementUser();
@@ -32,6 +32,16 @@ export async function POST(req: NextRequest) {
 
     if (action === 'update_status') {
       if (!value) return NextResponse.json({ error: 'חסר ערך סטטוס' }, { status: 400 });
+
+      // Pre-state snapshot so we can detect first-time transitions into
+      // בוטלה (the trigger for inventory restore). Cheap one query.
+      const { data: pre } = await supabase
+        .from('הזמנות')
+        .select('id, סטטוס_הזמנה, סוג_הזמנה')
+        .in('id', ids);
+      type PreRow = { id: string; סטטוס_הזמנה: string | null; סוג_הזמנה: string | null };
+      const preById = new Map<string, PreRow>(((pre ?? []) as PreRow[]).map(r => [r.id, r]));
+
       const patch: Record<string, unknown> = {
         סטטוס_הזמנה: value,
         תאריך_עדכון: new Date().toISOString(),
@@ -44,31 +54,41 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ succeeded: 0, failed: ids.length });
       }
       console.log(`[bulk-orders] update_status → ${value} for ${ids.length} orders`);
-      return NextResponse.json({ succeeded: ids.length, failed: 0 });
+
+      // ── Inventory restore on bulk-cancel ────────────────────────────────
+      // Mirrors PATCH /api/orders/[id]: if status just crossed into בוטלה
+      // and the order isn't סאטמר (those never deducted), call
+      // restoreOrderInventory per affected order. Idempotent via the
+      // net-ledger guard — orders that were never deducted are a no-op.
+      let restored = 0;
+      if (value === 'בוטלה') {
+        const toRestore = ids.filter(id => {
+          const prev = preById.get(id);
+          return prev && prev.סטטוס_הזמנה !== 'בוטלה' && prev.סוג_הזמנה !== 'סאטמר';
+        });
+        for (const orderId of toRestore) {
+          try {
+            const result = await restoreOrderInventory(supabase, orderId);
+            if (result.restored) restored++;
+            else console.log('[bulk-orders] restore skipped — reason:', result.reason, '| order:', orderId);
+          } catch (err) {
+            console.error('[bulk-orders] restoreOrderInventory threw for', orderId, ':', err instanceof Error ? err.message : err);
+          }
+        }
+        console.log(`[bulk-orders] update_status → בוטלה | restored inventory for ${restored} orders`);
+      }
+
+      return NextResponse.json({ succeeded: ids.length, failed: 0, restored });
     }
 
     if (action === 'update_payment_status') {
       if (!value) return NextResponse.json({ error: 'חסר ערך סטטוס תשלום' }, { status: 400 });
 
-      // Before the update, capture which orders are crossing the
-      // ממתין/חלקי → שולם line. We need this for the inventory
-      // deduction: deductOrderInventory itself is idempotent, but we
-      // still want to skip orders that were already paid (no transition).
-      // We also exclude סוג_הזמנה='סאטמר' to match PATCH /api/orders/[id]
-      // behaviour (satmar orders never deduct).
-      const willBecomePaid: string[] = [];
-      if (value === 'שולם') {
-        const { data: pre } = await supabase
-          .from('הזמנות')
-          .select('id, סטטוס_תשלום, סוג_הזמנה')
-          .in('id', ids);
-        for (const row of (pre ?? []) as Array<{ id: string; סטטוס_תשלום: string | null; סוג_הזמנה: string | null }>) {
-          if (row.סטטוס_תשלום !== 'שולם' && row.סוג_הזמנה !== 'סאטמר') {
-            willBecomePaid.push(row.id);
-          }
-        }
-      }
-
+      // NEW POLICY (May 2026): payment-status changes have NO inventory
+      // side effect. Stock deduction happens at order creation/finalization
+      // (handled in create-full / finalize-draft / webhook). Marking an
+      // order paid is now just a column update — receipts and invoices
+      // continue to flow from the order-detail flow.
       const { error } = await supabase
         .from('הזמנות')
         .update({ סטטוס_תשלום: value, תאריך_עדכון: new Date().toISOString() })
@@ -77,26 +97,8 @@ export async function POST(req: NextRequest) {
         console.warn('[bulk-orders] update_payment_status failed:', error.message);
         return NextResponse.json({ succeeded: 0, failed: ids.length });
       }
-
-      // Inventory deduction for every order whose status just crossed
-      // into שולם. Each call is idempotent (תנועות_מלאי ledger guard);
-      // failures are logged and don't roll back the status update.
-      // PRE-FIX BUG: this path used to update status only, leaving stock
-      // un-deducted whenever the operator used bulk mark-paid — the same
-      // pattern that left ORD-260511-7707 / ORD-260512-1680 / ORD-260514-6055
-      // with no תנועות_מלאי rows.
-      let deducted = 0;
-      for (const orderId of willBecomePaid) {
-        try {
-          const result = await deductOrderInventory(supabase, orderId);
-          if (result.deducted) deducted++;
-          else console.log('[bulk-orders] deduction skipped — reason:', result.reason, '| order:', orderId);
-        } catch (err) {
-          console.error('[bulk-orders] deduction failed for', orderId, ':', err instanceof Error ? err.message : err);
-        }
-      }
-      console.log(`[bulk-orders] update_payment_status → ${value} for ${ids.length} orders | newly paid: ${willBecomePaid.length} | deducted: ${deducted}`);
-      return NextResponse.json({ succeeded: ids.length, failed: 0, newly_paid: willBecomePaid.length, deducted });
+      console.log(`[bulk-orders] update_payment_status → ${value} for ${ids.length} orders (no inventory action)`);
+      return NextResponse.json({ succeeded: ids.length, failed: 0 });
     }
 
     return NextResponse.json({ error: 'פעולה לא נתמכת' }, { status: 400 });

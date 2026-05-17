@@ -1,20 +1,24 @@
 'use client';
 
-// Settings → תיקון הורדות מלאי חסרות
+// Settings → תיקון מלאי
 //
-// Admin-only UI for /api/admin/inventory/backfill-deductions. The page:
-//   1. On mount, runs a DETAILED dry-run and shows each paid order that's
-//      missing a תנועות_מלאי 'יציאה' row, with its customer + items +
-//      quantities — so the operator sees exactly what will be deducted.
-//   2. Lets the operator either run the backfill for ALL missing orders
-//      or pick a subset via checkboxes.
-//   3. On confirm, calls the live backfill and renders the per-order
-//      result + counters (succeeded / already / errored).
-//   4. A small "verification" panel polls /api/inventory for "עוגת שמנת"
-//      so the operator can see the stock number before and after.
+// Admin-only UI for /api/admin/inventory/backfill-deductions.
 //
-// Admin-only: redirects + a Forbidden card if the current user isn't
-// admin (mirrors the gate the server-side route enforces).
+// Under the new policy (deduct on order creation, restore on cancellation),
+// this page surfaces two kinds of drift:
+//
+//   1. "צריך להוריד" — active orders (חדשה/בהכנה/מוכנה למשלוח/נשלחה) that
+//      somehow don't have a יציאה ledger row. These are leftover gaps from
+//      the old payment-triggered policy, or any future code path that
+//      forgets to call the helper.
+//   2. "צריך להחזיר" — cancelled orders (בוטלה) that still have stock
+//      taken from inventory (net יציאה > 0). These should have been
+//      restored when cancelled but weren't (e.g. cancelled before the
+//      restore code shipped, or cancelled via direct DB edit).
+//
+// Each section has checkboxes + a per-section "תקן" button. Running the
+// fix calls the backfill endpoint with the selected order ids; the
+// endpoint uses the idempotent helpers so a re-run is a safe no-op.
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
@@ -55,45 +59,176 @@ function SettingsTabs({ activeHref, isAdmin }: { activeHref: string; isAdmin: bo
 
 // ── Response shapes ────────────────────────────────────────────────────────
 interface PreviewItem {
-  name: string;
+  name:     string;
   quantity: number;
-  kind: 'product' | 'package';
+  kind:     'product' | 'package';
   petit_fours?: Array<{ name: string; quantity: number }>;
 }
 interface PreviewRow {
-  order_id: string;
-  order_number: string | null;
-  customer_name: string | null;
+  order_id:       string;
+  order_number:   string | null;
+  customer_name:  string | null;
   payment_status: string | null;
-  items: PreviewItem[];
+  order_status:   string | null;
+  items:          PreviewItem[];
 }
 interface DryRunResponse {
   ok: boolean;
   dry_run: true;
-  total: number;
-  missing_ledger: number;
-  already_deducted: number;
-  preview: PreviewRow[];
+  mode: 'deduct' | 'restore' | 'both';
+  deduct:  { missing_count: number; items: PreviewRow[] };
+  restore: { missing_count: number; items: PreviewRow[] };
 }
 
 interface RunResultRow {
-  order_id: string;
-  order_number: string | null;
-  payment_status: string | null;
-  result: 'deducted' | 'already_deducted' | 'no_items' | 'fetch_failed' | 'flag_off' | 'error';
-  product_count?: number;
+  order_id:        string;
+  order_number:    string | null;
+  direction:       'deduct' | 'restore';
+  result:          'deducted' | 'restored' | 'already_done' | 'no_items' | 'fetch_failed' | 'flag_off' | 'satmar' | 'error';
+  product_count?:  number;
   petit_four_types?: number;
-  error?: string;
+  error?:          string;
 }
 interface RunResponse {
   ok: boolean;
   dry_run: false;
-  total: number;
-  missing_ledger: number;
-  already_deducted: number;
-  succeeded: number;
+  deduct:  { processed: number; succeeded: number };
+  restore: { processed: number; succeeded: number };
   errored: number;
   results: RunResultRow[];
+}
+
+// ── Helper components ──────────────────────────────────────────────────────
+function StatusPill({ tone, label }: { tone: 'green' | 'amber' | 'red' | 'gray'; label: string }) {
+  const styles = {
+    green: { bg: '#DCFCE7', fg: '#166534' },
+    amber: { bg: '#FEF3C7', fg: '#92400E' },
+    red:   { bg: '#FEE2E2', fg: '#991B1B' },
+    gray:  { bg: '#E5E7EB', fg: '#374151' },
+  }[tone];
+  return (
+    <span className="px-1.5 py-0.5 rounded text-xs font-medium" style={{ backgroundColor: styles.bg, color: styles.fg }}>
+      {label}
+    </span>
+  );
+}
+
+function PreviewItemsCell({ items }: { items: PreviewItem[] }) {
+  if (items.length === 0) return <span style={{ color: '#9B7A5A' }}>אין פריטים</span>;
+  return (
+    <ul className="space-y-0.5">
+      {items.map((it, j) => (
+        <li key={j}>
+          <span className="font-semibold">{it.name}</span>
+          <span className="mx-1">×{it.quantity}</span>
+          {it.kind === 'package' && it.petit_fours && it.petit_fours.length > 0 && (
+            <div className="text-[11px]" style={{ color: '#9B7A5A' }}>
+              ↳ {it.petit_fours.map(p => `${p.name}×${p.quantity}`).join(', ')}
+            </div>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// ── Reusable per-section table ─────────────────────────────────────────────
+function BackfillSection({
+  title, helper, rows, selected, onToggleOne, onToggleAll, onRun,
+  running, actionLabel, headerTone,
+}: {
+  title: string;
+  helper: string;
+  rows: PreviewRow[];
+  selected: Set<string>;
+  onToggleOne: (id: string) => void;
+  onToggleAll: () => void;
+  onRun: () => void;
+  running: boolean;
+  actionLabel: string;
+  headerTone: 'red' | 'amber';
+}) {
+  const allSelected = rows.length > 0 && rows.every(r => selected.has(r.order_id));
+  const headerStyle = headerTone === 'red'
+    ? { bg: '#FEF2F2', fg: '#991B1B' }
+    : { bg: '#FEF9EC', fg: '#92400E' };
+  return (
+    <Card className="mb-4">
+      <CardHeader>
+        <CardTitle>
+          <span className="me-2 inline-block px-2 py-0.5 rounded text-[11px] font-bold align-middle" style={{ backgroundColor: headerStyle.bg, color: headerStyle.fg }}>
+            {rows.length}
+          </span>
+          {title}
+        </CardTitle>
+        <Button
+          type="button"
+          size="sm"
+          onClick={onRun}
+          disabled={running || selected.size === 0}
+          loading={running}
+        >
+          {actionLabel} ({selected.size})
+        </Button>
+      </CardHeader>
+      <p className="text-xs mb-3" style={{ color: '#6B4A2D' }}>{helper}</p>
+      {rows.length === 0 ? (
+        <div className="py-4 text-center text-sm font-semibold rounded" style={{ color: '#15803D', backgroundColor: '#F0FDF4' }}>
+          הכל תקין — אין הזמנות שדורשות פעולה.
+        </div>
+      ) : (
+        <>
+          <div className="flex items-center gap-3 mb-2 text-xs" style={{ color: '#6B4A2D' }}>
+            <span><strong>{rows.length}</strong> הזמנות</span>
+            <button type="button" onClick={onToggleAll} className="text-xs underline ms-auto" style={{ color: '#8B5E34' }}>
+              {allSelected ? 'בטלי בחירת הכל' : 'סמני הכל'}
+            </button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs border-collapse" dir="rtl">
+              <thead>
+                <tr style={{ backgroundColor: '#F5EFE6' }}>
+                  <th className="border px-2 py-1 text-right w-8" style={{ borderColor: '#DDD0BE' }}></th>
+                  <th className="border px-2 py-1 text-right" style={{ borderColor: '#DDD0BE', color: '#5C3410' }}>הזמנה</th>
+                  <th className="border px-2 py-1 text-right" style={{ borderColor: '#DDD0BE', color: '#5C3410' }}>סטטוס</th>
+                  <th className="border px-2 py-1 text-right" style={{ borderColor: '#DDD0BE', color: '#5C3410' }}>לקוחה</th>
+                  <th className="border px-2 py-1 text-right" style={{ borderColor: '#DDD0BE', color: '#5C3410' }}>פריטים</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row, i) => (
+                  <tr key={row.order_id} style={{ backgroundColor: i % 2 === 0 ? '#FFFFFF' : '#FBF7F2' }}>
+                    <td className="border px-2 py-1 text-center" style={{ borderColor: '#DDD0BE' }}>
+                      <input
+                        type="checkbox"
+                        checked={selected.has(row.order_id)}
+                        onChange={() => onToggleOne(row.order_id)}
+                        style={{ accentColor: '#8B5E34' }}
+                      />
+                    </td>
+                    <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>
+                      <Link href={`/orders/${row.order_id}`} className="hover:underline" style={{ color: '#5C3410' }}>
+                        {row.order_number || row.order_id.slice(0, 8)}
+                      </Link>
+                    </td>
+                    <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>
+                      {row.order_status || '—'}
+                    </td>
+                    <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>
+                      {row.customer_name || '—'}
+                    </td>
+                    <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>
+                      <PreviewItemsCell items={row.items} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </Card>
+  );
 }
 
 // ── Page ───────────────────────────────────────────────────────────────────
@@ -101,13 +236,12 @@ export default function InventoryBackfillPage() {
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(true);
   const [preview, setPreview] = useState<DryRunResponse | null>(null);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [selectedDeduct, setSelectedDeduct]   = useState<Set<string>>(new Set());
+  const [selectedRestore, setSelectedRestore] = useState<Set<string>>(new Set());
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<RunResponse | null>(null);
 
-  // Stock verification for "עוגת שמנת" — the canonical test case from the
-  // operator's bug report. Refetched after a backfill so the operator
-  // can see the stock count drop.
+  // Stock verification panel — kept as a quick read of the test product.
   const [shamenetStock, setShamenetStock] = useState<{ id: string; שם_מוצר: string; כמות_במלאי: number } | null>(null);
 
   useEffect(() => {
@@ -123,7 +257,7 @@ export default function InventoryBackfillPage() {
       const res = await fetch('/api/admin/inventory/backfill-deductions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dry_run: true, detailed: true }),
+        body: JSON.stringify({ dry_run: true, detailed: true, mode: 'both' }),
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
@@ -133,8 +267,9 @@ export default function InventoryBackfillPage() {
       }
       const data = (await res.json()) as DryRunResponse;
       setPreview(data);
-      // Preselect everything by default — operator likely wants to run all.
-      setSelected(new Set(data.preview.map(p => p.order_id)));
+      // Preselect all in both sections by default.
+      setSelectedDeduct(new Set(data.deduct.items.map(p => p.order_id)));
+      setSelectedRestore(new Set(data.restore.items.map(p => p.order_id)));
     } finally {
       setLoadingPreview(false);
     }
@@ -142,27 +277,15 @@ export default function InventoryBackfillPage() {
 
   const loadShamenetStock = async () => {
     try {
-      const res = await fetch('/api/inventory');
-      if (!res.ok) return;
-      const { data } = await res.json();
-      // /api/inventory returns raw materials; finished-product stock lives
-      // on מוצרים_למכירה. We fetch via /api/products to get the right table.
       const prodRes = await fetch('/api/products?active=true');
       if (!prodRes.ok) return;
       const { data: prods } = await prodRes.json();
       const match = (prods ?? []).find((p: { שם_מוצר?: string }) =>
         (p.שם_מוצר || '').includes('עוגת שמנת'),
       );
-      if (match) {
-        setShamenetStock({
-          id: match.id,
-          שם_מוצר: match.שם_מוצר,
-          כמות_במלאי: Number(match.כמות_במלאי ?? 0),
-        });
-      } else {
-        setShamenetStock(null);
-      }
-      void data; // /api/inventory unused — kept the call for future raw-mat verification
+      setShamenetStock(match
+        ? { id: match.id, שם_מוצר: match.שם_מוצר, כמות_במלאי: Number(match.כמות_במלאי ?? 0) }
+        : null);
     } catch {
       setShamenetStock(null);
     }
@@ -175,27 +298,22 @@ export default function InventoryBackfillPage() {
     }
   }, [isAdmin]);
 
-  const toggleOne = (id: string) => {
-    setSelected(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
+  const toggleOne = (set: Set<string>, setSet: (s: Set<string>) => void) => (id: string) => {
+    const next = new Set(set);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    setSet(next);
   };
-  const toggleAll = () => {
-    if (!preview) return;
-    if (selected.size === preview.preview.length) setSelected(new Set());
-    else setSelected(new Set(preview.preview.map(p => p.order_id)));
+  const toggleAll = (rows: PreviewRow[], set: Set<string>, setSet: (s: Set<string>) => void) => () => {
+    if (set.size === rows.length) setSet(new Set());
+    else setSet(new Set(rows.map(r => r.order_id)));
   };
 
-  const runBackfill = async (orderIds: string[]) => {
+  const runBackfill = async (orderIds: string[], description: string) => {
     if (orderIds.length === 0) {
-      toast.error('לא נבחרו הזמנות לתיקון');
+      toast.error('לא נבחרו הזמנות');
       return;
     }
-    if (!window.confirm(`לבצע תיקון מלאי עבור ${orderIds.length} הזמנות? פעולה זו לא הפיכה — מומלץ לוודא תחילה בתצוגה המקדימה.`)) {
-      return;
-    }
+    if (!window.confirm(`לבצע ${description} עבור ${orderIds.length} הזמנות?`)) return;
     setRunning(true);
     setResult(null);
     try {
@@ -210,16 +328,23 @@ export default function InventoryBackfillPage() {
         return;
       }
       setResult(j as RunResponse);
-      toast.success(`בוצע: ${j.succeeded} הצליחו · ${j.errored} שגיאות`);
-      // Refresh both the preview list (deducted orders shouldn't appear
-      // again) and the verification stock number.
+      toast.success(`בוצע: ${j.deduct.succeeded + j.restore.succeeded} פעולות הצליחו · ${j.errored} שגיאות`);
       await Promise.all([loadPreview(), loadShamenetStock()]);
     } finally {
       setRunning(false);
     }
   };
 
-  const allSelected = useMemo(() => preview && selected.size === preview.preview.length && preview.preview.length > 0, [preview, selected]);
+  const totalsLine = useMemo(() => {
+    if (!preview) return '';
+    const d = preview.deduct.missing_count;
+    const r = preview.restore.missing_count;
+    if (d === 0 && r === 0) return 'הכל מסונכרן — אין הזמנות שדורשות פעולה.';
+    const parts: string[] = [];
+    if (d > 0) parts.push(`${d} צריכות הורדה`);
+    if (r > 0) parts.push(`${r} צריכות החזרה`);
+    return `נמצאו ${parts.join(' · ')}.`;
+  }, [preview]);
 
   // ── Gate ──
   if (isAdmin === null) return <PageLoading />;
@@ -238,162 +363,82 @@ export default function InventoryBackfillPage() {
     <div className="max-w-5xl">
       <SettingsTabs activeHref="/settings/inventory-backfill" isAdmin={true} />
 
-      {/* Verification panel — quick read of the test-case product stock */}
-      {shamenetStock && (
-        <Card className="mb-4">
-          <CardHeader>
-            <CardTitle>אימות מלאי — &quot;{shamenetStock.שם_מוצר}&quot;</CardTitle>
-          </CardHeader>
-          <div className="flex items-baseline gap-4">
-            <div>
-              <div className="text-3xl font-bold tabular-nums" style={{ color: '#5C3410' }}>
-                {shamenetStock.כמות_במלאי}
-              </div>
-              <div className="text-xs" style={{ color: '#9B7A5A' }}>כמות נוכחית במלאי</div>
-            </div>
-            <div className="text-xs" style={{ color: '#9B7A5A' }}>
-              לאחר תיקון של 3 הזמנות עתידיות הצפויות, אמור להראות 11.
-            </div>
-          </div>
-        </Card>
-      )}
-
-      <Card>
+      <Card className="mb-4">
         <CardHeader>
-          <CardTitle>תיקון הורדות מלאי חסרות</CardTitle>
-          <div className="flex gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={loadPreview} disabled={loadingPreview || running}>
-              רענן תצוגה
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              onClick={() => preview && runBackfill(Array.from(selected))}
-              disabled={loadingPreview || running || !preview || selected.size === 0}
-              loading={running}
-            >
-              תקן {selected.size} הזמנות
-            </Button>
-          </div>
+          <CardTitle>תיקון מלאי</CardTitle>
+          <Button type="button" variant="outline" size="sm" onClick={loadPreview} disabled={loadingPreview || running}>
+            רענן תצוגה
+          </Button>
         </CardHeader>
-
-        <p className="text-xs mb-4 p-2 rounded" style={{ backgroundColor: '#FAF7F0', color: '#6B4A2D' }}>
-          המסך הזה סורק הזמנות בסטטוס תשלום=שולם שאין להן רישום ירידת מלאי
-          ב-תנועות_מלאי, ומאפשר להריץ הורדה בטוחה (אידמפוטנטית — לא ייווצרו
-          ירידות כפולות גם אם יילחץ פעמיים).
+        <p className="text-xs" style={{ color: '#6B4A2D' }}>
+          תחת המדיניות החדשה: מלאי יורד עם יצירת/אישור הזמנה, ומוחזר עם ביטול.
+          המסך הזה מאתר פערים — הזמנות פעילות שלא הורידו מלאי, או הזמנות מבוטלות
+          שעדיין &quot;מחזיקות&quot; מלאי — ומאפשר תיקון אידמפוטנטי.
+          {' '}<strong>{totalsLine}</strong>
         </p>
-
-        {loadingPreview ? (
-          <div className="py-6 text-center text-sm" style={{ color: '#9B7A5A' }}>טוען תצוגה מקדימה…</div>
-        ) : !preview ? (
-          <div className="py-6 text-center text-sm" style={{ color: '#9B7A5A' }}>שגיאה בטעינה — נסי לרענן.</div>
-        ) : preview.preview.length === 0 ? (
-          <div className="py-6 text-center text-sm font-semibold rounded" style={{ color: '#15803D', backgroundColor: '#F0FDF4' }}>
-            אין הזמנות שדורשות תיקון. {preview.already_deducted > 0 && `(${preview.already_deducted} הזמנות כבר עם רישום ירידת מלאי תקין.)`}
+        {shamenetStock && (
+          <div className="mt-3 flex items-baseline gap-3 p-2 rounded" style={{ backgroundColor: '#FAF7F0' }}>
+            <span className="text-xs" style={{ color: '#9B7A5A' }}>אימות מלאי — &quot;{shamenetStock.שם_מוצר}&quot;:</span>
+            <span className="text-xl font-bold tabular-nums" style={{ color: '#5C3410' }}>{shamenetStock.כמות_במלאי}</span>
           </div>
-        ) : (
-          <>
-            <div className="flex items-center gap-3 mb-3 text-xs" style={{ color: '#6B4A2D' }}>
-              <span>נמצאו <strong>{preview.missing_ledger}</strong> הזמנות שצריכות תיקון</span>
-              <span>·</span>
-              <span><strong>{preview.already_deducted}</strong> הזמנות כבר בעלות רישום תקין</span>
-              <span className="ms-auto">
-                <button type="button" onClick={toggleAll} className="text-xs underline" style={{ color: '#8B5E34' }}>
-                  {allSelected ? 'בטלי בחירת הכל' : 'סמני הכל'}
-                </button>
-              </span>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs border-collapse" dir="rtl">
-                <thead>
-                  <tr style={{ backgroundColor: '#F5EFE6' }}>
-                    <th className="border px-2 py-1 text-right w-8" style={{ borderColor: '#DDD0BE' }}></th>
-                    <th className="border px-2 py-1 text-right" style={{ borderColor: '#DDD0BE', color: '#5C3410' }}>הזמנה</th>
-                    <th className="border px-2 py-1 text-right" style={{ borderColor: '#DDD0BE', color: '#5C3410' }}>לקוחה</th>
-                    <th className="border px-2 py-1 text-right" style={{ borderColor: '#DDD0BE', color: '#5C3410' }}>פריטים</th>
-                    <th className="border px-2 py-1 text-right" style={{ borderColor: '#DDD0BE', color: '#5C3410' }}>מה יורד מהמלאי</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {preview.preview.map((row, i) => (
-                    <tr key={row.order_id} style={{ backgroundColor: i % 2 === 0 ? '#FFFFFF' : '#FBF7F2' }}>
-                      <td className="border px-2 py-1 text-center" style={{ borderColor: '#DDD0BE' }}>
-                        <input
-                          type="checkbox"
-                          checked={selected.has(row.order_id)}
-                          onChange={() => toggleOne(row.order_id)}
-                          style={{ accentColor: '#8B5E34' }}
-                        />
-                      </td>
-                      <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>
-                        <Link href={`/orders/${row.order_id}`} className="hover:underline" style={{ color: '#5C3410' }}>
-                          {row.order_number || row.order_id.slice(0, 8)}
-                        </Link>
-                      </td>
-                      <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>
-                        {row.customer_name || '—'}
-                      </td>
-                      <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>
-                        {row.items.length === 0 ? (
-                          <span style={{ color: '#9B7A5A' }}>אין פריטים</span>
-                        ) : (
-                          <ul className="space-y-0.5">
-                            {row.items.map((it, j) => (
-                              <li key={j}>
-                                <span className="font-semibold">{it.name}</span>
-                                <span className="mx-1">×{it.quantity}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </td>
-                      <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>
-                        <ul className="space-y-0.5">
-                          {row.items.map((it, j) => {
-                            if (it.kind === 'package') {
-                              if (!it.petit_fours || it.petit_fours.length === 0) {
-                                return <li key={j} style={{ color: '#9B7A5A' }}>מארז ללא בחירת פטיפורים</li>;
-                              }
-                              return (
-                                <li key={j}>
-                                  פטיפורים: {it.petit_fours.map(p => `${p.name}×${p.quantity}`).join(', ')}
-                                </li>
-                              );
-                            }
-                            return <li key={j}>{it.name} ×{it.quantity}</li>;
-                          })}
-                        </ul>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </>
         )}
       </Card>
 
-      {/* Result panel — appears after the operator runs the backfill */}
+      {loadingPreview ? (
+        <Card>
+          <div className="py-6 text-center text-sm" style={{ color: '#9B7A5A' }}>טוען תצוגה מקדימה…</div>
+        </Card>
+      ) : !preview ? (
+        <Card>
+          <div className="py-6 text-center text-sm" style={{ color: '#9B7A5A' }}>שגיאה בטעינה — נסי לרענן.</div>
+        </Card>
+      ) : (
+        <>
+          <BackfillSection
+            title="צריך להוריד מלאי"
+            helper="הזמנות פעילות (חדשה / בהכנה / מוכנה למשלוח / נשלחה) שאין להן רישום ירידת מלאי. בעקבות התיקון יווצרו רישומי 'יציאה' מתאימים והמלאי יופחת."
+            rows={preview.deduct.items}
+            selected={selectedDeduct}
+            onToggleOne={toggleOne(selectedDeduct, setSelectedDeduct)}
+            onToggleAll={toggleAll(preview.deduct.items, selectedDeduct, setSelectedDeduct)}
+            onRun={() => runBackfill(Array.from(selectedDeduct), 'הורדת מלאי')}
+            running={running}
+            actionLabel="הורד מלאי"
+            headerTone="red"
+          />
+          <BackfillSection
+            title="צריך להחזיר מלאי"
+            helper="הזמנות מבוטלות שעדיין מחזיקות מלאי (היו ירידות ולא היו החזרות). בעקבות התיקון תיווצר רישום 'כניסה' מתאים והמלאי יתעדכן בחזרה."
+            rows={preview.restore.items}
+            selected={selectedRestore}
+            onToggleOne={toggleOne(selectedRestore, setSelectedRestore)}
+            onToggleAll={toggleAll(preview.restore.items, selectedRestore, setSelectedRestore)}
+            onRun={() => runBackfill(Array.from(selectedRestore), 'החזרת מלאי')}
+            running={running}
+            actionLabel="החזר מלאי"
+            headerTone="amber"
+          />
+        </>
+      )}
+
       {result && (
         <Card className="mt-4">
-          <CardHeader>
-            <CardTitle>תוצאות תיקון</CardTitle>
-          </CardHeader>
+          <CardHeader><CardTitle>תוצאות תיקון</CardTitle></CardHeader>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4 text-sm">
             <div className="p-3 rounded-lg text-center" style={{ backgroundColor: '#F0FDF4' }}>
-              <div className="text-2xl font-bold" style={{ color: '#166534' }}>{result.succeeded}</div>
-              <div className="text-xs" style={{ color: '#166534' }}>הצליחו</div>
+              <div className="text-2xl font-bold" style={{ color: '#166534' }}>{result.deduct.succeeded}</div>
+              <div className="text-xs" style={{ color: '#166534' }}>ירידות שהושלמו</div>
             </div>
-            <div className="p-3 rounded-lg text-center" style={{ backgroundColor: '#FAF7F0' }}>
-              <div className="text-2xl font-bold" style={{ color: '#5C3410' }}>{result.already_deducted}</div>
-              <div className="text-xs" style={{ color: '#5C3410' }}>היו כבר עם רישום</div>
+            <div className="p-3 rounded-lg text-center" style={{ backgroundColor: '#EFF6FF' }}>
+              <div className="text-2xl font-bold" style={{ color: '#1E40AF' }}>{result.restore.succeeded}</div>
+              <div className="text-xs" style={{ color: '#1E40AF' }}>החזרות שהושלמו</div>
             </div>
             <div className="p-3 rounded-lg text-center" style={{ backgroundColor: result.errored > 0 ? '#FEF2F2' : '#F0FDF4' }}>
               <div className="text-2xl font-bold" style={{ color: result.errored > 0 ? '#991B1B' : '#166534' }}>{result.errored}</div>
               <div className="text-xs" style={{ color: result.errored > 0 ? '#991B1B' : '#166534' }}>שגיאות</div>
             </div>
             <div className="p-3 rounded-lg text-center" style={{ backgroundColor: '#FAF7F0' }}>
-              <div className="text-2xl font-bold" style={{ color: '#5C3410' }}>{result.missing_ledger}</div>
+              <div className="text-2xl font-bold" style={{ color: '#5C3410' }}>{result.deduct.processed + result.restore.processed}</div>
               <div className="text-xs" style={{ color: '#5C3410' }}>סך הכל נסרקו</div>
             </div>
           </div>
@@ -402,47 +447,34 @@ export default function InventoryBackfillPage() {
               <thead>
                 <tr style={{ backgroundColor: '#F5EFE6' }}>
                   <th className="border px-2 py-1 text-right" style={{ borderColor: '#DDD0BE', color: '#5C3410' }}>הזמנה</th>
+                  <th className="border px-2 py-1 text-right" style={{ borderColor: '#DDD0BE', color: '#5C3410' }}>פעולה</th>
                   <th className="border px-2 py-1 text-right" style={{ borderColor: '#DDD0BE', color: '#5C3410' }}>תוצאה</th>
                   <th className="border px-2 py-1 text-right" style={{ borderColor: '#DDD0BE', color: '#5C3410' }}>פרטים</th>
                 </tr>
               </thead>
               <tbody>
                 {result.results.map((r, i) => (
-                  <tr key={r.order_id} style={{ backgroundColor: i % 2 === 0 ? '#FFFFFF' : '#FBF7F2' }}>
+                  <tr key={`${r.direction}-${r.order_id}`} style={{ backgroundColor: i % 2 === 0 ? '#FFFFFF' : '#FBF7F2' }}>
                     <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>
                       <Link href={`/orders/${r.order_id}`} className="hover:underline" style={{ color: '#5C3410' }}>
                         {r.order_number || r.order_id.slice(0, 8)}
                       </Link>
                     </td>
+                    <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>
+                      {r.direction === 'deduct' ? 'הורדה' : 'החזרה'}
+                    </td>
                     <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE' }}>
-                      {r.result === 'deducted' && (
-                        <span className="px-1.5 py-0.5 rounded text-xs font-medium" style={{ backgroundColor: '#DCFCE7', color: '#166534' }}>
-                          ירד מהמלאי
-                        </span>
-                      )}
-                      {r.result === 'already_deducted' && (
-                        <span className="px-1.5 py-0.5 rounded text-xs font-medium" style={{ backgroundColor: '#E5E7EB', color: '#374151' }}>
-                          כבר היה רשום
-                        </span>
-                      )}
-                      {r.result === 'no_items' && (
-                        <span className="px-1.5 py-0.5 rounded text-xs font-medium" style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}>
-                          ללא פריטים
-                        </span>
-                      )}
-                      {(r.result === 'error' || r.result === 'fetch_failed') && (
-                        <span className="px-1.5 py-0.5 rounded text-xs font-medium" style={{ backgroundColor: '#FEE2E2', color: '#991B1B' }}>
-                          שגיאה
-                        </span>
-                      )}
-                      {r.result === 'flag_off' && (
-                        <span className="px-1.5 py-0.5 rounded text-xs font-medium" style={{ backgroundColor: '#E5E7EB', color: '#374151' }}>
-                          שירות כבוי
-                        </span>
-                      )}
+                      {r.result === 'deducted'     && <StatusPill tone="green" label="ירד מהמלאי" />}
+                      {r.result === 'restored'     && <StatusPill tone="green" label="הוחזר למלאי" />}
+                      {r.result === 'already_done' && <StatusPill tone="gray"  label="כבר היה רשום" />}
+                      {r.result === 'no_items'     && <StatusPill tone="amber" label="ללא פריטים" />}
+                      {r.result === 'satmar'       && <StatusPill tone="gray"  label="סאטמר — לא משפיע" />}
+                      {(r.result === 'error' || r.result === 'fetch_failed') && <StatusPill tone="red"   label="שגיאה" />}
+                      {r.result === 'flag_off'     && <StatusPill tone="gray"  label="שירות כבוי" />}
                     </td>
                     <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>
-                      {r.result === 'deducted' && `${r.product_count ?? 0} מוצרים · ${r.petit_four_types ?? 0} סוגי פטיפורים`}
+                      {(r.result === 'deducted' || r.result === 'restored')
+                        && `${r.product_count ?? 0} מוצרים · ${r.petit_four_types ?? 0} סוגי פטיפורים`}
                       {r.error && <span style={{ color: '#991B1B' }}>{r.error}</span>}
                     </td>
                   </tr>

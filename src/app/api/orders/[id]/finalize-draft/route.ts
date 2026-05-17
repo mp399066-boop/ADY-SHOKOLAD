@@ -228,16 +228,14 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   // becoming a real order is a manual CRM action; the operator who clicked
   // "save" already sees the result, so the email would just be noise.
 
-  // ── Inventory deduction when the draft was finalized as already-paid ──
-  // Same logic as create-full: finalize-draft flips the row in place from
-  // 'טיוטה' to 'חדשה' and the operator may submit it with
-  // סטטוס_תשלום='שולם' from the start. There won't be a PATCH transition
-  // to fire on, so we trigger the helper here. Idempotent — re-finalizing
-  // (which shouldn't happen, but defensive) wouldn't double-deduct.
-  const finalizedPaymentStatus = (fullOrder as Record<string, unknown>)?.['סטטוס_תשלום'] as string | undefined;
-  const finalizedOrderType     = (fullOrder as Record<string, unknown>)?.['סוג_הזמנה']   as string | undefined;
-  if (finalizedPaymentStatus === 'שולם' && finalizedOrderType !== 'סאטמר') {
-    console.log('[finalize-draft] order finalized already-paid — running deductOrderInventory. order:', orderId);
+  // ── Inventory deduction on draft → real order finalization ────────────
+  // New policy: a draft becoming a real order triggers deduction
+  // immediately, regardless of payment status. Drafts themselves never
+  // deduct; the transition is the right hook. סאטמר orders are excluded
+  // (existing business rule). Idempotent via the net-ledger guard.
+  const finalizedOrderType = (fullOrder as Record<string, unknown>)?.['סוג_הזמנה'] as string | undefined;
+  if (finalizedOrderType !== 'סאטמר') {
+    console.log('[finalize-draft] draft finalized — running deductOrderInventory. order:', orderId);
     try {
       const result = await deductOrderInventory(supabase, orderId);
       console.log('[finalize-draft] deduction result:', JSON.stringify(result));

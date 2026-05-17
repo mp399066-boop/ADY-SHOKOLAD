@@ -3,7 +3,6 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { sendSatmarSummaryEmail } from '@/lib/satmar-email';
 import { AUTO_CREATE_MORNING_DOCUMENTS } from '@/lib/morning';
-import { deductOrderInventory } from '@/lib/inventory-deduct';
 import { logActivity, userActor } from '@/lib/activity-log';
 
 // Dedicated endpoint to mark an order as paid.
@@ -74,19 +73,13 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
     }
   }
 
-  // Inventory deduction triggered by the same status flip. Skipped for סאטמר
-  // and barter — neither paths inventories the same way as a regular sale.
-  // Idempotent: a second call is a no-op (checks תנועות_מלאי).
-  console.log('[inventory] checking payment status transition (mark-paid endpoint)',
-    '| order id:', params.id,
-    '| previous payment status:', o.סטטוס_תשלום,
-    '| new payment status: שולם');
-  if (!isSatmar && !isBarter) {
-    console.log('[inventory] should deduct: true. order:', params.id);
-    await deductOrderInventory(supabase, params.id);
-  } else {
-    console.log('[inventory] should deduct: false — סאטמר/בארטר order. order:', params.id);
-  }
+  // Inventory: NOT deducted here. New policy (May 2026) — stock is deducted
+  // at order creation/finalization, NOT at payment. Marking an order paid
+  // has no inventory side-effect. The helper would no-op anyway (the order
+  // already has a 'יציאה' ledger entry from creation), but the call is
+  // removed for clarity and to keep the policy explicit in code.
+  // void isSatmar, isBarter — referenced in logs above, no inventory branch.
+  void isSatmar; void isBarter;
 
   void logActivity({
     actor:        userActor(auth),

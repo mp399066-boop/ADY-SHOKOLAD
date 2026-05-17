@@ -379,18 +379,16 @@ export async function POST(req: NextRequest) {
   // Removing the call here (rather than gating it with an env flag) keeps
   // the contract explicit and prevents accidental re-enable.
 
-  // ── Inventory deduction when the order is created already-paid ────────
-  // Mirrors PATCH /api/orders/[id]: if the form was submitted with
-  // סטטוס_תשלום='שולם' from the start (cash on counter, or a returning
-  // customer who pre-paid), we need to deduct stock *now* — there will
-  // never be a PATCH transition to hook onto. Same exclusions as the
-  // PATCH path (סאטמר orders never deduct). Idempotent via the helper's
-  // תנועות_מלאי guard, so a double-submit is safe.
+  // ── Inventory deduction on real order creation ────────────────────────
+  // New policy (May 2026 — owner-driven): a real (non-draft) order
+  // consumes stock immediately, regardless of payment status. Drafts
+  // never deduct (they're temporary by definition). סאטמר orders never
+  // deduct (existing business rule). The helper is idempotent via the
+  // תנועות_מלאי net-ledger guard, so double-submit / replay is safe.
   if (!isDraft) {
-    const orderPaymentStatus = (order as Record<string, unknown>)?.['סטטוס_תשלום'] as string | undefined;
-    const orderType          = (order as Record<string, unknown>)?.['סוג_הזמנה']   as string | undefined;
-    if (orderPaymentStatus === 'שולם' && orderType !== 'סאטמר') {
-      console.log('[create-full] order created already-paid — running deductOrderInventory. order:', order!.id);
+    const orderType = (order as Record<string, unknown>)?.['סוג_הזמנה'] as string | undefined;
+    if (orderType !== 'סאטמר') {
+      console.log('[create-full] real order created — running deductOrderInventory. order:', order!.id);
       try {
         const result = await deductOrderInventory(supabase, order!.id);
         console.log('[create-full] deduction result:', JSON.stringify(result));

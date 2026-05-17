@@ -2,13 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { sendSatmarSummaryEmail } from '@/lib/satmar-email';
-import { recordStockMovement } from '@/lib/inventory-movements';
 import { AUTO_CREATE_MORNING_DOCUMENTS } from '@/lib/morning';
-import {
-  deductOrderInventory,
-  DEDUCT_INVENTORY_ON_ORDER_STATUS,
-  DEDUCT_INVENTORY_ON_PAYMENT_PAID,
-} from '@/lib/inventory-deduct';
+import { restoreOrderInventory, DEDUCT_INVENTORY_ON_ORDER_STATUS } from '@/lib/inventory-deduct';
 import { logActivity, userActor } from '@/lib/activity-log';
 // deploy trigger
 
@@ -116,7 +111,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   console.log('[invoice] env — SUPABASE_URL:', process.env.SUPABASE_URL ? 'set' : 'MISSING', '| WEBHOOK_SECRET:', process.env.WEBHOOK_SECRET ? `set(${process.env.WEBHOOK_SECRET.length}chars)` : 'MISSING');
 
   // Fetch current state BEFORE update — needed for inventory check + invoice/satmar trigger
-  const needPrev = body.סטטוס_הזמנה === 'בהכנה' || body.סטטוס_תשלום === 'שולם' || body.סטטוס_הזמנה === 'הושלמה בהצלחה';
+  const needPrev = body.סטטוס_הזמנה === 'בהכנה'
+    || body.סטטוס_תשלום === 'שולם'
+    || body.סטטוס_הזמנה === 'הושלמה בהצלחה'
+    || body.סטטוס_הזמנה === 'בוטלה';   // restore-on-cancel needs prev order status
   let prevOrderStatus: string | null = null;
   let prevPaymentStatus: string | null = null;
   let orderType = 'רגיל';
@@ -217,118 +215,13 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     });
   }
 
-  // ── LEGACY (gated off): order-status driven deduction ─────────────────
-  // Stock used to drop on the first חדשה→בהכנה transition. Owner moved the
-  // policy to "drop on payment received" (May 2026), so this whole branch
-  // runs only if DEDUCT_INVENTORY_ON_ORDER_STATUS is flipped back on. The
-  // code is kept rather than deleted so a policy reversal is one constant.
-  if (DEDUCT_INVENTORY_ON_ORDER_STATUS && body.סטטוס_הזמנה === 'בהכנה' && prevOrderStatus === 'חדשה') {
-    // ── 1. Finished products (סוג_שורה = 'מוצר') ────────────────────────────
-    const { data: items } = await supabase
-      .from('מוצרים_בהזמנה')
-      .select('מוצר_id, כמות')
-      .eq('הזמנה_id', params.id)
-      .eq('סוג_שורה', 'מוצר');
-
-    if (items) {
-      for (const item of items) {
-        if (!item.מוצר_id) continue;
-        const { data: product } = await supabase
-          .from('מוצרים_למכירה')
-          .select('שם_מוצר, כמות_במלאי')
-          .eq('id', item.מוצר_id)
-          .single();
-        if (product) {
-          const before = product.כמות_במלאי || 0;
-          const after = Math.max(0, before - item.כמות);
-          await supabase
-            .from('מוצרים_למכירה')
-            .update({ כמות_במלאי: after })
-            .eq('id', item.מוצר_id);
-          // Ledger: link the movement to the order so the UI can deep-link
-          // back from "תנועות מלאי" to the order page.
-          await recordStockMovement(supabase, {
-            itemKind: 'מוצר',
-            itemId: item.מוצר_id,
-            itemName: product.שם_מוצר || '',
-            before,
-            after,
-            sourceKind: 'הזמנה',
-            sourceId: params.id,
-            notes: 'הורדה אוטומטית במעבר ל"בהכנה"',
-          });
-        }
-      }
-    }
-
-    // ── 2. Package petit-fours (סוג_שורה = 'מארז') ──────────────────────────
-    // For each package line, fetch its בחירת_פטיפורים_בהזמנה rows and deduct
-    // (selection.כמות × packageLine.כמות) from סוגי_פטיפורים.כמות_במלאי for
-    // each פטיפור_id. Aggregated first so the same type used across multiple
-    // packages results in one UPDATE (and one Math.max guard).
-    const { data: packageLines } = await supabase
-      .from('מוצרים_בהזמנה')
-      .select('id, כמות')
-      .eq('הזמנה_id', params.id)
-      .eq('סוג_שורה', 'מארז');
-
-    type PackageLineRow = { id: string; כמות: number | null };
-    type PFSelectionRow = { שורת_הזמנה_id: string; פטיפור_id: string | null; כמות: number | null };
-    const packageLineRows = (packageLines ?? []) as PackageLineRow[];
-    if (packageLineRows.length > 0) {
-      const packageIds = packageLineRows.map((p: PackageLineRow) => p.id);
-      const packageQtyByLine: Record<string, number> = {};
-      for (const pl of packageLineRows) packageQtyByLine[pl.id] = pl.כמות || 1;
-
-      const { data: selections } = await supabase
-        .from('בחירת_פטיפורים_בהזמנה')
-        .select('שורת_הזמנה_id, פטיפור_id, כמות')
-        .in('שורת_הזמנה_id', packageIds);
-
-      const selectionRows = (selections ?? []) as PFSelectionRow[];
-      if (selectionRows.length > 0) {
-        const totalsByPF: Record<string, number> = {};
-        for (const sel of selectionRows) {
-          const pkgQty = packageQtyByLine[sel.שורת_הזמנה_id] || 1;
-          const total = (sel.כמות || 0) * pkgQty;
-          if (!sel.פטיפור_id || total <= 0) continue;
-          totalsByPF[sel.פטיפור_id] = (totalsByPF[sel.פטיפור_id] || 0) + total;
-        }
-
-        const pfIds = Object.keys(totalsByPF);
-        for (const pfId of pfIds) {
-          const qtyToDeduct = totalsByPF[pfId];
-          const { data: pf } = await supabase
-            .from('סוגי_פטיפורים')
-            .select('שם_פטיפור, כמות_במלאי')
-            .eq('id', pfId)
-            .single();
-          if (pf) {
-            const before = pf.כמות_במלאי || 0;
-            const after = Math.max(0, before - qtyToDeduct);
-            await supabase
-              .from('סוגי_פטיפורים')
-              .update({ כמות_במלאי: after })
-              .eq('id', pfId);
-            await recordStockMovement(supabase, {
-              itemKind: 'פטיפור',
-              itemId: pfId,
-              itemName: pf.שם_פטיפור || '',
-              before,
-              after,
-              sourceKind: 'הזמנה',
-              sourceId: params.id,
-              notes: `הורדה ממארז (${qtyToDeduct} יח׳)`,
-            });
-          }
-        }
-        console.log('[order-status] deducted petit-fours from packages:',
-          'lines:', packageLineRows.length,
-          '| selections:', selectionRows.length,
-          '| distinct types:', pfIds.length);
-      }
-    }
-  }
+  // LEGACY-DELETED (May 2026 rev 2): the inline "deduct on חדשה→בהכנה"
+  // block lived here, gated by DEDUCT_INVENTORY_ON_ORDER_STATUS. Removed
+  // because the active policy is now "deduct on real order creation /
+  // finalization" via the central deductOrderInventory helper (called
+  // from create-full, finalize-draft, and the WC webhook). Status
+  // transitions on PATCH no longer touch stock except for the
+  // cancellation restore block above.
 
   // חשבונית מס / סאטמר: first time order status → הושלמה בהצלחה.
   // Morning issuance is gated behind AUTO_CREATE_MORNING_DOCUMENTS — when
@@ -344,25 +237,27 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     }
   }
 
-  // ── INVENTORY DEDUCTION on first transition to סטטוס_תשלום='שולם' ──────
-  // The active policy. Idempotency lives inside deductOrderInventory which
-  // checks תנועות_מלאי for any prior 'יציאה' linked to this order.
-  console.log('[inventory] checking payment status transition',
-    '| order id:', params.id,
-    '| previous payment status:', prevPaymentStatus,
-    '| new payment status:', body.סטטוס_תשלום ?? '(unchanged)');
+  // ── INVENTORY RESTORE on first transition to סטטוס_הזמנה='בוטלה' ───────
+  // New policy (May 2026 rev 2): inventory is deducted on order creation
+  // and restored on cancellation. Payment-status transitions are no
+  // longer the trigger for either — the per-order/bulk paid paths used
+  // to call deductOrderInventory; that's been removed everywhere.
+  //
+  // restoreOrderInventory is idempotent via the net-ledger guard, so a
+  // re-cancellation (after un-cancel) won't double-restore. סאטמר orders
+  // never deducted in the first place — their net is 0 and restore is a
+  // no-op, so we can skip the orderType gate here for safety.
   if (
-    DEDUCT_INVENTORY_ON_PAYMENT_PAID
-    && body.סטטוס_תשלום === 'שולם'
-    && prevPaymentStatus !== 'שולם'
-    && orderType !== 'סאטמר'
+    body.סטטוס_הזמנה === 'בוטלה'
+    && prevOrderStatus !== 'בוטלה'
   ) {
-    console.log('[inventory] should deduct: true. order:', params.id);
-    await deductOrderInventory(supabase, params.id);
-  } else if (body.סטטוס_תשלום === 'שולם' && prevPaymentStatus === 'שולם') {
-    console.log('[inventory] should deduct: false — order was already שולם. skipping. order:', params.id);
-  } else if (body.סטטוס_תשלום === 'שולם' && orderType === 'סאטמר') {
-    console.log('[inventory] should deduct: false — סאטמר order, no inventory deduction. order:', params.id);
+    console.log('[inventory] order cancelled — running restoreOrderInventory. order:', params.id, '| prev status:', prevOrderStatus);
+    try {
+      const result = await restoreOrderInventory(supabase, params.id);
+      console.log('[inventory] restore result:', JSON.stringify(result));
+    } catch (err) {
+      console.error('[inventory] restoreOrderInventory threw (continuing):', err instanceof Error ? err.message : err);
+    }
   }
 
   // קבלה / סאטמר: first time payment status → שולם.

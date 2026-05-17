@@ -86,7 +86,15 @@ export default function SettingsPage() {
           body: JSON.stringify({ dry_run: true }),
         })
           .then(r => r.ok ? r.json() : null)
-          .then(d => { if (d?.missing_ledger != null) setBackfillCount(d.missing_ledger); })
+          .then(d => {
+            // New response shape: { deduct: { missing_count }, restore: { missing_count } }.
+            // Badge surfaces the sum so the admin sees a single number across
+            // both directions (orders missing deduction + cancelled orders
+            // missing restore). The page itself splits them into sections.
+            const deductCount  = d?.deduct?.missing_count  ?? d?.missing_ledger ?? 0;
+            const restoreCount = d?.restore?.missing_count ?? 0;
+            setBackfillCount(deductCount + restoreCount);
+          })
           .catch(() => {});
       }
     }).catch(() => {});

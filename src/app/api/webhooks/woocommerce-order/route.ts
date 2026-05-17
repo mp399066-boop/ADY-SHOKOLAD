@@ -613,16 +613,13 @@ export async function POST(req: Request) {
       }
     })();
 
-    // Inventory deduction for orders that arrive already-paid. The webhook
-    // INSERTs סטטוס_תשלום='שולם' directly (no PATCH transition to hook on),
-    // so we trigger the helper here. Idempotent — if a previous webhook for
-    // the same order already deducted, the lookup against תנועות_מלאי will
-    // short-circuit. Skipped silently for unpaid orders (deduction will fire
-    // later when the operator marks them paid).
-    if (paymentStatus === 'שולם') {
-      console.log('[inventory] WC order arrived already-paid. order:', order.id);
-      await deductOrderInventory(supabase, order.id);
-    }
+    // Inventory deduction on website order import. New policy (May 2026):
+    // a real order consumes stock immediately, regardless of payment
+    // status. The webhook imports the order as 'חדשה' (not draft), so
+    // deduction fires for every imported order. Idempotent via the
+    // net-ledger guard — replays / retries are no-ops.
+    console.log('[inventory] WC order imported — running deductOrderInventory. order:', order.id);
+    await deductOrderInventory(supabase, order.id);
 
     // Owner-facing internal alert. Same template create-full uses; the
     // `source` + `newProducts` options drive the WC-specific banner and the
