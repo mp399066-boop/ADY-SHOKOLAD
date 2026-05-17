@@ -272,9 +272,8 @@ export default function RecipesPage() {
                         <div className="flex justify-between mb-3">
                           <div>
                             <h3 className="font-semibold" style={{ color: '#2B1A10' }}>{r.שם_מתכון}</h3>
-                            <p className="text-xs mt-0.5" style={{ color: '#6B4A2D' }}>
-                              {(r as Recipe & { מוצרים_למכירה?: { שם_מוצר: string } }).מוצרים_למכירה?.שם_מוצר || 'לא משויך'}
-                              {' · '} תוצר: {r.כמות_תוצר}
+                            <p className="text-xs mt-0.5" style={{ color: '#9B7A5A' }}>
+                              תוצר לאצווה: {r.כמות_תוצר}
                             </p>
                           </div>
                           <div className="flex items-start gap-1">
@@ -291,18 +290,33 @@ export default function RecipesPage() {
                           </div>
                         </div>
 
-                        {/* Ingredients with current stock */}
+                        {/* Ingredients section */}
+                        <div className="mb-1.5 flex items-center justify-between">
+                          <span className="text-xs font-semibold" style={{ color: '#2B1A10' }}>
+                            חומרי גלם במתכון
+                          </span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium" style={{ backgroundColor: '#F0E8DC', color: '#6B4A2D' }}>
+                            {ings.length > 0 ? `${ings.length} חומרי גלם` : 'אין חומרי גלם'}
+                          </span>
+                        </div>
+
                         {ings.length > 0 ? (
                           <div className="space-y-1">
                             {ings.map((ing, i) => {
                               const mat = materials.find(m => m.id === ing.חומר_גלם_id);
-                              const ingName = (ing.מלאי_חומרי_גלם as { שם_חומר_גלם?: string } | undefined)?.שם_חומר_גלם || '-';
+                              const ingName = (ing.מלאי_חומרי_גלם as { שם_חומר_גלם?: string } | undefined)?.שם_חומר_גלם
+                                || mat?.שם_חומר_גלם
+                                || 'דורש שיוך לחומר גלם';
+                              const isUnlinked = !ing.חומר_גלם_id;
                               const stock = mat ? Number(mat.כמות_במלאי) : null;
                               const enough = stock !== null && stock >= ing.כמות_נדרשת;
                               return (
                                 <div key={i} className="flex justify-between items-center text-xs p-1.5 rounded"
-                                  style={{ backgroundColor: '#FAF7F0' }}>
-                                  <span>{ingName}</span>
+                                  style={{ backgroundColor: isUnlinked ? '#FEF3C7' : '#FAF7F0' }}>
+                                  <span style={{ color: isUnlinked ? '#92400E' : '#2B1A10' }}>
+                                    {isUnlinked && <span className="ml-1">⚠</span>}
+                                    {ingName}
+                                  </span>
                                   <div className="flex items-center gap-2">
                                     <span style={{ color: '#6B4A2D' }}>{ing.כמות_נדרשת} {ing.יחידת_מידה}</span>
                                     {stock !== null && (
@@ -321,7 +335,7 @@ export default function RecipesPage() {
                             })}
                           </div>
                         ) : (
-                          <p className="text-xs" style={{ color: '#6B4A2D' }}>אין רכיבים</p>
+                          <p className="text-xs italic" style={{ color: '#9B7A5A' }}>הוסיפי חומרי גלם למתכון</p>
                         )}
                       </Card>
                     );

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -26,6 +26,9 @@ export default function InventoryPage() {
   const [materials, setMaterials] = useState<RawMaterial[]>([]);
   const [stockProducts, setStockProducts] = useState<Product[]>([]);
   const [stockPetitFours, setStockPetitFours] = useState<PetitFourType[]>([]);
+  type RecipeIngRef = { חומר_גלם_id: string; כמות_נדרשת: number; יחידת_מידה: string };
+  type RecipeRef = { id: string; שם_מתכון: string; רכיבי_מתכון?: RecipeIngRef[] };
+  const [recipesList, setRecipesList] = useState<RecipeRef[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<ActiveTab>('raw');
   const [statusFilter, setStatusFilter] = useState('');
@@ -95,6 +98,10 @@ export default function InventoryPage() {
       .finally(() => setLoading(false));
   };
 
+  const fetchRecipes = () => {
+    fetch('/api/recipes').then(r => r.json()).then(({ data }) => setRecipesList(data || []));
+  };
+
   const fetchProductStock = () => {
     // Restrict the "מוצרים מוגמרים" tab to actual finished products. The
     // catalog also stores 'מארז פטיפורים' rows (umbrella package SKUs that
@@ -110,6 +117,7 @@ export default function InventoryPage() {
     fetch('/api/petit-four-types').then(r => r.json()).then(({ data }) => setStockPetitFours(data || []));
   };
 
+  useEffect(() => { fetchRecipes(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { fetchInventory(); }, [statusFilter]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     // Alerts tab also needs the product list — productAlerts is derived from it.
@@ -363,6 +371,23 @@ export default function InventoryPage() {
     return matchSearch && matchStatus;
   });
 
+  // Maps materialId → { count, names, details } built from live recipe list.
+  // Used by the table column and the edit-modal section.
+  const materialRecipeMap = useMemo(() => {
+    const map = new Map<string, { count: number; names: string[]; details: { recipeName: string; qty: number; unit: string }[] }>();
+    for (const recipe of recipesList) {
+      for (const ing of recipe.רכיבי_מתכון ?? []) {
+        if (!ing.חומר_גלם_id) continue;
+        if (!map.has(ing.חומר_גלם_id)) map.set(ing.חומר_גלם_id, { count: 0, names: [], details: [] });
+        const entry = map.get(ing.חומר_גלם_id)!;
+        entry.count++;
+        entry.names.push(recipe.שם_מתכון);
+        entry.details.push({ recipeName: recipe.שם_מתכון, qty: ing.כמות_נדרשת, unit: ing.יחידת_מידה });
+      }
+    }
+    return map;
+  }, [recipesList]);
+
   const tabList = [
     { key: 'raw',        label: 'חומרי גלם',      count: materials.length },
     { key: 'products',   label: 'מוצרים מוגמרים', count: stockProducts.length },
@@ -462,7 +487,7 @@ export default function InventoryPage() {
                             onChange={() => setSelRaw(prev => prev.size === filtered.length ? new Set() : new Set(filtered.map(m => m.id)))}
                           />
                         </th>
-                        {['שם חומר גלם', 'כמות במלאי', 'יחידה', 'סף נמוך', 'סף קריטי', 'סטטוס', 'עלות ליח׳', ''].map(h => (
+                        {['שם חומר גלם', 'כמות במלאי', 'יחידה', 'סף נמוך', 'סף קריטי', 'סטטוס', 'עלות ליח׳', 'מתכונים', ''].map(h => (
                           <th key={h} className="px-4 py-3 text-right text-xs font-semibold" style={{ color: '#6B4A2D' }}>{h}</th>
                         ))}
                       </tr>
@@ -505,6 +530,23 @@ export default function InventoryPage() {
                             <td className="px-4 py-3 text-xs" style={{ color: '#6B4A2D' }}>{m.סף_מלאי_קריטי}</td>
                             <td className="px-4 py-3"><StatusBadge status={m.סטטוס_מלאי} type="inventory" /></td>
                             <td className="px-4 py-3 text-xs">{m.מחיר_ליחידה ? formatCurrency(m.מחיר_ליחידה) : '—'}</td>
+                            <td className="px-4 py-3">
+                              {(() => {
+                                const rec = materialRecipeMap.get(m.id);
+                                if (!rec || rec.count === 0) {
+                                  return <span className="text-xs" style={{ color: '#C0A882' }}>לא משויך</span>;
+                                }
+                                return (
+                                  <span
+                                    className="text-xs font-medium cursor-default"
+                                    style={{ color: '#6B4A2D' }}
+                                    title={rec.names.join(', ')}
+                                  >
+                                    {rec.count} {rec.count === 1 ? 'מתכון' : 'מתכונים'}
+                                  </span>
+                                );
+                              })()}
+                            </td>
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-0.5">
                                 <ActionBtn title="עריכה" onClick={() => openEdit(m)} icon={<IconEdit className="w-4 h-4" />} />
@@ -976,6 +1018,29 @@ export default function InventoryPage() {
             <Input label="תאריך תפוגה" type="date" value={editItem?.תאריך_תפוגה || ''} onChange={e => setEditItem(p => ({ ...p, תאריך_תפוגה: e.target.value || null }))} />
           </div>
           <Textarea label="הערות" value={editItem?.הערות || ''} onChange={e => setEditItem(p => ({ ...p, הערות: e.target.value }))} rows={2} />
+
+          {/* Show which recipes use this raw material — read-only, edit mode only */}
+          {editItem && (editItem as RawMaterial).id && (() => {
+            const rec = materialRecipeMap.get((editItem as RawMaterial).id);
+            return (
+              <div className="rounded-lg border p-3" style={{ borderColor: '#E7D2A6', backgroundColor: '#FAF7F0' }}>
+                <p className="text-xs font-semibold mb-2" style={{ color: '#2B1A10' }}>נמצא במתכונים</p>
+                {!rec || rec.count === 0 ? (
+                  <p className="text-xs" style={{ color: '#9B7A5A' }}>לא משויך למתכון</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {rec.details.map((d, i) => (
+                      <div key={i} className="flex items-center justify-between text-xs">
+                        <span style={{ color: '#2B1A10' }}>{d.recipeName}</span>
+                        <span className="font-mono" style={{ color: '#6B4A2D' }}>{d.qty} {d.unit} לאצווה</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           <div className="flex gap-3 justify-end pt-2">
             <Button variant="outline" onClick={() => setShowModal(false)}>ביטול</Button>
             <Button onClick={handleSave} loading={saving}>שמור</Button>
