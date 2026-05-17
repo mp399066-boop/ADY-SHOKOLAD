@@ -10,9 +10,10 @@ import toast from 'react-hot-toast';
 import type { BusinessSettings } from '@/types/database';
 
 const SETTINGS_TABS_BASE = [
-  { href: '/settings',       label: 'הגדרות עסק',       adminOnly: false },
-  { href: '/settings/users', label: 'משתמשים והרשאות',  adminOnly: false },
-  { href: '/settings/system-control', label: 'מרכז בקרה', adminOnly: true },
+  { href: '/settings',                    label: 'הגדרות עסק',         adminOnly: false },
+  { href: '/settings/users',              label: 'משתמשים והרשאות',    adminOnly: false },
+  { href: '/settings/inventory-backfill', label: 'תיקון מלאי',          adminOnly: true  },
+  { href: '/settings/system-control',     label: 'מרכז בקרה',           adminOnly: true  },
 ] as const;
 
 function SettingsTabs({ activeHref = '/settings', isAdmin = false }: { activeHref?: string; isAdmin?: boolean }) {

@@ -31,6 +31,26 @@ import { deductOrderInventory, type DeductionResult } from '@/lib/inventory-dedu
 interface BackfillBody {
   dry_run?:    boolean;
   order_ids?:  string[];
+  // When true (only meaningful with dry_run), the preview rows are
+  // enriched with customer name + a per-order item list (product name +
+  // quantity + petit-four totals for packages). The UI uses this to
+  // show the operator exactly what's about to be deducted.
+  detailed?:   boolean;
+}
+
+interface DetailedPreviewRow {
+  order_id:       string;
+  order_number:   string | null;
+  customer_name:  string | null;
+  payment_status: string | null;
+  items: Array<{
+    name:     string;
+    quantity: number;
+    kind:     'product' | 'package';
+    // For packages: per-type petit-four totals (qty in *this* line, after
+    // multiplying selection.qty × package.qty).
+    petit_fours?: Array<{ name: string; quantity: number }>;
+  }>;
 }
 
 interface OrderProcessResult {
@@ -55,6 +75,7 @@ export async function POST(req: NextRequest) {
     body = {};
   }
   const dryRun       = body.dry_run !== false; // default TRUE (safe)
+  const detailed     = body.detailed === true;
   const explicitIds  = Array.isArray(body.order_ids) ? body.order_ids.filter(Boolean) : null;
 
   const supabase = createAdminClient();
@@ -111,17 +132,105 @@ export async function POST(req: NextRequest) {
 
   // Dry-run summary.
   if (dryRun) {
+    // Minimal preview by default — cheap, no extra joins.
+    if (!detailed || needsDeduction.length === 0) {
+      return NextResponse.json({
+        ok: true,
+        dry_run: true,
+        total: candidateIds.length,
+        missing_ledger: needsDeduction.length,
+        already_deducted: alreadyDeducted.size,
+        preview: needsDeduction.map(id => ({
+          order_id:       id,
+          order_number:   metaById.get(id)?.מספר_הזמנה ?? null,
+          payment_status: metaById.get(id)?.סטטוס_תשלום ?? null,
+        })),
+      });
+    }
+
+    // Detailed preview — enriches each missing order with customer +
+    // items so the operator sees exactly what's about to be deducted.
+    // Two extra queries (orders+customer, items+products+petit-fours).
+    const { data: detailedOrders } = await supabase
+      .from('הזמנות')
+      .select('id, מספר_הזמנה, סטטוס_תשלום, לקוחות(שם_פרטי, שם_משפחה)')
+      .in('id', needsDeduction);
+
+    const { data: itemRows } = await supabase
+      .from('מוצרים_בהזמנה')
+      .select(`
+        id, הזמנה_id, סוג_שורה, גודל_מארז, כמות,
+        מוצרים_למכירה(שם_מוצר),
+        בחירת_פטיפורים_בהזמנה(כמות, סוגי_פטיפורים(שם_פטיפור))
+      `)
+      .in('הזמנה_id', needsDeduction);
+
+    type DOrder = { id: string; מספר_הזמנה: string | null; סטטוס_תשלום: string | null; לקוחות?: { שם_פרטי?: string | null; שם_משפחה?: string | null } | null };
+    type DItem  = {
+      הזמנה_id: string;
+      סוג_שורה: string | null;
+      גודל_מארז: number | null;
+      כמות: number | null;
+      מוצרים_למכירה?: { שם_מוצר?: string | null } | null;
+      בחירת_פטיפורים_בהזמנה?: Array<{ כמות: number | null; סוגי_פטיפורים?: { שם_פטיפור?: string | null } | null }> | null;
+    };
+
+    const orderById = new Map<string, DOrder>(((detailedOrders ?? []) as DOrder[]).map(o => [o.id, o]));
+    const itemsByOrder = new Map<string, DItem[]>();
+    for (const it of (itemRows ?? []) as DItem[]) {
+      const list = itemsByOrder.get(it.הזמנה_id) ?? [];
+      list.push(it);
+      itemsByOrder.set(it.הזמנה_id, list);
+    }
+
+    const preview: DetailedPreviewRow[] = needsDeduction.map(id => {
+      const o = orderById.get(id);
+      const cust = o?.לקוחות;
+      const customerName = cust
+        ? `${(cust.שם_פרטי || '').trim()} ${(cust.שם_משפחה || '').trim()}`.trim()
+        : null;
+
+      const items = (itemsByOrder.get(id) ?? []).map(it => {
+        const qty = Number(it.כמות || 0);
+        if (it.סוג_שורה === 'מארז') {
+          const size = it.גודל_מארז ?? 0;
+          const pfTotals = (it.בחירת_פטיפורים_בהזמנה ?? [])
+            .map(s => ({
+              name:     s.סוגי_פטיפורים?.שם_פטיפור?.trim() || '',
+              quantity: Number(s.כמות || 0) * qty,
+            }))
+            .filter(p => p.name && p.quantity > 0);
+          return {
+            name: size > 0 ? `מארז ${size} פטיפורים` : 'מארז פטיפורים',
+            quantity: qty,
+            kind: 'package' as const,
+            ...(pfTotals.length > 0 ? { petit_fours: pfTotals } : {}),
+          };
+        }
+        return {
+          name: it.מוצרים_למכירה?.שם_מוצר?.trim() || 'פריט',
+          quantity: qty,
+          kind: 'product' as const,
+        };
+      });
+
+      return {
+        order_id:       id,
+        order_number:   o?.מספר_הזמנה ?? null,
+        customer_name:  customerName || null,
+        payment_status: o?.סטטוס_תשלום ?? null,
+        items,
+      };
+    });
+
     return NextResponse.json({
       ok: true,
       dry_run: true,
+      detailed: true,
       total: candidateIds.length,
       missing_ledger: needsDeduction.length,
       already_deducted: alreadyDeducted.size,
-      preview: needsDeduction.map(id => ({
-        order_id:       id,
-        order_number:   metaById.get(id)?.מספר_הזמנה ?? null,
-        payment_status: metaById.get(id)?.סטטוס_תשלום ?? null,
-      })),
+      preview,
     });
   }
 

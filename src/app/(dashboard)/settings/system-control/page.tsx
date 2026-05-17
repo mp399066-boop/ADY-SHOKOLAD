@@ -22,9 +22,10 @@ import { EmptyState } from '@/components/ui/EmptyState';
 
 // ── SettingsTabs (local — same pattern as other settings pages) ──────────
 const SETTINGS_TABS = [
-  { href: '/settings',                label: 'הגדרות עסק' },
-  { href: '/settings/users',          label: 'משתמשים והרשאות' },
-  { href: '/settings/system-control', label: 'מרכז בקרה' },
+  { href: '/settings',                    label: 'הגדרות עסק'      },
+  { href: '/settings/users',              label: 'משתמשים והרשאות' },
+  { href: '/settings/inventory-backfill', label: 'תיקון מלאי'      },
+  { href: '/settings/system-control',     label: 'מרכז בקרה'        },
 ];
 
 function SettingsTabs({ active }: { active: string }) {
