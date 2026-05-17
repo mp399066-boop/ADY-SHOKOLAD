@@ -426,14 +426,17 @@ export async function POST(req: Request) {
     // product in the catalog should still be matched (re-using its id) rather
     // than silently re-created as a duplicate.
     console.log('[wc-webhook] creating order lines... items count:', lineItems.length);
-    const { data: catalog } = await supabase.from('מוצרים_למכירה').select('id, שם_מוצר, מזהה_לובהבל');
-    const productBySlug = new Map<string, string>();
-    const productByName = new Map<string, string>();
+    const { data: catalog, error: catalogErr } = await supabase
+      .from('מוצרים_למכירה')
+      .select('id, שם_מוצר, sku');
+    if (catalogErr) console.error('[wc-webhook] catalog query failed:', catalogErr.message);
+    const productBySku  = new Map<string, string>(); // WC sku → CRM id
+    const productByName = new Map<string, string>(); // normalized name → CRM id
     for (const p of catalog ?? []) {
-      const slug = (p.מזהה_לובהבל as string | null);
-      const name = (p.שם_מוצר as string | null);
-      if (slug) productBySlug.set(slug.toLowerCase().trim(), p.id as string);
-      if (name) productByName.set(normalizeName(name), p.id as string);
+      const pSku = (p.sku as string | null);
+      const pName = (p.שם_מוצר as string | null);
+      if (pSku)  productBySku.set(pSku.toLowerCase().trim(), p.id as string);
+      if (pName) productByName.set(normalizeName(pName), p.id as string);
     }
 
     // Track products created during this webhook so the admin alert email
@@ -452,11 +455,9 @@ export async function POST(req: Request) {
       const wooVariationId = item.variation_id as number | undefined;
       const wcSlug = buildWcSlug(item);
 
-      // Match priority: slug (sku/product-id) → normalized name. Slug is more
-      // reliable when a product gets renamed in WC; name matches operator-
-      // created products that don't have a WC source slug yet.
+      // Match priority: WC SKU (exact, case-insensitive) → normalized name.
       let matchedId: string | null =
-        productBySlug.get(wcSlug.toLowerCase()) ??
+        (sku ? productBySku.get(sku.toLowerCase()) : undefined) ??
         productByName.get(normalizeName(name)) ??
         null;
 
@@ -468,9 +469,10 @@ export async function POST(req: Request) {
           '| name:', name,
           '| local product id:', matchedId);
       } else {
-        // No match → try to create. Description carries provenance so the
-        // operator can later see where the product came from.
-        const desc = `נוצר אוטומטית מהזמנת WooCommerce #${wcOrderId}`
+        // No match → create. Stock starts at 0 (do not invent stock).
+        // תיאור carries WC provenance so the operator can complete the product.
+        const desc = `נוצר אוטומטית מהאתר — להשלים מלאי/קטגוריה`
+          + ` · WooCommerce #${wcOrderId}`
           + (wooProductId ? ` · WC product #${wooProductId}` : '')
           + (wooVariationId ? ` · variation #${wooVariationId}` : '')
           + (sku ? ` · SKU ${sku}` : '');
@@ -478,12 +480,20 @@ export async function POST(req: Request) {
         const { data: newProduct, error: createErr } = await supabase
           .from('מוצרים_למכירה')
           .insert({
-            מזהה_לובהבל: wcSlug,
-            שם_מוצר:     name,
-            מחיר:        unitPrice,
-            סוג_מוצר:    'מוצר רגיל',
-            פעיל:        true,
-            תיאור:       desc,
+            שם_מוצר:                  name,
+            מחיר:                     unitPrice,
+            sku:                      sku || null,
+            סוג_מוצר:                 'מוצר רגיל',
+            פעיל:                     true,
+            תיאור:                    desc,
+            כמות_במלאי:               0,
+            סף_מלאי_נמוך:             0,
+            סף_מלאי_קריטי:            0,
+            סטטוס_מלאי:               'אזל מהמלאי',
+            האם_צריך_בחירת_פטיפורים:  false,
+            לקוחות_עסקיים_בלבד:       false,
+            price_availability:        'retail',
+            קטגוריית_מוצר:             'אחר',
           })
           .select('id')
           .single();
@@ -491,9 +501,7 @@ export async function POST(req: Request) {
         if (newProduct) {
           matchedId = newProduct.id as string;
           newProducts.push({ id: matchedId, name });
-          // Update in-memory maps so a duplicate line item in the same
-          // webhook resolves to the freshly-created row.
-          productBySlug.set(wcSlug.toLowerCase(), matchedId);
+          if (sku) productBySku.set(sku.toLowerCase(), matchedId);
           productByName.set(normalizeName(name), matchedId);
           console.log('[woocommerce] created missing product',
             '| woo order id:', wcOrderId,
@@ -503,26 +511,31 @@ export async function POST(req: Request) {
             '| price:', unitPrice,
             '| new local product id:', matchedId);
         } else {
-          // Insert failed — most likely a UNIQUE violation on the slug
-          // (race / re-import). Recover by selecting by slug.
-          const { data: conflict } = await supabase
-            .from('מוצרים_למכירה')
-            .select('id')
-            .eq('מזהה_לובהבל', wcSlug)
-            .maybeSingle();
-          if (conflict) {
-            matchedId = conflict.id as string;
-            productBySlug.set(wcSlug.toLowerCase(), matchedId);
-            console.log('[woocommerce] matched product (slug conflict recovery)',
-              '| sku:', sku || '—', '| name:', name, '| local product id:', matchedId);
+          // Insert failed — recover by SKU (unique constraint race), then name.
+          const { data: bySku }  = sku
+            ? await supabase.from('מוצרים_למכירה').select('id').eq('sku', sku).maybeSingle()
+            : { data: null };
+          const { data: byName } = !bySku
+            ? await supabase.from('מוצרים_למכירה').select('id').eq('שם_מוצר', name).maybeSingle()
+            : { data: null };
+
+          const recovered = bySku ?? byName;
+          if (recovered) {
+            matchedId = recovered.id as string;
+            if (sku) productBySku.set(sku.toLowerCase(), matchedId);
+            productByName.set(normalizeName(name), matchedId);
+            console.log('[woocommerce] recovered product after insert conflict',
+              '| via:', bySku ? 'sku' : 'name',
+              '| sku:', sku || '—', '| name:', name, '| id:', matchedId);
           } else {
-            console.error('[woocommerce] failed to create missing product',
+            console.error('[woocommerce] FAILED to create or find product — מוצר_id will be NULL',
               '| woo order id:', wcOrderId,
               '| woo product id:', wooProductId ?? '—',
               '| sku:', sku || '—',
+              '| slug:', wcSlug,
               '| name:', name,
-              '| error:', createErr?.message ?? 'unknown');
-            warnings.push(`Failed to create product "${name}"`);
+              '| insert error:', createErr?.message ?? 'unknown');
+            warnings.push(`מוצר מהאתר לא שויך — דורש טיפול: "${name}"${sku ? ` (SKU ${sku})` : ''}`);
           }
         }
       }
@@ -545,6 +558,24 @@ export async function POST(req: Request) {
       } else {
         console.log(`[wc-webhook] Item saved: "${name}" | matched: ${!!matchedId} | qty: ${qty} | price: ${unitPrice}`);
       }
+    }
+
+    // If any product could not be linked, log a dedicated warning activity so
+    // operators see it immediately in the activity feed.
+    if (warnings.length > 0) {
+      void logActivity({
+        actor:       WEBHOOK_ACTOR_WC,
+        module:      'integrations',
+        action:      'woocommerce_product_unlinked',
+        status:      'warning',
+        entityType:  'order',
+        entityId:    order.id,
+        entityLabel: `WC #${wcOrderId ?? '?'}`,
+        title:       'מוצר מהאתר לא שויך — דורש טיפול',
+        description: warnings.join('\n'),
+        metadata:    { wc_order_id: wcOrderId, warnings },
+        request:     req,
+      });
     }
 
     // ── 6. Payment record (triggers Morning invoice if paid) ─────────────────
