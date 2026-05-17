@@ -1,6 +1,10 @@
 import type { Delivery, Stock, StockRow, TodayOrder } from '@/app/(dashboard)/dashboard/components/types';
 
-export type KitchenTabId = 'today' | 'prep' | 'payment' | 'delivery' | 'attention';
+// 'payment' was intentionally removed from the kitchen tabs (owner request):
+// the kitchen screen is for prep, not for chasing money. Payment status is
+// still visible on each row's badge if relevant, and lives front-and-center
+// on the dedicated dashboard view.
+export type KitchenTabId = 'today' | 'prep' | 'delivery' | 'attention';
 export type KitchenTaskType = 'הכנה' | 'תשלום' | 'משלוח' | 'מלאי';
 
 export type KitchenTask = {
@@ -145,10 +149,12 @@ export function buildKitchenView({
     ...stock.petitFours.map(item => ({ ...item, kind: 'petitFour' as const })),
   ].slice(0, 8);
 
-  const unpaidCount = kitchenTasks.filter(task => UNPAID_STATUSES.includes(task.order.סטטוס_תשלום)).length;
   const deliveryCount = todayDeliveries.filter(d => ACTIVE_DELIVERY_STATUSES.includes(d.סטטוס_משלוח)).length;
   const lowStockCount = inventoryWarnings.length;
 
+  // Kitchen alerts: stock + deliveries only. Unpaid-orders alert was
+  // removed per owner request — the kitchen screen exists to drive
+  // production, not payment chasing.
   const alerts: KitchenAlert[] = [
     ...(lowStockCount > 0 ? [{
       id: 'low-stock',
@@ -156,13 +162,6 @@ export function buildKitchenView({
       description: 'חומרי גלם או מוצרים מתחת לסף.',
       actionLabel: 'פתח מלאי',
       action: 'inventory' as const,
-    }] : []),
-    ...(unpaidCount > 0 ? [{
-      id: 'unpaid',
-      title: `${unpaidCount} הזמנות ממתינות לתשלום`,
-      description: 'אפשר לעדכן סטטוס ישירות מהשורות.',
-      actionLabel: 'הצג',
-      action: 'orders-unpaid' as const,
     }] : []),
     ...(deliveryCount > 0 ? [{
       id: 'deliveries',
@@ -178,7 +177,6 @@ export function buildKitchenView({
     tasksByTab: {
       today: kitchenTasks,
       prep: kitchenTasks.filter(task => PREP_STATUSES.includes(task.order.סטטוס_הזמנה)),
-      payment: kitchenTasks.filter(task => UNPAID_STATUSES.includes(task.order.סטטוס_תשלום)),
       delivery: kitchenTasks.filter(task => !!task.delivery && ACTIVE_DELIVERY_STATUSES.includes(task.delivery.סטטוס_משלוח)),
       attention: kitchenTasks.filter(task => task.needsAttention),
     },
