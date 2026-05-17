@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { Fragment, useState, useEffect, useMemo } from 'react';
 import { IconPlus, IconEdit, IconWhatsApp } from '@/components/icons';
 
 type PageTab = 'suppliers' | 'settings' | 'shopping';
@@ -45,6 +45,7 @@ export default function SuppliersPage() {
   const [editSup, setEditSup] = useState<Supplier | null>(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [formSaving, setFormSaving] = useState(false);
+  const [expandedSupId, setExpandedSupId] = useState<string | null>(null);
 
   // ── Settings tab state ───────────────────────────────────────────────────
   const [materials, setMaterials] = useState<PurchaseMaterial[]>([]);
@@ -210,6 +211,15 @@ export default function SuppliersPage() {
     setRowForm({ ספק_מועדף_id: mat.ספק_מועדף_id, שם_מוצר_אצל_הספק: mat.שם_מוצר_אצל_הספק, מקט_ספק: mat.מקט_ספק, כמות_מינימום: mat.כמות_מינימום, כמות_להזמנה: mat.כמות_להזמנה, יחידת_קניה: mat.יחידת_קניה, הערות_רכש: mat.הערות_רכש });
   }
 
+  function toggleExpandSupplier(supId: string) {
+    setExpandedSupId(prev => prev === supId ? null : supId);
+    if (!materialsLoaded) fetchMaterials();
+  }
+
+  function escapeHtml(s: string): string {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
   function buildWaUrl(supplier: Supplier, items: PurchaseMaterial[]): string {
     const raw = supplier.טלפון?.replace(/\D/g, '') ?? '';
     const phone = raw.startsWith('972') ? raw : raw.startsWith('0') ? '972' + raw.slice(1) : raw;
@@ -224,6 +234,66 @@ export default function SuppliersPage() {
       .map(i => `• ${i.שם_מוצר_אצל_הספק || i.שם_חומר_גלם} — ${orderQty[i.id] ?? i.כמות_להזמנה ?? i.כמות_מינימום} ${i.יחידת_קניה || i.יחידת_מידה}`)
       .join('\n');
     return `שלום ${supplierName},\nברצוני להזמין:\n\n${lines}\n\nתודה רבה,\nעדי תכשיט שוקולד`;
+  }
+
+  function buildMailUrl(supplier: Supplier, items: PurchaseMaterial[]): string {
+    const subject = `הזמנת רכש — ${new Date().toLocaleDateString('he-IL')}`;
+    const body = buildCopyText(supplier.שם_ספק, items);
+    return `mailto:${supplier.אימייל}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  }
+
+  function downloadPdf(supplier: Supplier | null, groupItems: PurchaseMaterial[]) {
+    const items = groupItems.filter(i => selected.has(i.id));
+    if (!items.length) { showToast('לא נבחרו פריטים', false); return; }
+    const today = new Date().toLocaleDateString('he-IL');
+    const rows = items.map(i => `
+      <tr>
+        <td>${escapeHtml(i.שם_מוצר_אצל_הספק || i.שם_חומר_גלם)}</td>
+        <td>${escapeHtml(i.מקט_ספק || '—')}</td>
+        <td class="num">${orderQty[i.id] ?? i.כמות_להזמנה ?? i.כמות_מינימום}</td>
+        <td>${escapeHtml(i.יחידת_קניה || i.יחידת_מידה)}</td>
+        <td>${escapeHtml(i.הערות_רכש || '')}</td>
+      </tr>`).join('');
+    const supplierName = supplier?.שם_ספק ?? 'ללא ספק מוגדר';
+    const meta = [
+      supplier?.איש_קשר ? `איש קשר: ${escapeHtml(supplier.איש_קשר)}` : '',
+      supplier?.טלפון   ? `טלפון: ${escapeHtml(supplier.טלפון)}`     : '',
+      supplier?.אימייל  ? `אימייל: ${escapeHtml(supplier.אימייל)}`   : '',
+      `תאריך: ${today}`,
+    ].filter(Boolean).join('  |  ');
+    const html = `<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+<meta charset="UTF-8">
+<title>הזמנת רכש — ${escapeHtml(supplierName)}</title>
+<style>
+  body { font-family: Arial, Helvetica, sans-serif; direction: rtl; padding: 32px; color: #222; font-size: 14px; }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  .meta { color: #555; font-size: 13px; margin-bottom: 28px; }
+  table { width: 100%; border-collapse: collapse; }
+  th { background: #F3EDE4; text-align: right; padding: 9px 12px; font-size: 13px; border-bottom: 2px solid #E8DED4; }
+  td { padding: 8px 12px; border-bottom: 1px solid #eee; font-size: 13px; }
+  td.num { text-align: left; font-variant-numeric: tabular-nums; }
+  .footer { margin-top: 32px; font-size: 12px; color: #999; border-top: 1px solid #eee; padding-top: 12px; }
+  @media print { @page { margin: 20mm; } body { padding: 0; } }
+</style>
+</head>
+<body>
+  <h1>הזמנת רכש — ${escapeHtml(supplierName)}</h1>
+  <div class="meta">${meta}</div>
+  <table>
+    <thead><tr><th>שם מוצר</th><th>מקט</th><th>כמות</th><th>יחידה</th><th>הערות</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <div class="footer">עדי תכשיט שוקולד &bull; הופק ב-${today}</div>
+</body>
+</html>`;
+    const w = window.open('', '_blank');
+    if (!w) { showToast('לא ניתן לפתוח חלון — אפשר חלונות קופצים בדפדפן', false); return; }
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    setTimeout(() => { w.print(); }, 500);
   }
 
   // ── Computed ─────────────────────────────────────────────────────────────
@@ -246,7 +316,7 @@ export default function SuppliersPage() {
       }
       map.get(sid)!.items.push(item);
     }
-    // Suppliers with items first, then "no supplier" group last
+    // Named suppliers first, "no supplier" group last
     const entries = Array.from(map.entries());
     entries.sort(([a], [b]) => (a === null ? 1 : b === null ? -1 : 0));
     return entries.map(([supplierId, g]) => ({ supplierId, ...g }));
@@ -327,29 +397,76 @@ export default function SuppliersPage() {
                       <th className="text-right px-5 py-3 font-semibold text-gray-700">איש קשר</th>
                       <th className="text-right px-5 py-3 font-semibold text-gray-700">הערות</th>
                       <th className="text-right px-5 py-3 font-semibold text-gray-700">סטטוס</th>
-                      <th className="px-5 py-3 w-10" />
+                      <th className="px-5 py-3 w-24" />
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredSuppliers.map(s => (
-                      <tr key={s.id} className="border-t border-gray-100 hover:bg-amber-50/30">
-                        <td className="px-5 py-3 font-medium text-gray-900">{s.שם_ספק}</td>
-                        <td className="px-5 py-3 text-gray-600 font-mono text-xs">{s.טלפון || '—'}</td>
-                        <td className="px-5 py-3 text-gray-600 text-xs">{s.אימייל || '—'}</td>
-                        <td className="px-5 py-3 text-gray-600">{s.איש_קשר || '—'}</td>
-                        <td className="px-5 py-3 text-gray-500 text-xs max-w-[200px] truncate">{s.הערות || '—'}</td>
-                        <td className="px-5 py-3">
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.פעיל ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                            {s.פעיל ? 'פעיל' : 'לא פעיל'}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3">
-                          <button onClick={() => openEdit(s)} className="text-gray-400 hover:text-gray-700 p-1">
-                            <IconEdit className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                    {filteredSuppliers.map(s => {
+                      const isExpanded = expandedSupId === s.id;
+                      const linkedMats = materials.filter(m => m.ספק_מועדף_id === s.id);
+                      return (
+                        <Fragment key={s.id}>
+                          <tr className="border-t border-gray-100 hover:bg-amber-50/30">
+                            <td className="px-5 py-3 font-medium text-gray-900">{s.שם_ספק}</td>
+                            <td className="px-5 py-3 text-gray-600 font-mono text-xs">{s.טלפון || '—'}</td>
+                            <td className="px-5 py-3 text-gray-600 text-xs">{s.אימייל || '—'}</td>
+                            <td className="px-5 py-3 text-gray-600">{s.איש_קשר || '—'}</td>
+                            <td className="px-5 py-3 text-gray-500 text-xs max-w-[200px] truncate">{s.הערות || '—'}</td>
+                            <td className="px-5 py-3">
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.פעיל ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                                {s.פעיל ? 'פעיל' : 'לא פעיל'}
+                              </span>
+                            </td>
+                            <td className="px-5 py-3">
+                              <div className="flex items-center gap-1">
+                                <button onClick={() => openEdit(s)} className="text-gray-400 hover:text-gray-700 p-1" title="ערוך ספק">
+                                  <IconEdit className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => toggleExpandSupplier(s.id)}
+                                  className="text-gray-400 hover:text-[#C7A46B] p-1 transition-colors text-xs leading-none"
+                                  title={isExpanded ? 'סגור' : 'הצג חומרי גלם'}
+                                >
+                                  {isExpanded ? '▲' : '▼'}
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                          {isExpanded && (
+                            <tr className="border-t border-gray-100" style={{ background: '#FDFAF6' }}>
+                              <td colSpan={7} className="px-6 py-4">
+                                <div className="text-xs font-semibold text-gray-500 mb-3 uppercase tracking-wide">חומרי גלם מקושרים</div>
+                                {loadingMaterials ? (
+                                  <div className="text-xs text-gray-400">טוען...</div>
+                                ) : linkedMats.length === 0 ? (
+                                  <div className="text-xs text-gray-400">
+                                    לא נמצאו חומרי גלם מקושרים. ניתן לקשר בלשונית &ldquo;הגדרות רכש&rdquo;.
+                                  </div>
+                                ) : (
+                                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                                    {linkedMats.map(m => (
+                                      <div key={m.id} className="bg-white rounded-lg border border-gray-200 px-3 py-2">
+                                        <div className="font-medium text-gray-800 text-xs">{m.שם_חומר_גלם}</div>
+                                        {m.שם_מוצר_אצל_הספק && m.שם_מוצר_אצל_הספק !== m.שם_חומר_גלם && (
+                                          <div className="text-gray-400 text-xs mt-0.5">{m.שם_מוצר_אצל_הספק}</div>
+                                        )}
+                                        {m.מקט_ספק && (
+                                          <div className="text-gray-400 text-xs">מקט: {m.מקט_ספק}</div>
+                                        )}
+                                        <div className="text-gray-500 text-xs mt-0.5">
+                                          {m.כמות_במלאי} {m.יחידת_מידה} במלאי
+                                          {m.כמות_מינימום > 0 && ` · מינ׳ ${m.כמות_מינימום}`}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -541,16 +658,29 @@ export default function SuppliersPage() {
                             <div className="font-semibold text-gray-900 text-base">
                               {group.supplier?.שם_ספק ?? 'ללא ספק מוגדר'}
                             </div>
-                            <div className="flex gap-3 mt-0.5">
+                            <div className="flex gap-3 mt-0.5 flex-wrap">
                               {group.supplier?.טלפון && (
                                 <span className="text-sm text-gray-500 font-mono">{group.supplier.טלפון}</span>
                               )}
                               {group.supplier?.אימייל && (
                                 <span className="text-sm text-gray-500">{group.supplier.אימייל}</span>
                               )}
+                              {group.supplier?.איש_קשר && (
+                                <span className="text-sm text-gray-500">{group.supplier.איש_קשר}</span>
+                              )}
                             </div>
                           </div>
                           <div className="flex items-center gap-2 flex-wrap justify-end">
+                            {/* PDF download */}
+                            <button
+                              onClick={() => downloadPdf(group.supplier, group.items)}
+                              className="px-3 py-1.5 rounded-lg text-xs border border-gray-300 hover:bg-white text-gray-600 transition-colors"
+                              title="הורד PDF"
+                            >
+                              הורד PDF
+                            </button>
+
+                            {/* Copy text */}
                             <button
                               onClick={() => {
                                 const text = buildCopyText(group.supplier?.שם_ספק ?? 'ספק', group.items);
@@ -561,6 +691,17 @@ export default function SuppliersPage() {
                               העתק טקסט
                             </button>
 
+                            {/* Email */}
+                            {group.supplier?.אימייל && (
+                              <a
+                                href={buildMailUrl(group.supplier, group.items)}
+                                className="px-3 py-1.5 rounded-lg text-xs border border-gray-300 hover:bg-white text-gray-600 transition-colors"
+                              >
+                                שלח מייל
+                              </a>
+                            )}
+
+                            {/* WhatsApp */}
                             {group.supplier?.טלפון && (
                               <a
                                 href={buildWaUrl(group.supplier, group.items)}
@@ -574,6 +715,7 @@ export default function SuppliersPage() {
                               </a>
                             )}
 
+                            {/* Mark as ordered */}
                             <button
                               onClick={() => handleMarkOrdered(group.supplierId, group.items)}
                               disabled={orderSaving === gKey || selectedInGroup.length === 0}
@@ -588,51 +730,58 @@ export default function SuppliersPage() {
 
                       {/* Items */}
                       <div>
-                        {group.items.map(item => (
-                          <div
-                            key={item.id}
-                            className={`flex items-center px-5 py-3 gap-4 border-b border-gray-50 last:border-b-0 transition-opacity ${selected.has(item.id) ? '' : 'opacity-40'}`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={selected.has(item.id)}
-                              onChange={e => {
-                                const s = new Set(selected);
-                                e.target.checked ? s.add(item.id) : s.delete(item.id);
-                                setSelected(s);
-                              }}
-                              className="w-4 h-4 rounded accent-amber-600 flex-shrink-0"
-                            />
-
-                            <div className="flex-1 min-w-0">
-                              <div className="font-medium text-gray-900 text-sm">{item.שם_חומר_גלם}</div>
-                              {item.שם_מוצר_אצל_הספק && item.שם_מוצר_אצל_הספק !== item.שם_חומר_גלם && (
-                                <div className="text-xs text-gray-400 mt-0.5">{item.שם_מוצר_אצל_הספק}</div>
-                              )}
-                              {item.מקט_ספק && (
-                                <div className="text-xs text-gray-400">מקט: {item.מקט_ספק}</div>
-                              )}
-                            </div>
-
-                            <div className="text-xs text-gray-500 text-left flex-shrink-0">
-                              <div>במלאי: <span className="font-semibold text-red-600">{item.כמות_במלאי}</span> {item.יחידת_מידה}</div>
-                              <div>מינימום: {item.כמות_מינימום} {item.יחידת_מידה}</div>
-                            </div>
-
-                            <div className="flex items-center gap-1.5 flex-shrink-0">
-                              <span className="text-xs text-gray-500">כמות:</span>
+                        {group.items.map(item => {
+                          const deficit = Math.max(0, item.כמות_מינימום - item.כמות_במלאי);
+                          return (
+                            <div
+                              key={item.id}
+                              className={`flex items-center px-5 py-3 gap-4 border-b border-gray-50 last:border-b-0 transition-opacity ${selected.has(item.id) ? '' : 'opacity-40'}`}
+                            >
                               <input
-                                type="number"
-                                value={orderQty[item.id] ?? item.כמות_להזמנה ?? item.כמות_מינימום}
-                                onChange={e => setOrderQty(q => ({ ...q, [item.id]: Number(e.target.value) }))}
-                                className="border border-gray-300 rounded px-2 py-1 text-sm w-20 text-center focus:outline-none focus:border-[#C7A46B]"
-                                min={0}
-                                step="0.001"
+                                type="checkbox"
+                                checked={selected.has(item.id)}
+                                onChange={e => {
+                                  const s = new Set(selected);
+                                  e.target.checked ? s.add(item.id) : s.delete(item.id);
+                                  setSelected(s);
+                                }}
+                                className="w-4 h-4 rounded accent-amber-600 flex-shrink-0"
                               />
-                              <span className="text-xs text-gray-500 w-10 truncate">{item.יחידת_קניה || item.יחידת_מידה}</span>
+
+                              <div className="flex-1 min-w-0">
+                                <div className="font-medium text-gray-900 text-sm">{item.שם_חומר_גלם}</div>
+                                {item.שם_מוצר_אצל_הספק && item.שם_מוצר_אצל_הספק !== item.שם_חומר_גלם && (
+                                  <div className="text-xs text-gray-400 mt-0.5">{item.שם_מוצר_אצל_הספק}</div>
+                                )}
+                                {item.מקט_ספק && (
+                                  <div className="text-xs text-gray-400">מקט: {item.מקט_ספק}</div>
+                                )}
+                                {item.הערות_רכש && (
+                                  <div className="text-xs text-amber-700 mt-0.5">{item.הערות_רכש}</div>
+                                )}
+                              </div>
+
+                              <div className="text-xs text-gray-500 text-left flex-shrink-0 space-y-0.5">
+                                <div>במלאי: <span className="font-semibold text-red-600">{item.כמות_במלאי}</span> {item.יחידת_מידה}</div>
+                                <div>מינימום: {item.כמות_מינימום} {item.יחידת_מידה}</div>
+                                <div>חסר: <span className="font-semibold text-red-700">{deficit} {item.יחידת_מידה}</span></div>
+                              </div>
+
+                              <div className="flex items-center gap-1.5 flex-shrink-0">
+                                <span className="text-xs text-gray-500">כמות:</span>
+                                <input
+                                  type="number"
+                                  value={orderQty[item.id] ?? item.כמות_להזמנה ?? item.כמות_מינימום}
+                                  onChange={e => setOrderQty(q => ({ ...q, [item.id]: Number(e.target.value) }))}
+                                  className="border border-gray-300 rounded px-2 py-1 text-sm w-20 text-center focus:outline-none focus:border-[#C7A46B]"
+                                  min={0}
+                                  step="0.001"
+                                />
+                                <span className="text-xs text-gray-500 w-10 truncate">{item.יחידת_קניה || item.יחידת_מידה}</span>
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   );

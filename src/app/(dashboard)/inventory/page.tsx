@@ -24,6 +24,7 @@ type QtyMode = 'add' | 'subtract' | 'set';
 
 export default function InventoryPage() {
   const [materials, setMaterials] = useState<RawMaterial[]>([]);
+  const [suppliers, setSuppliers] = useState<{ id: string; שם_ספק: string }[]>([]);
   const [stockProducts, setStockProducts] = useState<Product[]>([]);
   const [stockPetitFours, setStockPetitFours] = useState<PetitFourType[]>([]);
   type RecipeIngRef = { חומר_גלם_id: string; כמות_נדרשת: number; יחידת_מידה: string };
@@ -117,7 +118,10 @@ export default function InventoryPage() {
     fetch('/api/petit-four-types').then(r => r.json()).then(({ data }) => setStockPetitFours(data || []));
   };
 
-  useEffect(() => { fetchRecipes(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    fetchRecipes();
+    fetch('/api/suppliers').then(r => r.json()).then(({ data }) => setSuppliers(data || []));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { fetchInventory(); }, [statusFilter]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     // Alerts tab also needs the product list — productAlerts is derived from it.
@@ -371,6 +375,11 @@ export default function InventoryPage() {
     return matchSearch && matchStatus;
   });
 
+  const supplierMap = useMemo(
+    () => new Map(suppliers.map(s => [s.id, s.שם_ספק])),
+    [suppliers],
+  );
+
   // Maps materialId → { count, names, details } built from live recipe list.
   // Used by the table column and the edit-modal section.
   const materialRecipeMap = useMemo(() => {
@@ -487,7 +496,7 @@ export default function InventoryPage() {
                             onChange={() => setSelRaw(prev => prev.size === filtered.length ? new Set() : new Set(filtered.map(m => m.id)))}
                           />
                         </th>
-                        {['שם חומר גלם', 'כמות במלאי', 'יחידה', 'סף נמוך', 'סף קריטי', 'סטטוס', 'עלות ליח׳', 'מתכונים', ''].map(h => (
+                        {['שם חומר גלם', 'כמות במלאי', 'יחידה', 'סף נמוך', 'סף קריטי', 'סטטוס', 'עלות ליח׳', 'ספק מועדף', 'מתכונים', ''].map(h => (
                           <th key={h} className="px-4 py-3 text-right text-xs font-semibold" style={{ color: '#6B4A2D' }}>{h}</th>
                         ))}
                       </tr>
@@ -530,6 +539,9 @@ export default function InventoryPage() {
                             <td className="px-4 py-3 text-xs" style={{ color: '#6B4A2D' }}>{m.סף_מלאי_קריטי}</td>
                             <td className="px-4 py-3"><StatusBadge status={m.סטטוס_מלאי} type="inventory" /></td>
                             <td className="px-4 py-3 text-xs">{m.מחיר_ליחידה ? formatCurrency(m.מחיר_ליחידה) : '—'}</td>
+                            <td className="px-4 py-3 text-xs" style={{ color: '#6B4A2D' }}>
+                              {m.ספק_מועדף_id ? supplierMap.get(m.ספק_מועדף_id) ?? '—' : <span style={{ color: '#C0A882' }}>—</span>}
+                            </td>
                             <td className="px-4 py-3">
                               {(() => {
                                 const rec = materialRecipeMap.get(m.id);
