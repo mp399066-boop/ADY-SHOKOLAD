@@ -5,7 +5,6 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { generateOrderNumber } from '@/lib/utils';
 import { sendOrderEmail, isInternalEmail, type OrderEmailData, type EmailContext } from '@/lib/email';
-import { sendAdminNewOrderAlert } from '@/lib/admin-alert-email';
 import { logActivity, userActor } from '@/lib/activity-log';
 
 // In-memory idempotency store — maps clientRequestId → { orderId, response, expiresAt }
@@ -370,12 +369,14 @@ export async function POST(req: NextRequest) {
     console.log('[create-full] skipping email —', emailTo ? 'internal address' : 'no email');
   }
 
-  // Admin alert — fire-and-forget, never fails the order. The full template
-  // (warm-cream card matching the customer email, items table, delivery + notes
-  // blocks) lives in src/lib/admin-alert-email.ts. Fired ONLY here on a real
-  // new order; finalize-draft no longer sends an admin alert (avoids the
-  // duplicate "draft converted" notification the owner used to receive).
-  void sendAdminNewOrderAlert(order!.id);
+  // NOTE: no admin alert from this path. Per owner request (2026-05) the
+  // "הזמנה חדשה" notification is reserved for orders that arrive via the
+  // public website — i.e. only the WooCommerce webhook fires it. Orders
+  // created manually inside the CRM are already visible to the operator
+  // who created them, so the alert is just noise.
+  //
+  // Removing the call here (rather than gating it with an env flag) keeps
+  // the contract explicit and prevents accidental re-enable.
 
   // Activity log — single row per real new order. Drafts go through
   // finalize-draft; we don't double-log there.

@@ -4,7 +4,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { sendOrderEmail, isInternalEmail, type OrderEmailData, type EmailContext } from '@/lib/email';
-import { sendAdminNewOrderAlert } from '@/lib/admin-alert-email';
 import { logActivity, userActor } from '@/lib/activity-log';
 
 // Converts a draft order (status=טיוטה) to a real order (status=חדשה).
@@ -222,13 +221,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     })();
   }
 
-  // 7. Admin alert — fire-and-forget, only on the moment the draft becomes
-  // a real order. Auto-save / save-draft never reach this endpoint, so this
-  // is the right single trigger for the "התקבלה הזמנה חדשה" email when the
-  // user submits via /orders/new. create-full(isDraft=false) sends the same
-  // alert for the rare path where someone submits before auto-save kicks in;
-  // since each order traverses exactly one of the two endpoints, no duplicate.
-  void sendAdminNewOrderAlert(orderId);
+  // 7. NOTE: no admin alert from this path. Per owner request (2026-05) the
+  // "הזמנה חדשה" notification is reserved for orders that arrive via the
+  // public website — i.e. only the WooCommerce webhook fires it. A draft
+  // becoming a real order is a manual CRM action; the operator who clicked
+  // "save" already sees the result, so the email would just be noise.
 
   // Activity log — single row when a draft becomes a real order. The
   // earlier save-draft writes are operationally noisy (autosave fires
