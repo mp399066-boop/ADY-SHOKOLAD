@@ -22,9 +22,28 @@ export async function GET(req: NextRequest) {
 
     let query = supabase
       .from('הזמנות')
-      .select('*, לקוחות(שם_פרטי, שם_משפחה, טלפון)', { count: 'exact' })
-      .order('תאריך_יצירה', { ascending: false })
-      .range(offset, offset + limit - 1);
+      .select('*, לקוחות(שם_פרטי, שם_משפחה, טלפון)', { count: 'exact' });
+
+    // Sort strategy depends on the tab:
+    //   • archive  → looking backward, newest-first by creation date
+    //   • drafts   → most-recently-edited first (operator wants to resume)
+    //   • all else → upcoming dispatch ASC: תאריך_אספקה, then שעת_אספקה.
+    //                NULLS LAST so undated orders sink to the bottom
+    //                instead of polluting the top of the active list.
+    //                Same-day orders with a time come before same-day
+    //                orders without a time (by the second .order call's
+    //                NULLS LAST on שעת_אספקה).
+    if (filter === 'archive') {
+      query = query.order('תאריך_יצירה', { ascending: false });
+    } else if (filter === 'drafts') {
+      query = query.order('תאריך_עדכון', { ascending: false, nullsFirst: false });
+    } else {
+      query = query
+        .order('תאריך_אספקה', { ascending: true, nullsFirst: false })
+        .order('שעת_אספקה',  { ascending: true, nullsFirst: false });
+    }
+
+    query = query.range(offset, offset + limit - 1);
 
     if (filter === 'archive') {
       // Archive view: completed AND cancelled orders. Cancelled used to fall
