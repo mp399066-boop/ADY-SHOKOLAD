@@ -182,6 +182,10 @@ export async function deductOrderInventory(
     if (!product) continue;
     const before = Number(product.כמות_במלאי) || 0;
     const after  = Math.max(0, before - Number(item.כמות));
+    // Skip when stock was already 0 — writing a before=after=0 movement
+    // would create a 'התאמה' row that the idempotency net ignores (net
+    // stays 0), allowing a second deduction after manual replenishment.
+    if (after >= before) continue;
     await supabase
       .from('מוצרים_למכירה')
       .update({ כמות_במלאי: after })
@@ -241,6 +245,7 @@ export async function deductOrderInventory(
         if (!pf) continue;
         const before = Number(pf.כמות_במלאי) || 0;
         const after  = Math.max(0, before - qtyToDeduct);
+        if (after >= before) continue; // stock already 0 — skip to avoid idempotency-breaking התאמה row
         await supabase
           .from('סוגי_פטיפורים')
           .update({ כמות_במלאי: after })
