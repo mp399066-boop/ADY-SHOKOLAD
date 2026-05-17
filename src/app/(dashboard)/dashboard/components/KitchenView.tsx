@@ -19,12 +19,14 @@ type DeliveryStatus = 'ממתין' | 'נאסף' | 'נמסר';
 // Payment tab removed from the kitchen view. The kitchen is a prep
 // screen — payment chasing lives on the dedicated dashboard view.
 // Attendance tab (נוכחות עובדות) is visible to all management users.
+// Attendance tab comes second so it is immediately visible in the RTL tab
+// bar without requiring horizontal scrolling on narrow viewports.
 const TABS: Array<{ id: KitchenTabId; label: string }> = [
-  { id: 'attention', label: 'דורש טיפול' },
-  { id: 'today',     label: 'הכל להיום'  },
-  { id: 'prep',      label: 'להכנה'       },
-  { id: 'delivery',  label: 'למשלוח'      },
-  { id: 'attendance', label: 'נוכחות עובדות' },
+  { id: 'attention',  label: 'דורש טיפול'      },
+  { id: 'attendance', label: 'נוכחות עובדות'   },
+  { id: 'today',      label: 'הכל להיום'        },
+  { id: 'prep',       label: 'להכנה'            },
+  { id: 'delivery',   label: 'למשלוח'           },
 ];
 
 export function KitchenView({
