@@ -287,9 +287,7 @@ function OrdersContent() {
         oldValue: order.סטטוס_תשלום,
         newValue: newStatus,
         title: 'שינוי ל"שולם"',
-        // Inventory deduction is the real side effect now — Morning
-        // documents are issued manually, not as a side effect of this PATCH.
-        description: 'סימון ההזמנה כשולמה יוריד מלאי. להמשיך?',
+        description: 'לסמן הזמנה זו כשולמה?',
       });
       return;
     }

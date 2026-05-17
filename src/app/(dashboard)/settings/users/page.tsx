@@ -27,9 +27,8 @@ const ROLE_LABELS: Record<UserRole, string> = {
 };
 
 const SETTINGS_TABS = [
-  { href: '/settings',                    label: 'הגדרות עסק'      },
-  { href: '/settings/users',              label: 'משתמשים והרשאות' },
-  { href: '/settings/inventory-backfill', label: 'תיקון מלאי'      },
+  { href: '/settings',       label: 'הגדרות עסק'      },
+  { href: '/settings/users', label: 'משתמשים והרשאות' },
 ];
 
 function SettingsTabs({ active }: { active: string }) {

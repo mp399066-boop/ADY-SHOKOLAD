@@ -47,11 +47,7 @@ const PAYMENT_METHODS = [
   'מזומן', 'כרטיס אשראי', 'העברה בנקאית', 'bit', 'PayBox', 'PayPal', 'המחאה', 'אחר',
 ] as const;
 
-// סטטוס הזמנה carries no inventory side effects under the current policy
-// (DEDUCT_INVENTORY_ON_ORDER_STATUS = false in src/lib/inventory-deduct.ts).
-// Inventory deduction is now exclusively driven by סטטוס_תשלום → 'שולם',
-// so the "יוריד מלאי" label moved to the payment-status grid below.
-const ORDER_STATUS_OPTIONS: { value: OrderStatus; sideEffect?: string }[] = [
+const ORDER_STATUS_OPTIONS: { value: OrderStatus }[] = [
   { value: 'חדשה' },
   { value: 'בהכנה' },
   { value: 'מוכנה למשלוח' },
@@ -60,9 +56,9 @@ const ORDER_STATUS_OPTIONS: { value: OrderStatus; sideEffect?: string }[] = [
   { value: 'בוטלה' },
 ];
 
-const PAYMENT_STATUS_OPTIONS: { value: 'ממתין' | 'שולם' | 'חלקי' | 'בוטל' | 'בארטר'; sideEffect?: string }[] = [
+const PAYMENT_STATUS_OPTIONS: { value: 'ממתין' | 'שולם' | 'חלקי' | 'בוטל' | 'בארטר' }[] = [
   { value: 'ממתין' },
-  { value: 'שולם',           sideEffect: 'יוריד מלאי' },
+  { value: 'שולם' },
   { value: 'חלקי' },
   { value: 'בוטל' },
   { value: 'בארטר' },
@@ -916,12 +912,7 @@ function MoreActionsModal({
                   borderColor: active ? C.espresso : C.border,
                 }}
               >
-                <span className="block leading-tight">{opt.value}</span>
-                {opt.sideEffect && (
-                  <span className="block text-[10px] leading-tight mt-0.5" style={{ color: active ? 'rgba(255,255,255,0.85)' : C.amber }}>
-                    {opt.sideEffect}
-                  </span>
-                )}
+                {opt.value}
               </button>
             );
           })}
@@ -947,12 +938,7 @@ function MoreActionsModal({
                   borderColor: active ? C.green : C.border,
                 }}
               >
-                <span className="block leading-tight">{opt.value}</span>
-                {opt.sideEffect && (
-                  <span className="block text-[10px] leading-tight mt-0.5" style={{ color: active ? 'rgba(255,255,255,0.85)' : C.amber }}>
-                    {opt.sideEffect}
-                  </span>
-                )}
+                {opt.value}
               </button>
             );
           })}

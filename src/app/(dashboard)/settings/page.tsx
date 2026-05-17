@@ -10,40 +10,29 @@ import toast from 'react-hot-toast';
 import type { BusinessSettings } from '@/types/database';
 
 const SETTINGS_TABS_BASE = [
-  { href: '/settings',                    label: 'הגדרות עסק',         adminOnly: false },
-  { href: '/settings/users',              label: 'משתמשים והרשאות',    adminOnly: false },
-  { href: '/settings/inventory-backfill', label: 'תיקון מלאי',          adminOnly: true  },
-  { href: '/settings/system-control',     label: 'מרכז בקרה',           adminOnly: true  },
+  { href: '/settings',                label: 'הגדרות עסק',      adminOnly: false },
+  { href: '/settings/users',          label: 'משתמשים והרשאות', adminOnly: false },
+  { href: '/settings/system-control', label: 'מרכז בקרה',        adminOnly: true  },
 ] as const;
 
-function SettingsTabs({ activeHref = '/settings', isAdmin = false, backfillCount = 0 }: {
-  activeHref?: string; isAdmin?: boolean; backfillCount?: number;
+function SettingsTabs({ activeHref = '/settings', isAdmin = false }: {
+  activeHref?: string; isAdmin?: boolean;
 }) {
   const tabs = SETTINGS_TABS_BASE.filter(t => !t.adminOnly || isAdmin);
   return (
     <div className="flex gap-1 mb-6 border-b" style={{ borderColor: '#EAE0D4' }}>
       {tabs.map(tab => {
         const isActive = tab.href === activeHref;
-        const showBadge = tab.href === '/settings/inventory-backfill' && backfillCount > 0;
         return (
           <Link
             key={tab.href}
             href={tab.href}
-            className="px-4 py-2.5 text-sm font-medium relative transition-colors inline-flex items-center gap-1.5"
+            className="px-4 py-2.5 text-sm font-medium relative transition-colors"
             style={isActive
               ? { color: '#5C3410', borderBottom: '2.5px solid #C9A46A', marginBottom: '-1px' }
               : { color: '#8A7664' }}
           >
             {tab.label}
-            {showBadge && (
-              <span
-                className="text-[10px] font-bold rounded-full px-1.5 py-0.5 leading-none"
-                title={`${backfillCount} הזמנות ששולמו ולא ירד להן מלאי`}
-                style={{ backgroundColor: '#9D4B4A', color: '#FFFFFF', minWidth: '18px', textAlign: 'center' }}
-              >
-                {backfillCount}
-              </span>
-            )}
           </Link>
         );
       })}
@@ -62,10 +51,6 @@ export default function SettingsPage() {
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [form, setForm] = useState<Partial<BusinessSettings>>({});
   const [isAdmin, setIsAdmin] = useState(false);
-  // Count of paid orders missing תנועות_מלאי deduction. Renders as a red
-  // pill next to the "תיקון מלאי" tab so the admin sees at a glance that
-  // backfill work is pending — without having to enter the page.
-  const [backfillCount, setBackfillCount] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -76,27 +61,7 @@ export default function SettingsPage() {
     // Role lookup — only used to decide whether the "מרכז בקרה" tab shows.
     // Falls through silently if /api/me fails (tab just won't appear).
     fetch('/api/me').then(r => r.ok ? r.json() : null).then(j => {
-      if (j?.role === 'admin') {
-        setIsAdmin(true);
-        // Cheap dry-run scan — returns the count without performing any
-        // deduction. Admin-only endpoint, so non-admins never trigger it.
-        fetch('/api/admin/inventory/backfill-deductions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ dry_run: true }),
-        })
-          .then(r => r.ok ? r.json() : null)
-          .then(d => {
-            // New response shape: { deduct: { missing_count }, restore: { missing_count } }.
-            // Badge surfaces the sum so the admin sees a single number across
-            // both directions (orders missing deduction + cancelled orders
-            // missing restore). The page itself splits them into sections.
-            const deductCount  = d?.deduct?.missing_count  ?? d?.missing_ledger ?? 0;
-            const restoreCount = d?.restore?.missing_count ?? 0;
-            setBackfillCount(deductCount + restoreCount);
-          })
-          .catch(() => {});
-      }
+      if (j?.role === 'admin') setIsAdmin(true);
     }).catch(() => {});
   }, []);
 
@@ -153,7 +118,7 @@ export default function SettingsPage() {
 
   return (
     <div className="max-w-3xl space-y-5">
-      <SettingsTabs activeHref="/settings" isAdmin={isAdmin} backfillCount={backfillCount} />
+      <SettingsTabs activeHref="/settings" isAdmin={isAdmin} />
       {/* Logo */}
       <Card>
         <CardHeader><CardTitle>לוגו העסק</CardTitle></CardHeader>

@@ -4,7 +4,7 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { generateOrderNumber } from '@/lib/utils';
 import { sendOrderEmail, isInternalEmail, type OrderEmailData, type EmailContext } from '@/lib/email';
 import { sendAdminNewOrderAlert } from '@/lib/admin-alert-email';
-import { deductOrderInventory } from '@/lib/inventory-deduct';
+import { deductOrderInventory, restoreOrderInventory } from '@/lib/inventory-deduct';
 import { isServiceEnabled, logServiceRun } from '@/lib/system-services';
 import { logActivity, WEBHOOK_ACTOR_WC } from '@/lib/activity-log';
 
@@ -242,12 +242,10 @@ export async function POST(req: Request) {
       if (payRowErr) console.warn('[wc-webhook]   תשלומים row update failed (continuing):', payRowErr.message);
       else console.log('[wc-webhook]   תשלומים rows updated:', payRow?.length ?? 0);
 
-      try {
-        await deductOrderInventory(supabase, crmOrderIdFromMeta);
-        console.log('[wc-webhook]   ✓ deductOrderInventory ran (idempotent)');
-      } catch (invErr) {
-        console.warn('[wc-webhook]   inventory deduction failed (continuing):', invErr instanceof Error ? invErr.message : invErr);
-      }
+      // Inventory is intentionally not touched here. This branch is only a
+      // payment callback for an existing CRM order; stock is deducted when
+      // the order first becomes real (create-full / finalize-draft / WC
+      // website import), and the ledger keeps those hooks idempotent.
 
       void logActivity({
         actor:       WEBHOOK_ACTOR_WC,
@@ -290,8 +288,29 @@ export async function POST(req: Request) {
     console.log('[wc-webhook] duplicate check result:', existing ?? 'none', '| error:', dupErr?.message ?? 'none');
 
     if (existing) {
+      // If the WC order was cancelled, mirror the cancellation in the CRM
+      // and restore inventory. Idempotent: if order is already בוטלה the
+      // restore is a no-op (net-ledger guard).
+      if ((wc.status as string) === 'cancelled') {
+        console.log('[wc-webhook] WC order cancelled — cancelling CRM order and restoring inventory. order:', existing.id);
+        const { error: cancelErr } = await supabase
+          .from('הזמנות')
+          .update({ סטטוס_הזמנה: 'בוטלה', תאריך_עדכון: new Date().toISOString() })
+          .eq('id', existing.id)
+          .neq('סטטוס_הזמנה', 'בוטלה');
+        if (cancelErr) console.error('[wc-webhook] cancellation update failed:', cancelErr.message);
+        await restoreOrderInventory(supabase, existing.id);
+        console.log('[wc-webhook] DONE — WC cancellation handled. order:', existing.id);
+        return Response.json({ success: true, cancelled: true, order_id: existing.id });
+      }
       console.log('[wc-webhook] STOP: duplicate found —', existing.מספר_הזמנה, '(id:', existing.id, ')');
       return Response.json({ success: true, skipped: true, order_id: existing.id });
+    }
+
+    // Skip creating an order for a WC cancellation we haven't seen yet.
+    if ((wc.status as string) === 'cancelled') {
+      console.log('[wc-webhook] WC order cancelled but no CRM order found — nothing to do. wc_order_id:', wcOrderId);
+      return Response.json({ success: true, skipped: true, reason: 'cancelled_no_crm_order' });
     }
 
     // ── 2. Customer ─────────────────────────────────────────────────────────
