@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { sendOrderEmail, isInternalEmail, type OrderEmailData, type EmailContext } from '@/lib/email';
 import { logActivity, userActor } from '@/lib/activity-log';
+import { deductOrderInventory } from '@/lib/inventory-deduct';
 
 // Converts a draft order (status=טיוטה) to a real order (status=חדשה).
 // Replaces all items, creates delivery/payment records, sends emails.
@@ -226,6 +227,24 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   // public website — i.e. only the WooCommerce webhook fires it. A draft
   // becoming a real order is a manual CRM action; the operator who clicked
   // "save" already sees the result, so the email would just be noise.
+
+  // ── Inventory deduction when the draft was finalized as already-paid ──
+  // Same logic as create-full: finalize-draft flips the row in place from
+  // 'טיוטה' to 'חדשה' and the operator may submit it with
+  // סטטוס_תשלום='שולם' from the start. There won't be a PATCH transition
+  // to fire on, so we trigger the helper here. Idempotent — re-finalizing
+  // (which shouldn't happen, but defensive) wouldn't double-deduct.
+  const finalizedPaymentStatus = (fullOrder as Record<string, unknown>)?.['סטטוס_תשלום'] as string | undefined;
+  const finalizedOrderType     = (fullOrder as Record<string, unknown>)?.['סוג_הזמנה']   as string | undefined;
+  if (finalizedPaymentStatus === 'שולם' && finalizedOrderType !== 'סאטמר') {
+    console.log('[finalize-draft] order finalized already-paid — running deductOrderInventory. order:', orderId);
+    try {
+      const result = await deductOrderInventory(supabase, orderId);
+      console.log('[finalize-draft] deduction result:', JSON.stringify(result));
+    } catch (err) {
+      console.error('[finalize-draft] deductOrderInventory threw (continuing):', err instanceof Error ? err.message : err);
+    }
+  }
 
   // Activity log — single row when a draft becomes a real order. The
   // earlier save-draft writes are operationally noisy (autosave fires

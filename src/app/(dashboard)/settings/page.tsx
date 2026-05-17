@@ -16,22 +16,34 @@ const SETTINGS_TABS_BASE = [
   { href: '/settings/system-control',     label: 'מרכז בקרה',           adminOnly: true  },
 ] as const;
 
-function SettingsTabs({ activeHref = '/settings', isAdmin = false }: { activeHref?: string; isAdmin?: boolean }) {
+function SettingsTabs({ activeHref = '/settings', isAdmin = false, backfillCount = 0 }: {
+  activeHref?: string; isAdmin?: boolean; backfillCount?: number;
+}) {
   const tabs = SETTINGS_TABS_BASE.filter(t => !t.adminOnly || isAdmin);
   return (
     <div className="flex gap-1 mb-6 border-b" style={{ borderColor: '#EAE0D4' }}>
       {tabs.map(tab => {
         const isActive = tab.href === activeHref;
+        const showBadge = tab.href === '/settings/inventory-backfill' && backfillCount > 0;
         return (
           <Link
             key={tab.href}
             href={tab.href}
-            className="px-4 py-2.5 text-sm font-medium relative transition-colors"
+            className="px-4 py-2.5 text-sm font-medium relative transition-colors inline-flex items-center gap-1.5"
             style={isActive
               ? { color: '#5C3410', borderBottom: '2.5px solid #C9A46A', marginBottom: '-1px' }
               : { color: '#8A7664' }}
           >
             {tab.label}
+            {showBadge && (
+              <span
+                className="text-[10px] font-bold rounded-full px-1.5 py-0.5 leading-none"
+                title={`${backfillCount} הזמנות ששולמו ולא ירד להן מלאי`}
+                style={{ backgroundColor: '#9D4B4A', color: '#FFFFFF', minWidth: '18px', textAlign: 'center' }}
+              >
+                {backfillCount}
+              </span>
+            )}
           </Link>
         );
       })}
@@ -50,6 +62,10 @@ export default function SettingsPage() {
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [form, setForm] = useState<Partial<BusinessSettings>>({});
   const [isAdmin, setIsAdmin] = useState(false);
+  // Count of paid orders missing תנועות_מלאי deduction. Renders as a red
+  // pill next to the "תיקון מלאי" tab so the admin sees at a glance that
+  // backfill work is pending — without having to enter the page.
+  const [backfillCount, setBackfillCount] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -59,7 +75,21 @@ export default function SettingsPage() {
       .finally(() => setLoading(false));
     // Role lookup — only used to decide whether the "מרכז בקרה" tab shows.
     // Falls through silently if /api/me fails (tab just won't appear).
-    fetch('/api/me').then(r => r.ok ? r.json() : null).then(j => { if (j?.role === 'admin') setIsAdmin(true); }).catch(() => {});
+    fetch('/api/me').then(r => r.ok ? r.json() : null).then(j => {
+      if (j?.role === 'admin') {
+        setIsAdmin(true);
+        // Cheap dry-run scan — returns the count without performing any
+        // deduction. Admin-only endpoint, so non-admins never trigger it.
+        fetch('/api/admin/inventory/backfill-deductions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dry_run: true }),
+        })
+          .then(r => r.ok ? r.json() : null)
+          .then(d => { if (d?.missing_ledger != null) setBackfillCount(d.missing_ledger); })
+          .catch(() => {});
+      }
+    }).catch(() => {});
   }, []);
 
   const set = (field: keyof BusinessSettings, value: string) => setForm(prev => ({ ...prev, [field]: value }));
@@ -115,7 +145,7 @@ export default function SettingsPage() {
 
   return (
     <div className="max-w-3xl space-y-5">
-      <SettingsTabs activeHref="/settings" isAdmin={isAdmin} />
+      <SettingsTabs activeHref="/settings" isAdmin={isAdmin} backfillCount={backfillCount} />
       {/* Logo */}
       <Card>
         <CardHeader><CardTitle>לוגו העסק</CardTitle></CardHeader>
