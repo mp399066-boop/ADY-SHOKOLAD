@@ -5,7 +5,6 @@ import type { KitchenAlert, KitchenTabId, KitchenViewData } from '@/lib/dashboar
 import type { KitchenPrepResponse } from '@/app/api/dashboard/kitchen-prep/route';
 import type { Delivery, TodayOrder } from './types';
 import { KitchenAlerts } from './KitchenAlerts';
-import { KitchenAttendanceTab } from './KitchenAttendanceTab';
 import { KitchenInventoryPanel } from './KitchenInventoryPanel';
 import { KitchenPrepBoard } from './KitchenPrepBoard';
 import { KitchenQuickActions } from './KitchenQuickActions';
@@ -19,14 +18,12 @@ type DeliveryStatus = 'ממתין' | 'נאסף' | 'נמסר';
 // Payment tab removed from the kitchen view. The kitchen is a prep
 // screen — payment chasing lives on the dedicated dashboard view.
 // Attendance tab (נוכחות עובדות) is visible to all management users.
-// Attendance tab comes second so it is immediately visible in the RTL tab
-// bar without requiring horizontal scrolling on narrow viewports.
+// Attendance is a top-level mode in DashboardViewSwitcher — not a sub-tab here.
 const TABS: Array<{ id: KitchenTabId; label: string }> = [
-  { id: 'attention',  label: 'דורש טיפול'      },
-  { id: 'attendance', label: 'נוכחות עובדות'   },
-  { id: 'today',      label: 'הכל להיום'        },
-  { id: 'prep',       label: 'להכנה'            },
-  { id: 'delivery',   label: 'למשלוח'           },
+  { id: 'attention', label: 'דורש טיפול' },
+  { id: 'today',     label: 'הכל להיום'  },
+  { id: 'prep',      label: 'להכנה'       },
+  { id: 'delivery',  label: 'למשלוח'      },
 ];
 
 export function KitchenView({
@@ -132,9 +129,7 @@ export function KitchenView({
           </div>
         </div>
 
-        {activeTab === 'attendance' ? (
-          <KitchenAttendanceTab />
-        ) : visibleTasks.length === 0 ? (
+        {visibleTasks.length === 0 ? (
           <div className="rounded-lg border px-3 py-5 text-center text-sm font-semibold" style={{ borderColor: C.borderSoft, color: C.green, backgroundColor: C.greenSoft }}>
             אין משימות פתוחות בטאב הזה.
           </div>

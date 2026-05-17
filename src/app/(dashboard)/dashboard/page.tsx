@@ -28,12 +28,13 @@ import type { TodayOrder, Delivery, Stock, StockRow } from './components/types';
 import { CommandHeader } from './components/CommandHeader';
 import { FocusStrip } from './components/FocusStrip';
 import { DashboardShell } from './components/DashboardShell';
-import { DashboardViewSwitcher } from './components/DashboardViewSwitcher';
+import { DashboardViewSwitcher, type DashboardMode } from './components/DashboardViewSwitcher';
 import { WorkQueue } from './components/WorkQueue';
 import { AttentionPanel } from './components/AttentionPanel';
 import { buildQueueItems, type QueueItem } from './components/queue-builder';
 import { buildKitchenView } from '@/lib/dashboard/kitchen-view';
 import { KitchenView } from './components/KitchenView';
+import { KitchenAttendanceTab } from './components/KitchenAttendanceTab';
 import { ProductionRecipeModal } from './components/ProductionRecipeModal';
 import { C } from './components/theme';
 
@@ -153,7 +154,7 @@ export default function DashboardPage() {
   const [confirmAction, setConfirmAction] = useState<{ text: string; cta: string; onConfirm: () => Promise<void> | void } | null>(null);
   const [markPaidOrder, setMarkPaidOrder] = useState<TodayOrder | null>(null);
   const [moreActionsOrder, setMoreActionsOrder] = useState<TodayOrder | null>(null);
-  const [dashboardMode, setDashboardMode] = useState<'management' | 'kitchen'>('management');
+  const [dashboardMode, setDashboardMode] = useState<DashboardMode>('management');
   const [productionModalOpen, setProductionModalOpen] = useState(false);
   // The delivery the operator is about to assign a courier to. Null = closed.
   const [assignCourierFor, setAssignCourierFor] = useState<Delivery | null>(null);
@@ -601,6 +602,8 @@ export default function DashboardPage() {
             }
           />
         </>
+      ) : dashboardMode === 'attendance' ? (
+        <KitchenAttendanceTab />
       ) : (
         <KitchenView
           data={kitchenData}
