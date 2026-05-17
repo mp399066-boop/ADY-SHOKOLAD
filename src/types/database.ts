@@ -291,11 +291,14 @@ export interface RecipeIngredient {
 
 export interface Production {
   id: string;
-  מוצר_id: string;
+  מוצר_id: string | null;
+  מתכון_id: string | null;
   כמות_שיוצרה: number;
   תאריך_ייצור: string;
   הערות: string | null;
+  נוצר_על_ידי: string | null;
   מוצרים_למכירה?: Product;
+  מתכונים?: { id: string; שם_מתכון: string };
 }
 
 export interface Delivery {
