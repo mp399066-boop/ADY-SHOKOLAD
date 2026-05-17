@@ -48,6 +48,21 @@ export interface Database {
         Insert: Partial<RawMaterial>;
         Update: Partial<RawMaterial>;
       };
+      ספקים: {
+        Row: Supplier;
+        Insert: Partial<Supplier>;
+        Update: Partial<Supplier>;
+      };
+      הזמנות_רכש: {
+        Row: PurchaseOrder;
+        Insert: Partial<PurchaseOrder>;
+        Update: Partial<PurchaseOrder>;
+      };
+      פריטי_הזמנת_רכש: {
+        Row: PurchaseOrderItem;
+        Insert: Partial<PurchaseOrderItem>;
+        Update: Partial<PurchaseOrderItem>;
+      };
       מתכונים: {
         Row: Recipe;
         Insert: Partial<Recipe>;
@@ -264,8 +279,49 @@ export interface RawMaterial {
   מחיר_ליחידה: number | null;
   תאריך_תפוגה: string | null;
   הערות: string | null;
+  // Purchasing fields — migration 034
+  ספק_מועדף_id: string | null;
+  שם_מוצר_אצל_הספק: string | null;
+  מקט_ספק: string | null;
+  כמות_מינימום: number;
+  כמות_להזמנה: number | null;
+  יחידת_קניה: string | null;
+  הערות_רכש: string | null;
   תאריך_יצירה: string;
   תאריך_עדכון: string;
+}
+
+export interface Supplier {
+  id: string;
+  שם_ספק: string;
+  טלפון: string | null;
+  אימייל: string | null;
+  איש_קשר: string | null;
+  הערות: string | null;
+  פעיל: boolean;
+  תאריך_יצירה: string;
+  תאריך_עדכון: string;
+}
+
+export interface PurchaseOrder {
+  id: string;
+  ספק_id: string | null;
+  תאריך_הזמנה: string;
+  סטטוס: string;
+  הערות: string | null;
+  נוצר_על_ידי: string | null;
+  תאריך_יצירה: string;
+  ספקים?: Supplier;
+}
+
+export interface PurchaseOrderItem {
+  id: string;
+  הזמנת_רכש_id: string;
+  חומר_גלם_id: string | null;
+  שם_פריט: string;
+  כמות: number;
+  יחידה: string | null;
+  תאריך_יצירה: string;
 }
 
 export interface Recipe {
