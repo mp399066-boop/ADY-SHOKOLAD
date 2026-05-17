@@ -247,5 +247,43 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     request:      req,
   });
 
+  // ── Cleanup orphan empty drafts for the same customer ───────────────────
+  // Same rationale as create-full: once a real order lands for the
+  // customer, abandoned empty drafts from earlier sessions are noise.
+  // Excludes the order we just finalized (we already flipped it to
+  // 'חדשה' so it'd no longer match סטטוס_הזמנה='טיוטה' anyway, but
+  // defensive). Only touches drafts with zero line items.
+  if (existingOrder.לקוח_id) {
+    void (async () => {
+      try {
+        const { data: customerDrafts } = await supabase
+          .from('הזמנות')
+          .select('id')
+          .eq('לקוח_id', existingOrder.לקוח_id)
+          .eq('סטטוס_הזמנה', 'טיוטה')
+          .neq('id', orderId);
+        const draftIds = (customerDrafts ?? []).map((r: { id: string }) => r.id);
+        if (draftIds.length === 0) return;
+
+        const { data: itemRows } = await supabase
+          .from('מוצרים_בהזמנה')
+          .select('הזמנה_id')
+          .in('הזמנה_id', draftIds);
+        const draftsWithItems = new Set((itemRows ?? []).map((r: { הזמנה_id: string }) => r.הזמנה_id));
+        const emptyDraftIds = draftIds.filter((id: string) => !draftsWithItems.has(id));
+        if (emptyDraftIds.length === 0) return;
+
+        const { error: delErr } = await supabase.from('הזמנות').delete().in('id', emptyDraftIds);
+        if (delErr) {
+          console.warn('[finalize-draft] orphan-draft cleanup failed (continuing):', delErr.message);
+        } else {
+          console.log('[finalize-draft] deleted', emptyDraftIds.length, 'orphan empty draft(s) for customer', existingOrder.לקוח_id);
+        }
+      } catch (err) {
+        console.warn('[finalize-draft] orphan-draft cleanup unexpected error (continuing):', err instanceof Error ? err.message : err);
+      }
+    })();
+  }
+
   return NextResponse.json({ data: { ...fullOrder, מוצרים_בהזמנה: fullItems || [] } }, { status: 200 });
 }

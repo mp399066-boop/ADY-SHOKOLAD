@@ -33,7 +33,29 @@ export async function GET(req: NextRequest) {
       // now live here.
       query = query.in('סטטוס_הזמנה', ['הושלמה בהצלחה', 'בוטלה']);
     } else if (filter === 'drafts') {
-      query = query.eq('סטטוס_הזמנה', 'טיוטה');
+      // Drafts tab: only show drafts the operator actually filled in.
+      // Auto-save creates a draft row the moment the new-order form has
+      // a customer selected; if the session is abandoned (browser close)
+      // before any product/package is added, that row sits as an orphan
+      // forever. Filter by "has at least one מוצרים_בהזמנה line" to hide
+      // those empty leftovers without deleting them.
+      const { data: draftsWithItems, error: itemsErr } = await supabase
+        .from('מוצרים_בהזמנה')
+        .select('הזמנה_id');
+      if (itemsErr) {
+        console.warn('[orders] drafts-with-items lookup failed (showing all):', itemsErr.message);
+        query = query.eq('סטטוס_הזמנה', 'טיוטה');
+      } else {
+        const idsWithItems = Array.from(new Set(
+          (draftsWithItems ?? []).map((r: { הזמנה_id: string }) => r.הזמנה_id).filter(Boolean),
+        ));
+        query = idsWithItems.length > 0
+          ? query.eq('סטטוס_הזמנה', 'טיוטה').in('id', idsWithItems)
+          // No drafts have items at all — return an empty list cleanly
+          // rather than building an in(...) with an empty array (Supabase
+          // throws on empty .in()).
+          : query.eq('סטטוס_הזמנה', 'טיוטה').eq('id', '00000000-0000-0000-0000-000000000000');
+      }
     } else {
       // All other views: exclude completed / cancelled / drafts. Cancelled
       // orders belong in the archive, not in the active workflow tabs.

@@ -395,6 +395,54 @@ export async function POST(req: NextRequest) {
 
   console.log('[create-full] STEP 6: returning response for order', order!.id);
 
+  // ── Cleanup orphan empty drafts for the same customer ───────────────────
+  // Auto-save on /orders/new creates a draft the moment a customer is
+  // picked. If the operator abandoned an earlier session (closed the
+  // browser before adding any product), that draft is stuck as 'טיוטה'
+  // with no מוצרים_בהזמנה rows — pure noise. Once a real order lands for
+  // the same customer, the chance the operator ever returns to fill in
+  // that empty draft is effectively zero. Delete it.
+  //
+  // Strict safety constraints:
+  //   - customer match (won't touch other customers' drafts)
+  //   - status='טיוטה' (won't touch real orders)
+  //   - excludes the order we just created (we're not a draft anyway,
+  //     but defensive)
+  //   - only deletes drafts with ZERO line items (queried below)
+  if (!isDraft && customerId) {
+    void (async () => {
+      try {
+        const { data: customerDrafts } = await supabase
+          .from('הזמנות')
+          .select('id')
+          .eq('לקוח_id', customerId)
+          .eq('סטטוס_הזמנה', 'טיוטה')
+          .neq('id', order!.id);
+        const draftIds = (customerDrafts ?? []).map((r: { id: string }) => r.id);
+        if (draftIds.length === 0) return;
+
+        // For each candidate draft, check whether it has line items. We
+        // only delete those that have NONE.
+        const { data: itemRows } = await supabase
+          .from('מוצרים_בהזמנה')
+          .select('הזמנה_id')
+          .in('הזמנה_id', draftIds);
+        const draftsWithItems = new Set((itemRows ?? []).map((r: { הזמנה_id: string }) => r.הזמנה_id));
+        const emptyDraftIds = draftIds.filter((id: string) => !draftsWithItems.has(id));
+        if (emptyDraftIds.length === 0) return;
+
+        const { error: delErr } = await supabase.from('הזמנות').delete().in('id', emptyDraftIds);
+        if (delErr) {
+          console.warn('[create-full] orphan-draft cleanup failed (continuing):', delErr.message);
+        } else {
+          console.log('[create-full] deleted', emptyDraftIds.length, 'orphan empty draft(s) for customer', customerId);
+        }
+      } catch (err) {
+        console.warn('[create-full] orphan-draft cleanup unexpected error (continuing):', err instanceof Error ? err.message : err);
+      }
+    })();
+  }
+
   const responseBody = { data: { ...fullOrder, מוצרים_בהזמנה: fullItems || [] } };
 
   // Cache result so duplicate requests within 60s get the same order back

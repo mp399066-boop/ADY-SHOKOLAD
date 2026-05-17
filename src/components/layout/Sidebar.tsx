@@ -12,15 +12,20 @@ import {
 } from '@/components/icons';
 import type { BusinessSettings } from '@/types/database';
 
+// Owner preference: inventory + recipes belong AFTER the financial /
+// reporting group (חשבוניות וקבלות). Earlier ordering put them between
+// משלוחים and חשבוניות, which made the daily-flow sections compete with
+// back-office sections. New order pushes the back-office stuff down so
+// the top of the sidebar is consistently "what happens today".
 const NAV_MAIN = [
   { href: '/dashboard',  label: 'דשבורד',         Icon: IconDashboard  },
   { href: '/orders',     label: 'הזמנות',             Icon: IconOrders     },
   { href: '/customers',  label: 'לקוחות',             Icon: IconCustomers  },
   { href: '/products',   label: 'מוצרים',             Icon: IconProducts   },
   { href: '/deliveries', label: 'משלוחים',            Icon: IconDeliveries },
+  { href: '/invoices',   label: 'חשבוניות וקבלות',    Icon: IconInvoices   },
   { href: '/inventory',  label: 'מלאי',               Icon: IconInventory  },
   { href: '/recipes',    label: 'מתכונים וייצור',     Icon: IconRecipes    },
-  { href: '/invoices',   label: 'חשבוניות וקבלות',    Icon: IconInvoices   },
 ];
 
 const NAV_SYSTEM = [
