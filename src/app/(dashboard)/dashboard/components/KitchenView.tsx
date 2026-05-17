@@ -5,6 +5,7 @@ import type { KitchenAlert, KitchenTabId, KitchenViewData } from '@/lib/dashboar
 import type { KitchenPrepResponse } from '@/app/api/dashboard/kitchen-prep/route';
 import type { Delivery, TodayOrder } from './types';
 import { KitchenAlerts } from './KitchenAlerts';
+import { KitchenAttendanceTab } from './KitchenAttendanceTab';
 import { KitchenInventoryPanel } from './KitchenInventoryPanel';
 import { KitchenPrepBoard } from './KitchenPrepBoard';
 import { KitchenQuickActions } from './KitchenQuickActions';
@@ -22,6 +23,7 @@ const TABS: Array<{ id: KitchenTabId; label: string }> = [
   { id: 'today',     label: 'הכל להיום'  },
   { id: 'prep',      label: 'להכנה'       },
   { id: 'delivery',  label: 'למשלוח'      },
+  { id: 'attendance', label: 'נוכחות עובדות' },
 ];
 
 export function KitchenView({
@@ -127,7 +129,9 @@ export function KitchenView({
           </div>
         </div>
 
-        {visibleTasks.length === 0 ? (
+        {activeTab === 'attendance' ? (
+          <KitchenAttendanceTab />
+        ) : visibleTasks.length === 0 ? (
           <div className="rounded-lg border px-3 py-5 text-center text-sm font-semibold" style={{ borderColor: C.borderSoft, color: C.green, backgroundColor: C.greenSoft }}>
             אין משימות פתוחות בטאב הזה.
           </div>

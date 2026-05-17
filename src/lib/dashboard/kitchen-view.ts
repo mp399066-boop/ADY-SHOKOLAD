@@ -4,7 +4,7 @@ import type { Delivery, Stock, StockRow, TodayOrder } from '@/app/(dashboard)/da
 // the kitchen screen is for prep, not for chasing money. Payment status is
 // still visible on each row's badge if relevant, and lives front-and-center
 // on the dedicated dashboard view.
-export type KitchenTabId = 'today' | 'prep' | 'delivery' | 'attention';
+export type KitchenTabId = 'today' | 'prep' | 'delivery' | 'attention' | 'attendance';
 export type KitchenTaskType = 'הכנה' | 'תשלום' | 'משלוח' | 'מלאי';
 
 export type KitchenTask = {
@@ -179,6 +179,7 @@ export function buildKitchenView({
       prep: kitchenTasks.filter(task => PREP_STATUSES.includes(task.order.סטטוס_הזמנה)),
       delivery: kitchenTasks.filter(task => !!task.delivery && ACTIVE_DELIVERY_STATUSES.includes(task.delivery.סטטוס_משלוח)),
       attention: kitchenTasks.filter(task => task.needsAttention),
+      attendance: [],
     },
     inventoryWarnings,
     alerts,
