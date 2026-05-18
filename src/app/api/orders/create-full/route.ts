@@ -231,6 +231,38 @@ export async function POST(req: NextRequest) {
 
   console.log('[create-full] STEP 5: order lines created, creating delivery/payment records');
 
+  // 6.5. Record credit usage server-side — atomic with order creation.
+  // Inserting here (after lines, before delivery/payment) means:
+  //   - on unique-constraint violation (23505): duplicate request, skip safely
+  //   - on any other error: no delivery/payment yet, safe to delete order and return error
+  if (creditUsed > 0) {
+    const { error: creditError } = await supabase
+      .from('זיכויי_לקוחות')
+      .insert({
+        'לקוח_id':      customerId,
+        'סכום':          -Math.round(creditUsed * 100) / 100,
+        'סוג':           'credit_used',
+        'סיבה':          'זיכוי בהזמנה',
+        'הזמנה_id':     order!.id,
+        'נוצר_על_ידי':  auth.email ?? null,
+      });
+    if (creditError) {
+      if (creditError.code === '23505') {
+        // Unique index fired: credit_used already recorded for this order — idempotent, continue
+        console.log('[create-full] credit_used already recorded for order (duplicate request) — skipping');
+      } else {
+        // Real failure: undo the bare order (lines cascade), return a clear error
+        await supabase.from('הזמנות').delete().eq('id', order!.id);
+        return NextResponse.json(
+          { error: `ניכוי זיכוי לקוח נכשל: ${creditError.message}` },
+          { status: 500 },
+        );
+      }
+    } else {
+      console.log('[create-full] credit deducted:', creditUsed, 'for customer', customerId, '| order:', order!.id);
+    }
+  }
+
   const isDraft = הזמנה?.סטטוס_הזמנה === 'טיוטה';
 
   // 7. Create delivery record (skip for drafts).

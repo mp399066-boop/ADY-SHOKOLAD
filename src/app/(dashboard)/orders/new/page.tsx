@@ -746,23 +746,7 @@ export default function NewOrderPage() {
       // Lock against any re-submit (the form's submit guard reads savedOrderId).
       setSavedOrderId(newOrderId);
 
-      const appliedCredit = Math.min(creditToApply, Math.max(0, subtotal - discountAmount + deliveryFee));
-      if (appliedCredit > 0) {
-        try {
-          await fetch(`/api/customers/${selectedCustomer}/credit`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              סכום: -Math.round(appliedCredit * 100) / 100,
-              סוג: 'credit_used',
-              הזמנה_id: newOrderId,
-              סיבה: 'זיכוי בהזמנה',
-            }),
-          });
-        } catch {
-          toast('הזמנה נוצרה. שגיאה ברישום ניצול הזיכוי — בדקי בדף הלקוח.', { duration: 8000 });
-        }
-      }
+      // Credit deduction is handled server-side inside create-full — no client POST needed.
 
       toast.success('הזמנה אושרה בהצלחה!');
     } catch (err: unknown) {
