@@ -65,6 +65,9 @@ export default function InventoryPage() {
   const [qtyValue, setQtyValue] = useState(0);
   const [savingBulkQty, setSavingBulkQty] = useState(false);
 
+  // Recipe popover
+  const [recipePopover, setRecipePopover] = useState<{ materialId: string; top: number; left: number } | null>(null);
+
   const currentSel = tab === 'raw' ? selRaw : tab === 'products' ? selProducts : selPF;
   const setCurrentSel = (fn: (prev: Set<string>) => Set<string>) => {
     if (tab === 'raw') setSelRaw(fn);
@@ -546,16 +549,22 @@ export default function InventoryPage() {
                               {(() => {
                                 const rec = materialRecipeMap.get(m.id);
                                 if (!rec || rec.count === 0) {
-                                  return <span className="text-xs" style={{ color: '#C0A882' }}>לא משויך</span>;
+                                  return <span className="text-xs" style={{ color: '#C0A882' }}>—</span>;
                                 }
                                 return (
-                                  <span
-                                    className="text-xs font-medium cursor-default"
-                                    style={{ color: '#6B4A2D' }}
-                                    title={rec.names.join(', ')}
+                                  <button
+                                    className="text-xs font-medium underline-offset-2 hover:underline transition-colors"
+                                    style={{ color: '#8B5E34' }}
+                                    onClick={e => {
+                                      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                      setRecipePopover(prev =>
+                                        prev?.materialId === m.id ? null
+                                          : { materialId: m.id, top: rect.bottom + 6, left: rect.left }
+                                      );
+                                    }}
                                   >
                                     {rec.count} {rec.count === 1 ? 'מתכון' : 'מתכונים'}
-                                  </span>
+                                  </button>
                                 );
                               })()}
                             </td>
@@ -1066,6 +1075,76 @@ export default function InventoryPage() {
         onClear={clearSel}
         actions={bulkActions}
       />
+
+      {/* Recipe popover */}
+      {recipePopover && (() => {
+        const rec = materialRecipeMap.get(recipePopover.materialId);
+        return (
+          <>
+            {/* backdrop to close on outside click */}
+            <div className="fixed inset-0 z-40" onClick={() => setRecipePopover(null)} />
+            <div
+              className="fixed z-50 rounded-xl shadow-xl border"
+              style={{
+                top: recipePopover.top,
+                left: recipePopover.left,
+                minWidth: '280px',
+                maxWidth: '360px',
+                maxHeight: '320px',
+                backgroundColor: '#FFFFFF',
+                borderColor: '#E8DED0',
+                direction: 'rtl',
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
+              }}
+            >
+              <div
+                className="flex items-center justify-between px-4 py-2.5 flex-shrink-0"
+                style={{ borderBottom: '1px solid #F0E8DC', backgroundColor: '#FAF7F0' }}
+              >
+                <span className="text-xs font-semibold" style={{ color: '#2B1A10' }}>
+                  מתכונים שמשתמשים בחומר גלם זה
+                </span>
+                <button
+                  onClick={() => setRecipePopover(null)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors text-sm leading-none"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="overflow-y-auto flex-1">
+                {!rec || rec.details.length === 0 ? (
+                  <p className="px-4 py-3 text-xs" style={{ color: '#9B7A5A' }}>לא משויך למתכון</p>
+                ) : (
+                  rec.details.map((d, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center justify-between px-4 py-2.5 border-b last:border-b-0"
+                      style={{ borderColor: '#F5ECD8' }}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-sm font-medium truncate" style={{ color: '#2B1A10' }}>{d.recipeName}</span>
+                        <a
+                          href="/recipes"
+                          className="text-xs flex-shrink-0 hover:underline"
+                          style={{ color: '#C7A46B' }}
+                          onClick={() => setRecipePopover(null)}
+                        >
+                          פתח
+                        </a>
+                      </div>
+                      <span className="text-xs tabular-nums flex-shrink-0 mr-3" style={{ color: '#6B4A2D' }}>
+                        {d.qty} {d.unit}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </>
+        );
+      })()}
     </div>
   );
 }

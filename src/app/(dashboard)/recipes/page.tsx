@@ -273,7 +273,7 @@ export default function RecipesPage() {
                           <div>
                             <h3 className="font-semibold" style={{ color: '#2B1A10' }}>{r.שם_מתכון}</h3>
                             <p className="text-xs mt-0.5" style={{ color: '#9B7A5A' }}>
-                              תוצר לאצווה: {r.כמות_תוצר}
+                              יוצא מהמתכון: {r.כמות_תוצר} יחידות
                             </p>
                           </div>
                           <div className="flex items-start gap-1">
