@@ -14,7 +14,7 @@ import { CustomerCommunication } from '@/components/CustomerCommunication';
 import { formatDate, formatCurrency } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 import toast from 'react-hot-toast';
-import type { Customer, Order, Invoice, CommunicationLog } from '@/types/database';
+import type { Customer, Order, Invoice, CommunicationLog, CustomerCredit } from '@/types/database';
 
 /* ─── types ──────────────────────────────────────────────────────────────── */
 type FullCustomer = Customer & {
@@ -24,7 +24,7 @@ type FullCustomer = Customer & {
   תיעוד_תקשורת: CommunicationLog[];
 };
 
-type SideTab = 'invoices' | 'files' | 'notes';
+type SideTab = 'invoices' | 'files' | 'notes' | 'credit';
 
 type InvoiceOrderItem = {
   id: string;
@@ -152,6 +152,13 @@ function ICalendar({ className }: { className?: string }) {
     </svg>
   );
 }
+function IWallet({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.6}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a2.25 2.25 0 00-2.25-2.25H15a3 3 0 11-6 0H5.25A2.25 2.25 0 003 12m18 0v6a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 18v-6m18 0V9M3 12V9m18-3a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 9m18 0V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v3" />
+    </svg>
+  );
+}
 
 /* ─── helper components ──────────────────────────────────────────────────── */
 function SectionHeader({ icon, title, subtitle, action }: {
@@ -253,12 +260,27 @@ export default function CustomerDetailPage() {
   const [invoiceView, setInvoiceView] = useState<Invoice | null>(null);
   const [invoiceOrder, setInvoiceOrder] = useState<InvoiceOrderData | null>(null);
   const [invoiceLoading, setInvoiceLoading] = useState(false);
+  const [creditBalance, setCreditBalance] = useState(0);
+  const [creditTransactions, setCreditTransactions] = useState<CustomerCredit[]>([]);
+  const [creditLoading, setCreditLoading] = useState(true);
+  const [showAddCreditModal, setShowAddCreditModal] = useState(false);
+  const [addCreditAmount, setAddCreditAmount] = useState('');
+  const [addCreditReason, setAddCreditReason] = useState('');
+  const [addCreditType, setAddCreditType] = useState<'credit_added' | 'credit_adjustment'>('credit_added');
+  const [addCreditSaving, setAddCreditSaving] = useState(false);
 
   useEffect(() => {
     fetch(`/api/customers/${id}`)
       .then(r => r.json())
       .then(({ data }) => { setCustomer(data); setEditForm(data); })
       .finally(() => setLoading(false));
+    fetch(`/api/customers/${id}/credit`)
+      .then(r => r.json())
+      .then(({ balance, transactions }) => {
+        setCreditBalance(balance ?? 0);
+        setCreditTransactions(transactions ?? []);
+      })
+      .finally(() => setCreditLoading(false));
   }, [id]);
 
   useEffect(() => {
@@ -327,6 +349,42 @@ export default function CustomerDetailPage() {
     } finally { setSaving(false); }
   };
 
+  const creditTypeLabel = (type: string) => {
+    if (type === 'credit_added') return 'זיכוי שנוסף';
+    if (type === 'credit_used') return 'זיכוי שנוצל';
+    if (type === 'credit_adjustment') return 'התאמה';
+    return type;
+  };
+
+  const handleAddCredit = async () => {
+    const amount = parseFloat(addCreditAmount);
+    if (isNaN(amount) || amount === 0) { toast.error('יש להזין סכום תקין'); return; }
+    setAddCreditSaving(true);
+    try {
+      const res = await fetch(`/api/customers/${id}/credit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          סכום: Math.round(amount * 100) / 100,
+          סוג: addCreditType,
+          סיבה: addCreditReason.trim() || null,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error);
+      setCreditTransactions(prev => [json.data, ...prev]);
+      setCreditBalance(prev => Math.round((prev + json.data.סכום) * 100) / 100);
+      setShowAddCreditModal(false);
+      setAddCreditAmount('');
+      setAddCreditReason('');
+      toast.success('זיכוי הוסף בהצלחה');
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'שגיאה בהוספת זיכוי');
+    } finally {
+      setAddCreditSaving(false);
+    }
+  };
+
   if (loading) return <PageLoading />;
 
   if (!customer) return (
@@ -363,6 +421,7 @@ export default function CustomerDetailPage() {
     { key: 'invoices', label: 'חשבוניות', count: customer.חשבוניות.length },
     { key: 'files',    label: 'קבצים',    count: customer.קבצים.length },
     { key: 'notes',    label: 'הערות' },
+    { key: 'credit',   label: 'זיכויים',  count: creditTransactions.length },
   ];
 
   return (
@@ -664,6 +723,39 @@ export default function CustomerDetailPage() {
         </div>
       </div>
 
+      {/* ── 3b. credit balance ── */}
+      <div
+        className="rounded-2xl p-5 bg-white"
+        style={{ border: '1px solid #E8DED2', boxShadow: '0 2px 8px rgba(58,42,26,0.04)' }}
+      >
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-3">
+            <div style={{ color: '#C6A77D' }}>
+              <IWallet className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-xs font-medium" style={{ color: '#8A7664' }}>יתרת זיכוי</p>
+              <p
+                className="text-2xl font-bold tabular-nums leading-none mt-0.5"
+                style={{ color: creditBalance > 0 ? '#2D6648' : '#3A2A1A', letterSpacing: '-0.02em' }}
+              >
+                {formatCurrency(creditBalance)}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowAddCreditModal(true)}
+            className="h-9 px-4 rounded-lg flex items-center gap-1.5 font-medium transition-all"
+            style={{ backgroundColor: '#8B5E34', color: '#fff', fontSize: '13px' }}
+            onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#7A5230')}
+            onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#8B5E34')}
+          >
+            <IconPlus className="w-3.5 h-3.5" />
+            הוספת זיכוי
+          </button>
+        </div>
+      </div>
+
       {/* ── 4. main grid ── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
@@ -899,9 +991,128 @@ export default function CustomerDetailPage() {
               />
             )
           )}
+
+          {/* credit history */}
+          {sideTab === 'credit' && (
+            creditLoading ? (
+              <p className="text-sm text-center py-6" style={{ color: '#8A7664' }}>טוען...</p>
+            ) : creditTransactions.length === 0 ? (
+              <EmptyState
+                icon={<IWallet className="w-5 h-5" />}
+                title="אין היסטוריית זיכויים"
+                text='לחיצה על "הוספת זיכוי" תתחיל את היסטוריית הזיכויים'
+                action={
+                  <Button size="sm" onClick={() => setShowAddCreditModal(true)}>
+                    <IconPlus className="w-3.5 h-3.5" />
+                    הוסף זיכוי ראשון
+                  </Button>
+                }
+              />
+            ) : (
+              <div className="space-y-2">
+                {creditTransactions.map(tx => (
+                  <div
+                    key={tx.id}
+                    className="flex items-center justify-between px-3 py-2.5 rounded-lg border"
+                    style={{ borderColor: '#F0EAE0', backgroundColor: '#FEFCF9' }}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span
+                        className="text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0"
+                        style={{
+                          backgroundColor: tx.סוג === 'credit_used' ? '#FEE2E2' : '#E8F5E9',
+                          color: tx.סוג === 'credit_used' ? '#8A3228' : '#2D6648',
+                        }}
+                      >
+                        {creditTypeLabel(tx.סוג)}
+                      </span>
+                      <span className="text-xs flex-shrink-0" style={{ color: '#B0A090' }}>{formatDate(tx.תאריך_יצירה)}</span>
+                      {tx.סיבה && (
+                        <span className="text-xs truncate" style={{ color: '#8A7664' }}>{tx.סיבה}</span>
+                      )}
+                    </div>
+                    <span
+                      className="font-semibold text-sm flex-shrink-0 mr-2"
+                      style={{ color: tx.סכום > 0 ? '#2D6648' : '#8A3228' }}
+                    >
+                      {tx.סכום > 0 ? '+' : ''}{formatCurrency(tx.סכום)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )
+          )}
         </div>
       </Card>
     </div>
+    {/* ── Add credit modal ── */}
+    {showAddCreditModal && (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center"
+        style={{ backgroundColor: 'rgba(30,18,8,0.55)' }}
+        onClick={() => setShowAddCreditModal(false)}
+      >
+        <div
+          className="relative bg-white rounded-2xl overflow-hidden"
+          style={{ width: 'min(420px, 96vw)', boxShadow: '0 24px 80px rgba(30,18,8,0.28)', border: '1px solid #E8DED2' }}
+          onClick={e => e.stopPropagation()}
+        >
+          <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: '#F0EAE0', backgroundColor: '#FDFAF5' }}>
+            <span className="font-semibold text-sm" style={{ color: '#3A2A1A' }}>הוספת זיכוי ללקוח</span>
+            <button
+              onClick={() => setShowAddCreditModal(false)}
+              className="flex items-center justify-center w-7 h-7 rounded-lg transition-colors"
+              style={{ color: '#8A7664' }}
+              onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#F5EFE7')}
+              onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+            >
+              <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+          </div>
+          <div className="p-5 space-y-4">
+            <div>
+              <label className="block text-xs font-medium mb-2" style={{ color: '#8A7664' }}>סוג פעולה</label>
+              <div className="flex gap-2">
+                {([
+                  { key: 'credit_added' as const,     label: 'הוסף זיכוי'              },
+                  { key: 'credit_adjustment' as const, label: 'התאמה (חיובי / שלילי)'  },
+                ]).map(opt => (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    onClick={() => setAddCreditType(opt.key)}
+                    className="px-3 py-1.5 text-xs font-medium rounded-full border transition-colors"
+                    style={addCreditType === opt.key
+                      ? { backgroundColor: '#8B5E34', color: '#fff', borderColor: '#8B5E34' }
+                      : { backgroundColor: '#fff', color: '#6B4A2D', borderColor: '#DDD0BC' }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <Input
+              label={addCreditType === 'credit_adjustment' ? 'סכום (שלילי = ניכוי)' : 'סכום (₪)'}
+              type="number"
+              value={addCreditAmount}
+              onChange={e => setAddCreditAmount(e.target.value)}
+              step={0.01}
+            />
+            <Input
+              label="סיבה (אופציונלי)"
+              value={addCreditReason}
+              onChange={e => setAddCreditReason(e.target.value)}
+              placeholder="למשל: פיצוי על הזמנה, מתנה..."
+            />
+          </div>
+          <div className="px-5 pb-5 flex gap-2">
+            <Button onClick={handleAddCredit} loading={addCreditSaving} className="flex-1">הוסף זיכוי</Button>
+            <Button variant="outline" onClick={() => setShowAddCreditModal(false)} className="flex-1">ביטול</Button>
+          </div>
+        </div>
+      </div>
+    )}
+
     {/* ── Invoice viewer modal ── */}
     {invoiceView && (() => {
       const morningUrl = getMorningViewUrl(invoiceView.קישור_חשבונית);

@@ -58,6 +58,11 @@ export interface Database {
         Insert: Partial<PurchaseOrder>;
         Update: Partial<PurchaseOrder>;
       };
+      זיכויי_לקוחות: {
+        Row: CustomerCredit;
+        Insert: Partial<CustomerCredit>;
+        Update: Partial<CustomerCredit>;
+      };
       פריטי_הזמנת_רכש: {
         Row: PurchaseOrderItem;
         Insert: Partial<PurchaseOrderItem>;
@@ -150,6 +155,17 @@ export interface Customer {
   תאריך_עדכון: string;
 }
 
+export interface CustomerCredit {
+  id: string;
+  לקוח_id: string;
+  סכום: number;
+  סוג: 'credit_added' | 'credit_used' | 'credit_adjustment';
+  סיבה: string | null;
+  הזמנה_id: string | null;
+  נוצר_על_ידי: string | null;
+  תאריך_יצירה: string;
+}
+
 export interface Order {
   id: string;
   מספר_הזמנה: string;
@@ -178,6 +194,7 @@ export interface Order {
   סכום_לפני_הנחה: number | null;
   סכום_הנחה: number | null;
   סך_הכל_לתשלום: number | null;
+  זיכוי_בשימוש: number;
   מקור_ההזמנה: string | null;
   ברכה_טקסט: string | null;
   הערות_להזמנה: string | null;

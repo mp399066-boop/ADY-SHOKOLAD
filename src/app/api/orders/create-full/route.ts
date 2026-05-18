@@ -92,8 +92,12 @@ export async function POST(req: NextRequest) {
     discount = Math.min(subtotal, discountValue);
   }
 
-  const shipping = הזמנה?.דמי_משלוח || 0;
-  const total = Math.max(0, subtotal - discount + shipping);
+  const shipping    = הזמנה?.דמי_משלוח || 0;
+  const creditUsed  = Math.min(
+    Math.max(0, Number(הזמנה?.זיכוי_בשימוש || 0)),
+    subtotal - discount + shipping,   // can't credit more than the order total
+  );
+  const total = Math.max(0, subtotal - discount + shipping - creditUsed);
 
   console.log('[create-full] STEP 3: inserting order into DB', { customerId, total, subtotal });
 
@@ -124,6 +128,7 @@ export async function POST(req: NextRequest) {
       ערך_הנחה: discountValue,
       סכום_לפני_הנחה: subtotal,
       סכום_הנחה: discount,
+      זיכוי_בשימוש: creditUsed,
       סך_הכל_לתשלום: total,
       מקור_ההזמנה: הזמנה?.מקור_ההזמנה || null,
       ברכה_טקסט: הזמנה?.ברכה_טקסט || null,

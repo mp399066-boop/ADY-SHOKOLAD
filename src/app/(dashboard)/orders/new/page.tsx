@@ -173,6 +173,8 @@ export default function NewOrderPage() {
   const [savedOrderId, setSavedOrderId] = useState<string | null>(null);
   const [savedPaymentUrl, setSavedPaymentUrl] = useState<string | null>(null);
   const [paymentLinkLoading, setPaymentLinkLoading] = useState(false);
+  const [customerCreditBalance, setCustomerCreditBalance] = useState(0);
+  const [creditToApply, setCreditToApply] = useState(0);
 
   useEffect(() => {
     const draftFetch = draftIdParam
@@ -373,6 +375,15 @@ export default function NewOrderPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCustomer, customers, deliveryType, recipientType]);
 
+  useEffect(() => {
+    if (!selectedCustomer) { setCustomerCreditBalance(0); setCreditToApply(0); return; }
+    fetch(`/api/customers/${selectedCustomer}/credit`)
+      .then(r => r.json())
+      .then(({ balance }) => setCustomerCreditBalance(balance ?? 0))
+      .catch(() => setCustomerCreditBalance(0));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCustomer]);
+
   const handleCustomerChange = (customerId: string) => {
     setSelectedCustomer(customerId);
     const cust = customers.find(c => c.id === customerId);
@@ -415,9 +426,10 @@ export default function NewOrderPage() {
   // Satmar orders never show VAT, regardless of customer type
   const isBusiness = orderType !== 'סאטמר' && (customerType === 'עסקי' || customerType === 'עסקי - קבוע' || customerType === 'עסקי - כמות');
   const VAT_RATE = 0.18;
-  // VAT display only — סך_הכל_לתשלום stored in DB is always pre-VAT (server calculates it)
-  const vatAmount = isBusiness ? +(total * VAT_RATE).toFixed(2) : 0;
-  const totalWithVat = isBusiness ? +(total * (1 + VAT_RATE)).toFixed(2) : total;
+  const effectiveCreditApplied = Math.min(creditToApply, Math.max(0, total));
+  const totalAfterCredit = Math.max(0, total - effectiveCreditApplied);
+  const vatAmountAfterCredit = isBusiness ? +(totalAfterCredit * VAT_RATE).toFixed(2) : 0;
+  const totalWithVatAfterCredit = isBusiness ? +(totalAfterCredit * (1 + VAT_RATE)).toFixed(2) : totalAfterCredit;
 
   const addProductItem = () => {
     setOrderItems(prev => [...prev, {
@@ -627,6 +639,7 @@ export default function NewOrderPage() {
       ברכה_טקסט: greetingText || null,
       הערות_להזמנה: notes || null,
       מקור_ההזמנה: orderSource || null,
+      זיכוי_בשימוש: Math.min(creditToApply, Math.max(0, subtotal - discountAmount + deliveryFee)),
     },
     מוצרים: orderItems.filter(i => i.מוצר_id).map(i => ({
       מוצר_id: i.מוצר_id,
@@ -732,6 +745,24 @@ export default function NewOrderPage() {
       const newOrderId = json.data.id as string;
       // Lock against any re-submit (the form's submit guard reads savedOrderId).
       setSavedOrderId(newOrderId);
+
+      const appliedCredit = Math.min(creditToApply, Math.max(0, subtotal - discountAmount + deliveryFee));
+      if (appliedCredit > 0) {
+        try {
+          await fetch(`/api/customers/${selectedCustomer}/credit`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              סכום: -Math.round(appliedCredit * 100) / 100,
+              סוג: 'credit_used',
+              הזמנה_id: newOrderId,
+              סיבה: 'זיכוי בהזמנה',
+            }),
+          });
+        } catch {
+          toast('הזמנה נוצרה. שגיאה ברישום ניצול הזיכוי — בדקי בדף הלקוח.', { duration: 8000 });
+        }
+      }
 
       toast.success('הזמנה אושרה בהצלחה!');
     } catch (err: unknown) {
@@ -1433,19 +1464,50 @@ export default function NewOrderPage() {
                       <span>₪{deliveryFee.toFixed(2)}</span>
                     </div>
                   )}
-                  <div className="flex justify-between items-center">
+                  {customerCreditBalance > 0 && (
+                    <div className="mt-2 pt-2 border-t" style={{ borderColor: '#EDE0CE' }}>
+                      <div className="flex items-center justify-between text-xs mb-1.5">
+                        <span style={{ color: '#1D6A3D' }}>יתרת זיכוי</span>
+                        <span className="font-semibold" style={{ color: '#1D6A3D' }}>₪{customerCreditBalance.toFixed(2)}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs flex-shrink-0" style={{ color: '#6B4A2D' }}>הפעל:</label>
+                        <input
+                          type="number"
+                          value={creditToApply || ''}
+                          onChange={e => {
+                            const v = parseFloat(e.target.value) || 0;
+                            setCreditToApply(Math.min(customerCreditBalance, Math.max(0, v)));
+                          }}
+                          className="flex-1 px-2 py-1 text-xs border rounded-lg"
+                          style={{ borderColor: '#DDD0BC', color: '#2B1A10', direction: 'ltr', textAlign: 'left' }}
+                          min={0}
+                          max={customerCreditBalance}
+                          step={0.01}
+                          placeholder="0.00"
+                        />
+                      </div>
+                    </div>
+                  )}
+                  {effectiveCreditApplied > 0 && (
+                    <div className="flex justify-between text-xs mt-1.5" style={{ color: '#6B4A2D' }}>
+                      <span>זיכוי</span>
+                      <span className="font-semibold" style={{ color: '#15803D' }}>−₪{effectiveCreditApplied.toFixed(2)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between items-center mt-1.5">
                     <span className="text-sm font-semibold" style={{ color: '#2B1A10' }}>
                       {isBusiness ? 'סה״כ לפני מע״מ' : 'סך הכל'}
                     </span>
                     <span className="text-xl font-bold" style={{ color: '#8B5E34' }}>
-                      ₪{total.toFixed(2)}
+                      ₪{totalAfterCredit.toFixed(2)}
                     </span>
                   </div>
                   {isBusiness && (
                     <>
                       <div className="flex justify-between text-xs mt-1.5" style={{ color: '#6B4A2D' }}>
                         <span>מע״מ 18%</span>
-                        <span>₪{vatAmount.toFixed(2)}</span>
+                        <span>₪{vatAmountAfterCredit.toFixed(2)}</span>
                       </div>
                       <div
                         className="flex justify-between items-center mt-1.5 pt-2 border-t"
@@ -1453,7 +1515,7 @@ export default function NewOrderPage() {
                       >
                         <span className="text-sm font-semibold" style={{ color: '#2B1A10' }}>סה״כ כולל מע״מ</span>
                         <span className="text-lg font-bold" style={{ color: '#8B5E34' }}>
-                          ₪{totalWithVat.toFixed(2)}
+                          ₪{totalWithVatAfterCredit.toFixed(2)}
                         </span>
                       </div>
                     </>
