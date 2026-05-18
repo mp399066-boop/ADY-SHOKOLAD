@@ -432,6 +432,12 @@ export interface Invoice {
   //   tax_invoice / receipt / invoice_receipt / חשבונית_מס_קבלה (legacy).
   // Anything else is bucketed into "מסמכים נוספים" by the UI.
   סוג_מסמך: string | null;
+  // Source of the record. 'morning_api' = issued via CRM button (default).
+  // 'manual_morning' = operator issued it directly in Morning outside the CRM
+  // and then marked it here manually.
+  מקור: string | null;
+  הערה: string | null;
+  נוצר_על_ידי: string | null;
   תאריך_יצירה: string;
   הזמנות?: Order;
   לקוחות?: Customer;

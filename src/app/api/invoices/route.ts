@@ -21,7 +21,9 @@ export async function POST(req: NextRequest) {
   if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
   const body = await req.json();
-  const { data, error } = await supabase.from('חשבוניות').insert(body).select().single();
+  // Always stamp the author server-side so the client doesn't need to know the email.
+  const row = { ...body, נוצר_על_ידי: body.נוצר_על_ידי ?? auth.email ?? null };
+  const { data, error } = await supabase.from('חשבוניות').insert(row).select().single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ data }, { status: 201 });
 }

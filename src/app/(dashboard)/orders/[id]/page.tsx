@@ -252,6 +252,14 @@ export default function OrderDetailPage() {
   const [issuingDocType, setIssuingDocType] = useState<'tax_invoice' | 'receipt' | 'invoice_receipt' | null>(null);
   const issuingDoc = issuingDocType !== null;
 
+  // Manual-morning marking modal — opened via "סמן שהופקה ידנית במורנינג"
+  const [showManualMorningModal, setShowManualMorningModal] = useState(false);
+  const [manualDocType, setManualDocType]     = useState<string>('invoice_receipt');
+  const [manualDocNumber, setManualDocNumber] = useState('');
+  const [manualDocLink, setManualDocLink]     = useState('');
+  const [manualDocNote, setManualDocNote]     = useState('');
+  const [savingManualDoc, setSavingManualDoc] = useState(false);
+
   // Single source of truth for the manual issuance request. All three buttons
   // (tax_invoice via confirm, receipt + invoice_receipt via the payment-method
   // modal) call this. POSTs to the existing /api/orders/{id}/create-document
@@ -300,6 +308,45 @@ export default function OrderDetailPage() {
       setIssuingDocType(null);
     }
   };
+
+  const handleMarkManualMorning = async () => {
+    if (!order) return;
+    setSavingManualDoc(true);
+    try {
+      const docTypeMap: Record<string, string> = {
+        'invoice_receipt': 'invoice_receipt',
+        'tax_invoice':     'tax_invoice',
+        'receipt':         'receipt',
+      };
+      const res = await fetch('/api/invoices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          הזמנה_id:        order.id,
+          לקוח_id:         order.לקוח_id,
+          מספר_חשבונית:    manualDocNumber.trim() || '',
+          קישור_חשבונית:   manualDocLink.trim() || null,
+          סכום:            0,
+          סוג_מסמך:        docTypeMap[manualDocType] ?? manualDocType,
+          מקור:            'manual_morning',
+          סטטוס:           'issued_manually',
+          הערה:            manualDocNote.trim() || null,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) { toast.error(json.error || 'שגיאה בשמירה'); return; }
+      toast.success('סומן בהצלחה — הופקה ידנית במורנינג');
+      setShowManualMorningModal(false);
+      setManualDocNumber('');
+      setManualDocLink('');
+      setManualDocNote('');
+      setManualDocType('invoice_receipt');
+      loadOrder();
+    } finally {
+      setSavingManualDoc(false);
+    }
+  };
+
   // UI-only: tracks which package rows are expanded to show their petit-fours
   const [expandedPackages, setExpandedPackages] = useState<Set<string>>(new Set());
   const togglePackage = (lineId: string) =>
@@ -853,23 +900,43 @@ export default function OrderDetailPage() {
       )}
 
       {/* ════════ FINANCIAL DOCUMENTS — full width, above the main grid ═══ */}
-      <FinancialActionsBar
-        invoiceReceiptLoading={issuingDocType === 'invoice_receipt'}
-        taxInvoiceLoading={issuingDocType === 'tax_invoice'}
-        receiptLoading={issuingDocType === 'receipt'}
-        busy={issuingDoc}
-        onIssueInvoiceReceipt={() => setPayModalDocType('invoice_receipt')}
-        onIssueReceipt={() => setPayModalDocType('receipt')}
-        onIssueTaxInvoice={async () => {
-          const all = order.חשבוניות ?? [];
-          const exists = all.some(i => i.סוג_מסמך === 'tax_invoice');
-          const baseMsg = 'להפיק חשבונית מס להזמנה זו?';
-          const dupMsg = 'כבר קיימת חשבונית מס להזמנה זו. הפקה נוספת עלולה ליצור כפילות. להמשיך?';
-          if (!window.confirm(exists ? dupMsg : baseMsg)) return;
-          await issueDocument('tax_invoice', undefined, exists);
-        }}
-      />
-      <FinancialDocumentsList invoices={order.חשבוניות ?? []} />
+      {(() => {
+        const allInvoices = (order.חשבוניות ?? []) as InvRow[];
+        const hasManualMorning = allInvoices.some(i => i.מקור === 'manual_morning');
+        const manualWarning = hasManualMorning
+          ? 'הזמנה זו סומנה כהופקה ידנית במורנינג. הפקה נוספת דרך המערכת עלולה ליצור כפילות. להמשיך בכל זאת?'
+          : null;
+        return (
+          <>
+            <FinancialActionsBar
+              invoiceReceiptLoading={issuingDocType === 'invoice_receipt'}
+              taxInvoiceLoading={issuingDocType === 'tax_invoice'}
+              receiptLoading={issuingDocType === 'receipt'}
+              busy={issuingDoc || savingManualDoc}
+              hasManualMorning={hasManualMorning}
+              onIssueInvoiceReceipt={() => {
+                if (manualWarning && !window.confirm(manualWarning)) return;
+                setPayModalDocType('invoice_receipt');
+              }}
+              onIssueReceipt={() => {
+                if (manualWarning && !window.confirm(manualWarning)) return;
+                setPayModalDocType('receipt');
+              }}
+              onIssueTaxInvoice={async () => {
+                if (manualWarning && !window.confirm(manualWarning)) return;
+                const all = order.חשבוניות ?? [];
+                const exists = all.some(i => i.סוג_מסמך === 'tax_invoice');
+                const baseMsg = 'להפיק חשבונית מס להזמנה זו?';
+                const dupMsg = 'כבר קיימת חשבונית מס להזמנה זו. הפקה נוספת עלולה ליצור כפילות. להמשיך?';
+                if (!window.confirm(exists ? dupMsg : baseMsg)) return;
+                await issueDocument('tax_invoice', undefined, exists);
+              }}
+              onMarkManualMorning={() => setShowManualMorningModal(true)}
+            />
+            <FinancialDocumentsList invoices={allInvoices} />
+          </>
+        );
+      })()}
 
       {/* ════════ MAIN GRID ════════ */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
@@ -1763,6 +1830,124 @@ export default function OrderDetailPage() {
       )}
 
       {/* ══════════════════════════════════════════════════════════════════════
+          Manual-Morning marking modal — opened by "סמן שהופקה ידנית במורנינג"
+          ══════════════════════════════════════════════════════════════════════ */}
+      {showManualMorningModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}
+          onClick={e => { if (e.target === e.currentTarget) setShowManualMorningModal(false); }}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl shadow-2xl p-6 space-y-4"
+            style={{ backgroundColor: '#FFFDF8', border: '1px solid #E8D2A8' }}
+            dir="rtl"
+          >
+            <div className="flex items-center justify-between">
+              <h2 className="text-[15px] font-bold" style={{ color: '#2B1A10' }}>
+                סמן הופקה ידנית במורנינג
+              </h2>
+              <button
+                onClick={() => setShowManualMorningModal(false)}
+                className="text-xl leading-none"
+                style={{ color: '#8A735F' }}
+                aria-label="סגור"
+              >×</button>
+            </div>
+            <p className="text-[12px]" style={{ color: '#8A735F' }}>
+              ההזמנה תסומן כטופלה — החשבונית/קבלה הופקה ישירות במורנינג, לא דרך המערכת.
+            </p>
+
+            {/* Document type */}
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#7A4A27' }}>
+                סוג מסמך *
+              </label>
+              <select
+                className="w-full rounded-lg border px-3 py-2 text-[13px]"
+                style={{ borderColor: '#E8D2A8', color: '#2B1A10', backgroundColor: '#FFFCF7' }}
+                value={manualDocType}
+                onChange={e => setManualDocType(e.target.value)}
+              >
+                <option value="invoice_receipt">חשבונית מס קבלה</option>
+                <option value="receipt">קבלה</option>
+                <option value="tax_invoice">חשבונית מס</option>
+              </select>
+            </div>
+
+            {/* Document number (optional) */}
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#7A4A27' }}>
+                מספר מסמך (אופציונלי)
+              </label>
+              <input
+                type="text"
+                className="w-full rounded-lg border px-3 py-2 text-[13px]"
+                style={{ borderColor: '#E8D2A8', color: '#2B1A10', backgroundColor: '#FFFCF7' }}
+                placeholder="לדוג׳ 1234"
+                value={manualDocNumber}
+                onChange={e => setManualDocNumber(e.target.value)}
+              />
+            </div>
+
+            {/* Document link (optional) */}
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#7A4A27' }}>
+                קישור למסמך (אופציונלי)
+              </label>
+              <input
+                type="url"
+                className="w-full rounded-lg border px-3 py-2 text-[13px]"
+                style={{ borderColor: '#E8D2A8', color: '#2B1A10', backgroundColor: '#FFFCF7' }}
+                placeholder="https://..."
+                value={manualDocLink}
+                onChange={e => setManualDocLink(e.target.value)}
+                dir="ltr"
+              />
+            </div>
+
+            {/* Note (optional) */}
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#7A4A27' }}>
+                הערה (אופציונלי)
+              </label>
+              <textarea
+                className="w-full rounded-lg border px-3 py-2 text-[13px] resize-none"
+                style={{ borderColor: '#E8D2A8', color: '#2B1A10', backgroundColor: '#FFFCF7' }}
+                rows={2}
+                placeholder="הערה חופשית..."
+                value={manualDocNote}
+                onChange={e => setManualDocNote(e.target.value)}
+              />
+            </div>
+
+            {/* Buttons */}
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={handleMarkManualMorning}
+                disabled={savingManualDoc}
+                className="flex-1 rounded-xl py-2.5 text-[13px] font-semibold"
+                style={{
+                  background: savingManualDoc ? '#C5A882' : 'linear-gradient(135deg,#7A4A27,#8B5E34)',
+                  color: '#fff',
+                  cursor: savingManualDoc ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {savingManualDoc ? 'שומר...' : 'שמור סימון'}
+              </button>
+              <button
+                onClick={() => setShowManualMorningModal(false)}
+                className="rounded-xl px-5 py-2.5 text-[13px] font-semibold"
+                style={{ backgroundColor: '#F4EDE3', color: '#7A4A27', border: '1px solid #E8D2A8' }}
+              >
+                ביטול
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════════
           Payment-method modal — opens only for receipt / invoice_receipt.
           tax_invoice doesn't use this; it goes through window.confirm directly.
           ══════════════════════════════════════════════════════════════════════ */}
@@ -1799,32 +1984,42 @@ function FinancialActionsBar({
   taxInvoiceLoading,
   receiptLoading,
   busy,
+  hasManualMorning,
   onIssueInvoiceReceipt,
   onIssueTaxInvoice,
   onIssueReceipt,
+  onMarkManualMorning,
 }: {
   invoiceReceiptLoading: boolean;
   taxInvoiceLoading: boolean;
   receiptLoading: boolean;
   busy: boolean;
+  hasManualMorning: boolean;
   onIssueInvoiceReceipt: () => void;
   onIssueTaxInvoice: () => void;
   onIssueReceipt: () => void;
+  onMarkManualMorning: () => void;
 }) {
   return (
     <Card style={{ paddingTop: 18, paddingBottom: 18 }}>
+      {/* Warning banner when already marked as manually issued */}
+      {hasManualMorning && (
+        <div
+          className="flex items-start gap-2 mb-4 rounded-lg px-3 py-2.5 text-[12px]"
+          style={{ backgroundColor: '#FFF8E7', border: '1px solid #F0D080', color: '#7A5A10' }}
+        >
+          <span className="mt-px text-base leading-none">⚠️</span>
+          <span>
+            הזמנה זו סומנה כ<strong>הופקה ידנית במורנינג</strong>. הפקה נוספת דרך המערכת עלולה ליצור כפילות.
+          </span>
+        </div>
+      )}
+
       <div
         className="grid items-center gap-4"
-        style={{
-          // Title column 220-300px, action grid takes the rest. On md and
-          // below the columns collapse to one (handled via media-query css
-          // — Tailwind doesn't natively support minmax, so this works via
-          // gridTemplateColumns at the breakpoint we want).
-          gridTemplateColumns: 'minmax(0,1fr)',
-        }}
+        style={{ gridTemplateColumns: 'minmax(0,1fr)' }}
       >
-        {/* Inner responsive grid — desktop stacks title|buttons horizontally,
-            tablet+mobile stacks them vertically. */}
+        {/* Inner responsive grid — desktop stacks title|buttons horizontally */}
         <div
           className="grid gap-4 lg:gap-5"
           style={{ gridTemplateColumns: 'minmax(220px,260px) 1fr' }}
@@ -1848,31 +2043,54 @@ function FinancialActionsBar({
           </div>
 
           {/* Action buttons — 3-up at desktop, collapses to 1 col on mobile */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-            <DocActionButton
-              variant="primary"
-              title="הפק חשבונית מס קבלה"
-              hint="חשבונית וקבלה במסמך אחד"
-              loading={invoiceReceiptLoading}
-              disabled={busy && !invoiceReceiptLoading}
-              onClick={onIssueInvoiceReceipt}
-            />
-            <DocActionButton
-              variant="secondary"
-              title="הפק חשבונית מס"
-              hint="לתיעוד עסקה ללא קבלה"
-              loading={taxInvoiceLoading}
-              disabled={busy && !taxInvoiceLoading}
-              onClick={onIssueTaxInvoice}
-            />
-            <DocActionButton
-              variant="tertiary"
-              title="הפק קבלה"
-              hint="לאישור תשלום שהתקבל"
-              loading={receiptLoading}
-              disabled={busy && !receiptLoading}
-              onClick={onIssueReceipt}
-            />
+          <div className="space-y-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <DocActionButton
+                variant="primary"
+                title="הפק חשבונית מס קבלה"
+                hint="חשבונית וקבלה במסמך אחד"
+                loading={invoiceReceiptLoading}
+                disabled={busy && !invoiceReceiptLoading}
+                onClick={onIssueInvoiceReceipt}
+              />
+              <DocActionButton
+                variant="secondary"
+                title="הפק חשבונית מס"
+                hint="לתיעוד עסקה ללא קבלה"
+                loading={taxInvoiceLoading}
+                disabled={busy && !taxInvoiceLoading}
+                onClick={onIssueTaxInvoice}
+              />
+              <DocActionButton
+                variant="tertiary"
+                title="הפק קבלה"
+                hint="לאישור תשלום שהתקבל"
+                loading={receiptLoading}
+                disabled={busy && !receiptLoading}
+                onClick={onIssueReceipt}
+              />
+            </div>
+
+            {/* Manual-morning marker — separate row, visually distinct */}
+            <button
+              onClick={onMarkManualMorning}
+              disabled={busy}
+              className="w-full text-right rounded-xl px-4 py-2.5 text-[12.5px] font-medium flex items-center gap-2 transition-colors"
+              style={{
+                backgroundColor: hasManualMorning ? '#F0F7EE' : '#F9F4EE',
+                border: `1px dashed ${hasManualMorning ? '#5A9E6E' : '#C5A882'}`,
+                color: hasManualMorning ? '#2E6B42' : '#7A4A27',
+                cursor: busy ? 'not-allowed' : 'pointer',
+                opacity: busy ? 0.6 : 1,
+              }}
+            >
+              <span style={{ fontSize: 15 }}>{hasManualMorning ? '✅' : '📋'}</span>
+              <span>
+                {hasManualMorning
+                  ? 'סומן — הופקה ידנית במורנינג (הוסף עוד)'
+                  : 'סמן שהופקה ידנית במורנינג'}
+              </span>
+            </button>
           </div>
         </div>
       </div>
@@ -1885,7 +2103,7 @@ function FinancialActionsBar({
 // nothing more than a tiny one-line empty state when there are no docs,
 // so we don't bloat the page when the order has only just been created.
 
-type InvRow = { id: string; מספר_חשבונית: string; סכום: number; סטטוס: string; קישור_חשבונית?: string | null; סוג_מסמך?: string | null; תאריך_יצירה?: string | null };
+type InvRow = { id: string; מספר_חשבונית: string; סכום: number; סטטוס: string; קישור_חשבונית?: string | null; סוג_מסמך?: string | null; תאריך_יצירה?: string | null; מקור?: string | null; הערה?: string | null; נוצר_על_ידי?: string | null };
 
 // Strip the internal `manual:` marker from displayed numbers and surface
 // it as a "הופקה ידנית" badge instead. Mirrors the helper on /invoices.
@@ -1952,62 +2170,109 @@ function FinancialDocumentsList({ invoices }: { invoices: InvRow[] }) {
                 const tag = DOC_ROW_BADGE[cat];
                 const { display, isManual } = prettyDocNumber(inv.מספר_חשבונית);
                 const hasFile = !!inv.קישור_חשבונית;
+                const isManualMorning = inv.מקור === 'manual_morning';
                 return (
                   <li
                     key={inv.id}
-                    className="flex justify-between items-center gap-2 text-[13px] px-3 py-2 rounded-lg"
-                    style={{ backgroundColor: '#FAF7F0' }}
+                    className="text-[13px] px-3 py-2 rounded-lg"
+                    style={{
+                      backgroundColor: isManualMorning ? '#F2FAF4' : '#FAF7F0',
+                      border: isManualMorning ? '1px solid #B8DFC4' : undefined,
+                    }}
                   >
-                    <div className="min-w-0 flex-1 flex items-center gap-2 flex-wrap">
-                      {/* Per-row Hebrew badge so each row carries its own
-                          type label (the group header is the only other
-                          place this is shown). */}
-                      <span
-                        className="inline-block text-[10px] font-bold px-1.5 py-0.5 rounded"
-                        style={{ backgroundColor: tag.bg, color: tag.fg }}
-                      >
-                        {tag.label}
-                      </span>
-                      {hasFile ? (
-                        <a
-                          href={inv.קישור_חשבונית as string}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="font-semibold hover:underline"
-                          style={{ color: '#8B5E34', textUnderlineOffset: '2px' }}
-                        >
-                          #{display}
-                        </a>
-                      ) : (
-                        <span className="font-semibold" style={{ color: '#2B1A10' }}>#{display}</span>
-                      )}
-                      {isManual && (
+                    <div className="flex justify-between items-center gap-2">
+                      <div className="min-w-0 flex-1 flex items-center gap-2 flex-wrap">
+                        {/* Per-row Hebrew badge */}
                         <span
-                          className="text-[10px] px-1.5 py-0.5 rounded"
-                          style={{ color: '#8B5E34', backgroundColor: '#FBF3E4', border: '1px solid #E8D2A8' }}
-                          title="המסמך הופק ידנית — לא דרך מורנינג"
+                          className="inline-block text-[10px] font-bold px-1.5 py-0.5 rounded"
+                          style={{ backgroundColor: tag.bg, color: tag.fg }}
                         >
-                          הופקה ידנית
+                          {tag.label}
                         </span>
-                      )}
-                      {inv.תאריך_יצירה && (
-                        <span className="text-[10.5px]" style={{ color: '#8A735F' }}>
-                          {formatDate(inv.תאריך_יצירה)}
-                        </span>
-                      )}
-                      {!hasFile && (
-                        <span
-                          className="text-[10px] px-1.5 py-0.5 rounded"
-                          style={{ color: '#8A735F', backgroundColor: '#EAE0D2' }}
-                          title="המסמך הופק ידנית ואין קובץ לצפייה"
-                        >
-                          אין קובץ במערכת
+
+                        {/* "ידנית במורנינג" badge — prominent green for manual_morning */}
+                        {isManualMorning && (
+                          <span
+                            className="text-[10px] font-bold px-1.5 py-0.5 rounded"
+                            style={{ backgroundColor: '#D4EDDA', color: '#1E5C31', border: '1px solid #A8D5B5' }}
+                          >
+                            הופקה ידנית במורנינג
+                          </span>
+                        )}
+                        {/* Legacy manual: prefix badge (not manual_morning) */}
+                        {isManual && !isManualMorning && (
+                          <span
+                            className="text-[10px] px-1.5 py-0.5 rounded"
+                            style={{ color: '#8B5E34', backgroundColor: '#FBF3E4', border: '1px solid #E8D2A8' }}
+                            title="המסמך הופק ידנית — לא דרך מורנינג"
+                          >
+                            הופקה ידנית
+                          </span>
+                        )}
+
+                        {/* Document number / link */}
+                        {display ? (
+                          hasFile ? (
+                            <a
+                              href={inv.קישור_חשבונית as string}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="font-semibold hover:underline"
+                              style={{ color: '#8B5E34', textUnderlineOffset: '2px' }}
+                            >
+                              #{display}
+                            </a>
+                          ) : (
+                            <span className="font-semibold" style={{ color: '#2B1A10' }}>#{display}</span>
+                          )
+                        ) : (
+                          hasFile && (
+                            <a
+                              href={inv.קישור_חשבונית as string}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[12px] hover:underline"
+                              style={{ color: '#8B5E34' }}
+                            >
+                              פתח מסמך
+                            </a>
+                          )
+                        )}
+
+                        {inv.תאריך_יצירה && (
+                          <span className="text-[10.5px]" style={{ color: '#8A735F' }}>
+                            {formatDate(inv.תאריך_יצירה)}
+                          </span>
+                        )}
+                        {/* "No file" notice — only for non-manual-morning rows */}
+                        {!hasFile && !isManualMorning && (
+                          <span
+                            className="text-[10px] px-1.5 py-0.5 rounded"
+                            style={{ color: '#8A735F', backgroundColor: '#EAE0D2' }}
+                            title="המסמך הופק ידנית ואין קובץ לצפייה"
+                          >
+                            אין קובץ במערכת
+                          </span>
+                        )}
+                        {inv.נוצר_על_ידי && (
+                          <span className="text-[10px]" style={{ color: '#8A735F' }}>
+                            · {inv.נוצר_על_ידי}
+                          </span>
+                        )}
+                      </div>
+                      {/* Show amount only for non-manual-morning rows (amount is 0/unknown there) */}
+                      {!isManualMorning && (
+                        <span className="font-semibold tabular-nums flex-shrink-0" style={{ color: '#8B5E34' }}>
+                          {formatCurrency(inv.סכום)}
                         </span>
                       )}
                     </div>
-                    <span className="font-semibold tabular-nums" style={{ color: '#8B5E34' }}>
-                      {formatCurrency(inv.סכום)}
-                    </span>
+                    {/* Note — shown below the main row when present */}
+                    {isManualMorning && inv.הערה && (
+                      <p className="mt-1 text-[11.5px]" style={{ color: '#4A7A5A' }}>
+                        {inv.הערה}
+                      </p>
+                    )}
                   </li>
                 );
               })}
