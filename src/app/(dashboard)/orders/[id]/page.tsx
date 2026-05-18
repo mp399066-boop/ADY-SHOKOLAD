@@ -423,6 +423,13 @@ export default function OrderDetailPage() {
       .finally(() => setLoading(false));
   };
 
+  // Silent refresh — updates order state without triggering the full-page loading spinner.
+  const reloadOrder = () => {
+    fetch(`/api/orders/${id}`)
+      .then(r => r.json())
+      .then(({ data }) => { if (data) setOrder(data); });
+  };
+
   useEffect(() => { loadOrder(); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Load tasks + employees for this order (once per order id) ──────────────
@@ -692,8 +699,7 @@ export default function OrderDetailPage() {
     // products with no price-list entry.
     const noPriceItem = editItems.find(i => i.מוצר_id && (!i.מחיר_ליחידה || i.מחיר_ליחידה <= 0));
     if (noPriceItem) {
-      toast.error(`יש להזין מחיר למוצר "${noPriceItem.שם_מוצר || ''}"`);
-      return;
+      toast(`מחיר ריק למוצר "${noPriceItem.שם_מוצר || ''}" — שמור בכל זאת`, { icon: 'ℹ️' });
     }
     setSaving(true);
     try {
@@ -739,7 +745,8 @@ export default function OrderDetailPage() {
 
       setShowEditItems(false);
       toast.success('מוצרי ההזמנה עודכנו בהצלחה');
-      loadOrder();
+      if (json.data) setOrder(prev => prev ? { ...prev, ...json.data } : prev);
+      reloadOrder();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'שגיאה בשמירה';
       console.error('[saveItems] error:', msg, err);
@@ -894,6 +901,10 @@ export default function OrderDetailPage() {
   const baseTotal = order.סך_הכל_לתשלום || 0;
   const vatAmount = isBusinessForVat ? +(baseTotal * VAT_RATE).toFixed(2) : 0;
   const displayedTotal = isBusinessForVat ? +(baseTotal * (1 + VAT_RATE)).toFixed(2) : baseTotal;
+  // While the edit-items modal is open, show the live total from the edit form state.
+  const liveDisplayTotal = showEditItems
+    ? (isBusinessForVat ? +(editTotal * (1 + VAT_RATE)).toFixed(2) : editTotal)
+    : displayedTotal;
 
   return (
     <div dir="rtl" className="max-w-6xl mx-auto space-y-5">
@@ -959,7 +970,7 @@ export default function OrderDetailPage() {
           <div className="text-right">
             <p className="text-[11px] uppercase tracking-wider mb-1" style={{ color: '#9B7A5A' }}>סכום</p>
             <p className="text-2xl sm:text-3xl font-bold leading-none" style={{ color: '#8B5E34', letterSpacing: '0.3px' }}>
-              {formatCurrency(displayedTotal)}
+              {formatCurrency(liveDisplayTotal)}
             </p>
             {isBusinessForVat && (
               <p className="text-[10px] mt-1" style={{ color: '#9B7A5A' }}>כולל מע״מ</p>
@@ -1334,7 +1345,7 @@ export default function OrderDetailPage() {
                 {isBusinessForVat ? 'סה״כ כולל מע״מ' : 'סך הכל'}
               </span>
               <span className="text-2xl font-bold tabular-nums" style={{ color: '#8B5E34' }}>
-                {formatCurrency(displayedTotal)}
+                {formatCurrency(liveDisplayTotal)}
               </span>
             </div>
             {order.אופן_תשלום && (
@@ -1345,7 +1356,7 @@ export default function OrderDetailPage() {
             {/* Balance due — shown only when payments exist but don't cover the full total */}
             {(() => {
               const totalPaid = (order.תשלומים || []).reduce((s, p) => s + (p.סכום || 0), 0);
-              const balance = +(displayedTotal - totalPaid).toFixed(2);
+              const balance = +(liveDisplayTotal - totalPaid).toFixed(2);
               if (totalPaid <= 0 || balance <= 0.01) return null;
               return (
                 <div className="mt-3 pt-3 space-y-1.5 text-sm" style={{ borderTop: '1px solid #E7D2A6' }}>

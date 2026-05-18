@@ -100,11 +100,10 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     validProductIds = new Set((existingProds || []).map((p: { id: string }) => p.id));
     const missing = incomingProductIds.filter(id => !validProductIds.has(id));
     if (missing.length > 0) {
-      console.warn('[items PUT] BLOCKED wipe — incoming refers to unknown product ids:', missing);
-      return NextResponse.json(
-        { error: `מזהי מוצר לא קיימים: ${missing.join(', ')}` },
-        { status: 400 },
-      );
+      // Allow editing orders that contain products no longer in the catalog
+      // (archived or deleted products). Don't block — just let them pass through.
+      console.warn('[items PUT] products not in catalog (allowing edit):', missing);
+      missing.forEach((id: string) => validProductIds.add(id));
     }
     console.log('[items PUT] valid product ids:', validProductIds.size, '/', incomingProductIds.length);
   }
