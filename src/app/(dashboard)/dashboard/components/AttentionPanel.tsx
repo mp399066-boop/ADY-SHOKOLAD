@@ -5,6 +5,7 @@
 // a numeric alert summary that links into the full pages.
 
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
 import { C } from './theme';
 import type { Delivery, Stock, TodayOrder } from './types';
 
@@ -35,6 +36,14 @@ export function AttentionPanel({
   const alertCount = allStock.length;
   const activeDeliveries = todayDeliveries.filter(d => d.סטטוס_משלוח !== 'נמסר').length;
 
+  const [openTasksCount, setOpenTasksCount] = useState<number | null>(null);
+  useEffect(() => {
+    fetch('/api/tasks?status=ממתין')
+      .then(r => r.json())
+      .then(json => setOpenTasksCount((json.data || []).length))
+      .catch(() => setOpenTasksCount(0));
+  }, []);
+
   return (
     <aside className="space-y-2.5">
       <Panel title="פעולות מהירות">
@@ -52,10 +61,9 @@ export function AttentionPanel({
             <path d="M3.3 7 12 12l8.7-5" />
             <path d="M12 22V12" />
           </QuickAction>
-          <QuickAction href="/invoices" label="חשבוניות">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-            <path d="M14 2v6h6" />
-            <path d="M8 13h8M8 17h5" />
+          <QuickAction href="/employees" label="משימות">
+            <path d="M9 11l3 3L22 4" />
+            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
           </QuickAction>
         </div>
       </Panel>
@@ -78,6 +86,13 @@ export function AttentionPanel({
           value={alertCount}
           href="/inventory"
           tone={alertCount > 0 ? C.red : C.green}
+        />
+        <AlertLine
+          label="משימות עובדים פתוחות"
+          value={openTasksCount ?? 0}
+          href="/employees"
+          tone={(openTasksCount ?? 0) > 0 ? C.cocoa : C.green}
+          loading={openTasksCount === null}
         />
       </Panel>
     </aside>
@@ -116,7 +131,7 @@ function QuickAction({ href, label, children }: { href: string; label: string; c
   );
 }
 
-function AlertLine({ label, value, href, tone }: { label: string; value: number; href: string; tone: string }) {
+function AlertLine({ label, value, href, tone, loading = false }: { label: string; value: number; href: string; tone: string; loading?: boolean }) {
   return (
     <Link
       href={href}
@@ -126,9 +141,9 @@ function AlertLine({ label, value, href, tone }: { label: string; value: number;
       <span className="text-[11.5px] font-semibold truncate" style={{ color: C.text }}>{label}</span>
       <span
         className="inline-flex min-w-6 h-6 items-center justify-center rounded-full px-1.5 text-[11px] font-bold tabular-nums"
-        style={{ color: tone, backgroundColor: '#FFFFFF', border: `1px solid ${C.borderSoft}` }}
+        style={{ color: loading ? C.textMuted : tone, backgroundColor: '#FFFFFF', border: `1px solid ${C.borderSoft}` }}
       >
-        {value}
+        {loading ? '…' : value}
       </span>
     </Link>
   );

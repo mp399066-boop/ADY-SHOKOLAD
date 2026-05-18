@@ -589,6 +589,7 @@ export default function DashboardPage() {
 
           <ProductionSummaryCard />
 
+          <SectionLabel label="פעולות נדרשות" />
           <DashboardShell
             main={
               <WorkQueue

@@ -8,12 +8,22 @@
 // hides items from the current render. All status / payment / delivery
 // handlers are pass-through to the page; no business logic here.
 
+import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { C } from './theme';
 import { DashboardEmptyState } from './DashboardEmptyState';
 import type { QueueItem, QueueItemType } from './queue-builder';
 import type { WorkQueueItemHandlers } from './WorkQueueItem';
 import { WorkQueueItem } from './WorkQueueItem';
+
+const COL_LIMIT = 5;
+
+const COL_SEE_ALL: Record<QueueItemType, string> = {
+  order:    '/orders',
+  payment:  '/orders?filter=unpaid',
+  delivery: '/deliveries',
+  stock:    '/inventory',
+};
 
 const BOARD_COLUMNS: {
   type: QueueItemType;
@@ -173,6 +183,7 @@ export function WorkQueue({
               accent={column.accent}
               empty={column.empty}
               items={columnItems}
+              colType={column.type}
               updatingId={updatingId}
               handlers={handlers}
             />
@@ -189,6 +200,7 @@ function ActionColumn({
   accent,
   empty,
   items,
+  colType,
   updatingId,
   handlers,
 }: {
@@ -197,9 +209,13 @@ function ActionColumn({
   accent: string;
   empty: string;
   items: QueueItem[];
+  colType: QueueItemType;
   updatingId: string | null;
   handlers: WorkQueueItemHandlers;
 }) {
+  const visible = items.slice(0, COL_LIMIT);
+  const overflow = items.length - COL_LIMIT;
+
   return (
     <section
       className="rounded-xl overflow-hidden"
@@ -226,22 +242,35 @@ function ActionColumn({
           {empty}
         </div>
       ) : (
-        <ul className="p-2 space-y-1.5">
-          {items.map(item => {
-            const entityId = item.entity?.kind === 'order' ? item.entity.data.id
-              : item.entity?.kind === 'delivery' ? item.entity.data.id
-              : null;
-            const updating = !!entityId && entityId === updatingId;
-            return (
-              <WorkQueueItem
-                key={item.id}
-                item={item}
-                updating={updating}
-                handlers={handlers}
-              />
-            );
-          })}
-        </ul>
+        <>
+          <ul className="p-2 space-y-1.5">
+            {visible.map(item => {
+              const entityId = item.entity?.kind === 'order' ? item.entity.data.id
+                : item.entity?.kind === 'delivery' ? item.entity.data.id
+                : null;
+              const updating = !!entityId && entityId === updatingId;
+              return (
+                <WorkQueueItem
+                  key={item.id}
+                  item={item}
+                  updating={updating}
+                  handlers={handlers}
+                />
+              );
+            })}
+          </ul>
+          {overflow > 0 && (
+            <div className="px-3 pb-2.5" style={{ borderTop: `1px solid ${C.borderSoft}` }}>
+              <Link
+                href={COL_SEE_ALL[colType]}
+                className="flex items-center justify-center gap-1 pt-2 text-[11.5px] font-semibold transition-opacity hover:opacity-70"
+                style={{ color: C.textSoft }}
+              >
+                עוד {overflow} פריטים ←
+              </Link>
+            </div>
+          )}
+        </>
       )}
     </section>
   );
