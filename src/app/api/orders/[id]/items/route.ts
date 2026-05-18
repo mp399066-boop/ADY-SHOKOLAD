@@ -12,12 +12,14 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   const {
     מוצרים = [],
     מארזים = [],
+    פריטים_ידניים = [],
     סוג_הנחה = 'ללא',
     ערך_הנחה = 0,
     דמי_משלוח = 0,
   } = body as {
     מוצרים: { מוצר_id: string; כמות: number; מחיר_ליחידה: number; הערות_לשורה?: string }[];
     מארזים: { גודל_מארז: number; כמות: number; מחיר_ליחידה: number; הערות_לשורה?: string; פטיפורים: { פטיפור_id: string; כמות: number }[] }[];
+    פריטים_ידניים: { שם_פריט_מותאם: string; סוג_שורה: string; כמות: number; מחיר_ליחידה: number; הערות_לשורה?: string }[];
     סוג_הנחה: 'ללא' | 'אחוז' | 'סכום';
     ערך_הנחה: number;
     דמי_משלוח: number;
@@ -47,7 +49,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   //     payload. This is almost always a UI/state bug rather than an explicit
   //     "remove every item" intent. Callers that genuinely want an empty order
   //     must remove rows individually or send { allow_empty: true }.
-  const incomingTotal = (מוצרים?.length || 0) + (מארזים?.length || 0);
+  const incomingTotal = (מוצרים?.length || 0) + (מארזים?.length || 0) + (פריטים_ידניים?.length || 0);
   const allowEmpty = (body as { allow_empty?: boolean }).allow_empty === true;
   if (incomingTotal === 0 && existingIds.length > 0 && !allowEmpty) {
     console.warn('[items PUT] BLOCKED wipe — payload empty but order has', existingIds.length, 'existing items');
@@ -201,6 +203,31 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
         }
       }
     }
+  }
+
+  // 5b. Insert custom / manual item rows (product_id = null)
+  for (const item of פריטים_ידניים) {
+    const name = item.שם_פריט_מותאם?.trim();
+    if (!name) continue;
+    const allowedTypes = ['מוצר_ידני', 'תוספת_תשלום'];
+    const lineType = allowedTypes.includes(item.סוג_שורה) ? item.סוג_שורה : 'מוצר_ידני';
+    const lineTotal = (item.כמות || 1) * (item.מחיר_ליחידה || 0);
+    subtotal += lineTotal;
+    const { error } = await supabase.from('מוצרים_בהזמנה').insert({
+      הזמנה_id:        params.id,
+      מוצר_id:         null,
+      סוג_שורה:        lineType,
+      שם_פריט_מותאם:  name,
+      כמות:            item.כמות || 1,
+      מחיר_ליחידה:     item.מחיר_ליחידה || 0,
+      סהכ:             lineTotal,
+      הערות_לשורה:     item.הערות_לשורה || null,
+    });
+    if (error) {
+      console.error('[items PUT] failed to insert custom item:', error, item);
+      return NextResponse.json({ error: `הוספת פריט ידני נכשלה: ${error.message}` }, { status: 500 });
+    }
+    console.log('[items PUT] inserted custom item:', lineType, name, 'סהכ:', lineTotal);
   }
 
   // 6. Recalculate order totals based on discount type

@@ -235,7 +235,8 @@ export interface OrderItem {
   id: string;
   הזמנה_id: string;
   מוצר_id: string | null;
-  סוג_שורה: 'מוצר' | 'מארז';
+  סוג_שורה: 'מוצר' | 'מארז' | 'מוצר_ידני' | 'תוספת_תשלום';
+  שם_פריט_מותאם: string | null;
   גודל_מארז: number | null;
   כמות: number;
   מחיר_ליחידה: number;

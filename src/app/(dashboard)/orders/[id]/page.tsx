@@ -60,6 +60,15 @@ interface EditPackageItem {
   פטיפורים: { פטיפור_id: string; שם: string; כמות: number }[];
 }
 
+interface EditCustomItem {
+  שם_פריט_מותאם: string;
+  סוג_שורה: 'מוצר_ידני' | 'תוספת_תשלום';
+  כמות: number;
+  מחיר_ליחידה: number;
+  סהכ: number;
+  הערות_לשורה: string;
+}
+
 type FullOrder = Order & {
   לקוחות: Customer;
   מוצרים_בהזמנה: (OrderItem & { מוצרים_למכירה?: Product })[];
@@ -400,6 +409,7 @@ export default function OrderDetailPage() {
   // Edit state — order items
   const [editItems, setEditItems] = useState<EditOrderItem[]>([]);
   const [editPackages, setEditPackages] = useState<EditPackageItem[]>([]);
+  const [editCustomItems, setEditCustomItems] = useState<EditCustomItem[]>([]);
   // Recipient type state for edit modal (UI-only until migration 015 is applied)
   const [editRecipientType, setEditRecipientType] = useState<'customer' | 'other'>('customer');
 
@@ -589,6 +599,18 @@ export default function OrderDetailPage() {
       });
     setEditPackages(packageRows);
 
+    const customRows = (order.מוצרים_בהזמנה || [])
+      .filter(item => item.סוג_שורה === 'מוצר_ידני' || item.סוג_שורה === 'תוספת_תשלום')
+      .map(item => ({
+        שם_פריט_מותאם: item.שם_פריט_מותאם || '',
+        סוג_שורה: item.סוג_שורה as 'מוצר_ידני' | 'תוספת_תשלום',
+        כמות: item.כמות,
+        מחיר_ליחידה: item.מחיר_ליחידה,
+        סהכ: item.סהכ,
+        הערות_לשורה: item.הערות_לשורה || '',
+      }));
+    setEditCustomItems(customRows);
+
     setShowEditItems(true);
   };
 
@@ -691,6 +713,15 @@ export default function OrderDetailPage() {
           הערות_לשורה: p.הערות_לשורה || null,
           פטיפורים: p.פטיפורים.map(pf => ({ פטיפור_id: pf.פטיפור_id, כמות: pf.כמות })),
         })),
+        פריטים_ידניים: editCustomItems
+          .filter(i => i.שם_פריט_מותאם.trim())
+          .map(i => ({
+            שם_פריט_מותאם: i.שם_פריט_מותאם.trim(),
+            סוג_שורה: i.סוג_שורה,
+            כמות: i.כמות,
+            מחיר_ליחידה: i.מחיר_ליחידה,
+            הערות_לשורה: i.הערות_לשורה || null,
+          })),
         סוג_הנחה: (order?.סוג_הנחה as 'ללא' | 'אחוז' | 'סכום') ?? 'ללא',
         ערך_הנחה: order?.ערך_הנחה ?? 0,
         דמי_משלוח: order?.דמי_משלוח ?? 0,
@@ -812,9 +843,23 @@ export default function OrderDetailPage() {
     });
   };
 
+  const addCustomItem = () => {
+    setEditCustomItems(prev => [...prev, { שם_פריט_מותאם: '', סוג_שורה: 'תוספת_תשלום', כמות: 1, מחיר_ליחידה: 0, סהכ: 0, הערות_לשורה: '' }]);
+  };
+  const updateCustomItem = (idx: number, field: string, value: string | number) => {
+    setEditCustomItems(prev => {
+      const items = [...prev];
+      const item = { ...items[idx], [field]: value };
+      item.סהכ = (Number(item.כמות) || 0) * (Number(item.מחיר_ליחידה) || 0);
+      items[idx] = item;
+      return items;
+    });
+  };
+  const removeCustomItem = (idx: number) => setEditCustomItems(prev => prev.filter((_, i) => i !== idx));
+
   // ── Live totals for items-edit modal ────────────────────────────────────────
 
-  const editSubtotal = [...editItems, ...editPackages].reduce((s, i) => s + i.סהכ, 0);
+  const editSubtotal = [...editItems, ...editPackages, ...editCustomItems].reduce((s, i) => s + i.סהכ, 0);
   const orderDiscountType = (order?.סוג_הנחה as 'ללא' | 'אחוז' | 'סכום') ?? 'ללא';
   const orderDiscountVal = order?.ערך_הנחה ?? 0;
   const editDiscount = orderDiscountType === 'אחוז'
@@ -1131,6 +1176,7 @@ export default function OrderDetailPage() {
               <ul className="space-y-2">
                 {order.מוצרים_בהזמנה.map(item => {
                   const isPackage = item.סוג_שורה === 'מארז';
+                  const isCustom = item.סוג_שורה === 'מוצר_ידני' || item.סוג_שורה === 'תוספת_תשלום';
                   const pfList = item.בחירת_פטיפורים_בהזמנה || [];
                   const isExpanded = expandedPackages.has(item.id);
                   const name = isPackage
@@ -1140,20 +1186,22 @@ export default function OrderDetailPage() {
                         const size = item.גודל_מארז ?? pkg?.גודל_מארז ?? '?';
                         return `${base} · ${size} יח׳`;
                       })()
-                    : ((() => {
-                        // Order items inserted via the WooCommerce webhook
-                        // sometimes arrive with a null מוצר_id (auto-create
-                        // fell through). The webhook then writes the WC name
-                        // into הערות_לשורה — surface that here as the
-                        // primary display name instead of "—" so the operator
-                        // still sees what was ordered.
-                        const linked = (item as OrderItem & { מוצרים_למכירה?: { שם_מוצר: string } }).מוצרים_למכירה?.שם_מוצר;
-                        if (linked) return linked;
-                        const note = (item as OrderItem).הערות_לשורה ?? '';
-                        const wcMatch = note.match(/^מוצר מהאתר:\s*(.+?)(?:\s*\(SKU\b|$)/);
-                        if (wcMatch) return wcMatch[1].trim();
-                        return 'מוצר לא מזוהה';
-                      })());
+                    : isCustom
+                      ? (item.שם_פריט_מותאם || 'פריט ידני')
+                      : ((() => {
+                          // Order items inserted via the WooCommerce webhook
+                          // sometimes arrive with a null מוצר_id (auto-create
+                          // fell through). The webhook then writes the WC name
+                          // into הערות_לשורה — surface that here as the
+                          // primary display name instead of "—" so the operator
+                          // still sees what was ordered.
+                          const linked = (item as OrderItem & { מוצרים_למכירה?: { שם_מוצר: string } }).מוצרים_למכירה?.שם_מוצר;
+                          if (linked) return linked;
+                          const note = (item as OrderItem).הערות_לשורה ?? '';
+                          const wcMatch = note.match(/^מוצר מהאתר:\s*(.+?)(?:\s*\(SKU\b|$)/);
+                          if (wcMatch) return wcMatch[1].trim();
+                          return 'מוצר לא מזוהה';
+                        })());
                   return (
                     <li
                       key={item.id}
@@ -1187,6 +1235,16 @@ export default function OrderDetailPage() {
                             {isPackage && (
                               <span className="text-[10px] font-medium px-2 py-0.5 rounded-full" style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}>
                                 מארז
+                              </span>
+                            )}
+                            {isCustom && (
+                              <span
+                                className="text-[10px] font-medium px-2 py-0.5 rounded-full"
+                                style={item.סוג_שורה === 'תוספת_תשלום'
+                                  ? { backgroundColor: '#FEE2E2', color: '#991B1B' }
+                                  : { backgroundColor: '#EDE9FE', color: '#5B21B6' }}
+                              >
+                                {item.סוג_שורה === 'תוספת_תשלום' ? 'תוספת תשלום' : 'מוצר ידני'}
                               </span>
                             )}
                           </div>
@@ -1284,6 +1342,24 @@ export default function OrderDetailPage() {
                 אמצעי תשלום: <span style={{ color: '#6B4A2D' }}>{order.אופן_תשלום}</span>
               </p>
             )}
+            {/* Balance due — shown only when payments exist but don't cover the full total */}
+            {(() => {
+              const totalPaid = (order.תשלומים || []).reduce((s, p) => s + (p.סכום || 0), 0);
+              const balance = +(displayedTotal - totalPaid).toFixed(2);
+              if (totalPaid <= 0 || balance <= 0.01) return null;
+              return (
+                <div className="mt-3 pt-3 space-y-1.5 text-sm" style={{ borderTop: '1px solid #E7D2A6' }}>
+                  <div className="flex justify-between">
+                    <span style={{ color: '#6B4A2D' }}>שולם</span>
+                    <span className="tabular-nums" style={{ color: '#2B1A10' }}>{formatCurrency(totalPaid)}</span>
+                  </div>
+                  <div className="flex justify-between font-bold" style={{ color: '#B91C1C' }}>
+                    <span>יתרה לתשלום</span>
+                    <span className="tabular-nums">{formatCurrency(balance)}</span>
+                  </div>
+                </div>
+              );
+            })()}
           </Card>
 
           {/* Order status timeline */}
@@ -1903,6 +1979,106 @@ export default function OrderDetailPage() {
                         </span>
                         <button type="button" onClick={() => removePackageItem(pkgIdx)}
                           className="text-xs text-red-500 hover:underline">הסר מארז</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {/* ── מוצרים ידניים / תוספות תשלום ── */}
+            <section className="rounded-xl border p-4 space-y-3" style={{ borderColor: '#E7D2A6', backgroundColor: '#FDFAF5' }}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#8B5E34' }}>מוצרים ידניים / תוספות תשלום</p>
+                  <p className="text-[11px] mt-0.5" style={{ color: '#9B7A5A' }}>פריטים שאינם בקטלוג — דמי ביטול, תוספת משלוח, תוספת דחיפות וכד׳</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={addCustomItem}
+                  className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-full border font-medium hover:bg-stone-50 transition-colors flex-shrink-0"
+                  style={{ borderColor: '#8B5E34', color: '#8B5E34' }}
+                >
+                  ＋ הוסף פריט
+                </button>
+              </div>
+
+              {editCustomItems.length === 0 ? (
+                <p className="text-xs text-center py-3" style={{ color: '#9B7A5A' }}>
+                  אין פריטים ידניים. לחץ &quot;הוסף פריט&quot; להוספה.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {editCustomItems.map((item, idx) => (
+                    <div key={idx} className="p-3 rounded-xl border space-y-2" style={{ borderColor: '#DDD0BC', backgroundColor: '#FAF7F0' }}>
+                      <div className="grid grid-cols-12 gap-2 items-end">
+                        {/* Type pill */}
+                        <div className="col-span-3">
+                          <label className="block text-xs mb-1" style={{ color: '#6B4A2D' }}>סוג</label>
+                          <select
+                            value={item.סוג_שורה}
+                            onChange={e => updateCustomItem(idx, 'סוג_שורה', e.target.value)}
+                            className="w-full border rounded-lg px-2 py-1.5 text-xs focus:outline-none"
+                            style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
+                          >
+                            <option value="תוספת_תשלום">תוספת תשלום</option>
+                            <option value="מוצר_ידני">מוצר ידני</option>
+                          </select>
+                        </div>
+                        {/* Name */}
+                        <div className="col-span-5">
+                          <label className="block text-xs mb-1" style={{ color: '#6B4A2D' }}>שם הפריט</label>
+                          <input
+                            type="text"
+                            placeholder="לדוג׳ דמי ביטול"
+                            value={item.שם_פריט_מותאם}
+                            onChange={e => updateCustomItem(idx, 'שם_פריט_מותאם', e.target.value)}
+                            className="w-full border rounded-lg px-2 py-1.5 text-xs focus:outline-none"
+                            style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
+                          />
+                        </div>
+                        {/* Qty */}
+                        <div className="col-span-2">
+                          <label className="block text-xs mb-1" style={{ color: '#6B4A2D' }}>כמות</label>
+                          <input
+                            type="number" min={1} value={item.כמות}
+                            onChange={e => updateCustomItem(idx, 'כמות', Number(e.target.value))}
+                            className="w-full border rounded-lg px-2 py-1.5 text-xs focus:outline-none text-center"
+                            style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
+                          />
+                        </div>
+                        {/* Price */}
+                        <div className="col-span-2">
+                          <label className="block text-xs mb-1" style={{ color: '#6B4A2D' }}>מחיר ₪</label>
+                          <input
+                            type="number" min={0} step={0.01} value={item.מחיר_ליחידה}
+                            onChange={e => updateCustomItem(idx, 'מחיר_ליחידה', Number(e.target.value))}
+                            className="w-full border rounded-lg px-2 py-1.5 text-xs focus:outline-none text-center"
+                            style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
+                          />
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <input
+                          type="text"
+                          placeholder="הערה (אופציונלי)"
+                          value={item.הערות_לשורה}
+                          onChange={e => updateCustomItem(idx, 'הערות_לשורה', e.target.value)}
+                          className="flex-1 border rounded-lg px-2 py-1.5 text-xs focus:outline-none"
+                          style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
+                        />
+                        <span className="text-xs font-semibold flex-shrink-0" style={{ color: '#8B5E34' }}>
+                          ₪{item.סהכ.toFixed(2)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => removeCustomItem(idx)}
+                          title="מחק שורה"
+                          className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-red-50 transition-colors text-base flex-shrink-0"
+                          style={{ color: '#dc2626' }}
+                        >
+                          🗑
+                        </button>
                       </div>
                     </div>
                   ))}
