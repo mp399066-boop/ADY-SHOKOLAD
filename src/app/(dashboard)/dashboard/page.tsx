@@ -132,6 +132,16 @@ function getNextOrderStatus(order: TodayOrder): OrderStatus | null {
   }
 }
 
+// ─── Section label ────────────────────────────────────────────────────────
+
+function SectionLabel({ label }: { label: string }) {
+  return (
+    <p className="text-[11px] font-semibold uppercase tracking-widest px-1" style={{ color: C.textMuted }}>
+      {label}
+    </p>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
@@ -563,6 +573,7 @@ export default function DashboardPage() {
 
       {dashboardMode === 'management' ? (
         <>
+          <SectionLabel label="תמונת מצב יומית" />
           <FocusStrip
             ordersTodayCount={ordersTodayCount}
             deliveriesTodayCount={deliveriesTodayActive}

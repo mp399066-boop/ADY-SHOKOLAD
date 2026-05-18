@@ -43,7 +43,7 @@ function fmtDate(iso: string): string {
   return `${d}/${m}`;
 }
 
-const SHOW_LIMIT = 6; // items visible before "הצג עוד"
+const SHOW_LIMIT = 5; // items visible before "הצג עוד"
 
 // ── Sub-components ────────────────────────────────────────────────────────
 
@@ -103,7 +103,6 @@ function ShowMoreBtn({ count, onClick }: { count: number; onClick: () => void })
 export function ProductionSummaryCard() {
   const [data,    setData]    = useState<SummaryData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [open,    setOpen]    = useState(true);
   const [showAllProds, setShowAllProds] = useState(false);
   const [showAllPkgs,  setShowAllPkgs]  = useState(false);
   const [showAllPf,    setShowAllPf]    = useState(false);
@@ -136,7 +135,7 @@ export function ProductionSummaryCard() {
 
       {/* ── Card header ── */}
       <div className="flex flex-wrap items-start justify-between gap-3 px-5 py-4"
-        style={{ borderBottom: open ? `1px solid ${C.border}` : 'none', backgroundColor: '#FDFAF5' }}>
+        style={{ borderBottom: `1px solid ${C.border}`, backgroundColor: '#FDFAF5' }}>
         <div>
           <div className="flex items-center gap-2">
             <h2 className="text-base font-bold" style={{ color: C.espresso }}>סיכום הזמנות לייצור</h2>
@@ -150,23 +149,15 @@ export function ProductionSummaryCard() {
             מה צריך להכין לפי ההזמנות הפעילות
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Link href="/production-summary"
-            className="text-xs font-medium px-3 py-1.5 rounded-xl border transition-colors"
-            style={{ color: C.brand, borderColor: C.border, backgroundColor: C.brandSoft }}>
-            סיכום מלא →
-          </Link>
-          <button onClick={() => setOpen(o => !o)}
-            className="text-xs px-3 py-1.5 rounded-xl border transition-colors"
-            style={{ color: C.textSoft, borderColor: C.border }}>
-            {open ? 'הסתר ▲' : 'הצג ▼'}
-          </button>
-        </div>
+        <Link href="/production-summary"
+          className="text-xs font-medium px-3 py-1.5 rounded-xl border transition-colors"
+          style={{ color: C.brand, borderColor: C.border, backgroundColor: C.brandSoft }}>
+          סיכום מלא →
+        </Link>
       </div>
 
       {/* ── Body ── */}
-      {open && (
-        <div className="px-5 py-4">
+      <div className="px-5 py-4">
 
           {loading && (
             <div className="flex items-center justify-center py-8">
@@ -294,7 +285,6 @@ export function ProductionSummaryCard() {
             </div>
           )}
         </div>
-      )}
     </div>
   );
 }
