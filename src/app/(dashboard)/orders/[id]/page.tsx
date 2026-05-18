@@ -12,7 +12,7 @@ import { normalizeSearchText } from '@/lib/normalize';
 import { sumPetitFours, getCapacityInfo } from '@/lib/packageCapacity';
 import { formatDate, formatCurrency } from '@/lib/utils';
 import toast from 'react-hot-toast';
-import type { Order, OrderItem, Customer, Product, Package, PetitFourType } from '@/types/database';
+import type { Order, OrderItem, Customer, Product, Package, PetitFourType, Employee, WorkTask } from '@/types/database';
 import { DeliveryTypeCards } from '@/components/orders/DeliveryTypeCards';
 
 // ─── Interfaces ────────────────────────────────────────────────────────────────
@@ -260,6 +260,17 @@ export default function OrderDetailPage() {
   const [manualDocNote, setManualDocNote]     = useState('');
   const [savingManualDoc, setSavingManualDoc] = useState(false);
 
+  // Order-tasks sidebar section
+  const [orderTasks, setOrderTasks]         = useState<WorkTask[]>([]);
+  const [taskEmployees, setTaskEmployees]   = useState<Employee[]>([]);
+  const [showAddTaskModal, setShowAddTaskModal] = useState(false);
+  const [newTaskTitle, setNewTaskTitle]     = useState('');
+  const [newTaskEmpId, setNewTaskEmpId]     = useState('');
+  const [newTaskDate, setNewTaskDate]       = useState('');
+  const [newTaskTime, setNewTaskTime]       = useState('');
+  const [newTaskPriority, setNewTaskPriority] = useState<'רגיל' | 'דחוף'>('רגיל');
+  const [savingOrderTask, setSavingOrderTask] = useState(false);
+
   // Single source of truth for the manual issuance request. All three buttons
   // (tax_invoice via confirm, receipt + invoice_receipt via the payment-method
   // modal) call this. POSTs to the existing /api/orders/{id}/create-document
@@ -403,6 +414,53 @@ export default function OrderDetailPage() {
   };
 
   useEffect(() => { loadOrder(); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Load tasks + employees for this order (once per order id) ──────────────
+
+  useEffect(() => {
+    if (!id) return;
+    Promise.all([
+      fetch(`/api/tasks?order_id=${id}`).then(r => r.json()),
+      fetch('/api/employees').then(r => r.json()),
+    ]).then(([tj, ej]) => {
+      setOrderTasks(tj.data || []);
+      setTaskEmployees((ej.data || []).filter((e: Employee) => e.פעיל));
+    });
+  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleAddOrderTask = async () => {
+    if (!newTaskTitle.trim() || !order) return;
+    setSavingOrderTask(true);
+    try {
+      const res  = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          שם_משימה:  newTaskTitle.trim(),
+          הזמנה_id:  order.id,
+          עובד_id:   newTaskEmpId  || null,
+          תאריך_יעד: newTaskDate   || null,
+          שעת_יעד:   newTaskTime   || null,
+          עדיפות:    newTaskPriority,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) { toast.error(json.error || 'שגיאה'); return; }
+      setOrderTasks(prev => [json.data, ...prev]);
+      setShowAddTaskModal(false);
+      setNewTaskTitle(''); setNewTaskEmpId(''); setNewTaskDate(''); setNewTaskTime(''); setNewTaskPriority('רגיל');
+      toast.success('משימה נוספה');
+    } finally {
+      setSavingOrderTask(false);
+    }
+  };
+
+  const handleOrderTaskStatusChange = async (taskId: string, status: WorkTask['סטטוס']) => {
+    const res  = await fetch(`/api/tasks/${taskId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ סטטוס: status }) });
+    const json = await res.json();
+    if (!res.ok) { toast.error(json.error || 'שגיאה'); return; }
+    setOrderTasks(prev => prev.map(t => t.id === taskId ? { ...t, סטטוס: status } : t));
+  };
 
   // ── Load catalogue (once) ───────────────────────────────────────────────────
 
@@ -1315,6 +1373,74 @@ export default function OrderDetailPage() {
 
           {/* Financial documents moved out of the aside — see <FinancialActionsBar />
               and <FinancialDocumentsList /> rendered full-width above the main grid. */}
+
+          {/* ── משימות לעובדים ── */}
+          <Card>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[11px] uppercase tracking-wider font-semibold" style={{ color: '#8B5E34' }}>
+                משימות לעובדים
+                {orderTasks.length > 0 && (
+                  <span className="mr-1.5 px-1.5 py-0.5 rounded-full text-[10px]" style={{ backgroundColor: '#F4E8D8', color: '#7A4A27' }}>
+                    {orderTasks.length}
+                  </span>
+                )}
+              </p>
+              <button
+                onClick={() => setShowAddTaskModal(true)}
+                className="text-[11px] px-2.5 py-1 rounded-lg font-medium"
+                style={{ backgroundColor: '#F4E8D8', color: '#7A4A27', border: '1px solid #E8D2A8' }}
+              >
+                + משימה
+              </button>
+            </div>
+            {orderTasks.length === 0 ? (
+              <p className="text-[12px] text-center py-3" style={{ color: '#B09A84' }}>אין משימות להזמנה זו</p>
+            ) : (
+              <ul className="space-y-1.5">
+                {orderTasks.map(task => {
+                  const sCfg: Record<WorkTask['סטטוס'], { bg: string; fg: string }> = {
+                    'ממתין':  { bg: '#EEF3FB', fg: '#1E4E8C' },
+                    'בעבודה': { bg: '#FFF8E6', fg: '#7A5200' },
+                    'הושלם':  { bg: '#EEF7EE', fg: '#1E5C31' },
+                    'בוטל':   { bg: '#FFF0F0', fg: '#8B1C1C' },
+                  };
+                  const sc = sCfg[task.סטטוס];
+                  const isDone = task.סטטוס === 'הושלם' || task.סטטוס === 'בוטל';
+                  return (
+                    <li
+                      key={task.id}
+                      className="flex items-start gap-2 px-2.5 py-2 rounded-lg text-[12px]"
+                      style={{ backgroundColor: '#FAF7F0', opacity: isDone ? 0.65 : 1 }}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium leading-snug" style={{ color: '#2B1A10' }}>{task.שם_משימה}</p>
+                        {task.עובדים && (
+                          <p className="text-[10.5px] mt-0.5" style={{ color: '#8A735F' }}>{task.עובדים.שם_עובד}</p>
+                        )}
+                        {task.תאריך_יעד && (
+                          <p className="text-[10.5px]" style={{ color: '#8A735F' }}>{task.שעת_יעד ? `${task.שעת_יעד} · ` : ''}{formatDate(task.תאריך_יעד)}</p>
+                        )}
+                      </div>
+                      <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: sc.bg, color: sc.fg }}>
+                          {task.סטטוס}
+                        </span>
+                        {!isDone && (
+                          <button
+                            onClick={() => handleOrderTaskStatusChange(task.id, task.סטטוס === 'ממתין' ? 'בעבודה' : 'הושלם')}
+                            className="text-[10px] px-1.5 py-0.5 rounded"
+                            style={{ backgroundColor: '#F4E8D8', color: '#7A4A27' }}
+                          >
+                            {task.סטטוס === 'ממתין' ? '← בעבודה' : '← הושלם'}
+                          </button>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </Card>
         </aside>
       </div>
 
@@ -1825,6 +1951,97 @@ export default function OrderDetailPage() {
               </Button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          Add-task modal — quick task creation linked to this order
+          ══════════════════════════════════════════════════════════════════════ */}
+      {showAddTaskModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}
+          onClick={e => { if (e.target === e.currentTarget) setShowAddTaskModal(false); }}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl shadow-2xl p-5 space-y-3"
+            style={{ backgroundColor: '#FFFDF8', border: '1px solid #E8D2A8', direction: 'rtl' }}
+          >
+            <h3 className="text-[14px] font-bold" style={{ color: '#2B1A10' }}>הוסף משימה להזמנה</h3>
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#7A4A27' }}>שם משימה *</label>
+              <input
+                className="w-full rounded-lg border px-3 py-2 text-[13px]"
+                style={{ borderColor: '#E8D2A8', backgroundColor: '#FFFCF7', color: '#2B1A10' }}
+                placeholder="לדוג׳ הכנת מארז פטיפורים"
+                value={newTaskTitle}
+                onChange={e => setNewTaskTitle(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#7A4A27' }}>עובד</label>
+              <select
+                className="w-full rounded-lg border px-3 py-2 text-[13px]"
+                style={{ borderColor: '#E8D2A8', backgroundColor: '#FFFCF7', color: '#2B1A10' }}
+                value={newTaskEmpId}
+                onChange={e => setNewTaskEmpId(e.target.value)}
+              >
+                <option value="">ללא עובד</option>
+                {taskEmployees.map(e => <option key={e.id} value={e.id}>{e.שם_עובד}</option>)}
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#7A4A27' }}>תאריך יעד</label>
+                <input
+                  type="date"
+                  className="w-full rounded-lg border px-3 py-2 text-[13px]"
+                  style={{ borderColor: '#E8D2A8', backgroundColor: '#FFFCF7', color: '#2B1A10' }}
+                  value={newTaskDate}
+                  onChange={e => setNewTaskDate(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#7A4A27' }}>שעה</label>
+                <input
+                  type="time"
+                  className="w-full rounded-lg border px-3 py-2 text-[13px]"
+                  style={{ borderColor: '#E8D2A8', backgroundColor: '#FFFCF7', color: '#2B1A10' }}
+                  value={newTaskTime}
+                  onChange={e => setNewTaskTime(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#7A4A27' }}>עדיפות</label>
+              <select
+                className="w-full rounded-lg border px-3 py-2 text-[13px]"
+                style={{ borderColor: '#E8D2A8', backgroundColor: '#FFFCF7', color: '#2B1A10' }}
+                value={newTaskPriority}
+                onChange={e => setNewTaskPriority(e.target.value as 'רגיל' | 'דחוף')}
+              >
+                <option value="רגיל">רגיל</option>
+                <option value="דחוף">דחוף</option>
+              </select>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={handleAddOrderTask}
+                disabled={savingOrderTask || !newTaskTitle.trim()}
+                className="flex-1 rounded-xl py-2.5 text-[13px] font-semibold text-white"
+                style={{ background: (savingOrderTask || !newTaskTitle.trim()) ? '#C5A882' : 'linear-gradient(135deg,#7A4A27,#8B5E34)', cursor: (savingOrderTask || !newTaskTitle.trim()) ? 'not-allowed' : 'pointer' }}
+              >
+                {savingOrderTask ? 'שומר...' : 'שמור'}
+              </button>
+              <button
+                onClick={() => setShowAddTaskModal(false)}
+                className="rounded-xl px-4 py-2.5 text-[13px] font-semibold"
+                style={{ backgroundColor: '#F4EDE3', color: '#7A4A27', border: '1px solid #E8D2A8' }}
+              >
+                ביטול
+              </button>
+            </div>
           </div>
         </div>
       )}

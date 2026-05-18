@@ -473,6 +473,38 @@ export interface UploadedFile {
   uploaded_by: string | null;
 }
 
+// ─── Employees & Work Tasks (migration 038) ────────────────────────────────
+
+export interface Employee {
+  id: string;
+  שם_עובד: string;
+  טלפון: string | null;
+  אימייל: string | null;
+  תפקיד: string | null;
+  פעיל: boolean;
+  תאריך_יצירה: string;
+  תאריך_עדכון: string;
+}
+
+export interface WorkTask {
+  id: string;
+  שם_משימה: string;
+  פירוט: string | null;
+  הזמנה_id: string | null;
+  עובד_id: string | null;
+  תאריך_יעד: string | null;
+  שעת_יעד: string | null;
+  סטטוס: 'ממתין' | 'בעבודה' | 'הושלם' | 'בוטל';
+  עדיפות: 'רגיל' | 'דחוף';
+  הערות: string | null;
+  נוצר_על_ידי: string | null;
+  תאריך_יצירה: string;
+  תאריך_עדכון: string;
+  // Joined relations
+  עובדים?: Pick<Employee, 'id' | 'שם_עובד' | 'תפקיד'> | null;
+  הזמנות?: { id: string; מספר_הזמנה: string } | null;
+}
+
 export interface CommunicationLog {
   id: string;
   לקוח_id: string;
