@@ -168,6 +168,12 @@ export default function DashboardPage() {
   const fetchAll = useCallback(async (silent: boolean) => {
     if (silent && inflightRef.current > 0) return;
     if (!silent) setLoading(true);
+
+    // Declared outside try so the background-summaries step below can
+    // reference them after setLoading(false) has already been called.
+    let todayOrderRows: TodayOrder[] = [];
+    let activeOrderRows: TodayOrder[] = [];
+
     try {
       const today = todayIsraelISO();
       const [dash, ordersTodayRes, ordersAllRes, deliveriesRes, rawRes, prodsRes, pfRes, couriersRes, recipesRes] = await Promise.all([
@@ -189,15 +195,14 @@ export default function DashboardPage() {
         fetch('/api/recipes').then(r => r.json()),
       ]);
 
-      const todayOrderRows = (ordersTodayRes?.data || []) as TodayOrder[];
-      const activeOrderRows = (ordersAllRes?.data || []) as TodayOrder[];
-      const orderSummaries = await fetchOrderSummaries([...todayOrderRows, ...activeOrderRows]);
-      const todayWithSummaries = applyOrderSummaries(todayOrderRows, orderSummaries);
-      const activeWithSummaries = applyOrderSummaries(activeOrderRows, orderSummaries);
+      todayOrderRows = (ordersTodayRes?.data || []) as TodayOrder[];
+      activeOrderRows = (ordersAllRes?.data || []) as TodayOrder[];
 
+      // Set all state immediately — item summaries are loaded in the
+      // background below, so the UI renders without waiting for them.
       if (dash?.data) setStats(dash.data);
-      setTodayOrders(todayWithSummaries);
-      setActiveOrders(activeWithSummaries);
+      setTodayOrders(todayOrderRows);
+      setActiveOrders(activeOrderRows);
       setTodayDeliveries((deliveriesRes?.data || []) as Delivery[]);
 
       type RawRow = Record<string, unknown>;
@@ -230,11 +235,24 @@ export default function DashboardPage() {
     } finally {
       if (!silent) setLoading(false);
     }
+
+    // Load item summaries in the background — the UI is already visible at
+    // this point. Functional setState avoids stale-closure races with the
+    // auto-refresh timer.
+    if (todayOrderRows.length === 0 && activeOrderRows.length === 0) return;
+    try {
+      const summaries = await fetchOrderSummaries([...todayOrderRows, ...activeOrderRows]);
+      if (summaries.size === 0) return;
+      setTodayOrders(prev => applyOrderSummaries(prev, summaries));
+      setActiveOrders(prev => applyOrderSummaries(prev, summaries));
+    } catch {
+      // Item summaries are display-only — silently ignore failures
+    }
   }, []);
 
   useEffect(() => { fetchAll(false); }, [fetchAll]);
   useEffect(() => {
-    const t = window.setInterval(() => fetchAll(true), 45_000);
+    const t = window.setInterval(() => fetchAll(true), 90_000);
     return () => window.clearInterval(t);
   }, [fetchAll]);
 

@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const status = searchParams.get('status');
 
-  let query = supabase.from('מלאי_חומרי_גלם').select('*').order('שם_חומר_גלם');
+  let query = supabase.from('מלאי_חומרי_גלם').select('*').order('שם_חומר_גלם').limit(500);
   if (status) query = query.eq('סטטוס_מלאי', status);
 
   const { data, error } = await query;
