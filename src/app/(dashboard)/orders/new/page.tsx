@@ -165,13 +165,14 @@ export default function NewOrderPage() {
   const [newProductActive, setNewProductActive] = useState(true);
   const [newProductSaving, setNewProductSaving] = useState(false);
 
-  // Post-save payment flow. handleSubmit saves the order, then immediately
-  // POSTs to /api/orders/[id]/create-payment-link, opens the returned PayPlus
-  // hosted page in a new tab, and navigates the operator to the order card.
-  // savedOrderId stays as a re-submit guard (handleSubmit refuses to fire
-  // again when this is non-null). The IPN webhook flips סטטוס_תשלום to שולם
-  // when PayPlus confirms; receipts stay manual per current owner policy.
+  // After order confirmation, savedOrderId is set and the form shows a success
+  // panel. Payment link creation is opt-in: clicking "תשלום הזמנה" calls
+  // handleOpenPayment, which POSTs to create-payment-link on-demand.
+  // savedPaymentUrl caches the first result so a second click re-opens the
+  // existing WC order instead of creating a duplicate.
   const [savedOrderId, setSavedOrderId] = useState<string | null>(null);
+  const [savedPaymentUrl, setSavedPaymentUrl] = useState<string | null>(null);
+  const [paymentLinkLoading, setPaymentLinkLoading] = useState(false);
 
   useEffect(() => {
     const draftFetch = draftIdParam
@@ -732,35 +733,7 @@ export default function NewOrderPage() {
       // Lock against any re-submit (the form's submit guard reads savedOrderId).
       setSavedOrderId(newOrderId);
 
-      // Ask the server to mint a PayPlus payment-page link for THIS order
-      // (uses the existing payment page UID + the order's total amount).
-      // API key + secret stay server-side; only the resulting URL comes
-      // back here. סטטוס_תשלום is NOT changed — it stays 'ממתין' until
-      // the operator manually marks the order paid on the order card.
-      try {
-        const ppRes  = await fetch(`/api/orders/${newOrderId}/create-payment-link`, { method: 'POST' });
-        const ppJson = await ppRes.json();
-        if (!ppRes.ok || !ppJson.payment_url) {
-          throw new Error(ppJson.error || 'PayPlus לא החזיר קישור תשלום');
-        }
-        const opened = window.open(ppJson.payment_url, '_blank', 'noopener,noreferrer');
-        if (!opened) {
-          toast.error('הדפדפן חסם את חלון התשלום. אפשר לפתוח את דף התשלום מכרטיס ההזמנה.', { duration: 6000 });
-        } else {
-          toast.success('דף התשלום נפתח');
-        }
-      } catch (payErr: unknown) {
-        // Show the real upstream reason (env-var missing / PayPlus rejected
-        // amount / etc) instead of a generic message — the operator can see
-        // it and act on it without opening Vercel logs.
-        const reason = payErr instanceof Error ? payErr.message : String(payErr);
-        console.error('[new-order] payment link generation failed:', reason);
-        toast.error(`לא הצלחנו לפתוח דף תשלום: ${reason}`, { duration: 10000 });
-      }
-
-      // Land on the order card so the operator can review and (manually)
-      // mark סטטוס_תשלום as שולם after confirming payment.
-      router.push(`/orders/${newOrderId}`);
+      toast.success('הזמנה אושרה בהצלחה!');
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'שגיאה ביצירת הזמנה');
     } finally {
@@ -768,6 +741,33 @@ export default function NewOrderPage() {
       setLoading(false);
     }
   };
+
+  async function handleOpenPayment(orderId: string) {
+    // Re-open cached URL to avoid creating a duplicate WC order
+    if (savedPaymentUrl) {
+      window.open(savedPaymentUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    if (paymentLinkLoading) return;
+    setPaymentLinkLoading(true);
+    try {
+      const ppRes  = await fetch(`/api/orders/${orderId}/create-payment-link`, { method: 'POST' });
+      const ppJson = await ppRes.json();
+      if (!ppRes.ok || !ppJson.payment_url) throw new Error(ppJson.error || 'PayPlus לא החזיר קישור תשלום');
+      setSavedPaymentUrl(ppJson.payment_url);
+      const opened = window.open(ppJson.payment_url, '_blank', 'noopener,noreferrer');
+      if (!opened) {
+        toast.error('הדפדפן חסם את חלון התשלום. אפשר לפתוח מכרטיס ההזמנה.', { duration: 6000 });
+      } else {
+        toast.success('דף התשלום נפתח');
+      }
+    } catch (err: unknown) {
+      const reason = err instanceof Error ? err.message : String(err);
+      toast.error(`לא הצלחנו לפתוח דף תשלום: ${reason}`, { duration: 10000 });
+    } finally {
+      setPaymentLinkLoading(false);
+    }
+  }
 
   return (
     <form onSubmit={handleSubmit} className="max-w-6xl">
@@ -1464,19 +1464,58 @@ export default function NewOrderPage() {
 
             {/* Action buttons */}
             <div className="space-y-2">
-              <Button type="submit" loading={loading} className="w-full" size="lg">
-                {loading
-                  ? 'שומרת הזמנה ומעבירה לתשלום...'
-                  : (draftOrderIdRef.current ? 'אשר ועבור לתשלום' : 'שמור ועבור לתשלום')}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full"
-                onClick={() => router.back()}
-              >
-                ביטול
-              </Button>
+              {savedOrderId ? (
+                // Success state — shown after order is confirmed
+                <div
+                  className="rounded-xl border p-4 space-y-2.5"
+                  style={{ borderColor: '#BBE6D0', backgroundColor: '#F0FAF5' }}
+                >
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="#15803D" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span className="text-sm font-semibold" style={{ color: '#15803D' }}>הזמנה אושרה בהצלחה</span>
+                  </div>
+                  <Button
+                    type="button"
+                    className="w-full"
+                    onClick={() => router.push(`/orders/${savedOrderId}`)}
+                  >
+                    פתח הזמנה
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    loading={paymentLinkLoading}
+                    onClick={() => handleOpenPayment(savedOrderId)}
+                  >
+                    {savedPaymentUrl ? 'פתח קישור לתשלום' : 'תשלום הזמנה'}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => router.push('/orders')}
+                  >
+                    חזרה לרשימת הזמנות
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <Button type="submit" loading={loading} className="w-full" size="lg">
+                    {loading ? 'מאשרת הזמנה...' : 'אישור הזמנה'}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => router.back()}
+                  >
+                    ביטול
+                  </Button>
+                </>
+              )}
             </div>
 
             {/* Auto-save status indicator */}
