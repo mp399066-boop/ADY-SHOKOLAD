@@ -10,6 +10,7 @@ import { KitchenPrepBoard } from './KitchenPrepBoard';
 import { KitchenQuickActions } from './KitchenQuickActions';
 import { KitchenTaskRow } from './KitchenTaskRow';
 import { C } from './theme';
+import { RawMaterialsSummaryPanel } from '@/components/inventory/RawMaterialsSummaryPanel';
 
 type OrderStatus = TodayOrder['סטטוס_הזמנה'];
 type PaymentStatus = TodayOrder['סטטוס_תשלום'];
@@ -96,6 +97,17 @@ export function KitchenView({
       {/* Inventory panels — finished goods + raw materials + petit-fours
           (already item-based; the panel groups by kind internally). */}
       <KitchenInventoryPanel items={data.inventoryWarnings} onOpenInventory={() => onNavigate('/inventory')} />
+
+      {/* Raw material requirements vs. active orders — compact view */}
+      <section className="rounded-lg border p-3" style={{ backgroundColor: C.card, borderColor: C.border }}>
+        <div className="flex items-center justify-between mb-2.5">
+          <div>
+            <h2 className="text-sm font-bold" style={{ color: C.text }}>חוסרי חומרי גלם</h2>
+            <p className="text-[11px]" style={{ color: C.textSoft }}>מול הזמנות פעילות השבוע</p>
+          </div>
+        </div>
+        <RawMaterialsSummaryPanel mode="compact" />
+      </section>
 
       {/* Order-level task list, demoted to a supporting role. Useful when
           the kitchen wants to mark a specific order as ready or jump into

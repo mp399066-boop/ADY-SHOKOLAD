@@ -14,6 +14,7 @@ import { ActionBtn } from '@/components/ui/RowActions';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { BulkActionBar } from '@/components/ui/BulkActionBar';
 import { MovementsTab } from '@/components/inventory/MovementsTab';
+import { RawMaterialsSummaryPanel } from '@/components/inventory/RawMaterialsSummaryPanel';
 import { exportToCsv } from '@/lib/exportCsv';
 import { formatCurrency } from '@/lib/utils';
 import toast from 'react-hot-toast';
@@ -454,6 +455,20 @@ export default function InventoryPage() {
           {/* Raw materials tab */}
           {tab === 'raw' && (
             <>
+              {/* ── חוסרים לפי הזמנות פעילות ── */}
+              <div className="mb-5 rounded-xl border p-4"
+                style={{ backgroundColor: '#FDFAF6', borderColor: '#EAE0D4' }}>
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <h3 className="text-sm font-bold" style={{ color: '#2B1A10' }}>חוסרים לפי הזמנות פעילות</h3>
+                    <p className="text-[11px] mt-0.5" style={{ color: '#8A735F' }}>
+                      כמה מכל חומר גלם נדרש להכנת ההזמנות הפעילות השבוע
+                    </p>
+                  </div>
+                </div>
+                <RawMaterialsSummaryPanel mode="full" />
+              </div>
+
               <div className="flex flex-wrap items-center gap-3 mb-4">
                 <input
                   type="text"
