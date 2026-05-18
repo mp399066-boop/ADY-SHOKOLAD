@@ -37,6 +37,7 @@ import { KitchenView } from './components/KitchenView';
 import { KitchenAttendanceTab } from './components/KitchenAttendanceTab';
 import { ProductionRecipeModal } from './components/ProductionRecipeModal';
 import { C } from './components/theme';
+import { ProductionSummaryCard } from './components/ProductionSummaryCard';
 
 // ─── Constants ────────────────────────────────────────────────────────────
 
@@ -574,6 +575,8 @@ export default function DashboardPage() {
             onJumpUnpaid={() => router.push('/orders?filter=unpaid')}
             onJumpStock={() => router.push('/inventory')}
           />
+
+          <ProductionSummaryCard />
 
           <DashboardShell
             main={

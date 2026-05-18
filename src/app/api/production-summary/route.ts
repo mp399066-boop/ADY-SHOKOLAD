@@ -11,6 +11,7 @@ interface OrderRef {
   id: string;
   לקוח: string;
   כמות: number;
+  תאריך_אספקה: string | null;
 }
 
 interface ProductItem {
@@ -113,6 +114,7 @@ export async function GET(req: NextRequest) {
         id: order.id,
         לקוח: custName,
         כמות: qty,
+        תאריך_אספקה: (order.תאריך_אספקה as string | null) || null,
       };
 
       if (item.סוג_שורה === 'מוצר' && item.מוצר_id) {
