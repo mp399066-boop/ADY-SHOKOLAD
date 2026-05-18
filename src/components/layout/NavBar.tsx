@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/client';
 import {
   IconDashboard, IconOrders, IconCustomers, IconProducts,
   IconDeliveries, IconInventory, IconRecipes, IconInvoices,
-  IconSuppliers, IconEmployees, IconImport, IconSettings, IconMenu, IconX, IconExport, IconSearch,
+  IconSuppliers, IconEmployees, IconProductionSummary, IconImport, IconSettings, IconMenu, IconX, IconExport, IconSearch,
 } from '@/components/icons';
 import type { BusinessSettings } from '@/types/database';
 
@@ -18,8 +18,9 @@ const NAV_MAIN = [
   { href: '/products',   label: 'מוצרים',       Icon: IconProducts   },
   { href: '/deliveries', label: 'משלוחים',      Icon: IconDeliveries },
   { href: '/inventory',  label: 'מלאי',         Icon: IconInventory  },
-  { href: '/recipes',    label: 'מתכונים',      Icon: IconRecipes    },
-  { href: '/invoices',   label: 'חשבוניות וקבלות', Icon: IconInvoices   },
+  { href: '/recipes',             label: 'מתכונים',          Icon: IconRecipes           },
+  { href: '/production-summary', label: 'סיכום ייצור',       Icon: IconProductionSummary },
+  { href: '/invoices',           label: 'חשבוניות וקבלות',  Icon: IconInvoices          },
   { href: '/suppliers',  label: 'ספקים',            Icon: IconSuppliers  },
   { href: '/employees', label: 'עובדים / משימות',  Icon: IconEmployees  },
 ];
