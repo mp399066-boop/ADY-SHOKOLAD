@@ -104,6 +104,164 @@ const FILTERS = [
   { key: 'archive',     label: 'הזמנות בארכיון'  },
 ];
 
+// ── Production summary bar ────────────────────────────────────────────────
+// Fetches aggregated totals for the current week's active orders and shows
+// a compact collapsible strip above the orders list.
+
+interface ProdSummaryData {
+  orders_count: number;
+  products:     { שם_מוצר: string; כמות_כוללת: number }[];
+  packages:     { גודל_מארז: number; כמות_כוללת: number; פטיפורים_כוללים: number }[];
+  petit_fours:  { פטיפור_id: string; שם_פטיפור: string; כמות_כוללת: number }[];
+  custom_items: { שם_פריט_מותאם: string; כמות_כוללת: number }[];
+}
+
+function SumStat({ label, value }: { label: string; value: number }) {
+  return (
+    <span className="text-xs">
+      <span className="font-bold" style={{ color: '#2B1A10' }}>{value}</span>
+      <span style={{ color: '#8A7664' }}> {label}</span>
+    </span>
+  );
+}
+function SumDot() {
+  return <span className="text-xs" style={{ color: '#D4C4B0' }}>•</span>;
+}
+
+function ProductionSummaryBar() {
+  const [data, setData] = useState<ProdSummaryData | null>(null);
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const t = new Date(); t.setHours(0, 0, 0, 0);
+    const e = new Date(t); e.setDate(e.getDate() + 6);
+    const from = t.toISOString().slice(0, 10);
+    const to   = e.toISOString().slice(0, 10);
+    fetch(`/api/production-summary?date_from=${from}&date_to=${to}`)
+      .then(r => r.json())
+      .then(json => { if (!json.error) setData(json); })
+      .finally(() => setLoading(false));
+  }, []);
+
+  const totalProds = data?.products.reduce((s, p) => s + p.כמות_כוללת, 0) ?? 0;
+  const totalPkgs  = data?.packages.reduce((s, p) => s + p.כמות_כוללת, 0) ?? 0;
+  const totalPF    = data?.petit_fours.reduce((s, p) => s + p.כמות_כוללת, 0) ?? 0;
+  const pfTypes    = data?.petit_fours.length ?? 0;
+  const totalCust  = (data?.custom_items ?? []).reduce((s, i) => s + i.כמות_כוללת, 0);
+
+  const isEmpty = !loading && data && totalProds === 0 && totalPkgs === 0 && totalPF === 0 && totalCust === 0;
+
+  return (
+    <div className="rounded-xl overflow-hidden"
+      style={{ border: '1px solid #EAE0D4', backgroundColor: '#FFFDF8' }}>
+
+      {/* ── Summary header row ── */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2.5">
+        <span className="text-xs font-semibold shrink-0" style={{ color: '#8B5E34' }}>
+          סיכום ייצור — השבוע
+        </span>
+
+        {loading && <span className="text-xs" style={{ color: '#A09080' }}>טוען...</span>}
+
+        {!loading && isEmpty && (
+          <span className="text-xs" style={{ color: '#A09080' }}>אין הזמנות פעילות השבוע</span>
+        )}
+
+        {!loading && data && !isEmpty && (
+          <div className="flex flex-wrap items-center gap-2 flex-1">
+            {totalProds > 0 && <SumStat label="מוצרים" value={totalProds} />}
+            {totalProds > 0 && totalPkgs > 0 && <SumDot />}
+            {totalPkgs > 0  && <SumStat label="מארזים" value={totalPkgs} />}
+            {totalPF > 0 && <SumDot />}
+            {totalPF > 0    && <SumStat label={`פטיפורים (${pfTypes} סוגים)`} value={totalPF} />}
+            {totalCust > 0 && <SumDot />}
+            {totalCust > 0  && <SumStat label="ידניים" value={totalCust} />}
+            <span className="text-xs" style={{ color: '#B0A090' }}>
+              &nbsp;| {data.orders_count} הזמנות
+            </span>
+          </div>
+        )}
+
+        <div className="flex items-center gap-2 ms-auto shrink-0">
+          {!loading && data && !isEmpty && (
+            <button
+              onClick={() => setOpen(o => !o)}
+              className="text-xs px-2.5 py-1 rounded-lg transition-colors"
+              style={{ color: '#8B5E34', backgroundColor: '#F4E8D8', border: '1px solid #E2CDB0' }}>
+              {open ? 'הסתר ▲' : 'הצג פירוט ▼'}
+            </button>
+          )}
+          <Link href="/production-summary"
+            className="text-xs transition-colors"
+            style={{ color: '#9B7A5A' }}>
+            סיכום מלא →
+          </Link>
+        </div>
+      </div>
+
+      {/* ── Expanded breakdown ── */}
+      {open && data && !isEmpty && (
+        <div className="border-t px-4 py-3 space-y-3" style={{ borderColor: '#EAE0D4', backgroundColor: '#FAF7F2' }}>
+          {data.products.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold mb-1.5" style={{ color: '#6B4A2D' }}>מוצרים</p>
+              <div className="flex flex-wrap gap-1.5">
+                {data.products.map((p, i) => (
+                  <span key={i} className="text-xs px-2.5 py-1 rounded-full"
+                    style={{ backgroundColor: '#F4E8D8', color: '#8B5E34' }}>
+                    {p.שם_מוצר} — {p.כמות_כוללת}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+          {data.packages.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold mb-1.5" style={{ color: '#6B4A2D' }}>מארזים</p>
+              <div className="flex flex-wrap gap-1.5">
+                {data.packages.map(pkg => (
+                  <span key={pkg.גודל_מארז} className="text-xs px-2.5 py-1 rounded-full"
+                    style={{ backgroundColor: '#F4E8D8', color: '#8B5E34' }}>
+                    מארז {pkg.גודל_מארז} — {pkg.כמות_כוללת} יח׳
+                    {pkg.פטיפורים_כוללים > 0 && ` (${pkg.פטיפורים_כוללים} פטיפורים)`}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+          {data.petit_fours.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold mb-1.5" style={{ color: '#6B4A2D' }}>סוגי פטיפורים</p>
+              <div className="flex flex-wrap gap-1.5">
+                {data.petit_fours.map(pf => (
+                  <span key={pf.פטיפור_id} className="text-xs px-2.5 py-1 rounded-full"
+                    style={{ backgroundColor: '#EDE9FE', color: '#5B21B6' }}>
+                    {pf.שם_פטיפור} — {pf.כמות_כוללת}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+          {data.custom_items.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold mb-1.5" style={{ color: '#6B4A2D' }}>ידניים / תוספות</p>
+              <div className="flex flex-wrap gap-1.5">
+                {data.custom_items.map((item, i) => (
+                  <span key={i} className="text-xs px-2.5 py-1 rounded-full"
+                    style={{ backgroundColor: '#F3F4F6', color: '#374151' }}>
+                    {item.שם_פריט_מותאם} — {item.כמות_כוללת}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function OrdersContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -389,6 +547,9 @@ function OrdersContent() {
           ייצוא לאקסל
         </button>
       </div>
+
+      {/* ── Production summary ── */}
+      <ProductionSummaryBar />
 
       <p className="text-xs" style={{ color: '#9B7A5A' }}>
         {count} הזמנות
