@@ -1412,32 +1412,6 @@ export default function OrderDetailPage() {
                 );
               })}
             </div>
-            {/* Retry — re-mint the PayPlus payment page for this order. Only
-                surfaced while status is still 'ממתין' (no point once paid).
-                Opens in a new tab; does not change סטטוס_תשלום. */}
-            {order.סטטוס_תשלום === 'ממתין' && (
-              <button
-                type="button"
-                onClick={async () => {
-                  try {
-                    const r = await fetch(`/api/orders/${order.id}/create-payment-link`, { method: 'POST' });
-                    const j = await r.json();
-                    if (!r.ok || !j.payment_url) throw new Error(j.error || 'PayPlus error');
-                    const opened = window.open(j.payment_url, '_blank', 'noopener,noreferrer');
-                    if (!opened) toast.error('הדפדפן חסם את חלון התשלום');
-                    else toast.success('דף התשלום נפתח');
-                  } catch (err: unknown) {
-                    const reason = err instanceof Error ? err.message : String(err);
-                    console.error('[order] payment-page retry failed:', reason);
-                    toast.error(`לא הצלחנו לפתוח דף תשלום: ${reason}`, { duration: 10000 });
-                  }
-                }}
-                className="mt-3 w-full px-3 py-2 rounded-lg text-xs font-semibold transition-colors"
-                style={{ backgroundColor: '#8B5E34', color: '#FFFFFF' }}
-              >
-                פתח דף תשלום
-              </button>
-            )}
             {payplusBalance > 0.01 && (
               <button
                 type="button"
