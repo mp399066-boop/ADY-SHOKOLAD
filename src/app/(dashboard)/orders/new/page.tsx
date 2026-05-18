@@ -14,6 +14,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import toast from 'react-hot-toast';
 import type { Customer, Product, PetitFourType, Package } from '@/types/database';
 import { DeliveryTypeCards } from '@/components/orders/DeliveryTypeCards';
+import { PayPlusModal } from '@/components/orders/PayPlusModal';
 
 interface OrderItem {
   מוצר_id: string;
@@ -166,13 +167,10 @@ export default function NewOrderPage() {
   const [newProductSaving, setNewProductSaving] = useState(false);
 
   // After order confirmation, savedOrderId is set and the form shows a success
-  // panel. Payment link creation is opt-in: clicking "תשלום הזמנה" calls
-  // handleOpenPayment, which POSTs to create-payment-link on-demand.
-  // savedPaymentUrl caches the first result so a second click re-opens the
-  // existing WC order instead of creating a duplicate.
+  // panel. "תשלום PayPlus" opens the static PayPlus payment modal.
   const [savedOrderId, setSavedOrderId] = useState<string | null>(null);
-  const [savedPaymentUrl, setSavedPaymentUrl] = useState<string | null>(null);
-  const [paymentLinkLoading, setPaymentLinkLoading] = useState(false);
+  const [savedOrderNumber, setSavedOrderNumber] = useState('');
+  const [showNewOrderPayPlusModal, setShowNewOrderPayPlusModal] = useState(false);
   const [customerCreditBalance, setCustomerCreditBalance] = useState(0);
   const [creditToApply, setCreditToApply] = useState(0);
 
@@ -745,6 +743,7 @@ export default function NewOrderPage() {
       const newOrderId = json.data.id as string;
       // Lock against any re-submit (the form's submit guard reads savedOrderId).
       setSavedOrderId(newOrderId);
+      setSavedOrderNumber(json.data.מספר_הזמנה || '');
 
       // Credit deduction is handled server-side inside create-full — no client POST needed.
 
@@ -757,34 +756,8 @@ export default function NewOrderPage() {
     }
   };
 
-  async function handleOpenPayment(orderId: string) {
-    // Re-open cached URL to avoid creating a duplicate WC order
-    if (savedPaymentUrl) {
-      window.open(savedPaymentUrl, '_blank', 'noopener,noreferrer');
-      return;
-    }
-    if (paymentLinkLoading) return;
-    setPaymentLinkLoading(true);
-    try {
-      const ppRes  = await fetch(`/api/orders/${orderId}/create-payment-link`, { method: 'POST' });
-      const ppJson = await ppRes.json();
-      if (!ppRes.ok || !ppJson.payment_url) throw new Error(ppJson.error || 'PayPlus לא החזיר קישור תשלום');
-      setSavedPaymentUrl(ppJson.payment_url);
-      const opened = window.open(ppJson.payment_url, '_blank', 'noopener,noreferrer');
-      if (!opened) {
-        toast.error('הדפדפן חסם את חלון התשלום. אפשר לפתוח מכרטיס ההזמנה.', { duration: 6000 });
-      } else {
-        toast.success('דף התשלום נפתח');
-      }
-    } catch (err: unknown) {
-      const reason = err instanceof Error ? err.message : String(err);
-      toast.error(`לא הצלחנו לפתוח דף תשלום: ${reason}`, { duration: 10000 });
-    } finally {
-      setPaymentLinkLoading(false);
-    }
-  }
-
   return (
+    <>
     <form onSubmit={handleSubmit} className="max-w-6xl">
       <div className="flex gap-6">
         {/* Main form */}
@@ -1533,10 +1506,9 @@ export default function NewOrderPage() {
                     type="button"
                     variant="outline"
                     className="w-full"
-                    loading={paymentLinkLoading}
-                    onClick={() => handleOpenPayment(savedOrderId)}
+                    onClick={() => setShowNewOrderPayPlusModal(true)}
                   >
-                    {savedPaymentUrl ? 'פתח קישור לתשלום' : 'תשלום הזמנה'}
+                    תשלום PayPlus
                   </Button>
                   <Button
                     type="button"
@@ -1712,5 +1684,15 @@ export default function NewOrderPage() {
         </div>
       </div>
     </form>
+
+    {showNewOrderPayPlusModal && (
+      <PayPlusModal
+        amount={totalWithVatAfterCredit}
+        orderNumber={savedOrderNumber}
+        customerName={`${selectedCustomerData?.שם_פרטי || ''} ${selectedCustomerData?.שם_משפחה || ''}`.trim()}
+        onClose={() => setShowNewOrderPayPlusModal(false)}
+      />
+    )}
+    </>
   );
 }
