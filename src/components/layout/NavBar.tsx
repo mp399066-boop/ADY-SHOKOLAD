@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/client';
 import {
   IconDashboard, IconOrders, IconCustomers, IconProducts,
   IconDeliveries, IconInventory, IconRecipes, IconInvoices,
-  IconSuppliers, IconEmployees, IconImport, IconSettings, IconMenu, IconX, IconExport, IconSearch,
+  IconSuppliers, IconEmployees, IconImport, IconSettings, IconMenu, IconX, IconExport, IconSearch, IconRawMaterials,
 } from '@/components/icons';
 import type { BusinessSettings } from '@/types/database';
 
@@ -17,8 +17,9 @@ const NAV_MAIN = [
   { href: '/customers',  label: 'לקוחות',       Icon: IconCustomers  },
   { href: '/products',   label: 'מוצרים',       Icon: IconProducts   },
   { href: '/deliveries', label: 'משלוחים',      Icon: IconDeliveries },
-  { href: '/inventory',  label: 'מלאי',         Icon: IconInventory  },
-  { href: '/recipes',    label: 'מתכונים',          Icon: IconRecipes  },
+  { href: '/inventory',              label: 'מלאי',             Icon: IconInventory    },
+  { href: '/raw-materials-summary', label: 'חוסרי חומרי גלם',  Icon: IconRawMaterials },
+  { href: '/recipes',               label: 'מתכונים',          Icon: IconRecipes      },
   { href: '/invoices',   label: 'חשבוניות וקבלות', Icon: IconInvoices },
   { href: '/suppliers',  label: 'ספקים',            Icon: IconSuppliers  },
   { href: '/employees', label: 'עובדים / משימות',  Icon: IconEmployees  },
