@@ -459,7 +459,8 @@ function KpiDrillModal({
               const name = o?.לקוחות
                 ? `${o.לקוחות.שם_פרטי} ${o.לקוחות.שם_משפחה}`
                 : (o?.שם_מקבל || '—');
-              const href = o?.id ? `/orders/${o.id}` : '/deliveries';
+              const isRealDelivery = !d._noRecord && !d.id.startsWith('no-record-');
+              const href = isRealDelivery ? `/deliveries?highlight=${encodeURIComponent(d.id)}` : '/deliveries';
               const stBg = d.סטטוס_משלוח === 'נמסר' ? C.greenSoft : d.סטטוס_משלוח === 'נאסף' ? C.amberSoft : C.borderSoft;
               const stColor = d.סטטוס_משלוח === 'נמסר' ? C.green : d.סטטוס_משלוח === 'נאסף' ? C.amber : C.textMuted;
               return (
