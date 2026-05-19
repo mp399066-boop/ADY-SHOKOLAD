@@ -15,7 +15,14 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
     .order('id');
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ data: items || [] });
+
+  const { data: payments } = await supabase
+    .from('תשלומים')
+    .select('סכום')
+    .eq('הזמנה_id', params.id);
+  const paidAmount = (payments ?? []).reduce((s: number, p: { סכום: number }) => s + (p.סכום ?? 0), 0);
+
+  return NextResponse.json({ data: items || [], paidAmount });
 }
 
 // PUT: replace all order items, recalculate totals

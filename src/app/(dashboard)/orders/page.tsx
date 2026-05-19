@@ -52,63 +52,192 @@ interface OrderLineItem {
   בחירת_פטיפורים_בהזמנה: PetitFourSel[];
 }
 
-function OrderItemsPanel({ items, orderNotes }: { items: OrderLineItem[]; orderNotes: string | null }) {
-  if (items.length === 0 && !orderNotes) {
-    return <p className="text-xs py-1" style={{ color: '#9B7A5A' }}>אין פריטים להצגה</p>;
-  }
+// ── Expansion panel sub-components ───────────────────────────────────────────
+
+function ExpSec({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div dir="rtl">
-      {items.map((item, idx) => {
-        const isLast = idx === items.length - 1 && !orderNotes;
-        const name =
-          item.סוג_שורה === 'מארז'
-            ? `מארז ${item.גודל_מארז} פטיפורים`
-            : item.מוצרים_למכירה?.שם_מוצר ?? item.שם_פריט_מותאם ?? '—';
-        const pfList = item.בחירת_פטיפורים_בהזמנה ?? [];
-        return (
-          <div
-            key={item.id}
-            className="flex items-start gap-2.5 py-1.5"
-            style={isLast ? undefined : { borderBottom: '1px solid #F5ECD8' }}
-          >
-            {/* Qty pill */}
-            <span
-              className="flex-shrink-0 inline-flex items-center justify-center rounded-md text-[11px] font-bold tabular-nums"
-              style={{ minWidth: '1.75rem', height: '1.75rem', backgroundColor: '#F4E8D8', color: '#8B5E34' }}
-            >
-              {item.כמות}
-            </span>
-            {/* Item detail */}
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold leading-4" style={{ color: '#2B1A10' }}>{name}</p>
-              {pfList.length > 0 && (
-                <div className="flex flex-wrap gap-1 mt-0.5">
-                  {pfList.map(pf => (
-                    <span
-                      key={pf.id}
-                      className="text-[10px] px-1.5 py-0.5 rounded-full"
-                      style={{ backgroundColor: '#EDE9FE', color: '#5B21B6' }}
-                    >
-                      {pf.סוגי_פטיפורים?.שם_פטיפור ?? '?'} × {pf.כמות}
-                    </span>
-                  ))}
+    <div>
+      <p className="text-[9px] font-bold uppercase tracking-widest mb-1.5 pb-1 border-b"
+        style={{ color: '#9B7A5A', borderColor: '#F5ECD8' }}>
+        {title}
+      </p>
+      <div className="space-y-0.5">{children}</div>
+    </div>
+  );
+}
+
+function ExpField({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="flex items-start gap-1 leading-4">
+      <span className="text-[10px] shrink-0 pt-px" style={{ color: '#9B7A5A', minWidth: '3.5rem' }}>{label}</span>
+      <span className={`text-[11px] font-medium break-words ${mono ? 'font-mono' : ''}`} style={{ color: '#2B1A10' }}>{value}</span>
+    </div>
+  );
+}
+
+function ExpBadge({ label, value, colorMap }: {
+  label: string;
+  value: string;
+  colorMap: Record<string, { bg: string; text: string; border: string }>;
+}) {
+  const c = colorMap[value] ?? FALLBACK_COLOR;
+  return (
+    <div className="flex items-center gap-1 leading-4">
+      <span className="text-[10px] shrink-0" style={{ color: '#9B7A5A', minWidth: '3.5rem' }}>{label}</span>
+      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full border"
+        style={{ backgroundColor: c.bg, color: c.text, borderColor: c.border }}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+type ListCustomer = { שם_פרטי: string; שם_משפחה: string; טלפון: string | null };
+
+function OrderExpansionPanel({
+  order,
+  items,
+  paidAmount,
+}: {
+  order: Order & { לקוחות?: ListCustomer };
+  items: OrderLineItem[];
+  paidAmount: number;
+}) {
+  const cust = order.לקוחות;
+  const custName = cust ? `${cust.שם_פרטי} ${cust.שם_משפחה}`.trim() : null;
+  const recipientName  = order.שם_מקבל?.trim() || null;
+  const recipientPhone = order.טלפון_מקבל?.trim() || null;
+  const recipientIsDiff     = recipientName  && recipientName  !== custName;
+  const recipientPhoneIsDiff = recipientPhone && recipientPhone !== cust?.טלפון;
+
+  const total     = order.סך_הכל_לתשלום ?? 0;
+  const remaining = Math.max(0, total - paidAmount);
+  const deliveryLine = [order.כתובת_מקבל_ההזמנה, order.עיר].filter(Boolean).join(', ');
+
+  return (
+    <div dir="rtl" className="space-y-2.5">
+
+      {/* ── Top 3-col info grid ── */}
+      <div className="grid grid-cols-3 gap-3">
+
+        {/* 1. פרטי לקוח */}
+        <ExpSec title="פרטי לקוח">
+          {custName              && <ExpField label="שם"       value={custName} />}
+          {cust?.טלפון           && <ExpField label="טלפון"    value={cust.טלפון} />}
+          {recipientIsDiff       && <ExpField label="מקבל"     value={recipientName!} />}
+          {recipientIsDiff && recipientPhoneIsDiff && <ExpField label="טל׳ מקבל" value={recipientPhone!} />}
+        </ExpSec>
+
+        {/* 2. אספקה */}
+        <ExpSec title="אספקה">
+          <ExpField label="סוג"    value={order.סוג_אספקה} />
+          {order.תאריך_אספקה     && <ExpField label="תאריך"   value={formatDate(order.תאריך_אספקה)} />}
+          {order.שעת_אספקה       && <ExpField label="שעה"     value={`${order.שעת_אספקה}${order.delivery_time_flexible ? ' (גמיש)' : ''}`} />}
+          {deliveryLine           && <ExpField label="כתובת"   value={deliveryLine} />}
+          {order.הוראות_משלוח    && <ExpField label="הוראות"  value={order.הוראות_משלוח} />}
+        </ExpSec>
+
+        {/* 3. פרטי הזמנה */}
+        <ExpSec title="פרטי הזמנה">
+          <ExpField label="מס׳"   value={order.מספר_הזמנה} mono />
+          <ExpField label="נוצרה" value={formatDate(order.תאריך_יצירה)} />
+          <ExpBadge label="סטטוס" value={order.סטטוס_הזמנה}  colorMap={STATUS_COLORS} />
+          <ExpBadge label="תשלום" value={order.סטטוס_תשלום}  colorMap={PAYMENT_STATUS_COLORS} />
+          {order.אופן_תשלום      && <ExpField label="אמצעי"   value={order.אופן_תשלום} />}
+          {order.מקור_ההזמנה     && <ExpField label="מקור"    value={order.מקור_ההזמנה} />}
+        </ExpSec>
+      </div>
+
+      {/* 4. פריטים */}
+      {(items.length > 0 || order.ברכה_טקסט || order.הערות_להזמנה) && (
+        <ExpSec title="פריטים">
+          {items.length === 0 && (
+            <p className="text-[11px]" style={{ color: '#9B7A5A' }}>אין פריטים</p>
+          )}
+          {items.map((item, idx) => {
+            const isLast = idx === items.length - 1 && !order.ברכה_טקסט && !order.הערות_להזמנה;
+            const name =
+              item.סוג_שורה === 'מארז'
+                ? `מארז ${item.גודל_מארז} פטיפורים`
+                : item.מוצרים_למכירה?.שם_מוצר ?? item.שם_פריט_מותאם ?? '—';
+            const pfList = item.בחירת_פטיפורים_בהזמנה ?? [];
+            return (
+              <div key={item.id} className="flex items-start gap-2 py-1"
+                style={isLast ? undefined : { borderBottom: '1px solid #F5ECD8' }}>
+                <span
+                  className="flex-shrink-0 inline-flex items-center justify-center rounded text-[10px] font-bold tabular-nums"
+                  style={{ minWidth: '1.5rem', height: '1.5rem', backgroundColor: '#F4E8D8', color: '#8B5E34' }}
+                >
+                  {item.כמות}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <span className="text-[11px] font-semibold" style={{ color: '#2B1A10' }}>{name}</span>
+                  {pfList.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-0.5">
+                      {pfList.map(pf => (
+                        <span key={pf.id} className="text-[9.5px] px-1 py-0.5 rounded"
+                          style={{ backgroundColor: '#EDE9FE', color: '#5B21B6' }}>
+                          {pf.סוגי_פטיפורים?.שם_פטיפור} × {pf.כמות}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {item.הערות_לשורה && (
+                    <p className="text-[10px]" style={{ color: '#9B7A5A' }}>{item.הערות_לשורה}</p>
+                  )}
                 </div>
-              )}
-              {item.הערות_לשורה && (
-                <p className="text-[10px] mt-0.5 truncate" style={{ color: '#9B7A5A' }}>
-                  {item.הערות_לשורה}
-                </p>
-              )}
+              </div>
+            );
+          })}
+          {order.ברכה_טקסט && (
+            <div className="pt-1.5" style={{ borderTop: '1px solid #F5ECD8' }}>
+              <span className="text-[10px]" style={{ color: '#9B7A5A' }}>ברכה: </span>
+              <span className="text-[11px] italic" style={{ color: '#4A3020' }}>{order.ברכה_טקסט}</span>
             </div>
-          </div>
-        );
-      })}
-      {orderNotes && (
-        <div className="pt-1.5 mt-0.5" style={{ borderTop: '1px solid #F5ECD8' }}>
-          <p className="text-[10px] font-semibold mb-0.5" style={{ color: '#9B7A5A' }}>הערות</p>
-          <p className="text-xs" style={{ color: '#4A3020' }}>{orderNotes}</p>
-        </div>
+          )}
+          {order.הערות_להזמנה && (
+            <div className="pt-1.5" style={{ borderTop: '1px solid #F5ECD8' }}>
+              <span className="text-[10px]" style={{ color: '#9B7A5A' }}>הערות: </span>
+              <span className="text-[11px]" style={{ color: '#4A3020' }}>{order.הערות_להזמנה}</span>
+            </div>
+          )}
+        </ExpSec>
       )}
+
+      {/* 5. תשלום */}
+      <ExpSec title="תשלום">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
+          <div className="flex items-center gap-1">
+            <span className="text-[10px]" style={{ color: '#9B7A5A' }}>סה״כ:</span>
+            <span className="text-[12px] font-bold tabular-nums" style={{ color: '#2B1A10' }}>{formatCurrency(total)}</span>
+          </div>
+          {paidAmount > 0 && (
+            <div className="flex items-center gap-1">
+              <span className="text-[10px]" style={{ color: '#9B7A5A' }}>שולם:</span>
+              <span className="text-[11px] font-semibold tabular-nums" style={{ color: '#476D53' }}>{formatCurrency(paidAmount)}</span>
+            </div>
+          )}
+          {remaining > 0 && order.סטטוס_תשלום !== 'שולם' && order.סטטוס_תשלום !== 'בארטר' && (
+            <div className="flex items-center gap-1">
+              <span className="text-[10px]" style={{ color: '#9B7A5A' }}>נותר:</span>
+              <span className="text-[11px] font-bold tabular-nums" style={{ color: '#9D4B4A' }}>{formatCurrency(remaining)}</span>
+            </div>
+          )}
+          {(order.דמי_משלוח ?? 0) > 0 && (
+            <div className="flex items-center gap-1">
+              <span className="text-[10px]" style={{ color: '#9B7A5A' }}>משלוח:</span>
+              <span className="text-[11px] tabular-nums" style={{ color: '#6B4A2D' }}>{formatCurrency(order.דמי_משלוח!)}</span>
+            </div>
+          )}
+          {(order.סכום_הנחה ?? 0) > 0 && (
+            <div className="flex items-center gap-1">
+              <span className="text-[10px]" style={{ color: '#9B7A5A' }}>הנחה:</span>
+              <span className="text-[11px] tabular-nums" style={{ color: '#476D53' }}>−{formatCurrency(order.סכום_הנחה!)}</span>
+            </div>
+          )}
+        </div>
+      </ExpSec>
+
     </div>
   );
 }
@@ -369,7 +498,7 @@ function OrdersContent() {
   // Inline item expansion
   const [expandedId, setExpandedId]   = useState<string | null>(null);
   const [loadingItems, setLoadingItems] = useState<string | null>(null);
-  const [itemsCache, setItemsCache]   = useState<Map<string, OrderLineItem[]>>(new Map());
+  const [itemsCache, setItemsCache]   = useState<Map<string, { items: OrderLineItem[]; paidAmount: number }>>(new Map());
 
   const handleToggleExpand = async (orderId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -379,7 +508,7 @@ function OrdersContent() {
     try {
       const res  = await fetch(`/api/orders/${orderId}/items`);
       const json = await res.json();
-      setItemsCache(prev => new Map(prev).set(orderId, json.data ?? []));
+      setItemsCache(prev => new Map(prev).set(orderId, { items: json.data ?? [], paidAmount: json.paidAmount ?? 0 }));
       setExpandedId(orderId);
     } catch { toast.error('שגיאה בטעינת פריטים'); }
     finally { setLoadingItems(null); }
@@ -797,23 +926,21 @@ function OrdersContent() {
                           </div>
                         </td>
                       </tr>
-                      {/* ── Inline item expansion ── */}
+                      {/* ── Inline full-order expansion ── */}
                       {isExpanded && (
                         <tr key={`${order.id}-exp`} style={{ backgroundColor: '#FAF7F2' }}>
-                          <td colSpan={10} className="px-4 pt-0 pb-2.5">
+                          <td colSpan={10} className="px-4 pt-0 pb-3">
                             <div
-                              className="rounded-xl border px-3 py-2.5"
+                              className="rounded-xl border px-4 py-3"
                               style={{ backgroundColor: '#FFFDF8', borderColor: '#EDE0CE' }}
                             >
-                              <p className="text-[10px] font-bold uppercase tracking-wide mb-2" style={{ color: '#9B7A5A' }}>
-                                פירוט הזמנה
-                              </p>
                               {isItemsLoading ? (
                                 <p className="text-xs py-1" style={{ color: '#9B7A5A' }}>טוען...</p>
                               ) : (
-                                <OrderItemsPanel
-                                  items={itemsCache.get(order.id) ?? []}
-                                  orderNotes={order.הערות_להזמנה}
+                                <OrderExpansionPanel
+                                  order={order as Order & { לקוחות?: ListCustomer }}
+                                  items={itemsCache.get(order.id)?.items ?? []}
+                                  paidAmount={itemsCache.get(order.id)?.paidAmount ?? 0}
                                 />
                               )}
                             </div>
