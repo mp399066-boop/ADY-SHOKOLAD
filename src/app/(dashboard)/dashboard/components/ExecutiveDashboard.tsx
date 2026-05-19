@@ -11,6 +11,7 @@ import { formatCurrency } from '@/lib/utils';
 import type { TodayOrder, Delivery, Stock } from './types';
 import type { DashboardStats } from '@/types/database';
 import type { QueueItem, QueueEntity } from './queue-builder';
+import { Modal } from '@/components/ui/Modal';
 import { DashboardInventoryAlerts } from './DashboardInventoryAlerts';
 import { DashboardEmployeeTasks } from './DashboardEmployeeTasks';
 import { AttentionPanel } from './AttentionPanel';
@@ -270,6 +271,238 @@ function AttentionList({ items, onNavigate }: { items: QueueItem[]; onNavigate: 
   );
 }
 
+// ── KPI drill-down modals ────────────────────────────────────────────────────
+
+type ModalKind = 'revenue' | 'unpaid' | 'active' | 'deliveries' | 'urgent';
+
+function ocname(o: TodayOrder): string {
+  const c = o.לקוחות;
+  return c ? `${c.שם_פרטי} ${c.שם_משפחה}` : (o.שם_מקבל || '—');
+}
+
+function fmtShortDate(iso: string | null): string {
+  if (!iso) return '—';
+  const [, m, d] = iso.split('-');
+  return `${d}/${m}`;
+}
+
+const ORDER_STATUS_BADGE: Record<string, { bg: string; color: string; label: string }> = {
+  'חדשה':           { bg: C.goldSoft,  color: C.gold,  label: 'חדשה'    },
+  'בהכנה':          { bg: C.brandSoft, color: C.brand, label: 'בהכנה'   },
+  'מוכנה למשלוח':  { bg: C.greenSoft, color: C.green, label: 'מוכנה'   },
+  'נשלחה':          { bg: C.blueSoft,  color: C.blue,  label: 'נשלחה'   },
+  'הושלמה בהצלחה': { bg: C.greenSoft, color: C.green, label: 'הושלמה'  },
+  'בוטלה':          { bg: C.redSoft,   color: C.red,   label: 'בוטלה'   },
+};
+
+function OStatusBadge({ status }: { status: string }) {
+  const s = ORDER_STATUS_BADGE[status] ?? { bg: C.borderSoft, color: C.textMuted, label: status };
+  return (
+    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md flex-shrink-0" style={{ backgroundColor: s.bg, color: s.color }}>
+      {s.label}
+    </span>
+  );
+}
+
+function DrillRow({ href, onNavigate, onClose, children }: {
+  href: string;
+  onNavigate: (p: string) => void;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      className="w-full flex items-center gap-2 rounded-lg px-3 py-2.5 text-right transition-colors hover:opacity-80"
+      style={{ backgroundColor: C.card, border: `1px solid ${C.border}` }}
+      onClick={() => { onClose(); onNavigate(href); }}
+    >
+      {children}
+      <span className="mr-auto text-[11px] flex-shrink-0" style={{ color: C.textMuted }}>←</span>
+    </button>
+  );
+}
+
+function KpiDrillModal({
+  kind,
+  liveOrders,
+  revenueOrders,
+  revenueLoading,
+  deliveries,
+  onClose,
+  onNavigate,
+}: {
+  kind: ModalKind;
+  liveOrders: TodayOrder[];
+  revenueOrders: TodayOrder[];
+  revenueLoading: boolean;
+  deliveries: Delivery[];
+  onClose: () => void;
+  onNavigate: (path: string) => void;
+}) {
+  const TITLES: Record<ModalKind, string> = {
+    revenue:    'הכנסות היום',
+    unpaid:     'ממתין לתשלום',
+    active:     'הזמנות פעילות',
+    deliveries: 'משלוחים היום',
+    urgent:     'דחוף עכשיו',
+  };
+
+  const unpaidOrders = liveOrders.filter(o =>
+    (o.סטטוס_תשלום === 'ממתין' || o.סטטוס_תשלום === 'חלקי') &&
+    o.סטטוס_הזמנה !== 'הושלמה בהצלחה' &&
+    o.סטטוס_הזמנה !== 'בוטלה' &&
+    o.סטטוס_הזמנה !== 'טיוטה'
+  );
+
+  const urgentOrders = liveOrders.filter(o =>
+    o.הזמנה_דחופה &&
+    o.סטטוס_הזמנה !== 'הושלמה בהצלחה' &&
+    o.סטטוס_הזמנה !== 'בוטלה'
+  );
+
+  let subtitle = '';
+  if (kind === 'revenue') {
+    const total = revenueOrders.reduce((s, o) => s + (o.סך_הכל_לתשלום ?? 0), 0);
+    subtitle = `${revenueOrders.length} הזמנות · ${formatCurrency(total)}`;
+  } else if (kind === 'unpaid') {
+    const total = unpaidOrders.reduce((s, o) => s + (o.סך_הכל_לתשלום ?? 0), 0);
+    subtitle = `${unpaidOrders.length} הזמנות · ${formatCurrency(total)}`;
+  } else if (kind === 'active') {
+    subtitle = `${liveOrders.length} הזמנות`;
+  } else if (kind === 'deliveries') {
+    subtitle = `${deliveries.length} משלוחים`;
+  } else if (kind === 'urgent') {
+    subtitle = `${urgentOrders.length} הזמנות דחופות`;
+  }
+
+  return (
+    <Modal open onClose={onClose} title={TITLES[kind]} size="lg">
+      <div dir="rtl" className="space-y-3">
+        {subtitle && (
+          <p className="text-[12px] font-semibold pb-1" style={{ color: C.textSoft, borderBottom: `1px solid ${C.borderSoft}` }}>
+            {subtitle}
+          </p>
+        )}
+
+        {/* ── Revenue ── */}
+        {kind === 'revenue' && (revenueLoading ? (
+          <div className="flex justify-center py-8">
+            <div className="w-5 h-5 rounded-full border-2 animate-spin" style={{ borderColor: C.borderSoft, borderTopColor: C.brand }} />
+          </div>
+        ) : revenueOrders.length === 0 ? (
+          <p className="text-[13px] text-center py-6" style={{ color: C.textMuted }}>אין תשלומים להיום</p>
+        ) : (
+          <div className="space-y-1.5 max-h-[60vh] overflow-y-auto">
+            {revenueOrders.map(o => (
+              <DrillRow key={o.id} href={`/orders/${o.id}`} onNavigate={onNavigate} onClose={onClose}>
+                <span className="font-mono text-[11px] flex-shrink-0" style={{ color: C.textMuted }}>{o.מספר_הזמנה}</span>
+                <span className="text-[12.5px] font-medium truncate flex-1" style={{ color: C.text }}>{ocname(o)}</span>
+                {o.אופן_תשלום && (
+                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md flex-shrink-0" style={{ backgroundColor: C.greenSoft, color: C.green }}>
+                    {o.אופן_תשלום}
+                  </span>
+                )}
+                <span className="text-[13px] font-bold tabular-nums flex-shrink-0" style={{ color: C.green }}>
+                  {formatCurrency(o.סך_הכל_לתשלום ?? 0)}
+                </span>
+              </DrillRow>
+            ))}
+          </div>
+        ))}
+
+        {/* ── Unpaid ── */}
+        {kind === 'unpaid' && (unpaidOrders.length === 0 ? (
+          <p className="text-[13px] text-center py-6" style={{ color: C.textMuted }}>אין הזמנות פתוחות לתשלום</p>
+        ) : (
+          <div className="space-y-1.5 max-h-[60vh] overflow-y-auto">
+            {unpaidOrders.map(o => (
+              <DrillRow key={o.id} href={`/orders/${o.id}`} onNavigate={onNavigate} onClose={onClose}>
+                <span className="font-mono text-[11px] flex-shrink-0" style={{ color: C.textMuted }}>{o.מספר_הזמנה}</span>
+                <span className="text-[12.5px] font-medium truncate flex-1" style={{ color: C.text }}>{ocname(o)}</span>
+                <OStatusBadge status={o.סטטוס_הזמנה} />
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md flex-shrink-0" style={{ backgroundColor: C.amberSoft, color: C.amber }}>
+                  {o.סטטוס_תשלום}
+                </span>
+                <span className="text-[13px] font-bold tabular-nums flex-shrink-0" style={{ color: C.amber }}>
+                  {formatCurrency(o.סך_הכל_לתשלום ?? 0)}
+                </span>
+              </DrillRow>
+            ))}
+          </div>
+        ))}
+
+        {/* ── Active orders ── */}
+        {kind === 'active' && (liveOrders.length === 0 ? (
+          <p className="text-[13px] text-center py-6" style={{ color: C.textMuted }}>אין הזמנות פעילות</p>
+        ) : (
+          <div className="space-y-1.5 max-h-[60vh] overflow-y-auto">
+            {liveOrders.map(o => (
+              <DrillRow key={o.id} href={`/orders/${o.id}`} onNavigate={onNavigate} onClose={onClose}>
+                <span className="font-mono text-[11px] flex-shrink-0" style={{ color: C.textMuted }}>{o.מספר_הזמנה}</span>
+                <span className="text-[12.5px] font-medium truncate flex-1" style={{ color: C.text }}>{ocname(o)}</span>
+                <OStatusBadge status={o.סטטוס_הזמנה} />
+                {o.תאריך_אספקה && (
+                  <span className="text-[11px] flex-shrink-0 tabular-nums" style={{ color: C.textMuted }}>{fmtShortDate(o.תאריך_אספקה)}</span>
+                )}
+              </DrillRow>
+            ))}
+          </div>
+        ))}
+
+        {/* ── Today deliveries ── */}
+        {kind === 'deliveries' && (deliveries.length === 0 ? (
+          <p className="text-[13px] text-center py-6" style={{ color: C.textMuted }}>אין משלוחים להיום</p>
+        ) : (
+          <div className="space-y-1.5 max-h-[60vh] overflow-y-auto">
+            {deliveries.map(d => {
+              const o = d.הזמנות;
+              const name = o?.לקוחות
+                ? `${o.לקוחות.שם_פרטי} ${o.לקוחות.שם_משפחה}`
+                : (o?.שם_מקבל || '—');
+              const href = o?.id ? `/orders/${o.id}` : '/deliveries';
+              const stBg = d.סטטוס_משלוח === 'נמסר' ? C.greenSoft : d.סטטוס_משלוח === 'נאסף' ? C.amberSoft : C.borderSoft;
+              const stColor = d.סטטוס_משלוח === 'נמסר' ? C.green : d.סטטוס_משלוח === 'נאסף' ? C.amber : C.textMuted;
+              return (
+                <DrillRow key={d.id} href={href} onNavigate={onNavigate} onClose={onClose}>
+                  <span className="font-mono text-[11px] flex-shrink-0" style={{ color: C.textMuted }}>{o?.מספר_הזמנה || '—'}</span>
+                  <span className="text-[12.5px] font-medium truncate flex-1" style={{ color: C.text }}>{name}</span>
+                  {d.עיר && <span className="text-[11px] flex-shrink-0" style={{ color: C.textSoft }}>{d.עיר}</span>}
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md flex-shrink-0" style={{ backgroundColor: stBg, color: stColor }}>
+                    {d.סטטוס_משלוח}
+                  </span>
+                </DrillRow>
+              );
+            })}
+          </div>
+        ))}
+
+        {/* ── Urgent ── */}
+        {kind === 'urgent' && (urgentOrders.length === 0 ? (
+          <p className="text-[13px] text-center py-6" style={{ color: C.textMuted }}>הכל תקין — אין הזמנות דחופות</p>
+        ) : (
+          <div className="space-y-1.5 max-h-[60vh] overflow-y-auto">
+            {urgentOrders.map(o => (
+              <DrillRow key={o.id} href={`/orders/${o.id}`} onNavigate={onNavigate} onClose={onClose}>
+                <span className="font-mono text-[11px] flex-shrink-0" style={{ color: C.textMuted }}>{o.מספר_הזמנה}</span>
+                <span className="text-[12.5px] font-medium truncate flex-1" style={{ color: C.text }}>{ocname(o)}</span>
+                <OStatusBadge status={o.סטטוס_הזמנה} />
+                {o.תאריך_אספקה && (
+                  <span className="text-[11px] flex-shrink-0 tabular-nums font-semibold" style={{ color: C.red }}>{fmtShortDate(o.תאריך_אספקה)}</span>
+                )}
+                {o.סטטוס_תשלום !== 'שולם' && (
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md flex-shrink-0" style={{ backgroundColor: C.amberSoft, color: C.amber }}>
+                    {o.סטטוס_תשלום}
+                  </span>
+                )}
+              </DrillRow>
+            ))}
+          </div>
+        ))}
+      </div>
+    </Modal>
+  );
+}
+
 // ── Compact production summary (totals only, no tables) ──────────────────────
 
 function toISO(d: Date) { return d.toISOString().slice(0, 10); }
@@ -397,6 +630,24 @@ export function ExecutiveDashboard({
   const unpaidCount   = stats?.unpaidOrders ?? 0;
   const revenueToday  = stats?.revenueToday ?? 0;
 
+  // ── Drill-down modal state ──
+  const [modal, setModal] = useState<ModalKind | null>(null);
+  const [revenueOrders, setRevenueOrders] = useState<TodayOrder[]>([]);
+  const [revenueLoading, setRevenueLoading] = useState(false);
+
+  useEffect(() => {
+    if (modal !== 'revenue') return;
+    setRevenueLoading(true);
+    fetch('/api/orders?filter=today&limit=100')
+      .then(r => r.json())
+      .then(json => {
+        const rows = (json.data || []) as TodayOrder[];
+        setRevenueOrders(rows.filter(o => o.סטטוס_תשלום === 'שולם'));
+      })
+      .catch(() => {})
+      .finally(() => setRevenueLoading(false));
+  }, [modal]);
+
   const deliveryCities = useMemo(() => {
     const active = todayDeliveries.filter(d => d.סטטוס_משלוח !== 'נמסר');
     const byCity = new Map<string, number>();
@@ -418,7 +669,7 @@ export function ExecutiveDashboard({
           sub="תשלומים שהתקבלו"
           accent={C.gold}
           softBg={C.goldSoft}
-          onClick={() => onNavigate('/orders?filter=today')}
+          onClick={() => setModal('revenue')}
           icon={
             <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
               <line x1="12" y1="1" x2="12" y2="23" />
@@ -432,7 +683,7 @@ export function ExecutiveDashboard({
           sub={unpaidCount > 0 ? `${unpaidCount} הזמנות פתוחות` : 'הכל סגור'}
           accent={unpaidCount > 0 ? C.amber : C.green}
           softBg={unpaidCount > 0 ? C.amberSoft : C.greenSoft}
-          onClick={unpaidCount > 0 ? () => onNavigate('/orders?filter=unpaid') : undefined}
+          onClick={unpaidCount > 0 ? () => setModal('unpaid') : undefined}
           icon={
             <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
               <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
@@ -446,7 +697,7 @@ export function ExecutiveDashboard({
           sub={`${stats?.inPreparation ?? 0} בהכנה, ${stats?.readyForDelivery ?? 0} מוכנות`}
           accent={C.brand}
           softBg={C.brandSoft}
-          onClick={() => onNavigate('/orders')}
+          onClick={() => setModal('active')}
           icon={
             <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
               <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
@@ -461,7 +712,7 @@ export function ExecutiveDashboard({
           sub={urgentCount > 0 ? 'דורש טיפול מיידי' : 'הכל תקין'}
           accent={urgentCount > 0 ? C.red : C.green}
           softBg={urgentCount > 0 ? C.redSoft : C.greenSoft}
-          onClick={urgentCount > 0 ? () => onNavigate('/orders') : undefined}
+          onClick={urgentCount > 0 ? () => setModal('urgent') : undefined}
           icon={
             <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
               <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
@@ -476,7 +727,7 @@ export function ExecutiveDashboard({
           sub={`${stats?.deliveriesCollected ?? 0} נאספו, ${stats?.deliveriesDelivered ?? 0} נמסרו`}
           accent={C.blue}
           softBg={C.blueSoft}
-          onClick={() => onNavigate('/deliveries')}
+          onClick={() => setModal('deliveries')}
           icon={
             <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
               <rect x="1" y="3" width="15" height="13" rx="1" />
@@ -570,6 +821,19 @@ export function ExecutiveDashboard({
         <DashboardEmployeeTasks />
         <AttentionPanel />
       </div>
+
+      {/* ── KPI drill-down modal ─────────────────────────────── */}
+      {modal && (
+        <KpiDrillModal
+          kind={modal}
+          liveOrders={liveOrders}
+          revenueOrders={revenueOrders}
+          revenueLoading={revenueLoading}
+          deliveries={todayDeliveries}
+          onClose={() => setModal(null)}
+          onNavigate={onNavigate}
+        />
+      )}
 
     </div>
   );
