@@ -256,8 +256,8 @@ export default function OrderDetailPage() {
   // block. tax_invoice fires straight after a confirm; receipt + invoice_receipt
   // open a small payment-method-only modal first (the doc-type picker modal
   // was removed because the document type is now obvious from which button
-  // was pressed). When payModalDocType is null the modal stays closed.
-  const [payModalDocType, setPayModalDocType] = useState<'receipt' | 'invoice_receipt' | null>(null);
+  // was pressed). When previewDocType is null the modal stays closed.
+  const [previewDocType, setPreviewDocType] = useState<'tax_invoice' | 'receipt' | 'invoice_receipt' | null>(null);
   // Per-doc-type loading: tracks which button shows "מפיק..." and which other
   // buttons are disabled while a request is in flight.
   const [issuingDocType, setIssuingDocType] = useState<'tax_invoice' | 'receipt' | 'invoice_receipt' | null>(null);
@@ -1036,20 +1036,15 @@ export default function OrderDetailPage() {
               hasManualMorning={hasManualMorning}
               onIssueInvoiceReceipt={() => {
                 if (manualWarning && !window.confirm(manualWarning)) return;
-                setPayModalDocType('invoice_receipt');
+                setPreviewDocType('invoice_receipt');
               }}
               onIssueReceipt={() => {
                 if (manualWarning && !window.confirm(manualWarning)) return;
-                setPayModalDocType('receipt');
+                setPreviewDocType('receipt');
               }}
-              onIssueTaxInvoice={async () => {
+              onIssueTaxInvoice={() => {
                 if (manualWarning && !window.confirm(manualWarning)) return;
-                const all = order.חשבוניות ?? [];
-                const exists = all.some(i => i.סוג_מסמך === 'tax_invoice');
-                const baseMsg = 'להפיק חשבונית מס להזמנה זו?';
-                const dupMsg = 'כבר קיימת חשבונית מס להזמנה זו. הפקה נוספת עלולה ליצור כפילות. להמשיך?';
-                if (!window.confirm(exists ? dupMsg : baseMsg)) return;
-                await issueDocument('tax_invoice', undefined, exists);
+                setPreviewDocType('tax_invoice');
               }}
               onMarkManualMorning={() => setShowManualMorningModal(true)}
             />
@@ -2351,23 +2346,19 @@ export default function OrderDetailPage() {
       )}
 
       {/* ══════════════════════════════════════════════════════════════════════
-          Payment-method modal — opens only for receipt / invoice_receipt.
-          tax_invoice doesn't use this; it goes through window.confirm directly.
+          Invoice preview modal — opens for all three document types.
+          Shows customer, items, VAT breakdown, and (for receipt types)
+          a payment-method picker. Issuance only fires on "אישור והנפקה".
           ══════════════════════════════════════════════════════════════════════ */}
-      {payModalDocType && (
-        <PaymentMethodModal
-          orderNumber={order.מספר_הזמנה}
-          documentType={payModalDocType}
-          duplicate={(order.חשבוניות ?? []).some(i =>
-            payModalDocType === 'invoice_receipt'
-              ? (i.סוג_מסמך === 'invoice_receipt' || i.סוג_מסמך === 'חשבונית_מס_קבלה')
-              : i.סוג_מסמך === payModalDocType,
-          )}
+      {previewDocType && (
+        <InvoicePreviewModal
+          order={order}
+          documentType={previewDocType}
           loading={issuingDoc}
-          onClose={() => setPayModalDocType(null)}
+          onClose={() => setPreviewDocType(null)}
           onIssue={async (paymentMethod, force) => {
-            const ok = await issueDocument(payModalDocType, paymentMethod, force);
-            if (ok) setPayModalDocType(null);
+            const ok = await issueDocument(previewDocType, paymentMethod, force);
+            if (ok) setPreviewDocType(null);
           }}
         />
       )}
@@ -2783,6 +2774,289 @@ function DocActionButton({
         {hint}
       </div>
     </button>
+  );
+}
+
+// ─── InvoicePreviewModal ─────────────────────────────────────────────────────
+// Read-only preview shown before any document is issued. Surfaces customer
+// details, line items, VAT breakdown, and (for receipt types) a payment-method
+// picker. "אישור והנפקה" is the only path that triggers issuance.
+
+const DOC_LABEL: Record<'tax_invoice' | 'receipt' | 'invoice_receipt', string> = {
+  tax_invoice:     'חשבונית מס',
+  receipt:         'קבלה',
+  invoice_receipt: 'חשבונית מס קבלה',
+};
+
+// Israeli VAT — used for display only; server-side Morning is authoritative.
+const IL_VAT = 0.18;
+
+function PreviewSec({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <p className="text-[9.5px] font-bold uppercase tracking-widest mb-1.5 pb-1 border-b"
+        style={{ color: '#9B7A5A', borderColor: '#F5ECD8' }}>
+        {title}
+      </p>
+      <div>{children}</div>
+    </div>
+  );
+}
+
+function PreviewRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-start gap-1 text-[12px] leading-5">
+      <span className="shrink-0 pt-px" style={{ color: '#9B7A5A', minWidth: '3.5rem' }}>{label}</span>
+      <span className="font-medium" style={{ color: '#2B1A10' }}>{value}</span>
+    </div>
+  );
+}
+
+function InvoicePreviewModal({
+  order,
+  documentType,
+  loading,
+  onClose,
+  onIssue,
+}: {
+  order: FullOrder;
+  documentType: 'tax_invoice' | 'receipt' | 'invoice_receipt';
+  loading: boolean;
+  onClose: () => void;
+  onIssue: (paymentMethod: string | undefined, force: boolean) => void | Promise<void>;
+}) {
+  const [payMethod, setPayMethod]     = useState<string>('');
+  const [customMethod, setCustomMethod] = useState<string>('');
+
+  const needsPayment    = documentType === 'receipt' || documentType === 'invoice_receipt';
+  const effectiveMethod = payMethod === 'אחר' ? customMethod.trim() : payMethod;
+  const canSubmit       = !needsPayment || !!effectiveMethod;
+  const docLabel        = DOC_LABEL[documentType];
+
+  const duplicate = (order.חשבוניות ?? []).some(i =>
+    documentType === 'invoice_receipt'
+      ? (i.סוג_מסמך === 'invoice_receipt' || i.סוג_מסמך === 'חשבונית_מס_קבלה')
+      : i.סוג_מסמך === documentType,
+  );
+
+  const cust     = order.לקוחות;
+  const custName = cust ? `${cust.שם_פרטי} ${cust.שם_משפחה}`.trim() : '';
+  const items    = order.מוצרים_בהזמנה ?? [];
+  const total    = order.סך_הכל_לתשלום ?? 0;
+  const subtotal = order.סכום_לפני_הנחה ?? 0;
+  const discount = order.סכום_הנחה ?? 0;
+  const shipping = order.דמי_משלוח ?? 0;
+  const vatAmt   = +(total * IL_VAT / (1 + IL_VAT)).toFixed(2);
+  const exclVat  = +(total - vatAmt).toFixed(2);
+
+  const handleIssue = async () => {
+    if (!canSubmit) return;
+    await onIssue(needsPayment ? effectiveMethod : undefined, duplicate);
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 overflow-y-auto py-8 px-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-xl w-full max-w-lg mb-6"
+        style={{ direction: 'rtl', border: '1px solid #EDE0CE' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="px-6 pt-5 pb-4 border-b" style={{ borderColor: '#EDE0CE' }}>
+          <div className="flex items-baseline justify-between">
+            <h3 className="text-[16px] font-bold" style={{ color: '#2B1A10' }}>תצוגה מקדימה לחשבונית</h3>
+            <span className="font-mono text-[11px] font-semibold" style={{ color: '#B89870' }}>{order.מספר_הזמנה}</span>
+          </div>
+          <p className="text-[12px] mt-0.5" style={{ color: '#8A735F' }}>
+            סוג מסמך: <strong style={{ color: '#7A4A27' }}>{docLabel}</strong>
+          </p>
+        </div>
+
+        <div className="px-6 py-4 space-y-4">
+
+          {/* Validation warnings */}
+          {(!custName || items.length === 0 || total <= 0) && (
+            <div className="rounded-lg px-3 py-2.5 text-[12px] space-y-1"
+              style={{ backgroundColor: '#FFF3CD', border: '1px solid #F0D080', color: '#7A5A10' }}>
+              <p className="font-semibold">שים לב לפני הנפקה:</p>
+              {!custName          && <p>• לקוח לא מזוהה — פרטי לקוח חסרים</p>}
+              {items.length === 0 && <p>• לא נמצאו פריטים בהזמנה</p>}
+              {total <= 0         && <p>• סכום ההזמנה הוא ₪0 — יש לוודא שהמחירים הוזנו</p>}
+            </div>
+          )}
+
+          {/* Existing invoice warning */}
+          {duplicate && (
+            <div className="rounded-lg px-3 py-2.5 text-[12px]"
+              style={{ backgroundColor: '#FFF7ED', border: '1px solid #FCD9A8', color: '#92602A' }}>
+              ⚠ כבר קיים מסמך מסוג <strong>{docLabel}</strong> להזמנה זו. הפקה נוספת תיצור כפילות.
+            </div>
+          )}
+
+          {/* Customer details */}
+          <PreviewSec title="פרטי לקוח">
+            {custName ? (
+              <>
+                <PreviewRow label="שם"     value={custName} />
+                {cust?.טלפון  && <PreviewRow label="טלפון"  value={cust.טלפון} />}
+                {cust?.אימייל && <PreviewRow label="אימייל" value={cust.אימייל} />}
+              </>
+            ) : (
+              <p className="text-[12px]" style={{ color: '#C05A3C' }}>לקוח לא מזוהה</p>
+            )}
+          </PreviewSec>
+
+          {/* Order items */}
+          <PreviewSec title={`פריטים (${items.length})`}>
+            {items.length === 0 ? (
+              <p className="text-[12px]" style={{ color: '#9B7A5A' }}>אין פריטים</p>
+            ) : (
+              <div className="space-y-1.5">
+                {items.map((item, idx) => {
+                  const name =
+                    item.סוג_שורה === 'מארז'
+                      ? `מארז ${item.גודל_מארז} פטיפורים`
+                      : item.מוצרים_למכירה?.שם_מוצר ?? item.שם_פריט_מותאם ?? '—';
+                  const qty       = item.כמות ?? 1;
+                  const unitPrice = item.מחיר_ליחידה ?? 0;
+                  const lineTotal = item.סהכ ?? qty * unitPrice;
+                  return (
+                    <div key={item.id ?? idx} className="flex items-center gap-2 text-[12px]">
+                      <span
+                        className="flex-shrink-0 w-6 text-center font-bold rounded text-[10.5px] leading-5"
+                        style={{ backgroundColor: '#F4E8D8', color: '#8B5E34' }}
+                      >
+                        {qty}
+                      </span>
+                      <span className="flex-1 font-medium" style={{ color: '#2B1A10' }}>{name}</span>
+                      {unitPrice > 0 && (
+                        <span className="tabular-nums text-[11px]" style={{ color: '#9B7A5A' }}>₪{unitPrice}</span>
+                      )}
+                      <span className="tabular-nums font-semibold text-[11px]" style={{ color: '#4A3020' }}>
+                        {formatCurrency(lineTotal)}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </PreviewSec>
+
+          {/* Financial summary */}
+          <PreviewSec title="סיכום פיננסי">
+            <div className="space-y-1 text-[12px]">
+              {subtotal > 0 && subtotal !== total && (
+                <div className="flex justify-between">
+                  <span style={{ color: '#9B7A5A' }}>סה״כ לפני הנחה</span>
+                  <span style={{ color: '#2B1A10' }}>{formatCurrency(subtotal)}</span>
+                </div>
+              )}
+              {discount > 0 && (
+                <div className="flex justify-between">
+                  <span style={{ color: '#9B7A5A' }}>הנחה</span>
+                  <span style={{ color: '#476D53' }}>−{formatCurrency(discount)}</span>
+                </div>
+              )}
+              {shipping > 0 && (
+                <div className="flex justify-between">
+                  <span style={{ color: '#9B7A5A' }}>דמי משלוח</span>
+                  <span style={{ color: '#2B1A10' }}>{formatCurrency(shipping)}</span>
+                </div>
+              )}
+              <div className="flex justify-between pt-1" style={{ borderTop: '1px solid #F5ECD8' }}>
+                <span style={{ color: '#9B7A5A' }}>לפני מע״מ</span>
+                <span style={{ color: '#2B1A10' }}>{formatCurrency(exclVat)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span style={{ color: '#9B7A5A' }}>מע״מ 18%</span>
+                <span style={{ color: '#2B1A10' }}>{formatCurrency(vatAmt)}</span>
+              </div>
+              <div className="flex justify-between text-[13px] font-bold pt-1.5"
+                style={{ borderTop: '2px solid #EDE0CE' }}>
+                <span style={{ color: '#2B1A10' }}>סה״כ לתשלום</span>
+                <span style={{ color: '#8B5E34' }}>{formatCurrency(total)}</span>
+              </div>
+            </div>
+          </PreviewSec>
+
+          {/* Payment status */}
+          <div className="flex items-center gap-2 text-[12px]">
+            <span style={{ color: '#9B7A5A' }}>סטטוס תשלום:</span>
+            <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${PAYMENT_PILL[order.סטטוס_תשלום] ?? ''}`}>
+              {order.סטטוס_תשלום}
+            </span>
+          </div>
+
+          {/* Payment method picker — only for receipt / invoice_receipt */}
+          {needsPayment && (
+            <PreviewSec title="אמצעי תשלום *">
+              <div className="grid grid-cols-4 gap-1.5">
+                {PAY_OPTIONS.map(m => {
+                  const active = payMethod === m;
+                  return (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setPayMethod(m)}
+                      className="text-[11.5px] font-medium h-9 rounded-lg transition-colors border"
+                      style={{
+                        backgroundColor: active ? '#7A4A27' : '#FFFFFF',
+                        color:           active ? '#FFFFFF' : '#2B1A10',
+                        borderColor:     active ? '#7A4A27' : '#E8DED2',
+                      }}
+                    >
+                      {m}
+                    </button>
+                  );
+                })}
+              </div>
+              {payMethod === 'אחר' && (
+                <input
+                  type="text"
+                  value={customMethod}
+                  onChange={e => setCustomMethod(e.target.value)}
+                  placeholder="הקלידי אמצעי תשלום..."
+                  className="mt-2 w-full px-3 h-9 text-[13px] rounded-lg border focus:outline-none focus:ring-2"
+                  style={{ borderColor: '#E8DED2', color: '#2B1A10' }}
+                />
+              )}
+              {effectiveMethod && (
+                <div className="mt-2 text-[12px] px-3 py-2 rounded-lg"
+                  style={{ backgroundColor: '#F1F8EE', color: '#2F5C2C', border: '1px solid #B8D5A8' }}>
+                  ✓ המסמך יופק עם אמצעי תשלום: <strong>{effectiveMethod}</strong>
+                </div>
+              )}
+            </PreviewSec>
+          )}
+
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 pb-5 pt-3 flex gap-3 justify-end border-t" style={{ borderColor: '#EDE0CE' }}>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className="px-4 h-10 text-[13px] font-medium rounded-lg border transition-colors disabled:opacity-50"
+            style={{ borderColor: '#E8DED2', color: '#8A735F' }}
+          >
+            ביטול
+          </button>
+          <button
+            type="button"
+            onClick={handleIssue}
+            disabled={!canSubmit || loading}
+            className="px-5 h-10 text-[13px] font-semibold rounded-lg text-white transition-colors disabled:opacity-50"
+            style={{ backgroundColor: '#7A4A27' }}
+          >
+            {loading ? 'מפיק...' : 'אישור והנפקה'}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
