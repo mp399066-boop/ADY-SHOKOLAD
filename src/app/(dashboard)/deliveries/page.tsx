@@ -17,6 +17,83 @@ import { exportToCsv } from '@/lib/exportCsv';
 import { buildCourierWhatsAppMessage, type CourierItem } from '@/lib/courier-notification';
 import toast from 'react-hot-toast';
 
+// ─── Delivery summary (grouped by date → city) ─────────────────────────────
+
+function DeliverySummaryPanel({ deliveries }: { deliveries: DeliveryWithCourier[] }) {
+  const active = deliveries.filter(d => d.סטטוס_משלוח !== 'נמסר');
+  if (active.length === 0) return null;
+
+  // Group by תאריך_משלוח
+  const byDate = new Map<string, DeliveryWithCourier[]>();
+  for (const d of active) {
+    const key = d.תאריך_משלוח || '';
+    const arr = byDate.get(key) || [];
+    arr.push(d);
+    byDate.set(key, arr);
+  }
+
+  const sortedDates = Array.from(byDate.keys()).sort();
+
+  return (
+    <div
+      className="rounded-xl border px-4 py-3"
+      style={{ backgroundColor: '#FDFAF5', borderColor: '#E5DDD3' }}
+    >
+      <div className="text-[11px] font-bold uppercase tracking-wider mb-2.5" style={{ color: '#9B7A5A' }}>
+        סיכום לפי תאריך ואזור
+      </div>
+      <div className="space-y-2.5">
+        {sortedDates.map(dateKey => {
+          const items = byDate.get(dateKey)!;
+
+          // Group by עיר — nullish / empty → 'לא צוינה עיר'
+          const byCity = new Map<string, number>();
+          for (const d of items) {
+            const city = (d.עיר || '').trim() || 'לא צוינה עיר';
+            byCity.set(city, (byCity.get(city) || 0) + 1);
+          }
+          const sortedCities = Array.from(byCity.entries()).sort((a, b) => b[1] - a[1]);
+
+          // Format display label — "יום שלישי 21/05" or raw if no date
+          let dateLabel = dateKey || 'ללא תאריך';
+          if (dateKey) {
+            try {
+              const [y, m, day] = dateKey.split('-').map(Number);
+              const dt = new Date(y, m - 1, day);
+              const dayName = dt.toLocaleDateString('he-IL', { weekday: 'long' });
+              const fmt = `${String(day).padStart(2, '0')}/${String(m).padStart(2, '0')}`;
+              dateLabel = `${dayName} ${fmt}`;
+            } catch { /* keep raw */ }
+          }
+
+          return (
+            <div key={dateKey || '__no_date__'}>
+              <div className="flex items-baseline justify-between gap-2 mb-1">
+                <span className="text-sm font-bold" style={{ color: '#2B1A10' }}>{dateLabel}</span>
+                <span className="text-xs font-semibold tabular-nums flex-shrink-0" style={{ color: '#7C5230' }}>
+                  סה״כ {items.length} משלוחים
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {sortedCities.map(([city, count]) => (
+                  <span
+                    key={city}
+                    className="inline-flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full border"
+                    style={{ backgroundColor: '#FFFFFF', borderColor: '#DDD0BC', color: '#3D2210' }}
+                  >
+                    {city}
+                    <span className="font-bold tabular-nums" style={{ color: '#7C5230' }}>{count}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ─── Status config ─────────────────────────────────────────────────────────
 
 const VALID_STATUSES: Delivery['סטטוס_משלוח'][] = ['ממתין', 'נאסף', 'נמסר'];
@@ -562,6 +639,9 @@ function DeliveriesContent() {
           ייצוא לאקסל
         </button>
       </div>
+
+      {/* Delivery summary — date × city breakdown, computed from loaded data */}
+      {!loading && <DeliverySummaryPanel deliveries={deliveries} />}
 
       {/* Delivery cards — active only (exclude נמסר) */}
       {loading ? <PageLoading /> : deliveries.filter(d => d.סטטוס_משלוח !== 'נמסר').length === 0 ? (
