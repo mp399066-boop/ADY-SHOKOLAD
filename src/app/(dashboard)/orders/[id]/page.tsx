@@ -63,10 +63,11 @@ interface EditPackageItem {
 
 interface EditCustomItem {
   שם_פריט_מותאם: string;
-  סוג_שורה: 'מוצר_ידני' | 'תוספת_תשלום';
+  // UI-only: 'הנחה_תשלום' maps to 'תוספת_תשלום' with a negative מחיר_ליחידה on save.
+  סוג_שורה: 'מוצר_ידני' | 'תוספת_תשלום' | 'הנחה_תשלום';
   כמות: number;
-  מחיר_ליחידה: number;
-  סהכ: number;
+  מחיר_ליחידה: number;  // always positive in the editor; negated on save for הנחה_תשלום
+  סהכ: number;           // negative for הנחה_תשלום rows
   הערות_לשורה: string;
 }
 
@@ -611,14 +612,18 @@ export default function OrderDetailPage() {
 
     const customRows = (order.מוצרים_בהזמנה || [])
       .filter(item => item.סוג_שורה === 'מוצר_ידני' || item.סוג_שורה === 'תוספת_תשלום')
-      .map(item => ({
-        שם_פריט_מותאם: item.שם_פריט_מותאם || '',
-        סוג_שורה: item.סוג_שורה as 'מוצר_ידני' | 'תוספת_תשלום',
-        כמות: item.כמות,
-        מחיר_ליחידה: item.מחיר_ליחידה,
-        סהכ: item.סהכ,
-        הערות_לשורה: item.הערות_לשורה || '',
-      }));
+      .map(item => {
+        // Negative-price תוספת_תשלום rows were saved as discount items — show them as 'הנחה_תשלום' in the editor.
+        const isDiscount = item.סוג_שורה === 'תוספת_תשלום' && (item.מחיר_ליחידה ?? 0) < 0;
+        return {
+          שם_פריט_מותאם: item.שם_פריט_מותאם || '',
+          סוג_שורה: (isDiscount ? 'הנחה_תשלום' : item.סוג_שורה) as 'מוצר_ידני' | 'תוספת_תשלום' | 'הנחה_תשלום',
+          כמות: item.כמות,
+          מחיר_ליחידה: Math.abs(item.מחיר_ליחידה),  // UI always shows positive
+          סהכ: item.סהכ,
+          הערות_לשורה: item.הערות_לשורה || '',
+        };
+      });
     setEditCustomItems(customRows);
 
     setShowEditItems(true);
@@ -726,9 +731,10 @@ export default function OrderDetailPage() {
           .filter(i => i.שם_פריט_מותאם.trim())
           .map(i => ({
             שם_פריט_מותאם: i.שם_פריט_מותאם.trim(),
-            סוג_שורה: i.סוג_שורה,
+            // הנחה_תשלום is UI-only; save as תוספת_תשלום with a negative price.
+            סוג_שורה: i.סוג_שורה === 'הנחה_תשלום' ? 'תוספת_תשלום' : i.סוג_שורה,
             כמות: i.כמות,
-            מחיר_ליחידה: i.מחיר_ליחידה,
+            מחיר_ליחידה: i.סוג_שורה === 'הנחה_תשלום' ? -Math.abs(i.מחיר_ליחידה) : i.מחיר_ליחידה,
             הערות_לשורה: i.הערות_לשורה || null,
           })),
         סוג_הנחה: (order?.סוג_הנחה as 'ללא' | 'אחוז' | 'סכום') ?? 'ללא',
@@ -860,7 +866,10 @@ export default function OrderDetailPage() {
     setEditCustomItems(prev => {
       const items = [...prev];
       const item = { ...items[idx], [field]: value };
-      item.סהכ = (Number(item.כמות) || 0) * (Number(item.מחיר_ליחידה) || 0);
+      const qty   = Number(item.כמות) || 0;
+      const price = Math.abs(Number(item.מחיר_ליחידה) || 0);
+      // הנחה_תשלום rows produce a negative line total so they reduce the order total.
+      item.סהכ = item.סוג_שורה === 'הנחה_תשלום' ? -(qty * price) : (qty * price);
       items[idx] = item;
       return items;
     });
@@ -1249,16 +1258,20 @@ export default function OrderDetailPage() {
                                 מארז
                               </span>
                             )}
-                            {isCustom && (
-                              <span
-                                className="text-[10px] font-medium px-2 py-0.5 rounded-full"
-                                style={item.סוג_שורה === 'תוספת_תשלום'
+                            {isCustom && (() => {
+                              const isDiscount = item.סוג_שורה === 'תוספת_תשלום' && (item.מחיר_ליחידה ?? 0) < 0;
+                              const badgeStyle = isDiscount
+                                ? { backgroundColor: '#DCFCE7', color: '#15803D' }
+                                : item.סוג_שורה === 'תוספת_תשלום'
                                   ? { backgroundColor: '#FEE2E2', color: '#991B1B' }
-                                  : { backgroundColor: '#EDE9FE', color: '#5B21B6' }}
-                              >
-                                {item.סוג_שורה === 'תוספת_תשלום' ? 'תוספת תשלום' : 'מוצר ידני'}
-                              </span>
-                            )}
+                                  : { backgroundColor: '#EDE9FE', color: '#5B21B6' };
+                              const badgeLabel = isDiscount ? 'הנחה' : item.סוג_שורה === 'תוספת_תשלום' ? 'תוספת תשלום' : 'מוצר ידני';
+                              return (
+                                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full" style={badgeStyle}>
+                                  {badgeLabel}
+                                </span>
+                              );
+                            })()}
                           </div>
                           <div className="flex items-center gap-2 mt-1 text-xs" style={{ color: '#6B4A2D' }}>
                             <span>{item.כמות} × {formatCurrency(item.מחיר_ליחידה)}</span>
@@ -1268,9 +1281,15 @@ export default function OrderDetailPage() {
                           </div>
                         </div>
                         <div className="flex-shrink-0 text-left">
-                          <span className="text-sm font-bold tabular-nums" style={{ color: '#8B5E34' }}>
-                            {formatCurrency(item.סהכ)}
-                          </span>
+                          {(item.סהכ ?? 0) < 0 ? (
+                            <span className="text-sm font-bold tabular-nums" style={{ color: '#15803D' }}>
+                              −{formatCurrency(Math.abs(item.סהכ ?? 0))}
+                            </span>
+                          ) : (
+                            <span className="text-sm font-bold tabular-nums" style={{ color: '#8B5E34' }}>
+                              {formatCurrency(item.סהכ)}
+                            </span>
+                          )}
                         </div>
                       </div>
                       {isPackage && isExpanded && pfList.length > 0 && (
@@ -1319,6 +1338,20 @@ export default function OrderDetailPage() {
                   <dd className="tabular-nums">−{formatCurrency(order.סכום_הנחה)}</dd>
                 </div>
               )}
+              {/* Item-level discounts (negative תוספת_תשלום rows) */}
+              {(() => {
+                const discountItems = (order.מוצרים_בהזמנה ?? []).filter(i =>
+                  i.סוג_שורה === 'תוספת_תשלום' && (i.מחיר_ליחידה ?? 0) < 0,
+                );
+                if (discountItems.length === 0) return null;
+                const discountTotal = discountItems.reduce((s, i) => s + Math.abs(i.סהכ ?? 0), 0);
+                return (
+                  <div className="flex justify-between" style={{ color: '#15803D' }}>
+                    <dt>הנחות / הורדות בפריטים</dt>
+                    <dd className="tabular-nums">−{formatCurrency(discountTotal)}</dd>
+                  </div>
+                );
+              })()}
               {(order.דמי_משלוח || 0) > 0 && (
                 <div className="flex justify-between">
                   <dt style={{ color: '#6B4A2D' }}>דמי משלוח</dt>
@@ -2005,79 +2038,92 @@ export default function OrderDetailPage() {
                 </p>
               ) : (
                 <div className="space-y-2">
-                  {editCustomItems.map((item, idx) => (
-                    <div key={idx} className="p-3 rounded-xl border space-y-2" style={{ borderColor: '#DDD0BC', backgroundColor: '#FAF7F0' }}>
-                      <div className="grid grid-cols-12 gap-2 items-end">
-                        {/* Type pill */}
-                        <div className="col-span-3">
-                          <label className="block text-xs mb-1" style={{ color: '#6B4A2D' }}>סוג</label>
-                          <select
-                            value={item.סוג_שורה}
-                            onChange={e => updateCustomItem(idx, 'סוג_שורה', e.target.value)}
-                            className="w-full border rounded-lg px-2 py-1.5 text-xs focus:outline-none"
-                            style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
-                          >
-                            <option value="תוספת_תשלום">תוספת תשלום</option>
-                            <option value="מוצר_ידני">מוצר ידני</option>
-                          </select>
+                  {editCustomItems.map((item, idx) => {
+                    const isDiscount = item.סוג_שורה === 'הנחה_תשלום';
+                    return (
+                      <div key={idx} className="p-3 rounded-xl border space-y-2"
+                        style={{
+                          borderColor: isDiscount ? '#B7E0C0' : '#DDD0BC',
+                          backgroundColor: isDiscount ? '#F0FAF2' : '#FAF7F0',
+                        }}>
+                        <div className="grid grid-cols-12 gap-2 items-end">
+                          {/* Type */}
+                          <div className="col-span-3">
+                            <label className="block text-xs mb-1" style={{ color: '#6B4A2D' }}>סוג</label>
+                            <select
+                              value={item.סוג_שורה}
+                              onChange={e => updateCustomItem(idx, 'סוג_שורה', e.target.value)}
+                              className="w-full border rounded-lg px-2 py-1.5 text-xs focus:outline-none"
+                              style={{ borderColor: isDiscount ? '#B7E0C0' : '#E7D2A6', color: '#2B1A10' }}
+                            >
+                              <option value="תוספת_תשלום">תוספת תשלום ＋</option>
+                              <option value="הנחה_תשלום">הנחה / הורדה −</option>
+                              <option value="מוצר_ידני">מוצר ידני</option>
+                            </select>
+                          </div>
+                          {/* Name */}
+                          <div className="col-span-5">
+                            <label className="block text-xs mb-1" style={{ color: '#6B4A2D' }}>שם הפריט</label>
+                            <input
+                              type="text"
+                              placeholder={isDiscount ? 'לדוג׳ הנחת לקוח קבוע' : 'לדוג׳ דמי ביטול'}
+                              value={item.שם_פריט_מותאם}
+                              onChange={e => updateCustomItem(idx, 'שם_פריט_מותאם', e.target.value)}
+                              className="w-full border rounded-lg px-2 py-1.5 text-xs focus:outline-none"
+                              style={{ borderColor: isDiscount ? '#B7E0C0' : '#E7D2A6', color: '#2B1A10' }}
+                            />
+                          </div>
+                          {/* Qty */}
+                          <div className="col-span-2">
+                            <label className="block text-xs mb-1" style={{ color: '#6B4A2D' }}>כמות</label>
+                            <input
+                              type="number" min={1} value={item.כמות}
+                              onChange={e => updateCustomItem(idx, 'כמות', Number(e.target.value))}
+                              className="w-full border rounded-lg px-2 py-1.5 text-xs focus:outline-none text-center"
+                              style={{ borderColor: isDiscount ? '#B7E0C0' : '#E7D2A6', color: '#2B1A10' }}
+                            />
+                          </div>
+                          {/* Price — always positive; sign is driven by the type */}
+                          <div className="col-span-2">
+                            <label className="block text-xs mb-1" style={{ color: isDiscount ? '#15803D' : '#6B4A2D' }}>
+                              {isDiscount ? '−₪' : 'מחיר ₪'}
+                            </label>
+                            <input
+                              type="number" min={0} step={0.01} value={item.מחיר_ליחידה}
+                              onChange={e => updateCustomItem(idx, 'מחיר_ליחידה', Number(e.target.value))}
+                              className="w-full border rounded-lg px-2 py-1.5 text-xs focus:outline-none text-center"
+                              style={{ borderColor: isDiscount ? '#B7E0C0' : '#E7D2A6', color: isDiscount ? '#15803D' : '#2B1A10' }}
+                            />
+                          </div>
                         </div>
-                        {/* Name */}
-                        <div className="col-span-5">
-                          <label className="block text-xs mb-1" style={{ color: '#6B4A2D' }}>שם הפריט</label>
+                        <div className="flex items-center justify-between gap-2">
                           <input
                             type="text"
-                            placeholder="לדוג׳ דמי ביטול"
-                            value={item.שם_פריט_מותאם}
-                            onChange={e => updateCustomItem(idx, 'שם_פריט_מותאם', e.target.value)}
-                            className="w-full border rounded-lg px-2 py-1.5 text-xs focus:outline-none"
-                            style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
+                            placeholder="הערה (אופציונלי)"
+                            value={item.הערות_לשורה}
+                            onChange={e => updateCustomItem(idx, 'הערות_לשורה', e.target.value)}
+                            className="flex-1 border rounded-lg px-2 py-1.5 text-xs focus:outline-none"
+                            style={{ borderColor: isDiscount ? '#B7E0C0' : '#E7D2A6', color: '#2B1A10' }}
                           />
-                        </div>
-                        {/* Qty */}
-                        <div className="col-span-2">
-                          <label className="block text-xs mb-1" style={{ color: '#6B4A2D' }}>כמות</label>
-                          <input
-                            type="number" min={1} value={item.כמות}
-                            onChange={e => updateCustomItem(idx, 'כמות', Number(e.target.value))}
-                            className="w-full border rounded-lg px-2 py-1.5 text-xs focus:outline-none text-center"
-                            style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
-                          />
-                        </div>
-                        {/* Price */}
-                        <div className="col-span-2">
-                          <label className="block text-xs mb-1" style={{ color: '#6B4A2D' }}>מחיר ₪</label>
-                          <input
-                            type="number" min={0} step={0.01} value={item.מחיר_ליחידה}
-                            onChange={e => updateCustomItem(idx, 'מחיר_ליחידה', Number(e.target.value))}
-                            className="w-full border rounded-lg px-2 py-1.5 text-xs focus:outline-none text-center"
-                            style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
-                          />
+                          <span className="text-xs font-semibold flex-shrink-0"
+                            style={{ color: isDiscount ? '#15803D' : '#8B5E34' }}>
+                            {isDiscount
+                              ? `−₪${Math.abs(item.סהכ).toFixed(2)}`
+                              : `₪${item.סהכ.toFixed(2)}`}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => removeCustomItem(idx)}
+                            title="מחק שורה"
+                            className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-red-50 transition-colors text-base flex-shrink-0"
+                            style={{ color: '#dc2626' }}
+                          >
+                            🗑
+                          </button>
                         </div>
                       </div>
-                      <div className="flex items-center justify-between gap-2">
-                        <input
-                          type="text"
-                          placeholder="הערה (אופציונלי)"
-                          value={item.הערות_לשורה}
-                          onChange={e => updateCustomItem(idx, 'הערות_לשורה', e.target.value)}
-                          className="flex-1 border rounded-lg px-2 py-1.5 text-xs focus:outline-none"
-                          style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
-                        />
-                        <span className="text-xs font-semibold flex-shrink-0" style={{ color: '#8B5E34' }}>
-                          ₪{item.סהכ.toFixed(2)}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => removeCustomItem(idx)}
-                          title="מחק שורה"
-                          className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-red-50 transition-colors text-base flex-shrink-0"
-                          style={{ color: '#dc2626' }}
-                        >
-                          🗑
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </section>
