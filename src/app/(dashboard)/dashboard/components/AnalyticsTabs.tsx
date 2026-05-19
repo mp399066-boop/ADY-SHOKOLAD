@@ -318,78 +318,110 @@ function OrdersTab({
 
 // ── Finance analytics types ───────────────────────────────────────────────────
 
-type FinanceRange = 'today' | 'week' | 'month' | '30days';
+interface FinKpi { total: number; count: number }
 
-interface FinanceData {
-  range: FinanceRange;
-  dateFrom: string;
-  dateTo: string;
-  paid: { total: number; count: number };
-  unpaid: { total: number; count: number };
-  dailyRevenue: Array<{ date: string; amount: number }>;
-  byPaymentMethod: Array<{ method: string; count: number; amount: number }>;
-  topCustomers: Array<{ id: string; name: string; amount: number; count: number }>;
-  orders: Array<{
-    id: string;
-    orderNumber: string;
-    customerName: string;
-    amount: number;
-    orderStatus: string;
-    date: string | null;
-    paymentMethod: string | null;
-  }>;
+interface FinOrderRow {
+  id: string;
+  orderNumber: string;
+  customerName: string;
+  amount: number;
+  orderStatus: string;
+  date: string | null;
+  paymentMethod: string | null;
 }
 
-const FINANCE_RANGES: Array<{ key: FinanceRange; label: string }> = [
-  { key: 'today',  label: 'היום'            },
-  { key: 'week',   label: 'השבוע'           },
-  { key: 'month',  label: 'החודש'           },
-  { key: '30days', label: '30 ימים אחרונים' },
-];
+interface FinanceOverviewData {
+  kpis: {
+    today:  FinKpi;
+    week:   FinKpi;
+    month:  FinKpi;
+    year:   FinKpi;
+    unpaid: FinKpi;
+  };
+  dailyChart:      Array<{ key: string; label: string; amount: number }>;
+  monthlyChart:    Array<{ key: string; label: string; amount: number }>;
+  byPaymentMethod: Array<{ method: string; count: number; amount: number }>;
+  topCustomers:    Array<{ id: string; name: string; amount: number; count: number }>;
+  highValueOrders: FinOrderRow[];
+  recentPaid:      FinOrderRow[];
+  openOrders:      FinOrderRow[];
+}
 
-// ── Revenue bar chart ─────────────────────────────────────────────────────────
+// ── Finance sub-components ────────────────────────────────────────────────────
 
-function RevenueBarChart({
-  days,
-  dateFrom,
-  dateTo,
+function FinKpiCard({
+  label, amount, count, countLabel, accent, accentBg,
 }: {
-  days: Array<{ date: string; amount: number }>;
-  dateFrom: string;
-  dateTo: string;
+  label: string;
+  amount: number;
+  count: number;
+  countLabel?: string;
+  accent: string;
+  accentBg: string;
 }) {
-  const maxAmount = Math.max(...days.map(d => d.amount), 1);
-  const today = todayISO();
+  return (
+    <div
+      className="rounded-xl p-3 flex flex-col gap-1"
+      style={{ backgroundColor: C.card, border: `1px solid ${C.border}`, boxShadow: '0 2px 8px rgba(47,27,20,0.04)' }}
+    >
+      <p className="text-[9.5px] font-semibold uppercase tracking-wide" style={{ color: C.textMuted }}>{label}</p>
+      <p className="text-[20px] font-bold tabular-nums leading-none" style={{ color: amount > 0 ? accent : C.textMuted }}>
+        {formatCurrency(amount)}
+      </p>
+      {count > 0 && (
+        <p className="text-[9.5px] font-medium" style={{ color: C.textMuted }}>
+          <span
+            className="inline-block px-1.5 py-0.5 rounded-full tabular-nums"
+            style={{ backgroundColor: accentBg, color: accent }}
+          >
+            {count}
+          </span>
+          {' '}{countLabel ?? 'הזמנות'}
+        </p>
+      )}
+    </div>
+  );
+}
 
+function FinBarChart({
+  bars,
+  currentKey,
+  height = 52,
+}: {
+  bars: Array<{ key: string; label: string; amount: number }>;
+  currentKey: string;
+  height?: number;
+}) {
+  const max = Math.max(...bars.map(b => b.amount), 1);
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex items-end gap-px" style={{ height: 44 }}>
-        {days.map(({ date, amount }) => {
-          const h = amount > 0 ? Math.max((amount / maxAmount) * 40, 3) : 1;
-          const isToday = date === today;
-          const inRange = date >= dateFrom && date <= dateTo;
+      <div className="flex items-end gap-px" style={{ height }}>
+        {bars.map(({ key, label, amount }) => {
+          const h = amount > 0 ? Math.max((amount / max) * (height - 4), 3) : 1;
+          const isCurrent = key === currentKey;
           return (
             <div
-              key={date}
-              className="flex-1 rounded-t-sm"
+              key={key}
+              className="flex-1 rounded-t-sm transition-all"
               style={{
                 height: `${h}px`,
-                backgroundColor: isToday ? C.brand : inRange ? C.gold : C.borderSoft,
-                opacity: amount > 0 ? 1 : 0.4,
+                backgroundColor: isCurrent ? C.brand : amount > 0 ? C.gold : C.borderSoft,
+                opacity: amount > 0 ? 1 : 0.35,
               }}
-              title={amount > 0 ? `${date.slice(5).replace('-', '/')}: ${formatCurrency(amount)}` : undefined}
+              title={amount > 0 ? `${label}: ${formatCurrency(amount)}` : undefined}
             />
           );
         })}
       </div>
       <div className="flex items-start">
-        {days.map(({ date }, i) => {
-          const show = i === 0 || i === 7 || i === 14 || i === 21 || i === 29;
+        {bars.map(({ key, label }, i) => {
+          const n = bars.length;
+          const show = n <= 14 || i === 0 || i === Math.floor(n / 3) || i === Math.floor(2 * n / 3) || i === n - 1;
           return (
-            <div key={date} className="flex-1 text-center overflow-hidden">
+            <div key={key} className="flex-1 text-center overflow-hidden">
               {show && (
-                <span className="text-[7.5px] font-medium leading-none" style={{ color: C.textMuted }}>
-                  {date.slice(5).replace('-', '/')}
+                <span className="text-[7px] font-medium leading-none" style={{ color: C.textMuted }}>
+                  {label}
                 </span>
               )}
             </div>
@@ -400,181 +432,221 @@ function RevenueBarChart({
   );
 }
 
+function FinOrderList({
+  orders,
+  onNavigate,
+  bg,
+  amountColor,
+  showStatus,
+  emptyText,
+}: {
+  orders: FinOrderRow[];
+  onNavigate: (path: string) => void;
+  bg?: string;
+  amountColor?: string;
+  showStatus?: boolean;
+  emptyText: string;
+}) {
+  if (orders.length === 0) {
+    return (
+      <div className="flex items-center justify-center py-5 rounded-lg" style={{ backgroundColor: C.borderSoft }}>
+        <span className="text-[11px]" style={{ color: C.textMuted }}>{emptyText}</span>
+      </div>
+    );
+  }
+  return (
+    <ul className="space-y-1">
+      {orders.map(o => (
+        <li key={o.id}>
+          <button
+            onClick={() => onNavigate(`/orders/${o.id}`)}
+            className="w-full flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-right transition-opacity hover:opacity-75"
+            style={{ backgroundColor: bg ?? C.brandSoft, border: `1px solid ${C.border}` }}
+          >
+            <span className="font-mono text-[9.5px] flex-shrink-0 w-14 truncate" style={{ color: C.textMuted }}>
+              {o.orderNumber}
+            </span>
+            <span className="text-[11px] truncate flex-1" style={{ color: C.text }}>
+              {o.customerName}
+            </span>
+            {o.date && (
+              <span className="text-[9.5px] flex-shrink-0 tabular-nums" style={{ color: C.textMuted }}>
+                {o.date.slice(5).replace('-', '/')}
+              </span>
+            )}
+            {showStatus && o.orderStatus && (
+              <span
+                className="text-[9px] font-medium px-1.5 py-0.5 rounded-md flex-shrink-0"
+                style={{ backgroundColor: C.amberSoft, color: C.amber }}
+              >
+                {o.orderStatus}
+              </span>
+            )}
+            {o.paymentMethod && !showStatus && (
+              <span
+                className="text-[9px] font-medium px-1.5 py-0.5 rounded-md flex-shrink-0"
+                style={{ backgroundColor: C.card, color: C.textSoft }}
+              >
+                {o.paymentMethod}
+              </span>
+            )}
+            <span className="text-[11px] font-bold tabular-nums flex-shrink-0"
+              style={{ color: amountColor ?? C.green }}>{formatCurrency(o.amount)}</span>
+            <span className="text-[10px] flex-shrink-0" style={{ color: C.textMuted }}>←</span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 // ── Finance tab ───────────────────────────────────────────────────────────────
 
 function FinanceTab({ onNavigate }: { onNavigate: (path: string) => void }) {
-  const [range, setRange]       = useState<FinanceRange>('today');
-  const [data, setData]         = useState<FinanceData | null>(null);
+  const [data, setData]         = useState<FinanceOverviewData | null>(null);
   const [loading, setLoading]   = useState(true);
   const [fetchErr, setFetchErr] = useState<string | null>(null);
+  const [chartMode, setChartMode] = useState<'daily' | 'monthly'>('daily');
 
   useEffect(() => {
-    setLoading(true);
-    setFetchErr(null);
-    fetch(`/api/analytics/finance?range=${range}`)
+    fetch('/api/analytics/finance/overview')
       .then(r => r.json())
-      .then((json: FinanceData & { error?: string }) => {
+      .then((json: FinanceOverviewData & { error?: string }) => {
         if (json.error) { setFetchErr(json.error); return; }
         setData(json);
       })
       .catch(() => setFetchErr('שגיאה בטעינת נתונים'))
       .finally(() => setLoading(false));
-  }, [range]);
+  }, []);
+
+  const todayKey = todayISO();
+  const monthKey = todayKey.slice(0, 7);
+
+  if (loading) return (
+    <div className="flex justify-center py-14">
+      <div className="w-5 h-5 rounded-full border-2 animate-spin"
+        style={{ borderColor: C.borderSoft, borderTopColor: C.brand }} />
+    </div>
+  );
+
+  if (fetchErr) return (
+    <p className="text-[12px] text-center py-10" style={{ color: C.red }}>{fetchErr}</p>
+  );
+
+  if (!data) return null;
 
   const CARD = { backgroundColor: C.card, border: `1px solid ${C.border}`, boxShadow: '0 2px 8px rgba(47,27,20,0.04)' } as const;
-  const rangeLabel = FINANCE_RANGES.find(r => r.key === range)?.label ?? '';
+  const yearTotal = data.kpis.year.total;
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2" dir="rtl">
 
-      {/* ── Range selector ── */}
-      <div
-        className="flex items-center gap-1 p-1 rounded-xl"
-        style={{ backgroundColor: C.surface }}
-        dir="rtl"
-      >
-        {FINANCE_RANGES.map(({ key, label }) => (
-          <button
-            key={key}
-            onClick={() => setRange(key)}
-            className="flex-1 text-[11px] font-semibold py-1.5 rounded-lg transition-all"
-            style={{
-              backgroundColor: range === key ? C.card : 'transparent',
-              color: range === key ? C.text : C.textMuted,
-              boxShadow: range === key ? '0 1px 4px rgba(47,27,20,0.08)' : 'none',
-            }}
-          >
-            {label}
-          </button>
-        ))}
+      {/* ── Row 1: KPI cards ── */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-2">
+        <FinKpiCard label="הכנסות היום"  amount={data.kpis.today.total}  count={data.kpis.today.count}  accent={C.brand} accentBg={C.brandSoft} />
+        <FinKpiCard label="השבוע"        amount={data.kpis.week.total}   count={data.kpis.week.count}   accent={C.brand} accentBg={C.brandSoft} />
+        <FinKpiCard label="החודש"        amount={data.kpis.month.total}  count={data.kpis.month.count}  accent={C.gold}  accentBg={C.goldSoft}  />
+        <FinKpiCard label="השנה"         amount={data.kpis.year.total}   count={data.kpis.year.count}   accent={C.gold}  accentBg={C.goldSoft}  />
+        <FinKpiCard label="ממתין לתשלום" amount={data.kpis.unpaid.total} count={data.kpis.unpaid.count} accent={C.amber} accentBg={C.amberSoft} countLabel="פתוחות" />
       </div>
 
-      {loading ? (
-        <div className="flex justify-center py-12">
-          <div className="w-5 h-5 rounded-full border-2 animate-spin"
-            style={{ borderColor: C.borderSoft, borderTopColor: C.brand }} />
-        </div>
-      ) : fetchErr ? (
-        <p className="text-[12px] text-center py-8" style={{ color: C.red }}>{fetchErr}</p>
-      ) : data ? (
-        <>
-          {/* ── Row 1: Summary + Chart + Top customers ── */}
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-2">
+      {/* ── Row 2: Revenue chart + collection health ── */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-2">
 
-            {/* Revenue + unpaid summary */}
-            <section className="rounded-xl p-4 flex flex-col gap-4" style={CARD}>
-              <div>
-                <p className="text-[10.5px] font-semibold mb-1" style={{ color: C.textMuted }}>
-                  הכנסות · {rangeLabel}
-                </p>
-                <p className="text-[26px] font-bold tabular-nums leading-none" style={{ color: C.green }}>
-                  {formatCurrency(data.paid.total)}
-                </p>
-                <p className="text-[10.5px] mt-1" style={{ color: C.textSoft }}>
-                  {data.paid.count} הזמנות ששולמו
-                </p>
-              </div>
-              <div style={{ borderTop: `1px solid ${C.borderSoft}`, paddingTop: '0.875rem' }}>
-                <p className="text-[10.5px] font-semibold mb-1" style={{ color: C.textMuted }}>חוב פתוח (כולל)</p>
-                <p className="text-[22px] font-bold tabular-nums leading-none"
-                  style={{ color: data.unpaid.count > 0 ? C.amber : C.textMuted }}>
-                  {formatCurrency(data.unpaid.total)}
-                </p>
-                {data.unpaid.count > 0 && (
-                  <p className="text-[10.5px] mt-1" style={{ color: C.textSoft }}>
-                    {data.unpaid.count} הזמנות ממתינות לתשלום
-                  </p>
-                )}
-              </div>
-            </section>
+        {/* Revenue chart */}
+        <section className="rounded-xl p-4 xl:col-span-2" style={CARD}>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-[12px] font-bold" style={{ color: C.textSoft }}>גרף הכנסות</h2>
+            <div className="flex items-center gap-1 p-0.5 rounded-lg" style={{ backgroundColor: C.surface }}>
+              {(['daily', 'monthly'] as const).map(mode => (
+                <button
+                  key={mode}
+                  onClick={() => setChartMode(mode)}
+                  className="text-[9.5px] font-semibold px-2.5 py-1 rounded-md transition-all"
+                  style={{
+                    backgroundColor: chartMode === mode ? C.card : 'transparent',
+                    color: chartMode === mode ? C.text : C.textMuted,
+                    boxShadow: chartMode === mode ? '0 1px 4px rgba(47,27,20,0.08)' : 'none',
+                  }}
+                >
+                  {mode === 'daily' ? 'יומי · 30 ימים' : 'חודשי · 12 חודשים'}
+                </button>
+              ))}
+            </div>
+          </div>
+          {(chartMode === 'daily' ? data.dailyChart : data.monthlyChart).every(b => b.amount === 0) ? (
+            <p className="text-[11px] py-6 text-center" style={{ color: C.textMuted }}>אין נתונים</p>
+          ) : (
+            <FinBarChart
+              bars={chartMode === 'daily' ? data.dailyChart : data.monthlyChart}
+              currentKey={chartMode === 'daily' ? todayKey : monthKey}
+              height={56}
+            />
+          )}
+          <div className="flex items-center gap-4 mt-2">
+            <span className="flex items-center gap-1.5 text-[9px]" style={{ color: C.textMuted }}>
+              <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: C.brand }} />
+              {chartMode === 'daily' ? 'היום' : 'החודש הנוכחי'}
+            </span>
+            <span className="flex items-center gap-1.5 text-[9px]" style={{ color: C.textMuted }}>
+              <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: C.gold }} />
+              שולם
+            </span>
+          </div>
+        </section>
 
-            {/* Daily revenue chart (always 30-day window) */}
-            <section className="rounded-xl p-4" style={CARD}>
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-[12px] font-bold" style={{ color: C.textSoft }}>הכנסות יומיות — 30 ימים</h2>
-                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
-                  style={{ backgroundColor: C.goldSoft, color: C.amber }}>
-                  {formatCurrency(data.dailyRevenue.reduce((s, d) => s + d.amount, 0))}
-                </span>
-              </div>
-              {data.dailyRevenue.every(d => d.amount === 0) ? (
-                <p className="text-[11px] py-4 text-center" style={{ color: C.textMuted }}>אין נתונים</p>
-              ) : (
-                <RevenueBarChart days={data.dailyRevenue} dateFrom={data.dateFrom} dateTo={data.dateTo} />
-              )}
-              <div className="flex items-center gap-3 mt-2">
-                <span className="flex items-center gap-1 text-[9.5px]" style={{ color: C.textMuted }}>
-                  <span className="inline-block w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: C.brand }} />
-                  היום
-                </span>
-                <span className="flex items-center gap-1 text-[9.5px]" style={{ color: C.textMuted }}>
-                  <span className="inline-block w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: C.gold }} />
-                  בטווח הנבחר
-                </span>
-              </div>
-            </section>
+        {/* Collection health + payment methods */}
+        <section className="rounded-xl p-4 flex flex-col gap-4" style={CARD}>
 
-            {/* Top customers */}
-            <section className="rounded-xl p-4" style={CARD}>
-              <h2 className="text-[12px] font-bold mb-3" style={{ color: C.textSoft }}>
-                לקוחות מובילים · {rangeLabel}
-              </h2>
-              {data.topCustomers.length === 0 ? (
-                <p className="text-[11px]" style={{ color: C.textMuted }}>אין נתונים</p>
-              ) : (
-                <ul className="space-y-1.5">
-                  {data.topCustomers.slice(0, 6).map(c => (
-                    <li key={c.id}>
-                      <button
-                        onClick={() => onNavigate(`/customers/${c.id}`)}
-                        className="w-full flex items-center gap-2 rounded-lg px-2.5 py-2 text-right transition-colors hover:opacity-80"
-                        style={{ backgroundColor: C.brandSoft, border: `1px solid ${C.border}` }}
-                      >
-                        <span className="text-[11.5px] font-medium truncate flex-1" style={{ color: C.text }}>
-                          {c.name}
-                        </span>
-                        <span className="text-[9.5px] font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0"
-                          style={{ backgroundColor: C.card, color: C.textSoft }}>
-                          {c.count} הז׳
-                        </span>
-                        <span className="text-[11.5px] font-bold tabular-nums flex-shrink-0"
-                          style={{ color: C.brand }}>
-                          {formatCurrency(c.amount)}
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
+          {/* Paid vs open split bar */}
+          <div>
+            <h3 className="text-[11px] font-bold mb-2" style={{ color: C.textSoft }}>גביה — השנה</h3>
+            {yearTotal > 0 || data.kpis.unpaid.total > 0 ? (() => {
+              const tot = yearTotal + data.kpis.unpaid.total;
+              const paidPct   = tot > 0 ? Math.round((yearTotal / tot) * 100) : 0;
+              const unpaidPct = 100 - paidPct;
+              return (
+                <>
+                  <div className="flex w-full rounded-full overflow-hidden" style={{ height: 8 }}>
+                    <div style={{ width: `${paidPct}%`, backgroundColor: C.green }} />
+                    <div style={{ width: `${unpaidPct}%`, backgroundColor: C.amber }} />
+                  </div>
+                  <div className="flex items-center justify-between mt-1.5">
+                    <span className="flex items-center gap-1 text-[9px]" style={{ color: C.textMuted }}>
+                      <span className="inline-block w-2 h-2 rounded-sm" style={{ backgroundColor: C.green }} />
+                      שולם {paidPct}%
+                    </span>
+                    <span className="flex items-center gap-1 text-[9px]" style={{ color: C.textMuted }}>
+                      פתוח {unpaidPct}%
+                      <span className="inline-block w-2 h-2 rounded-sm" style={{ backgroundColor: C.amber }} />
+                    </span>
+                  </div>
+                </>
+              );
+            })() : (
+              <p className="text-[10px]" style={{ color: C.textMuted }}>אין נתונים</p>
+            )}
           </div>
 
-          {/* ── Row 2: Payment methods + Paid orders list ── */}
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
-
-            {/* Payment method breakdown */}
-            <section className="rounded-xl p-4" style={CARD}>
-              <h2 className="text-[12px] font-bold mb-3" style={{ color: C.textSoft }}>
-                אמצעי תשלום · {rangeLabel}
-              </h2>
-              {data.byPaymentMethod.length === 0 ? (
-                <p className="text-[11px]" style={{ color: C.textMuted }}>אין נתונים</p>
-              ) : (
-                <div className="space-y-2.5">
-                  {data.byPaymentMethod.map(({ method, count, amount }) => {
-                    const pct = data.paid.total > 0 ? Math.round((amount / data.paid.total) * 100) : 0;
+          {/* Payment methods mini */}
+          <div style={{ borderTop: `1px solid ${C.borderSoft}`, paddingTop: '0.875rem' }}>
+            <h3 className="text-[11px] font-bold mb-2" style={{ color: C.textSoft }}>אמצעי תשלום · 30 ימים</h3>
+            {data.byPaymentMethod.length === 0 ? (
+              <p className="text-[10px]" style={{ color: C.textMuted }}>אין נתונים</p>
+            ) : (() => {
+              const total30 = data.byPaymentMethod.reduce((s, m) => s + m.amount, 0);
+              return (
+                <div className="space-y-2">
+                  {data.byPaymentMethod.slice(0, 5).map(({ method, count, amount }) => {
+                    const pct = total30 > 0 ? Math.round((amount / total30) * 100) : 0;
                     return (
                       <div key={method}>
-                        <div className="flex items-center gap-2 mb-0.5">
-                          <span className="text-[11.5px] truncate flex-1" style={{ color: C.textSoft }}>{method}</span>
-                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0"
-                            style={{ backgroundColor: C.brandSoft, color: C.brand }}>
-                            {count} הז׳
-                          </span>
-                          <span className="text-[11px] font-bold tabular-nums flex-shrink-0 w-24 text-left"
-                            style={{ color: C.text }}>{formatCurrency(amount)}</span>
-                          <span className="text-[10px] tabular-nums flex-shrink-0 w-8 text-left"
-                            style={{ color: C.textMuted }}>{pct}%</span>
+                        <div className="flex items-center gap-1 mb-0.5">
+                          <span className="text-[10px] truncate flex-1" style={{ color: C.textSoft }}>{method}</span>
+                          <span className="text-[8.5px] px-1 py-0.5 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: C.brandSoft, color: C.brand }}>{count}</span>
+                          <span className="text-[9.5px] font-semibold tabular-nums flex-shrink-0 w-7 text-left"
+                            style={{ color: C.text }}>{pct}%</span>
                         </div>
                         <div className="w-full rounded-full overflow-hidden" style={{ height: 3, backgroundColor: C.borderSoft }}>
                           <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: C.gold }} />
@@ -583,63 +655,100 @@ function FinanceTab({ onNavigate }: { onNavigate: (path: string) => void }) {
                     );
                   })}
                 </div>
-              )}
-            </section>
+              );
+            })()}
+          </div>
+        </section>
+      </div>
 
-            {/* Paid orders list */}
-            <section className="rounded-xl p-4" style={CARD}>
-              <h2 className="text-[12px] font-bold mb-3" style={{ color: C.textSoft }}>
-                הזמנות ששולמו
-                {data.paid.count > data.orders.length && (
-                  <span className="font-normal text-[10px] mr-1.5" style={{ color: C.textMuted }}>
-                    ({data.orders.length} מוצגים מתוך {data.paid.count})
-                  </span>
-                )}
-              </h2>
-              {data.orders.length === 0 ? (
-                <div className="flex items-center justify-center py-6 rounded-lg" style={{ backgroundColor: C.borderSoft }}>
-                  <span className="text-[12px] font-semibold" style={{ color: C.textMuted }}>
-                    אין הזמנות ששולמו בטווח זה
-                  </span>
-                </div>
-              ) : (
-                <ul className="space-y-1.5 max-h-64 overflow-y-auto">
-                  {data.orders.map(o => (
-                    <li key={o.id}>
+      {/* ── Row 3: Top customers + High-value orders ── */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
+
+        {/* Top customers */}
+        <section className="rounded-xl p-4" style={CARD}>
+          <h2 className="text-[12px] font-bold mb-3" style={{ color: C.textSoft }}>לקוחות מובילים · 12 חודשים</h2>
+          {data.topCustomers.length === 0 ? (
+            <p className="text-[11px]" style={{ color: C.textMuted }}>אין נתונים</p>
+          ) : (() => {
+            const maxAmt = data.topCustomers[0]?.amount ?? 1;
+            return (
+              <ul className="space-y-1.5">
+                {data.topCustomers.map((c, i) => {
+                  const barPct = maxAmt > 0 ? Math.round((c.amount / maxAmt) * 100) : 0;
+                  return (
+                    <li key={c.id}>
                       <button
-                        onClick={() => onNavigate(`/orders/${o.id}`)}
-                        className="w-full flex items-center gap-2 rounded-lg px-2.5 py-2 text-right transition-colors hover:opacity-80"
-                        style={{ backgroundColor: C.greenSoft, border: `1px solid ${C.border}` }}
+                        onClick={() => onNavigate(`/customers/${c.id}`)}
+                        className="w-full flex flex-col gap-1 rounded-lg px-2.5 py-2 text-right transition-opacity hover:opacity-75"
+                        style={{ backgroundColor: C.brandSoft, border: `1px solid ${C.border}` }}
                       >
-                        <span className="font-mono text-[10px] flex-shrink-0" style={{ color: C.textMuted }}>
-                          {o.orderNumber}
-                        </span>
-                        <span className="text-[11.5px] truncate flex-1" style={{ color: C.text }}>
-                          {o.customerName}
-                        </span>
-                        {o.date && (
-                          <span className="text-[10.5px] flex-shrink-0 tabular-nums" style={{ color: C.textMuted }}>
-                            {o.date.slice(5).replace('-', '/')}
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="text-[9.5px] font-bold w-4 text-center flex-shrink-0 rounded"
+                            style={{ color: i < 3 ? C.brand : C.textMuted, backgroundColor: i < 3 ? C.card : 'transparent' }}
+                          >
+                            {i + 1}
                           </span>
-                        )}
-                        {o.paymentMethod && (
-                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md flex-shrink-0"
-                            style={{ backgroundColor: C.card, color: C.textSoft }}>
-                            {o.paymentMethod}
-                          </span>
-                        )}
-                        <span className="text-[11.5px] font-bold tabular-nums flex-shrink-0"
-                          style={{ color: C.green }}>{formatCurrency(o.amount)}</span>
-                        <span className="text-[11px] flex-shrink-0" style={{ color: C.textMuted }}>←</span>
+                          <span className="text-[11px] font-medium truncate flex-1" style={{ color: C.text }}>{c.name}</span>
+                          <span className="text-[9px] px-1.5 py-0.5 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: C.card, color: C.textSoft }}>{c.count} הז׳</span>
+                          <span className="text-[11px] font-bold tabular-nums flex-shrink-0"
+                            style={{ color: C.brand }}>{formatCurrency(c.amount)}</span>
+                        </div>
+                        <div className="w-full rounded-full overflow-hidden" style={{ height: 2.5, backgroundColor: C.borderSoft }}>
+                          <div className="h-full rounded-full" style={{ width: `${barPct}%`, backgroundColor: C.brand, opacity: 0.4 }} />
+                        </div>
                       </button>
                     </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-          </div>
-        </>
-      ) : null}
+                  );
+                })}
+              </ul>
+            );
+          })()}
+        </section>
+
+        {/* High-value paid orders */}
+        <section className="rounded-xl p-4" style={CARD}>
+          <h2 className="text-[12px] font-bold mb-3" style={{ color: C.textSoft }}>הזמנות גבוהות · 12 חודשים</h2>
+          <FinOrderList
+            orders={data.highValueOrders}
+            onNavigate={onNavigate}
+            bg={C.goldSoft}
+            amountColor={C.amber}
+            emptyText="אין הזמנות"
+          />
+        </section>
+      </div>
+
+      {/* ── Row 4: Recently paid + Open for collection ── */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
+
+        {/* Recently paid */}
+        <section className="rounded-xl p-4" style={CARD}>
+          <h2 className="text-[12px] font-bold mb-3" style={{ color: C.textSoft }}>שולמו לאחרונה</h2>
+          <FinOrderList
+            orders={data.recentPaid}
+            onNavigate={onNavigate}
+            bg={C.greenSoft}
+            amountColor={C.green}
+            emptyText="אין הזמנות ששולמו"
+          />
+        </section>
+
+        {/* Open for collection */}
+        <section className="rounded-xl p-4" style={CARD}>
+          <h2 className="text-[12px] font-bold mb-3" style={{ color: C.textSoft }}>פתוחות לגבייה</h2>
+          <FinOrderList
+            orders={data.openOrders}
+            onNavigate={onNavigate}
+            bg={C.amberSoft}
+            amountColor={C.amber}
+            showStatus
+            emptyText="אין חובות פתוחים"
+          />
+        </section>
+      </div>
+
     </div>
   );
 }
