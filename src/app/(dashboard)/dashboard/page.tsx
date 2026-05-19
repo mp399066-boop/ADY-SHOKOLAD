@@ -607,44 +607,42 @@ export default function DashboardPage() {
             onJumpStock={() => router.push('/inventory')}
           />
 
-          <ProductionSummaryCard />
+          {/* 3-column operations: WorkQueue | InventoryAlerts | ProductionSummary */}
+          <div className="grid grid-cols-1 xl:grid-cols-[1fr_268px_268px] gap-3 items-start">
+            <WorkQueue
+              items={queueItems}
+              updatingId={updatingId}
+              handlers={{
+                onAction: onQueueAction,
+                onRowClick: (item) => {
+                  if (item.entity?.kind === 'order') {
+                    router.push(`/orders/${item.entity.data.id}`);
+                    return;
+                  }
+                  if (item.entity?.kind === 'delivery') {
+                    const orderId = item.entity.data.הזמנות?.id;
+                    if (orderId) router.push(`/orders/${orderId}`);
+                    else router.push('/deliveries');
+                    return;
+                  }
+                  if (item.type === 'stock') {
+                    router.push('/inventory');
+                  }
+                },
+                onChangeOrderStatus: onPickOrderStatus,
+                onChangePaymentStatus: onPickPaymentStatus,
+                onChangeDeliveryStatus: (delivery, next) => patchDelivery(delivery.id, next, delivery.סטטוס_משלוח),
+              }}
+            />
+            <DashboardInventoryAlerts stock={stock} />
+            <ProductionSummaryCard />
+          </div>
 
-          <DashboardShell
-            main={
-              <WorkQueue
-                items={queueItems}
-                updatingId={updatingId}
-                handlers={{
-                  onAction: onQueueAction,
-                  onRowClick: (item) => {
-                    if (item.entity?.kind === 'order') {
-                      router.push(`/orders/${item.entity.data.id}`);
-                      return;
-                    }
-                    if (item.entity?.kind === 'delivery') {
-                      const orderId = item.entity.data.הזמנות?.id;
-                      if (orderId) router.push(`/orders/${orderId}`);
-                      else router.push('/deliveries');
-                      return;
-                    }
-                    if (item.type === 'stock') {
-                      router.push('/inventory');
-                    }
-                  },
-                  onChangeOrderStatus: onPickOrderStatus,
-                  onChangePaymentStatus: onPickPaymentStatus,
-                  onChangeDeliveryStatus: (delivery, next) => patchDelivery(delivery.id, next, delivery.סטטוס_משלוח),
-                }}
-              />
-            }
-            side={
-              <div className="space-y-2.5">
-                <AttentionPanel />
-                <DashboardInventoryAlerts stock={stock} />
-                <DashboardEmployeeTasks />
-              </div>
-            }
-          />
+          {/* Secondary row: employee tasks + quick actions */}
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+            <DashboardEmployeeTasks />
+            <AttentionPanel />
+          </div>
         </>
       ) : dashboardMode === 'attendance' ? (
         <KitchenAttendanceTab />
