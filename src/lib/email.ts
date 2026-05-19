@@ -10,6 +10,8 @@ export interface OrderEmailItem {
   // the email renders these as a clean vertical list under the product name
   // instead of stuffing them into the name string with parentheses.
   petitFours?: { name: string; quantity: number }[];
+  // When true, renders a "חדש" badge next to the item name (used in update emails).
+  isNew?: boolean;
 }
 
 export interface OrderEmailData {
@@ -28,6 +30,9 @@ export interface OrderEmailData {
   // included it).
   customerType?: string | null;
   orderType?: string | null;
+  // Update-email mode: changes heading, subject, and highlights additions.
+  isUpdate?: boolean;
+  deliveryFee?: number;
 }
 
 // Mirrors the new-order form rule: business customer + not satmar → prices
@@ -72,7 +77,7 @@ function buildHtml(customerName: string, d: OrderEmailData, logoUrl?: string): s
 
     const productRow = `
     <tr>
-      <td style="${productSep}padding:${hasPf ? '11px 0 4px' : '11px 0'};font-size:14px;font-weight:600;color:#2A1C12;text-align:right;vertical-align:top">${item.name}</td>
+      <td style="${productSep}padding:${hasPf ? '11px 0 4px' : '11px 0'};font-size:14px;font-weight:600;color:#2A1C12;text-align:right;vertical-align:top">${item.name}${item.isNew ? ' <span style="background:#F59E0B;color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:8px;margin-inline-start:4px;vertical-align:middle">חדש</span>' : ''}</td>
       <td style="${productSep}padding:${hasPf ? '11px 0 4px' : '11px 0'};font-size:13px;color:#5C4A38;text-align:left;direction:ltr;white-space:nowrap;padding-right:8px;vertical-align:top">${item.quantity} &times; ${fmt(item.unitPrice)}</td>
     </tr>`;
 
@@ -106,6 +111,12 @@ function buildHtml(customerName: string, d: OrderEmailData, logoUrl?: string): s
     </tr>` : '';
 
   // Summary rows — only show subtotal+discount if there's a discount
+  const deliveryFeeRow = (d.deliveryFee && d.deliveryFee > 0) ? `
+    <tr>
+      <td style="padding:7px 0;font-size:13px;color:#8E7D6A;text-align:right">דמי משלוח</td>
+      <td style="padding:7px 0;font-size:13px;color:#5C4A38;text-align:left;direction:ltr">${fmt(d.deliveryFee)}</td>
+    </tr>` : '';
+
   const summaryPreDiscount = d.discount > 0 ? `
     <tr>
       <td style="padding:7px 0;font-size:13px;color:#8E7D6A;text-align:right">סכום לפני הנחה</td>
@@ -121,7 +132,7 @@ function buildHtml(customerName: string, d: OrderEmailData, logoUrl?: string): s
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>אישור הזמנה ${d.orderNumber}</title>
+  <title>${d.isUpdate ? 'עדכון הזמנה' : 'אישור הזמנה'} ${d.orderNumber}</title>
 </head>
 <body style="margin:0;padding:0;background:#F7F3EC;font-family:Arial,Helvetica,sans-serif;direction:rtl">
 
@@ -148,10 +159,10 @@ function buildHtml(customerName: string, d: OrderEmailData, logoUrl?: string): s
             <!-- Greeting + heading -->
             <p style="margin:0 0 6px;font-size:13px;color:#8E7D6A;text-align:right">שלום ${customerName},</p>
             <h1 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#2A1C12;line-height:1.35;text-align:right">
-              הזמנתך התקבלה בהצלחה
+              ${d.isUpdate ? 'עדכון הזמנה' : 'הזמנתך התקבלה בהצלחה'}
             </h1>
             <p style="margin:0 0 20px;font-size:14px;color:#8A7664;line-height:1.65;text-align:right">
-              קיבלנו את ההזמנה ואנו מטפלים בה כעת.
+              ${d.isUpdate ? 'ההזמנה שלך עודכנה. להלן פירוט מלא:' : 'קיבלנו את ההזמנה ואנו מטפלים בה כעת.'}
             </p>
 
             <!-- Order details box -->
@@ -185,6 +196,7 @@ function buildHtml(customerName: string, d: OrderEmailData, logoUrl?: string): s
             <table width="100%" cellpadding="0" cellspacing="0"
                    style="border-top:1px solid #E8DED2;padding-top:4px;margin-bottom:28px">
               ${summaryPreDiscount}
+              ${deliveryFeeRow}
               ${(() => {
                 const showVat = shouldShowVat(d.customerType, d.orderType);
                 const vat = showVat ? +(d.total * VAT_RATE).toFixed(2) : 0;
@@ -250,7 +262,7 @@ function buildText(customerName: string, d: OrderEmailData): string {
   // vertical petit-four list. Mail clients that fall back to text/plain still
   // get something readable.
   const itemLines = d.items.map(item => {
-    const head = `${item.name} | כמות: ${item.quantity} | מחיר ליח': ${fmt(item.unitPrice)} | סה"כ: ${fmt(item.lineTotal)}`;
+    const head = `${item.name}${item.isNew ? ' (חדש)' : ''} | כמות: ${item.quantity} | מחיר ליח': ${fmt(item.unitPrice)} | סה"כ: ${fmt(item.lineTotal)}`;
     if (!item.petitFours || item.petitFours.length === 0) return head;
     const pfBody = item.petitFours.map(pf => `    ${pf.name} × ${pf.quantity}`).join('\n');
     return `${head}\n  בחירת פטיפורים:\n${pfBody}`;
@@ -258,7 +270,7 @@ function buildText(customerName: string, d: OrderEmailData): string {
 
   return [
     `שלום ${customerName},`,
-    `קיבלנו את הזמנתך. להלן פירוט מלא.`,
+    d.isUpdate ? `ההזמנה שלך עודכנה. להלן פירוט מלא:` : `קיבלנו את הזמנתך. להלן פירוט מלא.`,
     '',
     line,
     `מספר הזמנה: ${d.orderNumber}`,
@@ -273,6 +285,7 @@ function buildText(customerName: string, d: OrderEmailData): string {
     `סכום לפני הנחה: ${fmt(d.subtotal)}`,
     d.discount > 0 ? `הנחה: -${fmt(d.discount)}` : '',
     d.discount > 0 ? `סכום אחרי הנחה: ${fmt(afterDiscount)}` : '',
+    (d.deliveryFee && d.deliveryFee > 0) ? `דמי משלוח: ${fmt(d.deliveryFee)}` : '',
     showVat ? `סה"כ לפני מע"מ: ${fmt(d.total)}` : '',
     showVat ? `מע"מ (18%): ${fmt(vat)}` : '',
     showVat ? `סה"כ כולל מע"מ: ${fmt(finalTotal)}` : `סה"כ לתשלום: ${fmt(d.total)}`,
@@ -330,7 +343,9 @@ export async function sendOrderEmail(
   sgMail.setApiKey(apiKey);
 
   const subject = orderData
-    ? `סיכום הזמנה ${orderData.orderNumber} — ${BUSINESS}`
+    ? orderData.isUpdate
+      ? `עדכון הזמנה ${orderData.orderNumber} — ${BUSINESS}`
+      : `סיכום הזמנה ${orderData.orderNumber} — ${BUSINESS}`
     : `סיכום הזמנה — ${BUSINESS}`;
 
   let logoUrl: string | undefined;

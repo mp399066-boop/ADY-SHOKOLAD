@@ -46,8 +46,10 @@ export async function POST(_: NextRequest, { params }: { params: { id: string } 
     subtotal:     Number(o['סכום_לפני_הנחה'] || 0),
     discount:     Number(o['סכום_הנחה']        || 0),
     total:        Number(o['סך_הכל_לתשלום']    || 0),
+    deliveryFee:  Number(o['דמי_משלוח']         || 0),
     customerType: (customer?.['סוג_לקוח']  as string) || null,
     orderType:    (o['סוג_הזמנה']         as string) || null,
+    isUpdate:     true,
     items: (items || []).map((item: Record<string, unknown>) => {
       const prod        = item['מוצרים_למכירה']          as Record<string, unknown> | null;
       const pfSelections = item['בחירת_פטיפורים_בהזמנה'] as Record<string, unknown>[] | null;
@@ -60,10 +62,12 @@ export async function POST(_: NextRequest, { params }: { params: { id: string } 
         })
         .filter((p): p is { name: string; quantity: number } => p !== null && p.quantity > 0);
 
-      const isPackage = item['סוג_שורה'] === 'מארז';
+      const rowType = item['סוג_שורה'] as string;
+      const isPackage = rowType === 'מארז';
+      const isCustom  = rowType === 'מוצר_ידני' || rowType === 'תוספת_תשלום';
       const name = isPackage
         ? `מארז ${item['גודל_מארז'] || ''} פטיפורים`
-        : item['סוג_שורה'] === 'מוצר_ידני' || item['סוג_שורה'] === 'תוספת_תשלום'
+        : isCustom
           ? (item['שם_פריט_מותאם'] as string) || 'פריט'
           : (prod?.['שם_מוצר'] as string) || 'פריט';
 
@@ -73,6 +77,7 @@ export async function POST(_: NextRequest, { params }: { params: { id: string } 
         unitPrice: Number(item['מחיר_ליחידה']   || 0),
         lineTotal: Number(item['סהכ']            || 0),
         ...(isPackage && petitFours.length > 0 ? { petitFours } : {}),
+        ...(isCustom ? { isNew: true } : {}),
       };
     }),
   };
