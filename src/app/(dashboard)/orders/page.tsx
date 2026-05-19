@@ -427,62 +427,130 @@ function ProductionSummaryBar() {
         </div>
       </div>
 
-      {/* ── Expanded breakdown ── */}
+      {/* ── Expanded breakdown — KPI cards ── */}
       {open && data && !isEmpty && (
-        <div className="border-t px-4 py-3 space-y-3" style={{ borderColor: '#EAE0D4', backgroundColor: '#FAF7F2' }}>
-          {data.products.length > 0 && (
-            <div>
-              <p className="text-xs font-semibold mb-1.5" style={{ color: '#6B4A2D' }}>מוצרים</p>
-              <div className="flex flex-wrap gap-1.5">
-                {data.products.map((p, i) => (
-                  <span key={i} className="text-xs px-2.5 py-1 rounded-full"
-                    style={{ backgroundColor: '#F4E8D8', color: '#8B5E34' }}>
-                    {p.שם_מוצר} — {p.כמות_כוללת}
+        <div className="border-t px-4 py-4" style={{ borderColor: '#EAE0D4', backgroundColor: '#FAF7F2' }}>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+
+            {/* ── Card 1: מוצרים ── */}
+            {data.products.length > 0 && (
+              <div className="rounded-xl px-4 py-3" style={{ backgroundColor: '#FFFDF8', border: '1px solid #EDE0CE' }}>
+                {/* KPI header */}
+                <div className="flex items-end gap-2 mb-0.5">
+                  <span className="text-[28px] font-bold leading-none tabular-nums" style={{ color: '#8B5E34' }}>
+                    {totalProds}
                   </span>
-                ))}
-              </div>
-            </div>
-          )}
-          {data.packages.length > 0 && (
-            <div>
-              <p className="text-xs font-semibold mb-1.5" style={{ color: '#6B4A2D' }}>מארזים</p>
-              <div className="flex flex-wrap gap-1.5">
-                {data.packages.map(pkg => (
-                  <span key={pkg.גודל_מארז} className="text-xs px-2.5 py-1 rounded-full"
-                    style={{ backgroundColor: '#F4E8D8', color: '#8B5E34' }}>
-                    מארז {pkg.גודל_מארז} — {pkg.כמות_כוללת} יח׳
-                    {pkg.פטיפורים_כוללים > 0 && ` (${pkg.פטיפורים_כוללים} פטיפורים)`}
+                  <span className="text-[11px] font-semibold pb-0.5 leading-4" style={{ color: '#9B7A5A' }}>
+                    יחידות
                   </span>
-                ))}
+                </div>
+                <p className="text-[11px] font-bold mb-2.5" style={{ color: '#2B1A10' }}>מוצרים</p>
+                <p className="text-[10px] mb-2" style={{ color: '#B09070' }}>
+                  {data.products.length} {data.products.length === 1 ? 'סוג' : 'סוגים'}
+                </p>
+                {/* Item list */}
+                <div className="space-y-1 border-t pt-2" style={{ borderColor: '#F0E6D6' }}>
+                  {data.products.map((p, i) => (
+                    <div key={i} className="flex items-center justify-between gap-2">
+                      <span className="text-[11.5px] truncate" style={{ color: '#4A3020' }}>{p.שם_מוצר}</span>
+                      <span className="text-[11px] font-bold tabular-nums shrink-0 px-1.5 py-0.5 rounded"
+                        style={{ backgroundColor: '#F4E8D8', color: '#8B5E34' }}>
+                        ×{p.כמות_כוללת}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
-          {data.petit_fours.length > 0 && (
-            <div>
-              <p className="text-xs font-semibold mb-1.5" style={{ color: '#6B4A2D' }}>סוגי פטיפורים</p>
-              <div className="flex flex-wrap gap-1.5">
-                {data.petit_fours.map(pf => (
-                  <span key={pf.פטיפור_id} className="text-xs px-2.5 py-1 rounded-full"
-                    style={{ backgroundColor: '#EDE9FE', color: '#5B21B6' }}>
-                    {pf.שם_פטיפור} — {pf.כמות_כוללת}
+            )}
+
+            {/* ── Card 2: מארזים ── */}
+            {data.packages.length > 0 && (
+              <div className="rounded-xl px-4 py-3" style={{ backgroundColor: '#FFFDF8', border: '1px solid #EDE0CE' }}>
+                {/* KPI header */}
+                <div className="flex items-end gap-2 mb-0.5">
+                  <span className="text-[28px] font-bold leading-none tabular-nums" style={{ color: '#8B5E34' }}>
+                    {totalPkgs}
                   </span>
-                ))}
-              </div>
-            </div>
-          )}
-          {data.custom_items.length > 0 && (
-            <div>
-              <p className="text-xs font-semibold mb-1.5" style={{ color: '#6B4A2D' }}>ידניים / תוספות</p>
-              <div className="flex flex-wrap gap-1.5">
-                {data.custom_items.map((item, i) => (
-                  <span key={i} className="text-xs px-2.5 py-1 rounded-full"
-                    style={{ backgroundColor: '#F3F4F6', color: '#374151' }}>
-                    {item.שם_פריט_מותאם} — {item.כמות_כוללת}
+                  <span className="text-[11px] font-semibold pb-0.5 leading-4" style={{ color: '#9B7A5A' }}>
+                    יחידות
                   </span>
-                ))}
+                </div>
+                <p className="text-[11px] font-bold mb-2.5" style={{ color: '#2B1A10' }}>מארזים</p>
+                <p className="text-[10px] mb-2" style={{ color: '#B09070' }}>
+                  {data.packages.length} {data.packages.length === 1 ? 'גודל' : 'גדלים'}
+                  {totalPF > 0 && ` · ${totalPF} פטיפורים`}
+                </p>
+                {/* Package size rows */}
+                <div className="space-y-1 border-t pt-2" style={{ borderColor: '#F0E6D6' }}>
+                  {data.packages.map(pkg => (
+                    <div key={pkg.גודל_מארז} className="space-y-0.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11.5px]" style={{ color: '#4A3020' }}>מארז {pkg.גודל_מארז}</span>
+                        <span className="text-[11px] font-bold tabular-nums shrink-0 px-1.5 py-0.5 rounded"
+                          style={{ backgroundColor: '#F4E8D8', color: '#8B5E34' }}>
+                          ×{pkg.כמות_כוללת}
+                        </span>
+                      </div>
+                      {pkg.פטיפורים_כוללים > 0 && (
+                        <p className="text-[10px] pr-1" style={{ color: '#A090A0' }}>
+                          {pkg.פטיפורים_כוללים} פטיפורים
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {/* Petit-four breakdown inside packages card */}
+                {data.petit_fours.length > 0 && (
+                  <div className="mt-2.5 pt-2 space-y-1 border-t" style={{ borderColor: '#EDE9FE' }}>
+                    <p className="text-[9.5px] font-bold uppercase tracking-widest mb-1.5" style={{ color: '#7C5CBF' }}>
+                      סוגי פטיפורים
+                    </p>
+                    {data.petit_fours.map(pf => (
+                      <div key={pf.פטיפור_id} className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] truncate" style={{ color: '#4A3060' }}>{pf.שם_פטיפור}</span>
+                        <span className="text-[11px] font-bold tabular-nums shrink-0 px-1.5 py-0.5 rounded"
+                          style={{ backgroundColor: '#EDE9FE', color: '#5B21B6' }}>
+                          ×{pf.כמות_כוללת}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
-          )}
+            )}
+
+            {/* ── Card 3: ידניים / תוספות ── */}
+            {data.custom_items.length > 0 && (
+              <div className="rounded-xl px-4 py-3" style={{ backgroundColor: '#FFFDF8', border: '1px solid #EDE0CE' }}>
+                {/* KPI header */}
+                <div className="flex items-end gap-2 mb-0.5">
+                  <span className="text-[28px] font-bold leading-none tabular-nums" style={{ color: '#8B5E34' }}>
+                    {totalCust}
+                  </span>
+                  <span className="text-[11px] font-semibold pb-0.5 leading-4" style={{ color: '#9B7A5A' }}>
+                    יחידות
+                  </span>
+                </div>
+                <p className="text-[11px] font-bold mb-2.5" style={{ color: '#2B1A10' }}>ידניים / תוספות</p>
+                <p className="text-[10px] mb-2" style={{ color: '#B09070' }}>
+                  {data.custom_items.length} {data.custom_items.length === 1 ? 'פריט' : 'פריטים'}
+                </p>
+                {/* Item list */}
+                <div className="space-y-1 border-t pt-2" style={{ borderColor: '#F0E6D6' }}>
+                  {data.custom_items.map((item, i) => (
+                    <div key={i} className="flex items-center justify-between gap-2">
+                      <span className="text-[11.5px] truncate" style={{ color: '#4A3020' }}>{item.שם_פריט_מותאם}</span>
+                      <span className="text-[11px] font-bold tabular-nums shrink-0 px-1.5 py-0.5 rounded"
+                        style={{ backgroundColor: '#F3F4F6', color: '#374151' }}>
+                        ×{item.כמות_כוללת}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+          </div>
         </div>
       )}
     </div>
