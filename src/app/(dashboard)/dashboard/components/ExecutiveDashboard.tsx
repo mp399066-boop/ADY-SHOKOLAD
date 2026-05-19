@@ -530,7 +530,6 @@ export function ExecutiveDashboard({
       <AnalyticsTabs
         liveOrders={liveOrders}
         todayDeliveries={todayDeliveries}
-        stats={stats}
         urgentItems={urgentItems}
         onNavigate={onNavigate}
       />
