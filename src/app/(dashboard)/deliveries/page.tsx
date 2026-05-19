@@ -19,7 +19,15 @@ import toast from 'react-hot-toast';
 
 // ─── Delivery summary KPI cards (grouped by date → city) ───────────────────
 
-function DeliverySummaryPanel({ deliveries }: { deliveries: DeliveryWithCourier[] }) {
+function DeliverySummaryPanel({
+  deliveries,
+  cityFilter,
+  onCityClick,
+}: {
+  deliveries: DeliveryWithCourier[];
+  cityFilter: string;
+  onCityClick: (city: string) => void;
+}) {
   const active = deliveries.filter(d => d.סטטוס_משלוח !== 'נמסר');
   if (active.length === 0) return null;
 
@@ -42,18 +50,6 @@ function DeliverySummaryPanel({ deliveries }: { deliveries: DeliveryWithCourier[
     } catch { return dateKey; }
   }
 
-  function cityBreakdown(items: DeliveryWithCourier[]): string {
-    const byCity = new Map<string, number>();
-    for (const d of items) {
-      const city = (d.עיר || '').trim() || 'לא צוינה';
-      byCity.set(city, (byCity.get(city) || 0) + 1);
-    }
-    return Array.from(byCity.entries())
-      .sort((a, b) => b[1] - a[1])
-      .map(([city, n]) => `${city} ${n}`)
-      .join(' · ');
-  }
-
   const truckIcon = (
     <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
       <rect x="1" y="3" width="15" height="13" rx="1" />
@@ -69,6 +65,14 @@ function DeliverySummaryPanel({ deliveries }: { deliveries: DeliveryWithCourier[
     <div className={`grid grid-cols-1 ${colCls} gap-3`}>
       {sortedDates.map(dateKey => {
         const items = byDate.get(dateKey)!;
+
+        const byCity = new Map<string, number>();
+        for (const d of items) {
+          const city = (d.עיר || '').trim() || 'לא צוינה';
+          byCity.set(city, (byCity.get(city) || 0) + 1);
+        }
+        const sortedCities = Array.from(byCity.entries()).sort((a, b) => b[1] - a[1]);
+
         return (
           <div
             key={dateKey || '__no_date__'}
@@ -84,7 +88,24 @@ function DeliverySummaryPanel({ deliveries }: { deliveries: DeliveryWithCourier[
             <div className="min-w-0 flex-1">
               <p className="text-[10.5px] font-semibold mb-0.5 truncate" style={{ color: '#AF9A87' }}>{formatDateLabel(dateKey)}</p>
               <p className="text-[20px] font-bold tabular-nums leading-none" style={{ color: '#2F1B14' }}>{items.length}</p>
-              <p className="text-[10px] mt-1 truncate" style={{ color: '#7B604D' }}>{cityBreakdown(items)}</p>
+              <div className="flex flex-wrap gap-1 mt-1.5">
+                {sortedCities.map(([city, n]) => {
+                  const isActive = cityFilter === city;
+                  return (
+                    <button
+                      key={city}
+                      onClick={() => onCityClick(isActive ? '' : city)}
+                      className="text-[10px] font-semibold px-2 py-0.5 rounded-full transition-colors"
+                      style={{
+                        backgroundColor: isActive ? '#496D7D' : '#E5EEF1',
+                        color: isActive ? '#FFFFFF' : '#496D7D',
+                      }}
+                    >
+                      {city} {n}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
         );
@@ -235,6 +256,7 @@ function DeliveriesContent() {
   const [loading, setLoading] = useState(true);
   const [date, setDate] = useState(defaultDate);
   const [statusFilter, setStatusFilter] = useState('');
+  const [cityFilter, setCityFilter] = useState(searchParams.get('city') || '');
   const [couriers, setCouriers] = useState<Courier[]>([]);
   const [highlight, setHighlight] = useState(highlightId);
 
@@ -619,18 +641,41 @@ function DeliveriesContent() {
   return (
     <div className="space-y-4">
       {/* Delivery summary KPI cards — date × city, above filters */}
-      {!loading && <DeliverySummaryPanel deliveries={deliveries} />}
+      {!loading && (
+        <DeliverySummaryPanel
+          deliveries={deliveries}
+          cityFilter={cityFilter}
+          onCityClick={setCityFilter}
+        />
+      )}
 
       {/* Filters */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap">
         <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-44" label="" />
         <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="w-44">
           <option value="">כל הסטטוסים</option>
           {(['ממתין', 'נאסף'] as const).map(s => <option key={s} value={s}>{s}</option>)}
         </Select>
+        {cityFilter && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-[12px] font-semibold" style={{ color: '#496D7D' }}>
+              מציג משלוחים: {cityFilter}
+            </span>
+            <button
+              onClick={() => setCityFilter('')}
+              className="text-[11px] px-2 py-0.5 rounded-full border transition-colors hover:opacity-75"
+              style={{ borderColor: '#E8D8C6', color: '#7B604D', backgroundColor: '#FFFDF9' }}
+            >
+              נקה סינון
+            </button>
+          </div>
+        )}
         {/* Active deliveries: hide נמסר — those live in ארכיון tab */}
         <span className="text-sm mr-auto" style={{ color: '#6B4A2D' }}>
-          {deliveries.filter(d => d.סטטוס_משלוח !== 'נמסר').length} משלוחים פעילים
+          {deliveries.filter(d =>
+            d.סטטוס_משלוח !== 'נמסר' &&
+            (!cityFilter || (d.עיר || '').trim() === cityFilter)
+          ).length} משלוחים פעילים
         </span>
         <button
           onClick={handleExport}
@@ -642,12 +687,21 @@ function DeliveriesContent() {
         </button>
       </div>
 
-      {/* Delivery cards — active only (exclude נמסר) */}
-      {loading ? <PageLoading /> : deliveries.filter(d => d.סטטוס_משלוח !== 'נמסר').length === 0 ? (
-        <EmptyState title="אין משלוחים פעילים" description="כל המשלוחים נמסרו או אין משלוחים לתצוגה" />
+      {/* Delivery cards — active only (exclude נמסר); city filter applied when set */}
+      {loading ? <PageLoading /> : deliveries.filter(d =>
+        d.סטטוס_משלוח !== 'נמסר' &&
+        (!cityFilter || (d.עיר || '').trim() === cityFilter)
+      ).length === 0 ? (
+        <EmptyState
+          title={cityFilter ? `אין משלוחים ל${cityFilter}` : 'אין משלוחים פעילים'}
+          description={cityFilter ? 'נסי לנקות את הסינון כדי לראות את כל המשלוחים' : 'כל המשלוחים נמסרו או אין משלוחים לתצוגה'}
+        />
       ) : (
         <div className="space-y-3">
-          {deliveries.filter(d => d.סטטוס_משלוח !== 'נמסר').map(d => {
+          {deliveries.filter(d =>
+            d.סטטוס_משלוח !== 'נמסר' &&
+            (!cityFilter || (d.עיר || '').trim() === cityFilter)
+          ).map(d => {
             const order = (d as DeliveryWithCourier & { הזמנות?: OrderJoin }).הזמנות;
             const customerName = order?.לקוחות
               ? `${order.לקוחות.שם_פרטי} ${order.לקוחות.שם_משפחה}`

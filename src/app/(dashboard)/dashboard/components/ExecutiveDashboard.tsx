@@ -493,14 +493,15 @@ export function ExecutiveDashboard({
         <div className="flex items-center gap-2 flex-wrap px-0.5">
           <span className="text-[10.5px] font-semibold" style={{ color: C.textMuted }}>אזורי משלוח פעילים:</span>
           {deliveryCities.map(([city, count]) => (
-            <span
+            <button
               key={city}
-              className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold px-2 py-0.5 rounded-full"
+              onClick={() => onNavigate(`/deliveries?city=${encodeURIComponent(city)}`)}
+              className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold px-2 py-0.5 rounded-full transition-all hover:-translate-y-0.5 cursor-pointer"
               style={{ backgroundColor: C.blueSoft, color: C.blue }}
             >
               {city}
               <span className="font-bold tabular-nums">{count}</span>
-            </span>
+            </button>
           ))}
         </div>
       )}
