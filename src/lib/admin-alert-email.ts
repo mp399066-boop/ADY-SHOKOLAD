@@ -7,7 +7,7 @@ import { createAdminClient } from '@/lib/supabase/server';
 // a polished document instead of plain text. Only sent on a real new order;
 // finalize-draft is intentionally silent (no duplicate notification).
 
-const ADMIN_TO = 'adi548419927@gmail.com';
+const ADMIN_TO = process.env.MANAGER_NOTIFICATION_EMAIL || 'adi548419927@gmail.com';
 const BUSINESS = 'עדי תכשיט שוקולד';
 
 type AlertItem = {
@@ -51,13 +51,11 @@ function buildHtml(args: {
   items: AlertItem[];
   total: number;
   isUrgent: boolean;
-  // Source attribution — set by callers like the WC webhook so the email
-  // explicitly says "נכנסה הזמנה חדשה מהאתר" instead of generic "new order".
-  source?: string | null;            // e.g. 'WooCommerce'
-  sourceOrderNumber?: string | null; // e.g. WC order # 4750
-  // Products that were auto-created in this webhook run. Surfaces a callout
-  // so the operator immediately knows new SKUs entered the catalog.
+  source?: string | null;
+  sourceOrderNumber?: string | null;
   newProducts?: { id: string; name: string }[];
+  // Direct CRM link so the operator can open the order with one click.
+  orderLink?: string | null;
 }): string {
   const a = args;
 
@@ -255,6 +253,17 @@ function buildHtml(args: {
           </td>
         </tr>
 
+        <!-- CTA: open order in CRM -->
+        ${a.orderLink ? `<tr>
+          <td style="padding:0 40px 28px;text-align:center">
+            <a href="${escapeHtml(a.orderLink)}"
+               style="display:inline-block;padding:12px 28px;background:#2F1B14;color:#FFFFFF;text-decoration:none;font-size:14px;font-weight:700;border-radius:10px;letter-spacing:0.01em"
+               dir="rtl">
+              פתחי הזמנה במערכת ←
+            </a>
+          </td>
+        </tr>` : ''}
+
         <!-- Footer -->
         <tr>
           <td style="background:#FDFAF5;padding:16px 40px;border-top:1px solid #F0EAE0;text-align:center">
@@ -420,6 +429,9 @@ export async function sendAdminNewOrderAlert(orderId: string, options: AdminAler
     };
   });
 
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL?.replace(/\/$/, '') ?? '';
+  const orderLink = baseUrl ? `${baseUrl}/orders/${orderId}` : null;
+
   const args = {
     orderNumber: (order as Record<string, unknown>).מספר_הזמנה as string ?? '',
     customerName,
@@ -441,12 +453,13 @@ export async function sendAdminNewOrderAlert(orderId: string, options: AdminAler
     source: options.source ?? null,
     sourceOrderNumber: options.sourceOrderNumber != null ? String(options.sourceOrderNumber) : null,
     newProducts: options.newProducts ?? [],
+    orderLink,
   };
 
-  // Subject changes for WC orders so the operator can see at-a-glance from
-  // the inbox that this came from the website.
+  // WooCommerce orders get the shopping-bag emoji so the owner sees at a
+  // glance in the inbox that this came from the website.
   const subject = options.source === 'WooCommerce'
-    ? `הזמנה חדשה מהאתר ${args.orderNumber} — ${customerName}`
+    ? `🛍️ הזמנה חדשה מהאתר #${args.orderNumber} — ${customerName}`
     : `הזמנה חדשה ${args.orderNumber} — ${customerName}`;
 
   sgMail.setApiKey(apiKey);

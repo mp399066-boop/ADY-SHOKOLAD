@@ -33,6 +33,8 @@ import { WorkQueue } from './components/WorkQueue';
 import { AttentionPanel } from './components/AttentionPanel';
 import { DashboardInventoryAlerts } from './components/DashboardInventoryAlerts';
 import { DashboardEmployeeTasks } from './components/DashboardEmployeeTasks';
+import { NewWebsiteOrderBanner } from '@/components/dashboard/NewWebsiteOrderBanner';
+import { useNewWebsiteOrderNotifications } from '@/hooks/useNewWebsiteOrderNotifications';
 import { buildQueueItems, type QueueItem } from './components/queue-builder';
 import { buildKitchenView } from '@/lib/dashboard/kitchen-view';
 import { KitchenView } from './components/KitchenView';
@@ -148,6 +150,15 @@ function SectionLabel({ label }: { label: string }) {
 
 export default function DashboardPage() {
   const router = useRouter();
+
+  // ── Website order notifications (Supabase Realtime) ─────────────────────
+  const {
+    orders: websiteOrders,
+    dismiss: dismissWebsiteOrder,
+    dismissAll: dismissAllWebsiteOrders,
+    isMuted: websiteOrdersMuted,
+    setMuted: setWebsiteOrdersMuted,
+  } = useNewWebsiteOrderNotifications();
 
   // ── Data state ──────────────────────────────────────────────────────────
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -564,6 +575,14 @@ export default function DashboardPage() {
 
   return (
     <div dir="rtl" className="mx-auto max-w-[1360px] space-y-3 pb-10 px-2 sm:px-3" style={{ backgroundColor: C.bg }}>
+
+      <NewWebsiteOrderBanner
+        orders={websiteOrders}
+        onDismiss={dismissWebsiteOrder}
+        onDismissAll={dismissAllWebsiteOrders}
+        isMuted={websiteOrdersMuted}
+        onToggleMute={() => setWebsiteOrdersMuted(!websiteOrdersMuted)}
+      />
 
       <CommandHeader
         greeting={greeting}
