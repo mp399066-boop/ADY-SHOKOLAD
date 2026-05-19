@@ -70,17 +70,17 @@ function ItemRow({
   qtyTextColor?: string;
 }) {
   return (
-    <div className="flex items-center gap-2.5 py-2" style={{ borderBottom: `1px solid ${C.borderSoft}` }}>
-      <span className="flex-1 text-sm font-medium truncate" style={{ color: C.text }}>{name}</span>
-      <span className="text-sm font-bold px-2.5 py-0.5 rounded-lg tabular-nums"
+    <div className="flex items-center gap-2.5 py-1.5" style={{ borderBottom: `1px solid ${C.borderSoft}` }}>
+      <span className="flex-1 text-[12px] font-medium truncate" style={{ color: C.text }}>{name}</span>
+      <span className="text-[12px] font-bold px-2.5 py-0.5 rounded-lg tabular-nums"
         style={{ backgroundColor: qtyBgColor ?? C.brandSoft, color: qtyTextColor ?? C.brand, minWidth: '2.5rem', textAlign: 'center' }}>
         {qty}
       </span>
-      <span className="text-xs shrink-0" style={{ color: C.textMuted }}>
+      <span className="text-[10.5px] shrink-0" style={{ color: C.textMuted }}>
         {orderCount} הז׳
       </span>
       {nearest && (
-        <span className="text-xs shrink-0" style={{ color: C.textMuted }}>
+        <span className="text-[10.5px] shrink-0" style={{ color: C.textMuted }}>
           | {fmtDate(nearest)}
         </span>
       )}
@@ -134,7 +134,7 @@ export function ProductionSummaryCard() {
       style={{ background: C.card, border: `1px solid ${C.border}`, boxShadow: '0 1px 6px rgba(58,42,26,0.05)' }}>
 
       {/* ── Card header ── */}
-      <div className="flex flex-wrap items-start justify-between gap-3 px-5 py-4"
+      <div className="flex flex-wrap items-start justify-between gap-3 px-3.5 py-3"
         style={{ borderBottom: `1px solid ${C.border}`, backgroundColor: '#FDFAF5' }}>
         <div>
           <div className="flex items-center gap-2">
@@ -157,7 +157,7 @@ export function ProductionSummaryCard() {
       </div>
 
       {/* ── Body ── */}
-      <div className="px-5 py-4">
+      <div className="px-3.5 py-3">
 
           {loading && (
             <div className="flex items-center justify-center py-8">
@@ -173,7 +173,7 @@ export function ProductionSummaryCard() {
           )}
 
           {!loading && hasAnything && (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 gap-4">
 
               {/* ── Products ── */}
               {data!.products.length > 0 && (

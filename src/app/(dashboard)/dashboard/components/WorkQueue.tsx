@@ -166,6 +166,7 @@ function ActionColumn({
       style={{
         backgroundColor: C.card,
         border: `1px solid ${C.border}`,
+        borderRight: `3px solid ${accent}`,
         boxShadow: '0 6px 18px rgba(47,27,20,0.045)',
       }}
     >
@@ -175,10 +176,6 @@ function ActionColumn({
       >
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0 flex items-center gap-2">
-            <span
-              className="w-2 h-2 rounded-full flex-shrink-0"
-              style={{ backgroundColor: accent }}
-            />
             <h3 className="text-[13.5px] font-bold" style={{ color: C.text }}>{title}</h3>
             <span className="text-[11px] truncate" style={{ color: C.textMuted }}>· {subtitle}</span>
           </div>

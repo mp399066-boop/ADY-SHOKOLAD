@@ -26,12 +26,12 @@ function severityLabel(status: string): string {
   return 'נמוך';
 }
 
-function AlertRow({ row }: { row: StockRow }) {
+function AlertRow({ row, isLast }: { row: StockRow; isLast: boolean }) {
   const color = severityColor(row.status);
   return (
     <div
       className="flex items-center gap-2 py-1.5"
-      style={{ borderBottom: `1px solid ${C.borderSoft}` }}
+      style={isLast ? undefined : { borderBottom: `1px solid ${C.borderSoft}` }}
     >
       <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
       <span className="flex-1 text-[12px] font-medium truncate" style={{ color: C.text }}>{row.שם}</span>
@@ -69,7 +69,7 @@ export function DashboardInventoryAlerts({ stock }: { stock: Stock }) {
           <p className="text-[10px] font-semibold uppercase tracking-wide mb-1" style={{ color: C.textMuted }}>
             מוצרים ופטיפורים
           </p>
-          {finishedGoods.map(r => <AlertRow key={`p-${r.id}`} row={r} />)}
+          {finishedGoods.map((r, i) => <AlertRow key={`p-${r.id}`} row={r} isLast={i === finishedGoods.length - 1} />)}
         </div>
       )}
 
@@ -78,7 +78,7 @@ export function DashboardInventoryAlerts({ stock }: { stock: Stock }) {
           <p className="text-[10px] font-semibold uppercase tracking-wide mb-1" style={{ color: C.textMuted }}>
             חומרי גלם
           </p>
-          {rawMats.map(r => <AlertRow key={`r-${r.id}`} row={r} />)}
+          {rawMats.map((r, i) => <AlertRow key={`r-${r.id}`} row={r} isLast={i === rawMats.length - 1} />)}
         </div>
       )}
 

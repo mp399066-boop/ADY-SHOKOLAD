@@ -593,7 +593,7 @@ export default function DashboardPage() {
       <DashboardViewSwitcher mode={dashboardMode} onChange={setDashboardMode} />
 
       {dashboardMode === 'management' ? (
-        <>
+        <div className="space-y-2">
           <FocusStrip
             ordersTodayCount={ordersTodayCount}
             deliveriesTodayCount={deliveriesTodayActive}
@@ -643,7 +643,7 @@ export default function DashboardPage() {
             <DashboardEmployeeTasks />
             <AttentionPanel />
           </div>
-        </>
+        </div>
       ) : dashboardMode === 'attendance' ? (
         <KitchenAttendanceTab />
       ) : (

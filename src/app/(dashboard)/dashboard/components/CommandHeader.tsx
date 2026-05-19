@@ -12,7 +12,7 @@ export function CommandHeader({
 }) {
   return (
     <header
-      className="rounded-xl px-4 py-3.5 sm:px-5"
+      className="rounded-xl px-4 py-3 sm:px-5"
       style={{ backgroundColor: '#FFFFFF', border: `1px solid ${C.border}`, boxShadow: '0 6px 18px rgba(47,27,20,0.045)' }}
     >
       <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -23,9 +23,6 @@ export function CommandHeader({
           <h1 className="text-[21px] sm:text-[25px] font-bold leading-tight" style={{ color: C.text, letterSpacing: 0 }}>
             {greeting}, זה לוח העבודה של היום
           </h1>
-          <p className="text-[12px] mt-1 leading-5 max-w-3xl" style={{ color: C.textSoft }}>
-            עדכוני הזמנות, תשלומים, משלוחים ומלאי מחולקים לפי פעולה. נכנסים לעמודה, סוגרים טיפול, ממשיכים הלאה.
-          </p>
         </div>
 
         <div className="flex items-center gap-2">

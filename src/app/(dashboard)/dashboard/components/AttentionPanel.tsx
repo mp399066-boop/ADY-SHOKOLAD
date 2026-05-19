@@ -65,12 +65,12 @@ function QuickAction({
       style={{ backgroundColor: C.card, border: `1px solid ${C.border}`, color: C.text }}
     >
       <span
-        className="flex h-7 w-7 items-center justify-center rounded-full transition-colors shrink-0"
+        className="flex h-8 w-8 items-center justify-center rounded-full transition-colors shrink-0"
         style={{ backgroundColor: C.brandSoft, color: C.brand }}
       >
         <svg
           viewBox="0 0 24 24"
-          className="h-3.5 w-3.5"
+          className="h-4 w-4"
           fill="none"
           stroke="currentColor"
           strokeWidth={1.8}
@@ -80,7 +80,7 @@ function QuickAction({
           {children}
         </svg>
       </span>
-      <span className="text-[11.5px] font-bold truncate">{label}</span>
+      <span className="text-[12px] font-bold truncate">{label}</span>
     </Link>
   );
 }

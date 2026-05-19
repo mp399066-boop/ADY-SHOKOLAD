@@ -28,14 +28,10 @@ export function FocusStrip({
 }: Props) {
   return (
     <section
-      className="rounded-xl p-2.5"
+      className="rounded-xl p-1.5"
       style={{ backgroundColor: '#FFFDF9', border: `1px solid ${C.border}`, boxShadow: '0 6px 18px rgba(47,27,20,0.045)' }}
     >
-      <div className="flex items-center justify-between gap-3 px-1.5 pb-2">
-        <h2 className="text-[13.5px] font-bold" style={{ color: C.text }}>תמונת מצב יומית</h2>
-        <span className="text-[10.5px] font-semibold" style={{ color: C.textSoft }}>לחיצה פותחת טיפול מלא</span>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-1.5">
       <Cell
         label="הזמנות להיום"
         value={String(ordersTodayCount)}
