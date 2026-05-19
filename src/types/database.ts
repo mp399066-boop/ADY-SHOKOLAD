@@ -200,6 +200,8 @@ export interface Order {
   הערות_להזמנה: string | null;
   תאריך_יצירה: string;
   תאריך_עדכון: string;
+  summary_email_sent_at: string | null;
+  summary_email_sent_total: number | null;
   לקוחות?: Customer;
 }
 

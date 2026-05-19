@@ -277,6 +277,7 @@ export default function OrderDetailPage() {
   const [taskEmployees, setTaskEmployees]   = useState<Employee[]>([]);
   const [showAddTaskModal, setShowAddTaskModal] = useState(false);
   const [showPayPlusModal, setShowPayPlusModal] = useState(false);
+  const [sendingSummaryEmail, setSendingSummaryEmail] = useState(false);
   const [newTaskTitle, setNewTaskTitle]     = useState('');
   const [newTaskEmpId, setNewTaskEmpId]     = useState('');
   const [newTaskDate, setNewTaskDate]       = useState('');
@@ -432,6 +433,21 @@ export default function OrderDetailPage() {
     fetch(`/api/orders/${id}`)
       .then(r => r.json())
       .then(({ data }) => { if (data) setOrder(data); });
+  };
+
+  const sendSummaryEmail = async () => {
+    setSendingSummaryEmail(true);
+    try {
+      const res = await fetch(`/api/orders/${id}/send-email`, { method: 'POST' });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'שגיאה');
+      toast.success(json.message || 'סיכום נשלח ללקוח');
+      reloadOrder();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'שגיאה בשליחה');
+    } finally {
+      setSendingSummaryEmail(false);
+    }
   };
 
   useEffect(() => { loadOrder(); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1402,6 +1418,44 @@ export default function OrderDetailPage() {
                     <span>יתרה לתשלום</span>
                     <span className="tabular-nums">{formatCurrency(balance)}</span>
                   </div>
+                </div>
+              );
+            })()}
+            {/* Updated-total notice + send button */}
+            {(() => {
+              const sentTotal = order.summary_email_sent_total;
+              const currentTotal = order.סך_הכל_לתשלום ?? 0;
+              const totalChanged = sentTotal != null && Math.abs(sentTotal - currentTotal) > 0.01;
+              const customerEmail = (order.לקוחות as Customer | null)?.אימייל;
+              if (!customerEmail) return null;
+              return (
+                <div className="mt-3 pt-3 space-y-2" style={{ borderTop: '1px solid #E7D2A6' }}>
+                  {totalChanged && (
+                    <div
+                      className="rounded-lg px-3 py-2 text-xs leading-snug"
+                      style={{ backgroundColor: '#FEF3C7', border: '1px solid #F59E0B', color: '#92400E' }}
+                    >
+                      הסכום עודכן מאז הסיכום האחרון שנשלח ללקוח
+                      {order.summary_email_sent_at && (
+                        <span className="block mt-0.5 opacity-75">
+                          נשלח: {new Date(order.summary_email_sent_at).toLocaleDateString('he-IL')} —
+                          {' '}{formatCurrency(sentTotal!)}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  <button
+                    onClick={() => void sendSummaryEmail()}
+                    disabled={sendingSummaryEmail}
+                    className="w-full text-xs font-medium py-2 px-3 rounded-lg transition-all disabled:opacity-50"
+                    style={{
+                      backgroundColor: totalChanged ? '#8B5E34' : '#F5ECD8',
+                      color: totalChanged ? '#fff' : '#6B4A2D',
+                      border: '1px solid #DDD0BC',
+                    }}
+                  >
+                    {sendingSummaryEmail ? 'שולח...' : totalChanged ? 'שלח סיכום מעודכן ללקוח' : 'שלח סיכום הזמנה ללקוח'}
+                  </button>
                 </div>
               );
             })()}

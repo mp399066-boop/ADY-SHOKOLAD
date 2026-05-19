@@ -145,6 +145,15 @@ export async function POST(_: NextRequest, { params }: { params: { id: string } 
 
     if (sendError) throw new Error(sendError.message);
 
+    // Track the total that was sent so the order page can detect stale summaries.
+    await supabase
+      .from('הזמנות')
+      .update({
+        summary_email_sent_at:    new Date().toISOString(),
+        summary_email_sent_total: order['סך_הכל_לתשלום'] ?? 0,
+      })
+      .eq('id', params.id);
+
     return NextResponse.json({ data: { subject, to }, message: `מייל נשלח בהצלחה ל-${to}` });
   } catch (err: unknown) {
     return NextResponse.json(
