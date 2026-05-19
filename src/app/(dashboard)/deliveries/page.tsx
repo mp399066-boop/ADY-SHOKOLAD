@@ -87,21 +87,29 @@ function DeliverySummaryPanel({
             </span>
             <div className="min-w-0 flex-1">
               <p className="text-[10.5px] font-semibold mb-0.5 truncate" style={{ color: '#AF9A87' }}>{formatDateLabel(dateKey)}</p>
-              <p className="text-[20px] font-bold tabular-nums leading-none" style={{ color: '#2F1B14' }}>{items.length}</p>
-              <div className="flex flex-wrap gap-1 mt-1.5">
+              <p className="text-[20px] font-bold tabular-nums leading-none mb-2" style={{ color: '#2F1B14' }}>{items.length}</p>
+              <div className="space-y-0.5" style={{ borderTop: '1px solid #EEE5D9', paddingTop: '6px' }}>
                 {sortedCities.map(([city, n]) => {
                   const isActive = cityFilter === city;
                   return (
                     <button
                       key={city}
                       onClick={() => onCityClick(isActive ? '' : city)}
-                      className="text-[10px] font-semibold px-2 py-0.5 rounded-full transition-colors"
-                      style={{
-                        backgroundColor: isActive ? '#496D7D' : '#E5EEF1',
-                        color: isActive ? '#FFFFFF' : '#496D7D',
-                      }}
+                      className={`w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg text-right transition-colors ${!isActive ? 'hover:bg-[#EEF4F6] active:bg-[#D8ECF3]' : ''}`}
+                      style={{ backgroundColor: isActive ? '#496D7D' : undefined }}
                     >
-                      {city} {n}
+                      <span
+                        className="text-[14px] font-bold tabular-nums flex-shrink-0 leading-none"
+                        style={{ color: isActive ? '#FFFFFF' : '#496D7D' }}
+                      >
+                        {n}
+                      </span>
+                      <span
+                        className="text-[12.5px] font-medium truncate"
+                        style={{ color: isActive ? 'rgba(255,255,255,0.9)' : '#2F1B14' }}
+                      >
+                        {city}
+                      </span>
                     </button>
                   );
                 })}
