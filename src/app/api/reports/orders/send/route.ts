@@ -22,6 +22,9 @@ const bodySchema = z.object({
   // Same optional note shape as the preview route — UI sends both with the
   // identical body so what the user saw in the modal is what gets sent.
   note: z.string().max(2000).optional(),
+  // When set, restrict to only these order IDs (applied on top of all other
+  // filters — never allows pulling orders outside the normal query scope).
+  selectedOrderIds: z.array(z.string().uuid()).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -40,7 +43,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.errors[0]?.message || 'נתונים לא תקינים' }, { status: 400 });
   }
 
-  const { range, date, recipientEmail, filters, note } = parsed.data;
+  const { range, date, recipientEmail, filters, note, selectedOrderIds } = parsed.data;
   if (range === 'custom' && !date) {
     return NextResponse.json({ error: 'בטווח מותאם — חובה לבחור תאריך' }, { status: 400 });
   }
@@ -48,7 +51,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'לא ניתן לבחור גם משלוחים בלבד וגם איסוף בלבד' }, { status: 400 });
   }
 
-  const input: ReportInput = { range, date, filters, note };
+  const input: ReportInput = { range, date, filters, note, selectedOrderIds };
 
   try {
     const { summary, subject, orderIds } = await sendOrdersReport(recipientEmail, input);

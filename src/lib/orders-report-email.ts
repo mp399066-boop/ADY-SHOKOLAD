@@ -24,6 +24,9 @@ export interface ReportInput {
   // above the order cards. Optional; empty/missing = no banner. Not stored
   // anywhere; lives only inside the request that produced the report.
   note?: string | null;
+  // When provided and non-empty, restrict the report to only these order IDs
+  // (applied on top of all date/status/filter constraints — never bypasses them).
+  selectedOrderIds?: string[];
 }
 
 export interface ReportSummary {
@@ -92,6 +95,7 @@ export async function fetchOrdersForReport(
   startDate: string,
   endDate: string,
   filters: ReportFilters,
+  selectedOrderIds?: string[],
 ): Promise<{ orders: RawOrder[]; itemsByOrder: Record<string, Record<string, unknown>[]>; summary: Omit<ReportSummary, 'rangeLabel' | 'startDate' | 'endDate'> }> {
   const supabase = createAdminClient();
 
@@ -110,6 +114,7 @@ export async function fetchOrdersForReport(
   if (filters.deliveryOnly) q = q.eq('סוג_אספקה', 'משלוח');
   if (filters.pickupOnly) q = q.eq('סוג_אספקה', 'איסוף עצמי');
   if (filters.unsentOnly) q = q.is('report_sent_at', null);
+  if (selectedOrderIds && selectedOrderIds.length > 0) q = q.in('id', selectedOrderIds);
 
   const { data: orders, error } = await q;
   if (error) throw new Error(`שגיאה בטעינת הזמנות: ${error.message}`);
@@ -448,7 +453,10 @@ export async function generateOrdersReport(
 ): Promise<{ html: string; summary: ReportSummary; subject: string; orderIds: string[] }> {
   const { startDate, endDate, label } = resolveRange(input);
   const filters = input.filters || {};
-  const { orders, itemsByOrder, summary: counts } = await fetchOrdersForReport(startDate, endDate, filters);
+  const { orders, itemsByOrder, summary: counts } = await fetchOrdersForReport(
+    startDate, endDate, filters,
+    input.selectedOrderIds && input.selectedOrderIds.length > 0 ? input.selectedOrderIds : undefined,
+  );
   // Best-effort. If REPORT_ACTION_SECRET / APP_URL are missing the helper
   // throws — we log + render the email WITHOUT buttons rather than block
   // the whole report from going out. The thrown error is what tells the

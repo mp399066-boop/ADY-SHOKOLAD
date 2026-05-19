@@ -40,6 +40,16 @@ const REPORT_RECIPIENT_LS_KEY = 'adi_orders_report_recipient_email';
 // Preview payload returned by /api/reports/orders/preview. The `html` field
 // is the actual report body the email/download will use — we iframe it in
 // the modal so preview and the sent report cannot drift apart.
+interface PreviewOrder {
+  id: string;
+  orderNumber: string;
+  customerName: string;
+  deliveryDate: string | null;
+  deliveryType: string | null;
+  urgent: boolean;
+  reportSentAt: string | null;
+}
+
 interface PreviewData {
   summary: {
     total: number;
@@ -54,6 +64,7 @@ interface PreviewData {
     alreadySentCount: number;
   };
   html: string;
+  orders: PreviewOrder[];
 }
 
 export default function OrdersReportPage() {
@@ -68,6 +79,9 @@ export default function OrdersReportPage() {
   const [previewing, setPreviewing] = useState(false);   // currently fetching the preview
   const [preview, setPreview]       = useState<PreviewData | null>(null);
   const [acting, setActing]         = useState(false);   // download/send in flight from inside the modal
+  // Per-order selection inside the preview modal. Initialised to all IDs
+  // returned by the preview; user can deselect to exclude specific orders.
+  const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
 
   // Prefill from localStorage so the operator doesn't retype the recipient
   // every visit. Run once on mount; SSR-safe via the typeof window guard.
@@ -126,7 +140,9 @@ export default function OrdersReportPage() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'שגיאה בתצוגה מוקדמת');
-      setPreview({ summary: json.summary, html: json.html });
+      const orderList: PreviewOrder[] = json.orders || [];
+      setSelectedOrderIds(new Set(orderList.map((o: PreviewOrder) => o.id)));
+      setPreview({ summary: json.summary, html: json.html, orders: orderList });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'שגיאה');
     } finally {
@@ -142,7 +158,7 @@ export default function OrdersReportPage() {
       const res = await fetch('/api/reports/orders/download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(buildBody()),
+        body: JSON.stringify(buildBody({ selectedOrderIds: Array.from(selectedOrderIds) })),
       });
       if (!res.ok) {
         const json = await res.json().catch(() => ({}));
@@ -181,7 +197,7 @@ export default function OrdersReportPage() {
       const res = await fetch('/api/reports/orders/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(buildBody({ recipientEmail: email })),
+        body: JSON.stringify(buildBody({ recipientEmail: email, selectedOrderIds: Array.from(selectedOrderIds) })),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'שגיאה בשליחה');
@@ -342,6 +358,87 @@ export default function OrdersReportPage() {
               {preview.summary.alreadySentCount > 0 && <PreviewStat label="נשלחו בעבר" value={String(preview.summary.alreadySentCount)} tone="info" />}
             </div>
 
+            {/* Order selection checklist — visible only when there are orders.
+                Defaults to all selected; user can deselect to exclude specific
+                orders. Send/download uses only the checked IDs. */}
+            {preview.orders.length > 0 && (
+              <div>
+                <div className="flex items-center justify-between mb-1.5 gap-2 flex-wrap">
+                  <div className="text-sm font-semibold" style={{ color: '#3A2A1A' }}>
+                    בחירת הזמנות לשליחה
+                    <span className="mr-2 text-xs font-normal" style={{ color: selectedOrderIds.size === 0 ? '#A03C2C' : '#8A7664' }}>
+                      {selectedOrderIds.size} מתוך {preview.orders.length} נבחרו
+                    </span>
+                  </div>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setSelectedOrderIds(new Set(preview.orders.map(o => o.id)))}
+                      className="text-xs underline"
+                      style={{ color: '#8B5E34' }}
+                    >
+                      בחר הכל
+                    </button>
+                    <button
+                      onClick={() => setSelectedOrderIds(new Set())}
+                      className="text-xs underline"
+                      style={{ color: '#8A7664' }}
+                    >
+                      נקה הכל
+                    </button>
+                  </div>
+                </div>
+                <div
+                  className="overflow-y-auto rounded-lg border"
+                  style={{ maxHeight: '164px', borderColor: '#EDE0CE' }}
+                >
+                  {preview.orders.map(order => {
+                    const checked = selectedOrderIds.has(order.id);
+                    const dateStr = order.deliveryDate
+                      ? order.deliveryDate.split('-').reverse().join('/')
+                      : null;
+                    return (
+                      <label
+                        key={order.id}
+                        className="flex items-center gap-2.5 px-3 py-1.5 cursor-pointer border-b last:border-b-0"
+                        style={{
+                          borderColor: '#EDE0CE',
+                          backgroundColor: checked ? '#FBF3E8' : '#FDFAF5',
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => setSelectedOrderIds(prev => {
+                            const next = new Set(prev);
+                            if (next.has(order.id)) next.delete(order.id);
+                            else next.add(order.id);
+                            return next;
+                          })}
+                          className="w-3.5 h-3.5 cursor-pointer flex-shrink-0"
+                          style={{ accentColor: '#8B5E34' }}
+                        />
+                        <span className="text-xs font-bold tabular-nums w-12 flex-shrink-0" style={{ color: '#2B1A10' }}>
+                          #{order.orderNumber}
+                        </span>
+                        <span className="text-xs flex-1 truncate" style={{ color: '#3A2A1A' }}>
+                          {order.customerName}
+                        </span>
+                        {dateStr && (
+                          <span className="text-xs flex-shrink-0" style={{ color: '#8A7664' }}>{dateStr}</span>
+                        )}
+                        {order.urgent && (
+                          <span style={{ flexShrink: 0, display: 'inline-block', padding: '1px 5px', borderRadius: '999px', fontSize: '9px', fontWeight: 700, background: '#FBE9E7', color: '#A03C2C' }}>⚡</span>
+                        )}
+                        {order.reportSentAt && (
+                          <span style={{ flexShrink: 0, display: 'inline-block', padding: '1px 5px', borderRadius: '999px', fontSize: '9px', fontWeight: 600, background: '#EDE6F4', color: '#5A3A8B' }}>נשלח</span>
+                        )}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* Live HTML preview — iframes the same body the email/download
                 will render, so what the user sees here is exactly what goes
                 out. Sandbox locks the iframe down (no scripts, no top nav). */}
@@ -421,10 +518,10 @@ export default function OrdersReportPage() {
                     <Button onClick={() => setPreview(null)} variant="outline" disabled={acting}>
                       ביטול
                     </Button>
-                    <Button onClick={confirmDownload} variant="outline" loading={acting}>
+                    <Button onClick={confirmDownload} variant="outline" loading={acting} disabled={acting || selectedOrderIds.size === 0}>
                       ⬇ הורידי דוח
                     </Button>
-                    <Button onClick={confirmSend} loading={acting} disabled={!emailValid || acting}>
+                    <Button onClick={confirmSend} loading={acting} disabled={!emailValid || acting || selectedOrderIds.size === 0}>
                       ✉ שלחי במייל
                     </Button>
                   </div>
