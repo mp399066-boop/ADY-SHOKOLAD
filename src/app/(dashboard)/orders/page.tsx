@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, Suspense } from 'react';
+import { useEffect, useState, useCallback, Suspense, Fragment } from 'react';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/Card';
@@ -52,6 +52,35 @@ interface OrderLineItem {
   בחירת_פטיפורים_בהזמנה: PetitFourSel[];
 }
 
+// Full order fetched from /api/orders/[id] — used as the single source of
+// truth for the expansion panel so every section always has complete data.
+interface FullOrderData {
+  id: string;
+  מספר_הזמנה: string;
+  תאריך_יצירה: string;
+  תאריך_אספקה: string | null;
+  שעת_אספקה: string | null;
+  delivery_time_flexible: boolean;
+  סוג_אספקה: string;
+  שם_מקבל: string | null;
+  טלפון_מקבל: string | null;
+  כתובת_מקבל_ההזמנה: string | null;
+  עיר: string | null;
+  הוראות_משלוח: string | null;
+  דמי_משלוח: number | null;
+  מקור_ההזמנה: string | null;
+  ברכה_טקסט: string | null;
+  הערות_להזמנה: string | null;
+  אופן_תשלום: string | null;
+  סטטוס_הזמנה: string;
+  סטטוס_תשלום: string;
+  סך_הכל_לתשלום: number | null;
+  סכום_הנחה: number | null;
+  לקוחות: { שם_פרטי: string; שם_משפחה: string; טלפון: string | null } | null;
+  מוצרים_בהזמנה: OrderLineItem[];
+  תשלומים: { id: string; סכום: number }[];
+}
+
 // ── Expansion panel sub-components ───────────────────────────────────────────
 
 function ExpSec({ title, children }: { title: string; children: React.ReactNode }) {
@@ -92,117 +121,104 @@ function ExpBadge({ label, value, colorMap }: {
   );
 }
 
-type ListCustomer = { שם_פרטי: string; שם_משפחה: string; טלפון: string | null };
+function OrderExpansionPanel({ fo }: { fo: FullOrderData }) {
+  const cust      = fo.לקוחות;
+  const custName  = cust ? `${cust.שם_פרטי} ${cust.שם_משפחה}`.trim() : null;
+  const recName   = fo.שם_מקבל?.trim() || null;
+  const recPhone  = fo.טלפון_מקבל?.trim() || null;
+  const recDiff   = recName  && recName  !== custName;
+  const recPhDiff = recPhone && recPhone !== cust?.טלפון;
 
-function OrderExpansionPanel({
-  order,
-  items,
-  paidAmount,
-}: {
-  order: Order & { לקוחות?: ListCustomer };
-  items: OrderLineItem[];
-  paidAmount: number;
-}) {
-  const cust = order.לקוחות;
-  const custName = cust ? `${cust.שם_פרטי} ${cust.שם_משפחה}`.trim() : null;
-  const recipientName  = order.שם_מקבל?.trim() || null;
-  const recipientPhone = order.טלפון_מקבל?.trim() || null;
-  const recipientIsDiff     = recipientName  && recipientName  !== custName;
-  const recipientPhoneIsDiff = recipientPhone && recipientPhone !== cust?.טלפון;
-
-  const total     = order.סך_הכל_לתשלום ?? 0;
-  const remaining = Math.max(0, total - paidAmount);
-  const deliveryLine = [order.כתובת_מקבל_ההזמנה, order.עיר].filter(Boolean).join(', ');
+  const items      = fo.מוצרים_בהזמנה ?? [];
+  const paidAmount = (fo.תשלומים ?? []).reduce((s, p) => s + (p.סכום ?? 0), 0);
+  const total      = fo.סך_הכל_לתשלום ?? 0;
+  const remaining  = Math.max(0, total - paidAmount);
+  const addrLine   = [fo.כתובת_מקבל_ההזמנה, fo.עיר].filter(Boolean).join(', ');
 
   return (
     <div dir="rtl" className="space-y-2.5">
 
-      {/* ── Top 3-col info grid ── */}
+      {/* ── Top 3-col grid: customer | delivery | order details ── */}
       <div className="grid grid-cols-3 gap-3">
 
         {/* 1. פרטי לקוח */}
         <ExpSec title="פרטי לקוח">
-          {custName              && <ExpField label="שם"       value={custName} />}
-          {cust?.טלפון           && <ExpField label="טלפון"    value={cust.טלפון} />}
-          {recipientIsDiff       && <ExpField label="מקבל"     value={recipientName!} />}
-          {recipientIsDiff && recipientPhoneIsDiff && <ExpField label="טל׳ מקבל" value={recipientPhone!} />}
+          <ExpField label="שם"    value={custName || 'לא צוין'} />
+          <ExpField label="טלפון" value={cust?.טלפון || 'לא צוין'} />
+          {recDiff    && <ExpField label="מקבל"     value={recName!} />}
+          {recDiff && recPhDiff && <ExpField label="טל׳ מקבל" value={recPhone!} />}
         </ExpSec>
 
         {/* 2. אספקה */}
         <ExpSec title="אספקה">
-          <ExpField label="סוג"    value={order.סוג_אספקה} />
-          {order.תאריך_אספקה     && <ExpField label="תאריך"   value={formatDate(order.תאריך_אספקה)} />}
-          {order.שעת_אספקה       && <ExpField label="שעה"     value={`${order.שעת_אספקה}${order.delivery_time_flexible ? ' (גמיש)' : ''}`} />}
-          {deliveryLine           && <ExpField label="כתובת"   value={deliveryLine} />}
-          {order.הוראות_משלוח    && <ExpField label="הוראות"  value={order.הוראות_משלוח} />}
+          <ExpField label="סוג"   value={fo.סוג_אספקה} />
+          <ExpField label="תאריך" value={fo.תאריך_אספקה ? formatDate(fo.תאריך_אספקה) : 'לא נקבע'} />
+          {fo.שעת_אספקה  && <ExpField label="שעה"    value={`${fo.שעת_אספקה}${fo.delivery_time_flexible ? ' (גמיש)' : ''}`} />}
+          {addrLine      && <ExpField label="כתובת"  value={addrLine} />}
+          {fo.הוראות_משלוח && <ExpField label="הוראות" value={fo.הוראות_משלוח} />}
         </ExpSec>
 
         {/* 3. פרטי הזמנה */}
         <ExpSec title="פרטי הזמנה">
-          <ExpField label="מס׳"   value={order.מספר_הזמנה} mono />
-          <ExpField label="נוצרה" value={formatDate(order.תאריך_יצירה)} />
-          <ExpBadge label="סטטוס" value={order.סטטוס_הזמנה}  colorMap={STATUS_COLORS} />
-          <ExpBadge label="תשלום" value={order.סטטוס_תשלום}  colorMap={PAYMENT_STATUS_COLORS} />
-          {order.אופן_תשלום      && <ExpField label="אמצעי"   value={order.אופן_תשלום} />}
-          {order.מקור_ההזמנה     && <ExpField label="מקור"    value={order.מקור_ההזמנה} />}
+          <ExpField label="מס׳"   value={fo.מספר_הזמנה} mono />
+          <ExpField label="נוצרה" value={formatDate(fo.תאריך_יצירה)} />
+          <ExpBadge label="סטטוס" value={fo.סטטוס_הזמנה} colorMap={STATUS_COLORS} />
+          <ExpBadge label="תשלום" value={fo.סטטוס_תשלום} colorMap={PAYMENT_STATUS_COLORS} />
+          {fo.אופן_תשלום  && <ExpField label="אמצעי"  value={fo.אופן_תשלום} />}
+          {fo.מקור_ההזמנה && <ExpField label="מקור"   value={fo.מקור_ההזמנה} />}
         </ExpSec>
       </div>
 
       {/* 4. פריטים */}
-      {(items.length > 0 || order.ברכה_טקסט || order.הערות_להזמנה) && (
-        <ExpSec title="פריטים">
-          {items.length === 0 && (
-            <p className="text-[11px]" style={{ color: '#9B7A5A' }}>אין פריטים</p>
-          )}
-          {items.map((item, idx) => {
-            const isLast = idx === items.length - 1 && !order.ברכה_טקסט && !order.הערות_להזמנה;
-            const name =
-              item.סוג_שורה === 'מארז'
-                ? `מארז ${item.גודל_מארז} פטיפורים`
-                : item.מוצרים_למכירה?.שם_מוצר ?? item.שם_פריט_מותאם ?? '—';
-            const pfList = item.בחירת_פטיפורים_בהזמנה ?? [];
-            return (
-              <div key={item.id} className="flex items-start gap-2 py-1"
-                style={isLast ? undefined : { borderBottom: '1px solid #F5ECD8' }}>
-                <span
-                  className="flex-shrink-0 inline-flex items-center justify-center rounded text-[10px] font-bold tabular-nums"
-                  style={{ minWidth: '1.5rem', height: '1.5rem', backgroundColor: '#F4E8D8', color: '#8B5E34' }}
-                >
-                  {item.כמות}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <span className="text-[11px] font-semibold" style={{ color: '#2B1A10' }}>{name}</span>
-                  {pfList.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-0.5">
-                      {pfList.map(pf => (
-                        <span key={pf.id} className="text-[9.5px] px-1 py-0.5 rounded"
-                          style={{ backgroundColor: '#EDE9FE', color: '#5B21B6' }}>
-                          {pf.סוגי_פטיפורים?.שם_פטיפור} × {pf.כמות}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  {item.הערות_לשורה && (
-                    <p className="text-[10px]" style={{ color: '#9B7A5A' }}>{item.הערות_לשורה}</p>
-                  )}
-                </div>
+      <ExpSec title={`פריטים (${items.length})`}>
+        {items.length === 0 ? (
+          <p className="text-[11px]" style={{ color: '#9B7A5A' }}>אין פריטים</p>
+        ) : items.map((item, idx) => {
+          const isLast = idx === items.length - 1 && !fo.ברכה_טקסט && !fo.הערות_להזמנה;
+          const name =
+            item.סוג_שורה === 'מארז'
+              ? `מארז ${item.גודל_מארז} פטיפורים`
+              : item.מוצרים_למכירה?.שם_מוצר ?? item.שם_פריט_מותאם ?? '—';
+          const pfList = item.בחירת_פטיפורים_בהזמנה ?? [];
+          return (
+            <div key={item.id} className="flex items-start gap-2 py-1"
+              style={isLast ? undefined : { borderBottom: '1px solid #F5ECD8' }}>
+              <span className="flex-shrink-0 inline-flex items-center justify-center rounded text-[10px] font-bold tabular-nums"
+                style={{ minWidth: '1.5rem', height: '1.5rem', backgroundColor: '#F4E8D8', color: '#8B5E34' }}>
+                {item.כמות}
+              </span>
+              <div className="flex-1 min-w-0">
+                <span className="text-[11px] font-semibold" style={{ color: '#2B1A10' }}>{name}</span>
+                {pfList.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-0.5">
+                    {pfList.map(pf => (
+                      <span key={pf.id} className="text-[9.5px] px-1 py-0.5 rounded"
+                        style={{ backgroundColor: '#EDE9FE', color: '#5B21B6' }}>
+                        {pf.סוגי_פטיפורים?.שם_פטיפור} × {pf.כמות}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {item.הערות_לשורה && (
+                  <p className="text-[10px]" style={{ color: '#9B7A5A' }}>{item.הערות_לשורה}</p>
+                )}
               </div>
-            );
-          })}
-          {order.ברכה_טקסט && (
-            <div className="pt-1.5" style={{ borderTop: '1px solid #F5ECD8' }}>
-              <span className="text-[10px]" style={{ color: '#9B7A5A' }}>ברכה: </span>
-              <span className="text-[11px] italic" style={{ color: '#4A3020' }}>{order.ברכה_טקסט}</span>
             </div>
-          )}
-          {order.הערות_להזמנה && (
-            <div className="pt-1.5" style={{ borderTop: '1px solid #F5ECD8' }}>
-              <span className="text-[10px]" style={{ color: '#9B7A5A' }}>הערות: </span>
-              <span className="text-[11px]" style={{ color: '#4A3020' }}>{order.הערות_להזמנה}</span>
-            </div>
-          )}
-        </ExpSec>
-      )}
+          );
+        })}
+        {fo.ברכה_טקסט && (
+          <div className="pt-1.5" style={{ borderTop: '1px solid #F5ECD8' }}>
+            <span className="text-[10px]" style={{ color: '#9B7A5A' }}>ברכה: </span>
+            <span className="text-[11px] italic" style={{ color: '#4A3020' }}>{fo.ברכה_טקסט}</span>
+          </div>
+        )}
+        {fo.הערות_להזמנה && (
+          <div className="pt-1.5" style={{ borderTop: '1px solid #F5ECD8' }}>
+            <span className="text-[10px]" style={{ color: '#9B7A5A' }}>הערות: </span>
+            <span className="text-[11px]" style={{ color: '#4A3020' }}>{fo.הערות_להזמנה}</span>
+          </div>
+        )}
+      </ExpSec>
 
       {/* 5. תשלום */}
       <ExpSec title="תשלום">
@@ -217,22 +233,22 @@ function OrderExpansionPanel({
               <span className="text-[11px] font-semibold tabular-nums" style={{ color: '#476D53' }}>{formatCurrency(paidAmount)}</span>
             </div>
           )}
-          {remaining > 0 && order.סטטוס_תשלום !== 'שולם' && order.סטטוס_תשלום !== 'בארטר' && (
+          {remaining > 0 && fo.סטטוס_תשלום !== 'שולם' && fo.סטטוס_תשלום !== 'בארטר' && (
             <div className="flex items-center gap-1">
               <span className="text-[10px]" style={{ color: '#9B7A5A' }}>נותר:</span>
               <span className="text-[11px] font-bold tabular-nums" style={{ color: '#9D4B4A' }}>{formatCurrency(remaining)}</span>
             </div>
           )}
-          {(order.דמי_משלוח ?? 0) > 0 && (
+          {(fo.דמי_משלוח ?? 0) > 0 && (
             <div className="flex items-center gap-1">
               <span className="text-[10px]" style={{ color: '#9B7A5A' }}>משלוח:</span>
-              <span className="text-[11px] tabular-nums" style={{ color: '#6B4A2D' }}>{formatCurrency(order.דמי_משלוח!)}</span>
+              <span className="text-[11px] tabular-nums" style={{ color: '#6B4A2D' }}>{formatCurrency(fo.דמי_משלוח!)}</span>
             </div>
           )}
-          {(order.סכום_הנחה ?? 0) > 0 && (
+          {(fo.סכום_הנחה ?? 0) > 0 && (
             <div className="flex items-center gap-1">
               <span className="text-[10px]" style={{ color: '#9B7A5A' }}>הנחה:</span>
-              <span className="text-[11px] tabular-nums" style={{ color: '#476D53' }}>−{formatCurrency(order.סכום_הנחה!)}</span>
+              <span className="text-[11px] tabular-nums" style={{ color: '#476D53' }}>−{formatCurrency(fo.סכום_הנחה!)}</span>
             </div>
           )}
         </div>
@@ -495,10 +511,12 @@ function OrdersContent() {
   const [bulkPaymentValue, setBulkPaymentValue] = useState('');
   const [bulkUpdating, setBulkUpdating] = useState(false);
 
-  // Inline item expansion
+  // Inline item expansion — fetches the full order from /api/orders/[id] so
+  // all 5 sections (customer, delivery, order details, items, payment) always
+  // have complete data rather than relying on the partial list-state row.
   const [expandedId, setExpandedId]   = useState<string | null>(null);
   const [loadingItems, setLoadingItems] = useState<string | null>(null);
-  const [itemsCache, setItemsCache]   = useState<Map<string, { items: OrderLineItem[]; paidAmount: number }>>(new Map());
+  const [itemsCache, setItemsCache]   = useState<Map<string, FullOrderData>>(new Map());
 
   const handleToggleExpand = async (orderId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -506,10 +524,12 @@ function OrdersContent() {
     if (itemsCache.has(orderId)) { setExpandedId(orderId); return; }
     setLoadingItems(orderId);
     try {
-      const res  = await fetch(`/api/orders/${orderId}/items`);
+      const res  = await fetch(`/api/orders/${orderId}`);
       const json = await res.json();
-      setItemsCache(prev => new Map(prev).set(orderId, { items: json.data ?? [], paidAmount: json.paidAmount ?? 0 }));
-      setExpandedId(orderId);
+      if (json.data) {
+        setItemsCache(prev => new Map(prev).set(orderId, json.data));
+        setExpandedId(orderId);
+      }
     } catch { toast.error('שגיאה בטעינת פריטים'); }
     finally { setLoadingItems(null); }
   };
@@ -827,9 +847,8 @@ function OrdersContent() {
                   const isItemsLoading = loadingItems === order.id;
                   const customer = (order as Order & { לקוחות?: { שם_פרטי: string; שם_משפחה: string } }).לקוחות;
                   return (
-                    <>
+                    <Fragment key={order.id}>
                       <tr
-                        key={order.id}
                         className="hover:bg-amber-50 transition-colors cursor-pointer border-b"
                         style={{
                           borderColor: '#F5ECD8',
@@ -928,7 +947,7 @@ function OrdersContent() {
                       </tr>
                       {/* ── Inline full-order expansion ── */}
                       {isExpanded && (
-                        <tr key={`${order.id}-exp`} style={{ backgroundColor: '#FAF7F2' }}>
+                        <tr style={{ backgroundColor: '#FAF7F2' }}>
                           <td colSpan={10} className="px-4 pt-0 pb-3">
                             <div
                               className="rounded-xl border px-4 py-3"
@@ -936,18 +955,14 @@ function OrdersContent() {
                             >
                               {isItemsLoading ? (
                                 <p className="text-xs py-1" style={{ color: '#9B7A5A' }}>טוען...</p>
-                              ) : (
-                                <OrderExpansionPanel
-                                  order={order as Order & { לקוחות?: ListCustomer }}
-                                  items={itemsCache.get(order.id)?.items ?? []}
-                                  paidAmount={itemsCache.get(order.id)?.paidAmount ?? 0}
-                                />
-                              )}
+                              ) : itemsCache.has(order.id) ? (
+                                <OrderExpansionPanel fo={itemsCache.get(order.id)!} />
+                              ) : null}
                             </div>
                           </td>
                         </tr>
                       )}
-                    </>
+                    </Fragment>
                   );
                 })}
               </tbody>
