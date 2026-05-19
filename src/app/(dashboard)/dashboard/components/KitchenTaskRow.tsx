@@ -122,33 +122,30 @@ export function KitchenTaskRow({
   onDeliveryStatus: (delivery: Delivery, status: DeliveryStatus) => void;
   onOpenOrder: (order: TodayOrder) => void;
 }) {
+  void onPaymentStatus;
+  void onDeliveryStatus;
   const disabled = updating;
 
   return (
-    <div
-      className="grid min-h-[54px] grid-cols-1 items-center gap-1 border-b px-1 py-1.5 last:border-b-0 lg:grid-cols-[minmax(320px,1fr)_auto]"
-      style={{ borderColor: C.borderSoft }}
-    >
-      <div className="min-w-0">
-        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
-          <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: task.needsAttention ? C.amber : C.border }} />
-          <span className="truncate text-sm font-bold leading-5" style={{ color: C.text }}>{task.customerName}</span>
-          {task.recipientName && (
-            <span className="truncate text-[11px] font-semibold" style={{ color: C.textSoft }}>
-              מקבל: {task.recipientName}
-            </span>
-          )}
-        </div>
-        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 pr-3 text-[11px] leading-4">
-          <span className="font-mono" style={{ color: C.textSoft }}>{task.meta.replace('הזמנה #', '')}</span>
-          <span style={{ color: C.textMuted }}>·</span>
-          <span className="font-semibold" style={{ color: C.cocoa }}>{task.dueLabel}</span>
-          <span style={{ color: C.textMuted }}>·</span>
-          <span className="font-bold" style={{ color: C.gold }}>{task.type}</span>
-        </div>
+    <div className="px-2.5 py-2 border-b last:border-b-0" style={{ borderColor: C.borderSoft }}>
+      {/* Customer name */}
+      <div className="flex items-center gap-1.5 mb-0.5">
+        <span
+          className="w-1.5 h-1.5 shrink-0 rounded-full"
+          style={{ backgroundColor: task.needsAttention ? C.amber : C.border }}
+        />
+        <span className="flex-1 truncate text-[13px] font-bold leading-5" style={{ color: C.text }}>
+          {task.customerName}
+        </span>
       </div>
-
-      <div className="flex flex-wrap items-center gap-1.5">
+      {/* Due time + type */}
+      <div className="flex items-center gap-1 text-[11px] pr-3 mb-1.5" style={{ color: C.textSoft }}>
+        <span className="font-semibold" style={{ color: C.cocoa }}>{task.dueLabel}</span>
+        <span style={{ color: C.textMuted }}>·</span>
+        <span style={{ color: C.gold }}>{task.type}</span>
+      </div>
+      {/* Primary actions: order status + open */}
+      <div className="flex items-center gap-1.5 pr-3">
         <StatusRail
           label="סטטוס הזמנה"
           value={task.order.סטטוס_הזמנה}
@@ -156,34 +153,14 @@ export function KitchenTaskRow({
           disabled={disabled}
           onChange={status => onOrderStatus(task.order, status)}
         />
-
-        <StatusRail
-          label="סטטוס תשלום"
-          value={task.order.סטטוס_תשלום}
-          options={PAYMENT_STATUSES}
-          disabled={disabled}
-          onChange={status => onPaymentStatus(task.order, status)}
-        />
-
-        {task.delivery && (
-          <StatusRail
-            label="סטטוס משלוח"
-            value={task.delivery.סטטוס_משלוח as DeliveryStatus}
-            options={DELIVERY_STATUSES}
-            disabled={disabled}
-            onChange={status => onDeliveryStatus(task.delivery!, status)}
-          />
-        )}
-
         <button
           type="button"
           onClick={() => onOpenOrder(task.order)}
-          className="flex h-7 items-center gap-1 rounded-md border px-2 text-[11px] font-bold"
+          className="flex h-7 w-7 items-center justify-center rounded-md border transition-colors hover:opacity-80"
           style={{ backgroundColor: C.card, borderColor: C.border, color: C.espresso }}
           title="פתח הזמנה מלאה"
         >
           <ExternalLink size={12} />
-          פתח
         </button>
       </div>
     </div>

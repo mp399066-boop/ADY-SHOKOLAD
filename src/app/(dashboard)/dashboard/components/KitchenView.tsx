@@ -42,6 +42,8 @@ const KANBAN_COLS = [
   },
 ] as const;
 
+const COL_LIMIT = 5;
+
 function KitchenKanban({
   tasks, updatingId, onOrderStatus, onPaymentStatus, onDeliveryStatus, onOpenOrder,
 }: {
@@ -52,6 +54,8 @@ function KitchenKanban({
   onDeliveryStatus: (delivery: Delivery, status: DeliveryStatus) => void;
   onOpenOrder: (order: TodayOrder) => void;
 }) {
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+
   const cols = KANBAN_COLS.map(col => ({
     ...col,
     items: tasks.filter(t => (col.statuses as readonly string[]).includes(t.order.סטטוס_הזמנה ?? '')),
@@ -66,54 +70,69 @@ function KitchenKanban({
         </span>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-        {cols.map(col => (
-          <div key={col.id}>
-            {/* Column header */}
-            <div
-              className="flex items-center justify-between rounded-t-xl px-3 py-2"
-              style={{ backgroundColor: col.softBg, border: `1px solid ${col.accent}20`, borderBottom: 'none' }}
-            >
-              <span className="text-[11.5px] font-bold" style={{ color: col.accent }}>{col.label}</span>
-              <span
-                className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
-                style={{ backgroundColor: `${col.accent}22`, color: col.accent }}
+        {cols.map(col => {
+          const isExpanded = !!expanded[col.id];
+          const visible = isExpanded ? col.items : col.items.slice(0, COL_LIMIT);
+          const hiddenCount = col.items.length - COL_LIMIT;
+
+          return (
+            <div key={col.id}>
+              {/* Column header */}
+              <div
+                className="flex items-center justify-between rounded-t-xl px-3 py-2"
+                style={{ backgroundColor: col.softBg, border: `1px solid ${col.accent}20`, borderBottom: 'none' }}
               >
-                {col.items.length}
-              </span>
-            </div>
-            {/* Column body */}
-            <div
-              className="rounded-b-xl overflow-hidden"
-              style={{ border: `1px solid ${C.border}`, borderTop: `1px solid ${col.accent}20` }}
-            >
-              {col.items.length === 0 ? (
-                <div
-                  className="px-3 py-5 text-center text-[11.5px] font-medium"
-                  style={{ color: C.textMuted, backgroundColor: C.card }}
+                <span className="text-[11.5px] font-bold" style={{ color: col.accent }}>{col.label}</span>
+                <span
+                  className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                  style={{ backgroundColor: `${col.accent}22`, color: col.accent }}
                 >
-                  ריק
-                </div>
-              ) : (
-                <div
-                  className="divide-y"
-                  style={{ backgroundColor: C.card, borderColor: C.borderSoft }}
-                >
-                  {col.items.map(task => (
-                    <KitchenTaskRow
-                      key={task.id}
-                      task={task}
-                      updating={updatingId === task.order.id || (!!task.delivery && updatingId === task.delivery?.id)}
-                      onOrderStatus={onOrderStatus}
-                      onPaymentStatus={onPaymentStatus}
-                      onDeliveryStatus={onDeliveryStatus}
-                      onOpenOrder={onOpenOrder}
-                    />
-                  ))}
-                </div>
-              )}
+                  {col.items.length}
+                </span>
+              </div>
+              {/* Column body */}
+              <div
+                className="rounded-b-xl overflow-hidden"
+                style={{ border: `1px solid ${C.border}`, borderTop: `1px solid ${col.accent}20` }}
+              >
+                {col.items.length === 0 ? (
+                  <div
+                    className="px-3 py-3 text-center text-[11.5px] font-medium"
+                    style={{ color: C.textMuted, backgroundColor: C.card }}
+                  >
+                    ריק
+                  </div>
+                ) : (
+                  <div style={{ backgroundColor: C.card }}>
+                    <div className="divide-y" style={{ borderColor: C.borderSoft }}>
+                      {visible.map(task => (
+                        <KitchenTaskRow
+                          key={task.id}
+                          task={task}
+                          updating={updatingId === task.order.id || (!!task.delivery && updatingId === task.delivery?.id)}
+                          onOrderStatus={onOrderStatus}
+                          onPaymentStatus={onPaymentStatus}
+                          onDeliveryStatus={onDeliveryStatus}
+                          onOpenOrder={onOpenOrder}
+                        />
+                      ))}
+                    </div>
+                    {!isExpanded && hiddenCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setExpanded(e => ({ ...e, [col.id]: true }))}
+                        className="w-full py-2 text-[11px] font-semibold text-center transition-opacity hover:opacity-70 border-t"
+                        style={{ color: C.brand, backgroundColor: C.brandSoft, borderColor: C.border }}
+                      >
+                        הצג עוד {hiddenCount} הזמנות ↓
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </section>
   );
