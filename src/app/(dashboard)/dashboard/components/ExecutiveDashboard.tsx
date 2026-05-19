@@ -5,7 +5,7 @@
 // Charts: pure SVG — no external library needed.
 
 import Link from 'next/link';
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { C } from './theme';
 import { formatCurrency } from '@/lib/utils';
 import type { TodayOrder, Delivery, Stock } from './types';
@@ -14,7 +14,6 @@ import type { QueueItem, QueueEntity } from './queue-builder';
 import { DashboardInventoryAlerts } from './DashboardInventoryAlerts';
 import { DashboardEmployeeTasks } from './DashboardEmployeeTasks';
 import { AttentionPanel } from './AttentionPanel';
-import { ProductionSummaryCard } from './ProductionSummaryCard';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -271,6 +270,89 @@ function AttentionList({ items, onNavigate }: { items: QueueItem[]; onNavigate: 
   );
 }
 
+// ── Compact production summary (totals only, no tables) ──────────────────────
+
+function toISO(d: Date) { return d.toISOString().slice(0, 10); }
+
+interface CompactProdData { orders_count: number; productsTotal: number; packagesTotal: number; petitFoursTotal: number; }
+
+function CompactProductionSummary() {
+  const [data, setData]       = useState<CompactProdData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const t = new Date(); t.setHours(0, 0, 0, 0);
+    const e = new Date(t); e.setDate(e.getDate() + 6);
+    fetch(`/api/production-summary?date_from=${toISO(t)}&date_to=${toISO(e)}`)
+      .then(r => r.json())
+      .then(json => {
+        if (!json.error) setData({
+          orders_count:    json.orders_count ?? 0,
+          productsTotal:   (json.products   ?? []).reduce((s: number, p: { כמות_כוללת: number }) => s + p.כמות_כוללת, 0),
+          packagesTotal:   (json.packages   ?? []).reduce((s: number, p: { כמות_כוללת: number }) => s + p.כמות_כוללת, 0),
+          petitFoursTotal: (json.petit_fours ?? []).reduce((s: number, p: { כמות_כוללת: number }) => s + p.כמות_כוללת, 0),
+        });
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const hasItems = data && (data.productsTotal > 0 || data.packagesTotal > 0 || data.petitFoursTotal > 0);
+
+  return (
+    <section
+      className="rounded-xl p-3"
+      style={{ backgroundColor: C.card, border: `1px solid ${C.border}`, boxShadow: '0 2px 8px rgba(47,27,20,0.04)' }}
+    >
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-[12.5px] font-bold" style={{ color: C.textSoft }}>לייצור השבוע</h2>
+        {data && data.orders_count > 0 && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold" style={{ backgroundColor: C.goldSoft, color: C.amber }}>
+            {data.orders_count} הז׳
+          </span>
+        )}
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-3">
+          <div className="w-4 h-4 rounded-full border-2 animate-spin" style={{ borderColor: C.borderSoft, borderTopColor: C.brand }} />
+        </div>
+      ) : !hasItems ? (
+        <p className="text-[11px] py-1" style={{ color: C.textMuted }}>אין הזמנות פעילות</p>
+      ) : (
+        <div className="space-y-1.5">
+          {(data!.productsTotal > 0) && (
+            <div className="flex items-center justify-between">
+              <span className="text-[11.5px]" style={{ color: C.textSoft }}>מוצרים</span>
+              <span className="text-[11.5px] font-bold px-1.5 py-0.5 rounded-md" style={{ backgroundColor: C.brandSoft, color: C.brand }}>{data!.productsTotal}</span>
+            </div>
+          )}
+          {(data!.packagesTotal > 0) && (
+            <div className="flex items-center justify-between">
+              <span className="text-[11.5px]" style={{ color: C.textSoft }}>מארזים</span>
+              <span className="text-[11.5px] font-bold px-1.5 py-0.5 rounded-md" style={{ backgroundColor: C.brandSoft, color: C.brand }}>{data!.packagesTotal}</span>
+            </div>
+          )}
+          {(data!.petitFoursTotal > 0) && (
+            <div className="flex items-center justify-between">
+              <span className="text-[11.5px]" style={{ color: C.textSoft }}>פטיפורים</span>
+              <span className="text-[11.5px] font-bold px-1.5 py-0.5 rounded-md" style={{ backgroundColor: '#EDE9FE', color: '#5B21B6' }}>{data!.petitFoursTotal}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      <Link
+        href="/production-summary"
+        className="mt-2 flex items-center justify-center text-[11px] font-semibold pt-2 transition-opacity hover:opacity-70"
+        style={{ color: C.brand, borderTop: `1px solid ${C.borderSoft}` }}
+      >
+        סיכום מלא ←
+      </Link>
+    </section>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function ExecutiveDashboard({
@@ -455,14 +537,12 @@ export function ExecutiveDashboard({
         </section>
       </div>
 
-      {/* ── Secondary: Production | Inventory | Employee + Quick ─ */}
-      <div className="grid grid-cols-1 xl:grid-cols-[1fr_268px_268px] gap-2 items-start">
-        <ProductionSummaryCard />
+      {/* ── Secondary insights — compact 4-card row ─────────── */}
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-2 items-start">
+        <CompactProductionSummary />
         <DashboardInventoryAlerts stock={stock} />
-        <div className="space-y-2">
-          <DashboardEmployeeTasks />
-          <AttentionPanel />
-        </div>
+        <DashboardEmployeeTasks />
+        <AttentionPanel />
       </div>
 
     </div>
