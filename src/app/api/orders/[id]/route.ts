@@ -23,7 +23,8 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
   const { data: items } = await supabase
     .from('מוצרים_בהזמנה')
     .select('*, מוצרים_למכירה(*), בחירת_פטיפורים_בהזמנה(*, סוגי_פטיפורים(*))')
-    .eq('הזמנה_id', params.id);
+    .eq('הזמנה_id', params.id)
+    .order('סדר_תצוגה', { ascending: true });
 
   const { data: delivery } = await supabase
     .from('משלוחים')

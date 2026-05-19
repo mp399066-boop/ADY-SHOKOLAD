@@ -67,7 +67,7 @@ export async function GET(_req: NextRequest, { params }: { params: { token: stri
       .from('מוצרים_בהזמנה')
       .select('id, סוג_שורה, גודל_מארז, כמות, הערות_לשורה, מוצרים_למכירה(שם_מוצר), בחירת_פטיפורים_בהזמנה(כמות, סוגי_פטיפורים(שם_פטיפור))')
       .eq('הזמנה_id', order.id)
-      .order('סוג_שורה', { ascending: true });
+      .order('סדר_תצוגה', { ascending: true });
     items = ((itemsData || []) as unknown) as ItemRow[];
   }
 

@@ -84,6 +84,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   // 3. Replace all items (delete existing, insert new)
   await supabase.from('מוצרים_בהזמנה').delete().eq('הזמנה_id', orderId);
 
+  let sortIdx = 1;
   for (const item of מוצרים) {
     const { error: itemErr } = await supabase.from('מוצרים_בהזמנה').insert({
       הזמנה_id: orderId,
@@ -93,6 +94,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       מחיר_ליחידה: item.מחיר_ליחידה || 0,
       סהכ: (item.כמות || 1) * (item.מחיר_ליחידה || 0),
       הערות_לשורה: item.הערות_לשורה || null,
+      סדר_תצוגה: sortIdx++,
     });
     if (itemErr) return NextResponse.json({ error: `יצירת פריט נכשלה: ${itemErr.message}` }, { status: 500 });
   }
@@ -107,6 +109,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       מחיר_ליחידה: pkg.מחיר_ליחידה || 0,
       סהכ: (pkg.כמות || 1) * (pkg.מחיר_ליחידה || 0),
       הערות_לשורה: pkg.הערות_לשורה || null,
+      סדר_תצוגה: sortIdx++,
     }).select().single();
     if (pkgErr) return NextResponse.json({ error: `יצירת מארז נכשל: ${pkgErr.message}` }, { status: 500 });
     if (pkg.פטיפורים && pkgRow) {
@@ -137,6 +140,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       מחיר_ליחידה: price,
       סהכ: qty * price,
       הערות_לשורה: (item.הערות_לשורה as string) || null,
+      סדר_תצוגה: sortIdx++,
     });
     if (itemErr) return NextResponse.json({ error: `יצירת פריט ידני נכשלה: ${itemErr.message}` }, { status: 500 });
   }
@@ -190,7 +194,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const { data: fullItems } = await supabase
     .from('מוצרים_בהזמנה')
     .select('*, מוצרים_למכירה(*), בחירת_פטיפורים_בהזמנה(*, סוגי_פטיפורים(*))')
-    .eq('הזמנה_id', orderId);
+    .eq('הזמנה_id', orderId)
+    .order('סדר_תצוגה', { ascending: true });
 
   // 6. Send email (fire-and-forget)
   const emailCustomer = (fullOrder as Record<string, unknown>)?.['לקוחות'] as Record<string, string> | null;

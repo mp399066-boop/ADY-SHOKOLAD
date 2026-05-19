@@ -190,6 +190,7 @@ export async function POST(req: NextRequest) {
   }
 
   // 5. Create regular product lines (validated only)
+  let sortIdx = 1;
   for (const item of validProducts) {
     const { error: itemError } = await supabase.from('מוצרים_בהזמנה').insert({
       הזמנה_id: order!.id,
@@ -199,6 +200,7 @@ export async function POST(req: NextRequest) {
       מחיר_ליחידה: (item.מחיר_ליחידה as number) || 0,
       סהכ: ((item.כמות as number) || 1) * ((item.מחיר_ליחידה as number) || 0),
       הערות_לשורה: (item.הערות_לשורה as string) || null,
+      סדר_תצוגה: sortIdx++,
     });
     if (itemError) return NextResponse.json({ error: `יצירת פריט נכשלה: ${itemError.message}` }, { status: 500 });
   }
@@ -215,6 +217,7 @@ export async function POST(req: NextRequest) {
       מחיר_ליחידה: pkg.מחיר_ליחידה || 0,
       סהכ: (pkg.כמות || 1) * (pkg.מחיר_ליחידה || 0),
       הערות_לשורה: pkg.הערות_לשורה || null,
+      סדר_תצוגה: sortIdx++,
     }).select().single();
 
     if (pkgError) return NextResponse.json({ error: `יצירת מארז נכשלה: ${pkgError.message}` }, { status: 500 });
@@ -248,6 +251,7 @@ export async function POST(req: NextRequest) {
       מחיר_ליחידה: price,
       סהכ: qty * price,
       הערות_לשורה: (item.הערות_לשורה as string) || null,
+      סדר_תצוגה: sortIdx++,
     });
     if (itemError) return NextResponse.json({ error: `יצירת פריט ידני נכשלה: ${itemError.message}` }, { status: 500 });
   }
@@ -354,7 +358,8 @@ export async function POST(req: NextRequest) {
   const { data: fullItems } = await supabase
     .from('מוצרים_בהזמנה')
     .select('*, מוצרים_למכירה(*), בחירת_פטיפורים_בהזמנה(*, סוגי_פטיפורים(*))')
-    .eq('הזמנה_id', order!.id);
+    .eq('הזמנה_id', order!.id)
+    .order('סדר_תצוגה', { ascending: true });
 
   // Send order summary email — non-blocking, never fails the order (skip for drafts)
   if (isDraft) {

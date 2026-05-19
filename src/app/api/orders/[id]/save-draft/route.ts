@@ -69,6 +69,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   await supabase.from('מוצרים_בהזמנה').delete().eq('הזמנה_id', orderId);
 
+  let sortIdx = 1;
   for (const item of מוצרים) {
     await supabase.from('מוצרים_בהזמנה').insert({
       הזמנה_id: orderId,
@@ -78,6 +79,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       מחיר_ליחידה: item.מחיר_ליחידה || 0,
       סהכ: (item.כמות || 1) * (item.מחיר_ליחידה || 0),
       הערות_לשורה: item.הערות_לשורה || null,
+      סדר_תצוגה: sortIdx++,
     });
   }
 
@@ -91,6 +93,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       מחיר_ליחידה: pkg.מחיר_ליחידה || 0,
       סהכ: (pkg.כמות || 1) * (pkg.מחיר_ליחידה || 0),
       הערות_לשורה: pkg.הערות_לשורה || null,
+      סדר_תצוגה: sortIdx++,
     }).select().single();
 
     if (pkg.פטיפורים && pkgRow) {
@@ -120,6 +123,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       מחיר_ליחידה: price,
       סהכ: qty * price,
       הערות_לשורה: (item.הערות_לשורה as string) || null,
+      סדר_תצוגה: sortIdx++,
     });
   }
 

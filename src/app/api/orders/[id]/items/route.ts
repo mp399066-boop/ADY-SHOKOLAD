@@ -12,7 +12,7 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
     .from('מוצרים_בהזמנה')
     .select('id, סוג_שורה, מוצר_id, שם_פריט_מותאם, גודל_מארז, כמות, הערות_לשורה, מוצרים_למכירה(שם_מוצר), בחירת_פטיפורים_בהזמנה(id, פטיפור_id, כמות, סוגי_פטיפורים(שם_פטיפור))')
     .eq('הזמנה_id', params.id)
-    .order('id');
+    .order('סדר_תצוגה', { ascending: true });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
@@ -163,6 +163,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 
   // 4. Insert new product rows
   let subtotal = 0;
+  let sortIdx = 1;
 
   for (const item of מוצרים) {
     if (item.מוצר_id && !validProductIds.has(item.מוצר_id)) {
@@ -179,6 +180,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       מחיר_ליחידה: item.מחיר_ליחידה || 0,
       סהכ: lineTotal,
       הערות_לשורה: item.הערות_לשורה || null,
+      סדר_תצוגה: sortIdx++,
     });
     if (error) {
       console.error('[items PUT] failed to insert product row:', error, item);
@@ -202,6 +204,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
         מחיר_ליחידה: pkg.מחיר_ליחידה || 0,
         סהכ: lineTotal,
         הערות_לשורה: pkg.הערות_לשורה || null,
+        סדר_תצוגה: sortIdx++,
       })
       .select()
       .single();
@@ -244,6 +247,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       מחיר_ליחידה:     item.מחיר_ליחידה || 0,
       סהכ:             lineTotal,
       הערות_לשורה:     item.הערות_לשורה || null,
+      סדר_תצוגה:      sortIdx++,
     });
     if (error) {
       console.error('[items PUT] failed to insert custom item:', error, item);
