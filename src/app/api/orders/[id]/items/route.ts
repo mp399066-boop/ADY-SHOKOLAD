@@ -232,7 +232,8 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 
   // 5b. Insert custom / manual item rows (product_id = null)
   for (const item of פריטים_ידניים) {
-    const name = item.שם_פריט_מותאם?.trim();
+    // Discount rows (negative price) may arrive with no name — use fallback.
+    const name = item.שם_פריט_מותאם?.trim() || ((item.מחיר_ליחידה || 0) < 0 ? 'הנחה' : null);
     if (!name) continue;
     const allowedTypes = ['מוצר_ידני', 'תוספת_תשלום'];
     const lineType = allowedTypes.includes(item.סוג_שורה) ? item.סוג_שורה : 'מוצר_ידני';
