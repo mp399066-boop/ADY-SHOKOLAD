@@ -2,6 +2,22 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 
+// GET: return items for a single order (used by inline order expansion on the list page)
+export async function GET(_: NextRequest, { params }: { params: { id: string } }) {
+  const auth = await requireManagementUser();
+  if (!auth) return unauthorizedResponse();
+  const supabase = createAdminClient();
+
+  const { data: items, error } = await supabase
+    .from('מוצרים_בהזמנה')
+    .select('id, סוג_שורה, מוצר_id, שם_פריט_מותאם, גודל_מארז, כמות, הערות_לשורה, מוצרים_למכירה(שם_מוצר), בחירת_פטיפורים_בהזמנה(id, פטיפור_id, כמות, סוגי_פטיפורים(שם_פטיפור))')
+    .eq('הזמנה_id', params.id)
+    .order('id');
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ data: items || [] });
+}
+
 // PUT: replace all order items, recalculate totals
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   const auth = await requireManagementUser();

@@ -31,6 +31,88 @@ const PAYMENT_STATUS_OPTIONS = [
 
 const FALLBACK_COLOR = { bg: '#F5F1EB', text: '#8A7664', border: '#E0D4C2' };
 
+// ── Inline order expansion ────────────────────────────────────────────────────
+
+interface PetitFourSel {
+  id: string;
+  פטיפור_id: string;
+  כמות: number;
+  סוגי_פטיפורים: { שם_פטיפור: string } | null;
+}
+
+interface OrderLineItem {
+  id: string;
+  סוג_שורה: string;
+  מוצר_id: string | null;
+  שם_פריט_מותאם: string | null;
+  גודל_מארז: number | null;
+  כמות: number;
+  הערות_לשורה: string | null;
+  מוצרים_למכירה: { שם_מוצר: string } | null;
+  בחירת_פטיפורים_בהזמנה: PetitFourSel[];
+}
+
+function OrderItemsPanel({ items, orderNotes }: { items: OrderLineItem[]; orderNotes: string | null }) {
+  if (items.length === 0 && !orderNotes) {
+    return <p className="text-xs py-1" style={{ color: '#9B7A5A' }}>אין פריטים להצגה</p>;
+  }
+  return (
+    <div dir="rtl">
+      {items.map((item, idx) => {
+        const isLast = idx === items.length - 1 && !orderNotes;
+        const name =
+          item.סוג_שורה === 'מארז'
+            ? `מארז ${item.גודל_מארז} פטיפורים`
+            : item.מוצרים_למכירה?.שם_מוצר ?? item.שם_פריט_מותאם ?? '—';
+        const pfList = item.בחירת_פטיפורים_בהזמנה ?? [];
+        return (
+          <div
+            key={item.id}
+            className="flex items-start gap-2.5 py-1.5"
+            style={isLast ? undefined : { borderBottom: '1px solid #F5ECD8' }}
+          >
+            {/* Qty pill */}
+            <span
+              className="flex-shrink-0 inline-flex items-center justify-center rounded-md text-[11px] font-bold tabular-nums"
+              style={{ minWidth: '1.75rem', height: '1.75rem', backgroundColor: '#F4E8D8', color: '#8B5E34' }}
+            >
+              {item.כמות}
+            </span>
+            {/* Item detail */}
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold leading-4" style={{ color: '#2B1A10' }}>{name}</p>
+              {pfList.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-0.5">
+                  {pfList.map(pf => (
+                    <span
+                      key={pf.id}
+                      className="text-[10px] px-1.5 py-0.5 rounded-full"
+                      style={{ backgroundColor: '#EDE9FE', color: '#5B21B6' }}
+                    >
+                      {pf.סוגי_פטיפורים?.שם_פטיפור ?? '?'} × {pf.כמות}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {item.הערות_לשורה && (
+                <p className="text-[10px] mt-0.5 truncate" style={{ color: '#9B7A5A' }}>
+                  {item.הערות_לשורה}
+                </p>
+              )}
+            </div>
+          </div>
+        );
+      })}
+      {orderNotes && (
+        <div className="pt-1.5 mt-0.5" style={{ borderTop: '1px solid #F5ECD8' }}>
+          <p className="text-[10px] font-semibold mb-0.5" style={{ color: '#9B7A5A' }}>הערות</p>
+          <p className="text-xs" style={{ color: '#4A3020' }}>{orderNotes}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function InlineStatusPicker({
   value,
   options,
@@ -283,6 +365,25 @@ function OrdersContent() {
   const [bulkStatusValue, setBulkStatusValue] = useState('');
   const [bulkPaymentValue, setBulkPaymentValue] = useState('');
   const [bulkUpdating, setBulkUpdating] = useState(false);
+
+  // Inline item expansion
+  const [expandedId, setExpandedId]   = useState<string | null>(null);
+  const [loadingItems, setLoadingItems] = useState<string | null>(null);
+  const [itemsCache, setItemsCache]   = useState<Map<string, OrderLineItem[]>>(new Map());
+
+  const handleToggleExpand = async (orderId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (expandedId === orderId) { setExpandedId(null); return; }
+    if (itemsCache.has(orderId)) { setExpandedId(orderId); return; }
+    setLoadingItems(orderId);
+    try {
+      const res  = await fetch(`/api/orders/${orderId}/items`);
+      const json = await res.json();
+      setItemsCache(prev => new Map(prev).set(orderId, json.data ?? []));
+      setExpandedId(orderId);
+    } catch { toast.error('שגיאה בטעינת פריטים'); }
+    finally { setLoadingItems(null); }
+  };
 
   // Inline single-row status edits. We optimistically mutate the local row
   // and call PATCH /api/orders/{id} (the same endpoint the order detail page
@@ -592,86 +693,134 @@ function OrdersContent() {
               </thead>
               <tbody>
                 {orders.map(order => {
-                  const isSelected = selected.has(order.id);
+                  const isSelected  = selected.has(order.id);
+                  const isExpanded  = expandedId === order.id;
+                  const isItemsLoading = loadingItems === order.id;
                   const customer = (order as Order & { לקוחות?: { שם_פרטי: string; שם_משפחה: string } }).לקוחות;
                   return (
-                    <tr
-                      key={order.id}
-                      className="hover:bg-amber-50 transition-colors cursor-pointer border-b"
-                      style={{
-                        borderColor: '#F5ECD8',
-                        backgroundColor: isSelected ? '#FEF9EF' : undefined,
-                      }}
-                      onClick={() => router.push(`/orders/${order.id}`)}
-                    >
-                      <td className="px-4 py-3" style={{ width: '40px', minWidth: '40px' }} onClick={e => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          className="w-3.5 h-3.5 cursor-pointer"
-                          style={{ accentColor: '#8B5E34' }}
-                          checked={isSelected}
-                          onChange={() => toggleSelect(order.id)}
-                          onClick={e => e.stopPropagation()}
-                        />
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-xs font-semibold" style={{ color: '#8B5E34' }}>
-                            {order.מספר_הזמנה}
+                    <>
+                      <tr
+                        key={order.id}
+                        className="hover:bg-amber-50 transition-colors cursor-pointer border-b"
+                        style={{
+                          borderColor: '#F5ECD8',
+                          backgroundColor: isExpanded ? '#FEF9EF' : isSelected ? '#FEF9EF' : undefined,
+                        }}
+                        onClick={() => router.push(`/orders/${order.id}`)}
+                      >
+                        <td className="px-4 py-3" style={{ width: '40px', minWidth: '40px' }} onClick={e => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            className="w-3.5 h-3.5 cursor-pointer"
+                            style={{ accentColor: '#8B5E34' }}
+                            checked={isSelected}
+                            onChange={() => toggleSelect(order.id)}
+                            onClick={e => e.stopPropagation()}
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-xs font-semibold" style={{ color: '#8B5E34' }}>
+                              {order.מספר_הזמנה}
+                            </span>
+                            {order.הזמנה_דחופה && <UrgentBadge />}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 font-medium text-xs" style={{ color: '#2B1A10' }}>
+                          {customer ? `${customer.שם_פרטי} ${customer.שם_משפחה}` : '-'}
+                        </td>
+                        <td className="px-4 py-3 text-xs" style={{ color: '#6B4A2D' }}>
+                          {formatDate(order.תאריך_אספקה)}
+                        </td>
+                        <td className="px-4 py-3 text-xs" style={{ color: '#6B4A2D' }}>
+                          {order.שעת_אספקה || '-'}
+                        </td>
+                        <td className="px-4 py-3">
+                          <InlineStatusPicker
+                            value={order.סטטוס_הזמנה}
+                            options={ORDER_STATUS_OPTIONS}
+                            type="order"
+                            disabled={updatingId === order.id}
+                            onChange={next => handleOrderStatusChange(order, next)}
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <InlineStatusPicker
+                            value={order.סטטוס_תשלום}
+                            options={PAYMENT_STATUS_OPTIONS}
+                            type="payment"
+                            disabled={updatingId === order.id}
+                            onChange={next => handlePaymentStatusChange(order, next)}
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className="text-xs px-2 py-0.5 rounded-full border"
+                            style={
+                              order.סוג_אספקה === 'משלוח'
+                                ? { backgroundColor: '#EFF6FF', color: '#1D4ED8', borderColor: '#BFDBFE' }
+                                : { backgroundColor: '#F9FAFB', color: '#6B7280', borderColor: '#E5E7EB' }
+                            }
+                          >
+                            {order.סוג_אספקה}
                           </span>
-                          {order.הזמנה_דחופה && <UrgentBadge />}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 font-medium text-xs" style={{ color: '#2B1A10' }}>
-                        {customer ? `${customer.שם_פרטי} ${customer.שם_משפחה}` : '-'}
-                      </td>
-                      <td className="px-4 py-3 text-xs" style={{ color: '#6B4A2D' }}>
-                        {formatDate(order.תאריך_אספקה)}
-                      </td>
-                      <td className="px-4 py-3 text-xs" style={{ color: '#6B4A2D' }}>
-                        {order.שעת_אספקה || '-'}
-                      </td>
-                      <td className="px-4 py-3">
-                        <InlineStatusPicker
-                          value={order.סטטוס_הזמנה}
-                          options={ORDER_STATUS_OPTIONS}
-                          type="order"
-                          disabled={updatingId === order.id}
-                          onChange={next => handleOrderStatusChange(order, next)}
-                        />
-                      </td>
-                      <td className="px-4 py-3">
-                        <InlineStatusPicker
-                          value={order.סטטוס_תשלום}
-                          options={PAYMENT_STATUS_OPTIONS}
-                          type="payment"
-                          disabled={updatingId === order.id}
-                          onChange={next => handlePaymentStatusChange(order, next)}
-                        />
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className="text-xs px-2 py-0.5 rounded-full border"
-                          style={
-                            order.סוג_אספקה === 'משלוח'
-                              ? { backgroundColor: '#EFF6FF', color: '#1D4ED8', borderColor: '#BFDBFE' }
-                              : { backgroundColor: '#F9FAFB', color: '#6B7280', borderColor: '#E5E7EB' }
-                          }
-                        >
-                          {order.סוג_אספקה}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 font-semibold text-xs" style={{ color: '#2B1A10' }}>
-                        {formatCurrency(order.סך_הכל_לתשלום)}
-                      </td>
-                      <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
-                        <div className="flex items-center gap-0.5">
-                          <ActionBtn title="צפייה" href={`/orders/${order.id}`} icon={<IconEye className="w-4 h-4" />} />
-                          <ActionBtn title="עריכה" href={`/orders/${order.id}`} icon={<IconEdit className="w-4 h-4" />} />
-                          <ActionBtn title="מחיקה" variant="danger" onClick={() => setConfirmId(order.id)} icon={<IconTrash className="w-4 h-4" />} />
-                        </div>
-                      </td>
-                    </tr>
+                        </td>
+                        <td className="px-4 py-3 font-semibold text-xs" style={{ color: '#2B1A10' }}>
+                          {formatCurrency(order.סך_הכל_לתשלום)}
+                        </td>
+                        <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                          <div className="flex items-center gap-0.5">
+                            {/* Expand/collapse chevron */}
+                            <button
+                              type="button"
+                              onClick={e => handleToggleExpand(order.id, e)}
+                              className="flex items-center justify-center rounded-lg border transition-all"
+                              style={{
+                                width: '1.625rem', height: '1.625rem',
+                                backgroundColor: isExpanded ? '#F4E8D8' : '#FFFFFF',
+                                borderColor: '#DDD0BC',
+                                color: '#8B5E34',
+                              }}
+                              title="הצג פריטי הזמנה"
+                            >
+                              {isItemsLoading ? (
+                                <span className="text-[9px]">…</span>
+                              ) : (
+                                <svg viewBox="0 0 16 16" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+                                  <path d={isExpanded ? 'M4 10l4-4 4 4' : 'M4 6l4 4 4-4'} />
+                                </svg>
+                              )}
+                            </button>
+                            <ActionBtn title="צפייה" href={`/orders/${order.id}`} icon={<IconEye className="w-4 h-4" />} />
+                            <ActionBtn title="עריכה" href={`/orders/${order.id}`} icon={<IconEdit className="w-4 h-4" />} />
+                            <ActionBtn title="מחיקה" variant="danger" onClick={() => setConfirmId(order.id)} icon={<IconTrash className="w-4 h-4" />} />
+                          </div>
+                        </td>
+                      </tr>
+                      {/* ── Inline item expansion ── */}
+                      {isExpanded && (
+                        <tr key={`${order.id}-exp`} style={{ backgroundColor: '#FAF7F2' }}>
+                          <td colSpan={10} className="px-4 pt-0 pb-2.5">
+                            <div
+                              className="rounded-xl border px-3 py-2.5"
+                              style={{ backgroundColor: '#FFFDF8', borderColor: '#EDE0CE' }}
+                            >
+                              <p className="text-[10px] font-bold uppercase tracking-wide mb-2" style={{ color: '#9B7A5A' }}>
+                                פירוט הזמנה
+                              </p>
+                              {isItemsLoading ? (
+                                <p className="text-xs py-1" style={{ color: '#9B7A5A' }}>טוען...</p>
+                              ) : (
+                                <OrderItemsPanel
+                                  items={itemsCache.get(order.id) ?? []}
+                                  orderNotes={order.הערות_להזמנה}
+                                />
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </>
                   );
                 })}
               </tbody>
