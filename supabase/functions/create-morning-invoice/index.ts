@@ -71,7 +71,8 @@ const PAYMENT_BUILDERS: Record<string, (price: number, date: string) => MorningP
   'PayBox':        (price, date) => ({ type: 10, price, date, currency: 'ILS' }),
 };
 
-// Business customer types require exclusive VAT (vatType 1 at document level)
+// Business customer types store prices EXCLUSIVE of VAT (pre-VAT amounts in CRM).
+// All other types (private/retail) store prices INCLUSIVE of VAT in the CRM.
 const BUSINESS_TYPES = new Set(['עסקי', 'עסקי - קבוע', 'עסקי - כמות']);
 
 async function getMorningToken(apiId: string, apiSecret: string): Promise<string> {
@@ -206,6 +207,20 @@ serve(async (req: Request) => {
     const customer = order.לקוחות as CustomerRow;
     const isBusiness = BUSINESS_TYPES.has(customer.סוג_לקוח ?? '');
 
+    // ── VAT rate and price conversion ─────────────────────────────────────
+    // Morning always receives NET prices (before VAT) in income lines.
+    // vatType: 1 at document level tells Morning to add 18% on top.
+    //
+    // Private customers: CRM stores VAT-INCLUSIVE prices → divide by (1+VAT)
+    //   Example: CRM price 118 → net 100 → Morning adds 18 → invoice shows 118
+    // Business customers: CRM stores pre-VAT prices → no conversion needed
+    //   Example: CRM price 100 → net 100 → Morning adds 18 → invoice shows 118
+    //
+    // In both cases the invoice always shows: net + 18% VAT = total with VAT.
+    const VAT_RATE = 0.18;
+    const toNet = (price: number): number =>
+      isBusiness ? price : Math.round(price / (1 + VAT_RATE) * 100) / 100;
+
     // Build income lines
     const incomeLines: object[] = [];
     for (const item of items ?? []) {
@@ -220,11 +235,11 @@ serve(async (req: Request) => {
         description = (item.מוצרים_למכירה as { שם_מוצר: string } | null)?.שם_מוצר ?? 'פריט';
       }
       if (item.הערות_לשורה) description += ` — ${item.הערות_לשורה}`;
-      incomeLines.push({ description, quantity: item.כמות, price: item.מחיר_ליחידה, vatType: 1 });
+      incomeLines.push({ description, quantity: item.כמות, price: toNet(item.מחיר_ליחידה), vatType: 1 });
     }
 
     if (order.דמי_משלוח && order.דמי_משלוח > 0) {
-      incomeLines.push({ description: 'דמי משלוח', quantity: 1, price: order.דמי_משלוח, vatType: 1 });
+      incomeLines.push({ description: 'דמי משלוח', quantity: 1, price: toNet(order.דמי_משלוח), vatType: 1 });
     }
 
     const incomeBeforeDiscount = (incomeLines as Array<{ price: number; quantity: number }>)
@@ -234,14 +249,34 @@ serve(async (req: Request) => {
       const discAmt = Math.round(incomeBeforeDiscount * order.ערך_הנחה / 100 * 100) / 100;
       incomeLines.push({ description: `הנחה ${order.ערך_הנחה}%`, quantity: 1, price: -discAmt, vatType: 1 });
     } else if (order.סוג_הנחה === 'סכום' && order.ערך_הנחה && order.ערך_הנחה > 0) {
-      incomeLines.push({ description: 'הנחה', quantity: 1, price: -order.ערך_הנחה, vatType: 1 });
+      // Fixed discount: convert to net for the same reason as item prices.
+      // Private: CRM discount is VAT-inclusive → divide by (1+VAT).
+      // Business: CRM discount is pre-VAT → no change.
+      incomeLines.push({ description: 'הנחה', quantity: 1, price: -toNet(order.ערך_הנחה), vatType: 1 });
     }
 
-    const paymentAmount = Math.round(
-      (incomeLines as Array<{ price: number; quantity: number }>)
-        .reduce((sum, l) => sum + l.price * l.quantity, 0) * 100
-    ) / 100;
+    // Net total after discounts (all income lines are already in net / pre-VAT amounts).
+    const netAfterDiscount = (incomeLines as Array<{ price: number; quantity: number }>)
+      .reduce((sum, l) => sum + l.price * l.quantity, 0);
+    const roundedNet = Math.round(netAfterDiscount * 100) / 100;
+    const roundedVat = Math.round(netAfterDiscount * VAT_RATE * 100) / 100;
+    // paymentAmount = invoice total including VAT (net × 1.18).
+    // This is the amount used in the payment block (receipt / invoice_receipt)
+    // and stored in the חשבוניות table.
+    const paymentAmount = Math.round(netAfterDiscount * (1 + VAT_RATE) * 100) / 100;
 
+    // ── VAT audit log ──────────────────────────────────────────────────────
+    console.log('[VAT]', JSON.stringify({
+      customerType: customer.סוג_לקוח ?? 'פרטי',
+      isBusiness,
+      vatHandling: isBusiness
+        ? 'exclusive: CRM prices are pre-VAT — VAT added on top'
+        : 'inclusive: CRM prices include VAT — split into net + 18%',
+      orderTotalFromCRM: order.סך_הכל_לתשלום,
+      netAmount: roundedNet,
+      vatAmount: roundedVat,
+      invoiceTotal: paymentAmount,
+    }));
     console.log('[morning] document_type:', documentType, '| morningType:', morningDocType, '| isBusiness:', isBusiness, '| paymentAmount:', paymentAmount);
 
     const documentBody: Record<string, unknown> = {
@@ -250,9 +285,12 @@ serve(async (req: Request) => {
       date: new Date().toISOString().slice(0, 10),
       lang: 'he',
       currency: 'ILS',
-      // Business: prices are pre-VAT (exclusive), Morning adds 18%.
-      // Retail: prices include VAT (inclusive).
-      vatType: isBusiness ? 1 : 0,
+      // Always vatType: 1 (subject to standard VAT, 18%).
+      // Morning receives NET prices in every income line and adds 18% on top.
+      // For private customers the net was derived by dividing inclusive CRM prices
+      // by 1.18; for business customers prices are already net — both produce
+      // the same invoice shape: net + 18% VAT = invoice total.
+      vatType: 1,
       client: {
         name: `${customer.שם_פרטי} ${customer.שם_משפחה}`,
         ...(customer.אימייל ? { emails: [customer.אימייל] } : {}),
