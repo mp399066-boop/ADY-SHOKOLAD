@@ -15,6 +15,7 @@ const bodySchema = z.object({
     unpaidOnly: z.boolean().optional(),
     deliveryOnly: z.boolean().optional(),
     pickupOnly: z.boolean().optional(),
+    unsentOnly: z.boolean().optional(),
   }).optional(),
   // Same optional note shape as the other two routes — kept in sync so the
   // download body and the email body match the preview iframe exactly.

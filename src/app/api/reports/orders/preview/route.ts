@@ -20,6 +20,7 @@ const bodySchema = z.object({
     unpaidOnly: z.boolean().optional(),
     deliveryOnly: z.boolean().optional(),
     pickupOnly: z.boolean().optional(),
+    unsentOnly: z.boolean().optional(),
   }).optional(),
   // Optional free-text note rendered above the order cards. Capped at a
   // generous length so a runaway paste can't blow up the email body.
@@ -81,8 +82,10 @@ export async function POST(req: NextRequest) {
         deliveryTime: (r['שעת_אספקה'] as string) || null,
         deliveryType: (r['סוג_אספקה'] as string) || null,
         urgent: !!r['הזמנה_דחופה'],
+        reportSentAt: (r['report_sent_at'] as string) || null,
       };
     });
+    const alreadySentCount = orderList.filter(o => o.reportSentAt).length;
 
     return NextResponse.json({
       ok: true,
@@ -92,6 +95,7 @@ export async function POST(req: NextRequest) {
         startDate,
         endDate,
         totalAmount,
+        alreadySentCount,
       },
       orders: orderList,
       html,

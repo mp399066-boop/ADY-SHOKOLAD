@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
-import { sendOrdersReport, type ReportInput } from '@/lib/orders-report-email';
+import { sendOrdersReport, markOrdersReportSent, type ReportInput } from '@/lib/orders-report-email';
 
 // POST /api/reports/orders/send
 // Read-only: builds a styled email from current orders and sends it.
@@ -17,6 +17,7 @@ const bodySchema = z.object({
     unpaidOnly: z.boolean().optional(),
     deliveryOnly: z.boolean().optional(),
     pickupOnly: z.boolean().optional(),
+    unsentOnly: z.boolean().optional(),
   }).optional(),
   // Same optional note shape as the preview route — UI sends both with the
   // identical body so what the user saw in the modal is what gets sent.
@@ -50,7 +51,10 @@ export async function POST(req: NextRequest) {
   const input: ReportInput = { range, date, filters, note };
 
   try {
-    const { summary, subject } = await sendOrdersReport(recipientEmail, input);
+    const { summary, subject, orderIds } = await sendOrdersReport(recipientEmail, input);
+    // Fire-and-forget — email is already out; a DB hiccup here must not fail
+    // the response the client sees.
+    void markOrdersReportSent(orderIds);
     return NextResponse.json({
       ok: true,
       message: `דוח נשלח ל-${recipientEmail}`,

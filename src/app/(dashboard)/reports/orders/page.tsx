@@ -51,6 +51,7 @@ interface PreviewData {
     startDate: string;
     endDate: string;
     totalAmount: number;
+    alreadySentCount: number;
   };
   html: string;
 }
@@ -60,8 +61,8 @@ export default function OrdersReportPage() {
   const [date, setDate] = useState<string>(todayISO());
   const [recipientEmail, setRecipientEmail] = useState<string>('');
   const [note, setNote] = useState<string>('');
-  const [filters, setFilters] = useState<{ urgentOnly: boolean; unpaidOnly: boolean; deliveryOnly: boolean; pickupOnly: boolean }>({
-    urgentOnly: false, unpaidOnly: false, deliveryOnly: false, pickupOnly: false,
+  const [filters, setFilters] = useState<{ urgentOnly: boolean; unpaidOnly: boolean; deliveryOnly: boolean; pickupOnly: boolean; unsentOnly: boolean }>({
+    urgentOnly: false, unpaidOnly: false, deliveryOnly: false, pickupOnly: false, unsentOnly: true,
   });
   // Preview modal state.
   const [previewing, setPreviewing] = useState(false);   // currently fetching the preview
@@ -86,6 +87,8 @@ export default function OrdersReportPage() {
       return next;
     });
   };
+
+  const toggleUnsentOnly = () => setFilters(prev => ({ ...prev, unsentOnly: !prev.unsentOnly }));
 
   const validateRange = (): boolean => {
     if (range === 'custom' && !date) {
@@ -267,6 +270,32 @@ export default function OrdersReportPage() {
         <p className="text-xs mt-3" style={{ color: '#B0A090' }}>
           ניתן לסנן רק לפי משלוחים <em>או</em> רק לפי איסוף — לא שניהם יחד.
         </p>
+
+        {/* Unsent-only toggle — full-width row, prominent */}
+        <div className="mt-3 pt-3 border-t" style={{ borderColor: '#EDE0CE' }}>
+          <label
+            className="flex items-center gap-2.5 p-3 rounded-lg cursor-pointer transition-all border"
+            style={filters.unsentOnly
+              ? { borderColor: '#8B5E34', backgroundColor: '#FBF3E8' }
+              : { borderColor: '#E8DED2', backgroundColor: '#FFFFFF' }}
+          >
+            <input
+              type="checkbox"
+              checked={filters.unsentOnly}
+              onChange={toggleUnsentOnly}
+              className="w-4 h-4 cursor-pointer"
+              style={{ accentColor: '#8B5E34' }}
+            />
+            <div>
+              <div className="text-sm" style={{ color: filters.unsentOnly ? '#5C3410' : '#3A2A1A', fontWeight: filters.unsentOnly ? 600 : 400 }}>
+                שלח רק הזמנות שלא נשלחו בדוח
+              </div>
+              <div className="text-xs mt-0.5" style={{ color: '#9B7A5A' }}>
+                {filters.unsentOnly ? 'מסנן הזמנות שכבר נכללו בדוח ששלחת' : 'כולל גם הזמנות שכבר נשלחו בדוח בעבר'}
+              </div>
+            </div>
+          </label>
+        </div>
       </Card>
 
       <Card>
@@ -310,6 +339,7 @@ export default function OrdersReportPage() {
               {preview.summary.unpaid > 0 && <PreviewStat label="לא שולמו" value={String(preview.summary.unpaid)} tone="warn" />}
               {preview.summary.delivery > 0 && <PreviewStat label="משלוחים" value={String(preview.summary.delivery)} />}
               {preview.summary.pickup > 0 && <PreviewStat label="איסוף עצמי" value={String(preview.summary.pickup)} />}
+              {preview.summary.alreadySentCount > 0 && <PreviewStat label="נשלחו בעבר" value={String(preview.summary.alreadySentCount)} tone="info" />}
             </div>
 
             {/* Live HTML preview — iframes the same body the email/download
@@ -408,11 +438,13 @@ export default function OrdersReportPage() {
   );
 }
 
-function PreviewStat({ label, value, tone }: { label: string; value: string; tone?: 'warn' }) {
+function PreviewStat({ label, value, tone }: { label: string; value: string; tone?: 'warn' | 'info' }) {
+  const bg = tone === 'warn' ? '#FFF8E1' : tone === 'info' ? '#EDE6F4' : '#FAF7F0';
+  const fg = tone === 'warn' ? '#92400E' : tone === 'info' ? '#5A3A8B' : '#2B1A10';
   return (
-    <div className="rounded-lg p-3" style={{ backgroundColor: tone === 'warn' ? '#FFF8E1' : '#FAF7F0' }}>
+    <div className="rounded-lg p-3" style={{ backgroundColor: bg }}>
       <div className="text-[10px] uppercase tracking-wider" style={{ color: '#9B7A5A' }}>{label}</div>
-      <div className="text-lg font-bold tabular-nums" style={{ color: tone === 'warn' ? '#92400E' : '#2B1A10' }}>{value}</div>
+      <div className="text-lg font-bold tabular-nums" style={{ color: fg }}>{value}</div>
     </div>
   );
 }

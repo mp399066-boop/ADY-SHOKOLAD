@@ -13,6 +13,7 @@ export interface ReportFilters {
   unpaidOnly?: boolean;
   deliveryOnly?: boolean;
   pickupOnly?: boolean;
+  unsentOnly?: boolean;
 }
 
 export interface ReportInput {
@@ -108,6 +109,7 @@ export async function fetchOrdersForReport(
   if (filters.unpaidOnly) q = q.eq('סטטוס_תשלום', 'ממתין');
   if (filters.deliveryOnly) q = q.eq('סוג_אספקה', 'משלוח');
   if (filters.pickupOnly) q = q.eq('סוג_אספקה', 'איסוף עצמי');
+  if (filters.unsentOnly) q = q.is('report_sent_at', null);
 
   const { data: orders, error } = await q;
   if (error) throw new Error(`שגיאה בטעינת הזמנות: ${error.message}`);
@@ -285,6 +287,9 @@ function orderCard(
   const urgentBadge = urgent
     ? `<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;background:#FBE9E7;color:#A03C2C;margin-right:6px">⚡ דחוף</span>`
     : '';
+  const prevSentBadge = order['report_sent_at']
+    ? `<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:600;background:#EDE6F4;color:#5A3A8B;margin-right:4px">נשלח בדוח</span>`
+    : '';
   const actionButtons = actionLinks?.acknowledgedUrl && actionLinks?.readyUrl
     ? `<div style="margin-top:12px;padding-top:10px;border-top:1px solid #F0E5D8">
         <a href="${esc(actionLinks.acknowledgedUrl)}" style="display:inline-block;margin:0 0 6px 6px;background:#F3E4D0;color:#5A3424;text-decoration:none;border-radius:8px;padding:9px 14px;font-size:13px;font-weight:700;border:1px solid #E0C49F">ההזמנה התקבלה</a>
@@ -301,7 +306,7 @@ function orderCard(
         <div style="font-size:15px;font-weight:700;color:#2B1A10">${esc(order['מספר_הזמנה'])}</div>
       </div>
       <div style="text-align:left">
-        ${urgentBadge}${statusBadge(String(order['סטטוס_הזמנה'] || ''))} ${paymentBadge(String(order['סטטוס_תשלום'] || ''))}
+        ${prevSentBadge}${urgentBadge}${statusBadge(String(order['סטטוס_הזמנה'] || ''))} ${paymentBadge(String(order['סטטוס_תשלום'] || ''))}
       </div>
     </div>
 
@@ -425,12 +430,22 @@ export function buildReportHtml(
 </body></html>`;
 }
 
+export async function markOrdersReportSent(orderIds: string[]): Promise<void> {
+  if (!orderIds.length) return;
+  const supabase = createAdminClient();
+  const { error } = await supabase
+    .from('הזמנות')
+    .update({ report_sent_at: new Date().toISOString() })
+    .in('id', orderIds);
+  if (error) console.error('[orders-report] markOrdersReportSent failed:', error.message);
+}
+
 // Shared by send + download — fetches data and builds the styled HTML.
 // Pass forDownload=true to inject the print toolbar and @media print rules.
 export async function generateOrdersReport(
   input: ReportInput,
   opts: { forDownload?: boolean; recipientEmail?: string | null; includeEmployeeActions?: boolean } = {},
-): Promise<{ html: string; summary: ReportSummary; subject: string }> {
+): Promise<{ html: string; summary: ReportSummary; subject: string; orderIds: string[] }> {
   const { startDate, endDate, label } = resolveRange(input);
   const filters = input.filters || {};
   const { orders, itemsByOrder, summary: counts } = await fetchOrdersForReport(startDate, endDate, filters);
@@ -461,14 +476,15 @@ export async function generateOrdersReport(
     actionLinksByOrder,
   );
   const subject = `דוח הזמנות — ${label} — ${BUSINESS}`;
-  return { html, summary, subject };
+  const orderIds = orders.map(o => String(o.id));
+  return { html, summary, subject, orderIds };
 }
 
 export async function sendOrdersReport(
   recipientEmail: string,
   input: ReportInput,
-): Promise<{ summary: ReportSummary; subject: string }> {
-  const { html, summary, subject } = await generateOrdersReport(input, {
+): Promise<{ summary: ReportSummary; subject: string; orderIds: string[] }> {
+  const { html, summary, subject, orderIds } = await generateOrdersReport(input, {
     recipientEmail,
     includeEmployeeActions: true,
   });
@@ -487,5 +503,5 @@ export async function sendOrdersReport(
     html,
   });
 
-  return { summary, subject };
+  return { summary, subject, orderIds };
 }
