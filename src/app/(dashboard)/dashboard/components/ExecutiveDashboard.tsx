@@ -370,8 +370,6 @@ export function ExecutiveDashboard({
   urgentItems: QueueItem[];
   onNavigate: (path: string) => void;
 }) {
-  void todayDeliveries; // available for future use
-
   const liveOrders = useMemo(
     () => activeOrders.filter(o =>
       o.סטטוס_הזמנה !== 'בוטלה' && o.סטטוס_הזמנה !== 'טיוטה' && o.סטטוס_הזמנה !== 'הושלמה בהצלחה',
@@ -398,6 +396,16 @@ export function ExecutiveDashboard({
   const unpaidAmount  = stats?.unpaidAmount ?? 0;
   const unpaidCount   = stats?.unpaidOrders ?? 0;
   const revenueToday  = stats?.revenueToday ?? 0;
+
+  const deliveryCities = useMemo(() => {
+    const active = todayDeliveries.filter(d => d.סטטוס_משלוח !== 'נמסר');
+    const byCity = new Map<string, number>();
+    for (const d of active) {
+      const city = (d.עיר || '').trim() || 'לא צוינה';
+      byCity.set(city, (byCity.get(city) || 0) + 1);
+    }
+    return Array.from(byCity.entries()).sort((a, b) => b[1] - a[1]);
+  }, [todayDeliveries]);
 
   return (
     <div className="space-y-2">
@@ -479,6 +487,23 @@ export function ExecutiveDashboard({
           }
         />
       </div>
+
+      {/* ── Today delivery city breakdown ────────────────────── */}
+      {deliveryCities.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap px-0.5">
+          <span className="text-[10.5px] font-semibold" style={{ color: C.textMuted }}>אזורי משלוח פעילים:</span>
+          {deliveryCities.map(([city, count]) => (
+            <span
+              key={city}
+              className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold px-2 py-0.5 rounded-full"
+              style={{ backgroundColor: C.blueSoft, color: C.blue }}
+            >
+              {city}
+              <span className="font-bold tabular-nums">{count}</span>
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* ── Analytics + Attention ─────────────────────────────── */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-2">

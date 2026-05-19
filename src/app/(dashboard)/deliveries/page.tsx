@@ -17,13 +17,12 @@ import { exportToCsv } from '@/lib/exportCsv';
 import { buildCourierWhatsAppMessage, type CourierItem } from '@/lib/courier-notification';
 import toast from 'react-hot-toast';
 
-// ─── Delivery summary (grouped by date → city) ─────────────────────────────
+// ─── Delivery summary KPI cards (grouped by date → city) ───────────────────
 
 function DeliverySummaryPanel({ deliveries }: { deliveries: DeliveryWithCourier[] }) {
   const active = deliveries.filter(d => d.סטטוס_משלוח !== 'נמסר');
   if (active.length === 0) return null;
 
-  // Group by תאריך_משלוח
   const byDate = new Map<string, DeliveryWithCourier[]>();
   for (const d of active) {
     const key = d.תאריך_משלוח || '';
@@ -31,65 +30,65 @@ function DeliverySummaryPanel({ deliveries }: { deliveries: DeliveryWithCourier[
     arr.push(d);
     byDate.set(key, arr);
   }
-
   const sortedDates = Array.from(byDate.keys()).sort();
 
+  function formatDateLabel(dateKey: string): string {
+    if (!dateKey) return 'ללא תאריך';
+    try {
+      const [y, m, day] = dateKey.split('-').map(Number);
+      const dt = new Date(y, m - 1, day);
+      const dayName = dt.toLocaleDateString('he-IL', { weekday: 'long' });
+      return `${dayName} ${String(day).padStart(2, '0')}/${String(m).padStart(2, '0')}`;
+    } catch { return dateKey; }
+  }
+
+  function cityBreakdown(items: DeliveryWithCourier[]): string {
+    const byCity = new Map<string, number>();
+    for (const d of items) {
+      const city = (d.עיר || '').trim() || 'לא צוינה';
+      byCity.set(city, (byCity.get(city) || 0) + 1);
+    }
+    return Array.from(byCity.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([city, n]) => `${city} ${n}`)
+      .join(' · ');
+  }
+
+  const truckIcon = (
+    <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <rect x="1" y="3" width="15" height="13" rx="1" />
+      <path d="M16 8h4l3 3v5h-7V8z" />
+      <circle cx="5.5" cy="18.5" r="2.5" />
+      <circle cx="18.5" cy="18.5" r="2.5" />
+    </svg>
+  );
+
+  const colCls = sortedDates.length >= 3 ? 'sm:grid-cols-2 xl:grid-cols-3' : 'sm:grid-cols-2';
+
   return (
-    <div
-      className="rounded-xl border px-4 py-3"
-      style={{ backgroundColor: '#FDFAF5', borderColor: '#E5DDD3' }}
-    >
-      <div className="text-[11px] font-bold uppercase tracking-wider mb-2.5" style={{ color: '#9B7A5A' }}>
-        סיכום לפי תאריך ואזור
-      </div>
-      <div className="space-y-2.5">
-        {sortedDates.map(dateKey => {
-          const items = byDate.get(dateKey)!;
-
-          // Group by עיר — nullish / empty → 'לא צוינה עיר'
-          const byCity = new Map<string, number>();
-          for (const d of items) {
-            const city = (d.עיר || '').trim() || 'לא צוינה עיר';
-            byCity.set(city, (byCity.get(city) || 0) + 1);
-          }
-          const sortedCities = Array.from(byCity.entries()).sort((a, b) => b[1] - a[1]);
-
-          // Format display label — "יום שלישי 21/05" or raw if no date
-          let dateLabel = dateKey || 'ללא תאריך';
-          if (dateKey) {
-            try {
-              const [y, m, day] = dateKey.split('-').map(Number);
-              const dt = new Date(y, m - 1, day);
-              const dayName = dt.toLocaleDateString('he-IL', { weekday: 'long' });
-              const fmt = `${String(day).padStart(2, '0')}/${String(m).padStart(2, '0')}`;
-              dateLabel = `${dayName} ${fmt}`;
-            } catch { /* keep raw */ }
-          }
-
-          return (
-            <div key={dateKey || '__no_date__'}>
-              <div className="flex items-baseline justify-between gap-2 mb-1">
-                <span className="text-sm font-bold" style={{ color: '#2B1A10' }}>{dateLabel}</span>
-                <span className="text-xs font-semibold tabular-nums flex-shrink-0" style={{ color: '#7C5230' }}>
-                  סה״כ {items.length} משלוחים
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {sortedCities.map(([city, count]) => (
-                  <span
-                    key={city}
-                    className="inline-flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full border"
-                    style={{ backgroundColor: '#FFFFFF', borderColor: '#DDD0BC', color: '#3D2210' }}
-                  >
-                    {city}
-                    <span className="font-bold tabular-nums" style={{ color: '#7C5230' }}>{count}</span>
-                  </span>
-                ))}
-              </div>
+    <div className={`grid grid-cols-1 ${colCls} gap-3`}>
+      {sortedDates.map(dateKey => {
+        const items = byDate.get(dateKey)!;
+        return (
+          <div
+            key={dateKey || '__no_date__'}
+            className="relative overflow-hidden flex items-start gap-3 rounded-xl p-3 w-full text-right"
+            style={{ backgroundColor: '#FFFDF9', border: '1px solid #E8D8C6', boxShadow: '0 2px 8px rgba(47,27,20,0.04)' }}
+          >
+            <span
+              className="flex h-9 w-9 items-center justify-center rounded-lg flex-shrink-0 mt-0.5"
+              style={{ backgroundColor: '#E5EEF1', color: '#496D7D' }}
+            >
+              {truckIcon}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-[10.5px] font-semibold mb-0.5 truncate" style={{ color: '#AF9A87' }}>{formatDateLabel(dateKey)}</p>
+              <p className="text-[20px] font-bold tabular-nums leading-none" style={{ color: '#2F1B14' }}>{items.length}</p>
+              <p className="text-[10px] mt-1 truncate" style={{ color: '#7B604D' }}>{cityBreakdown(items)}</p>
             </div>
-          );
-        })}
-      </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -619,6 +618,9 @@ function DeliveriesContent() {
 
   return (
     <div className="space-y-4">
+      {/* Delivery summary KPI cards — date × city, above filters */}
+      {!loading && <DeliverySummaryPanel deliveries={deliveries} />}
+
       {/* Filters */}
       <div className="flex items-center gap-3">
         <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-44" label="" />
@@ -639,9 +641,6 @@ function DeliveriesContent() {
           ייצוא לאקסל
         </button>
       </div>
-
-      {/* Delivery summary — date × city breakdown, computed from loaded data */}
-      {!loading && <DeliverySummaryPanel deliveries={deliveries} />}
 
       {/* Delivery cards — active only (exclude נמסר) */}
       {loading ? <PageLoading /> : deliveries.filter(d => d.סטטוס_משלוח !== 'נמסר').length === 0 ? (
