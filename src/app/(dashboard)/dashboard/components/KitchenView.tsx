@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import type { KitchenAlert, KitchenTabId, KitchenViewData } from '@/lib/dashboard/kitchen-view';
+import { useEffect, useState } from 'react';
+import type { KitchenAlert, KitchenTask, KitchenViewData } from '@/lib/dashboard/kitchen-view';
 import type { KitchenPrepResponse } from '@/app/api/dashboard/kitchen-prep/route';
 import type { Delivery, TodayOrder } from './types';
 import { KitchenAlerts } from './KitchenAlerts';
@@ -16,16 +16,108 @@ type OrderStatus = TodayOrder['סטטוס_הזמנה'];
 type PaymentStatus = TodayOrder['סטטוס_תשלום'];
 type DeliveryStatus = 'ממתין' | 'נאסף' | 'נמסר';
 
-// Payment tab removed from the kitchen view. The kitchen is a prep
-// screen — payment chasing lives on the dedicated dashboard view.
-// Attendance tab (נוכחות עובדות) is visible to all management users.
-// Attendance is a top-level mode in DashboardViewSwitcher — not a sub-tab here.
-const TABS: Array<{ id: KitchenTabId; label: string }> = [
-  { id: 'attention', label: 'דורש טיפול' },
-  { id: 'today',     label: 'הכל להיום'  },
-  { id: 'prep',      label: 'להכנה'       },
-  { id: 'delivery',  label: 'למשלוח'      },
-];
+// ── 3-column kitchen kanban ───────────────────────────────────────────────────
+
+const KANBAN_COLS = [
+  {
+    id: 'pending',
+    label: 'ממתין להכנה',
+    accent: C.amber,
+    softBg: C.amberSoft,
+    statuses: ['חדשה'],
+  },
+  {
+    id: 'inprog',
+    label: 'בעבודה',
+    accent: C.brand,
+    softBg: C.brandSoft,
+    statuses: ['בהכנה'],
+  },
+  {
+    id: 'done',
+    label: 'מוכן / יצא',
+    accent: C.green,
+    softBg: C.greenSoft,
+    statuses: ['מוכנה למשלוח', 'נשלחה'],
+  },
+] as const;
+
+function KitchenKanban({
+  tasks, updatingId, onOrderStatus, onPaymentStatus, onDeliveryStatus, onOpenOrder,
+}: {
+  tasks: KitchenTask[];
+  updatingId: string | null;
+  onOrderStatus: (order: TodayOrder, status: OrderStatus) => void;
+  onPaymentStatus: (order: TodayOrder, status: PaymentStatus) => void;
+  onDeliveryStatus: (delivery: Delivery, status: DeliveryStatus) => void;
+  onOpenOrder: (order: TodayOrder) => void;
+}) {
+  const cols = KANBAN_COLS.map(col => ({
+    ...col,
+    items: tasks.filter(t => (col.statuses as readonly string[]).includes(t.order.סטטוס_הזמנה ?? '')),
+  }));
+
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-2 px-0.5">
+        <h2 className="text-[13px] font-bold" style={{ color: C.text }}>לוח עבודה</h2>
+        <span className="text-[10.5px]" style={{ color: C.textMuted }}>
+          {tasks.length} הזמנות פעילות
+        </span>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+        {cols.map(col => (
+          <div key={col.id}>
+            {/* Column header */}
+            <div
+              className="flex items-center justify-between rounded-t-xl px-3 py-2"
+              style={{ backgroundColor: col.softBg, border: `1px solid ${col.accent}20`, borderBottom: 'none' }}
+            >
+              <span className="text-[11.5px] font-bold" style={{ color: col.accent }}>{col.label}</span>
+              <span
+                className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                style={{ backgroundColor: `${col.accent}22`, color: col.accent }}
+              >
+                {col.items.length}
+              </span>
+            </div>
+            {/* Column body */}
+            <div
+              className="rounded-b-xl overflow-hidden"
+              style={{ border: `1px solid ${C.border}`, borderTop: `1px solid ${col.accent}20` }}
+            >
+              {col.items.length === 0 ? (
+                <div
+                  className="px-3 py-5 text-center text-[11.5px] font-medium"
+                  style={{ color: C.textMuted, backgroundColor: C.card }}
+                >
+                  ריק
+                </div>
+              ) : (
+                <div
+                  className="divide-y"
+                  style={{ backgroundColor: C.card, borderColor: C.borderSoft }}
+                >
+                  {col.items.map(task => (
+                    <KitchenTaskRow
+                      key={task.id}
+                      task={task}
+                      updating={updatingId === task.order.id || (!!task.delivery && updatingId === task.delivery?.id)}
+                      onOrderStatus={onOrderStatus}
+                      onPaymentStatus={onPaymentStatus}
+                      onDeliveryStatus={onDeliveryStatus}
+                      onOpenOrder={onOpenOrder}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
 
 export function KitchenView({
   data,
@@ -46,10 +138,6 @@ export function KitchenView({
   onDeliveryStatus: (delivery: Delivery, status: DeliveryStatus) => void;
   onOpenOrder: (order: TodayOrder) => void;
 }) {
-  const defaultTab = data.tasksByTab.attention.length > 0 ? 'attention' : 'today';
-  const [activeTab, setActiveTab] = useState<KitchenTabId>(defaultTab);
-  const visibleTasks = useMemo(() => data.tasksByTab[activeTab] || [], [activeTab, data.tasksByTab]);
-
   // Item-aggregated prep board — fetched once when the kitchen view
   // mounts. Kept separate from the dashboard's main fetch so a
   // backend hiccup on this query can't break the rest of the screen.
@@ -109,58 +197,15 @@ export function KitchenView({
         <RawMaterialsSummaryPanel mode="compact" />
       </section>
 
-      {/* Order-level task list, demoted to a supporting role. Useful when
-          the kitchen wants to mark a specific order as ready or jump into
-          the full order card. */}
-      <section className="rounded-lg border p-3" style={{ backgroundColor: C.card, borderColor: C.border }}>
-        <div className="mb-2 flex flex-col xl:flex-row xl:items-end justify-between gap-2">
-          <div>
-            <h2 className="text-base font-bold" style={{ color: C.text }}>הזמנות פעילות</h2>
-            <p className="text-[11px]" style={{ color: C.textSoft }}>זמן יציאה, סטטוס ופעולה. ראשון בתור — קרוב ביותר ביציאה.</p>
-          </div>
-          <div className="flex overflow-x-auto gap-1 pb-1">
-            {TABS.map(tab => {
-              const active = activeTab === tab.id;
-              const count = data.tasksByTab[tab.id]?.length ?? 0;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setActiveTab(tab.id)}
-                  className="h-7 rounded-md border px-2.5 text-[11px] font-bold whitespace-nowrap"
-                  style={{
-                    backgroundColor: active ? C.espresso : C.cardSoft,
-                    borderColor: active ? C.espresso : C.border,
-                    color: active ? '#FFFFFF' : C.textSoft,
-                  }}
-                >
-                  {tab.label} {count > 0 ? `(${count})` : ''}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {visibleTasks.length === 0 ? (
-          <div className="rounded-lg border px-3 py-5 text-center text-sm font-semibold" style={{ borderColor: C.borderSoft, color: C.green, backgroundColor: C.greenSoft }}>
-            אין משימות פתוחות בטאב הזה.
-          </div>
-        ) : (
-          <div className="rounded-md border px-2" style={{ borderColor: C.borderSoft, backgroundColor: C.cardSoft }}>
-            {visibleTasks.map(task => (
-              <KitchenTaskRow
-                key={task.id}
-                task={task}
-                updating={updatingId === task.order.id || (!!task.delivery && updatingId === task.delivery.id)}
-                onOrderStatus={onOrderStatus}
-                onPaymentStatus={onPaymentStatus}
-                onDeliveryStatus={onDeliveryStatus}
-                onOpenOrder={onOpenOrder}
-              />
-            ))}
-          </div>
-        )}
-      </section>
+      {/* 3-column kanban: ממתין → בעבודה → הושלם */}
+      <KitchenKanban
+        tasks={data.tasksByTab.today}
+        updatingId={updatingId}
+        onOrderStatus={onOrderStatus}
+        onPaymentStatus={onPaymentStatus}
+        onDeliveryStatus={onDeliveryStatus}
+        onOpenOrder={onOpenOrder}
+      />
 
       <KitchenAlerts alerts={data.alerts} onAction={handleAlert} />
     </div>

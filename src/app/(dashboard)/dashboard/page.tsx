@@ -26,13 +26,7 @@ import type { DashboardStats, Courier, RawMaterial, Recipe } from '@/types/datab
 import type { TodayOrder, Delivery, Stock, StockRow } from './components/types';
 
 import { CommandHeader } from './components/CommandHeader';
-import { FocusStrip } from './components/FocusStrip';
-import { DashboardShell } from './components/DashboardShell';
 import { DashboardViewSwitcher, type DashboardMode } from './components/DashboardViewSwitcher';
-import { WorkQueue } from './components/WorkQueue';
-import { AttentionPanel } from './components/AttentionPanel';
-import { DashboardInventoryAlerts } from './components/DashboardInventoryAlerts';
-import { DashboardEmployeeTasks } from './components/DashboardEmployeeTasks';
 import { NewWebsiteOrderBanner } from '@/components/dashboard/NewWebsiteOrderBanner';
 import { useNewWebsiteOrderNotifications } from '@/hooks/useNewWebsiteOrderNotifications';
 import { buildQueueItems, type QueueItem } from './components/queue-builder';
@@ -41,7 +35,7 @@ import { KitchenView } from './components/KitchenView';
 import { KitchenAttendanceTab } from './components/KitchenAttendanceTab';
 import { ProductionRecipeModal } from './components/ProductionRecipeModal';
 import { C } from './components/theme';
-import { ProductionSummaryCard } from './components/ProductionSummaryCard';
+import { ExecutiveDashboard } from './components/ExecutiveDashboard';
 
 // ─── Constants ────────────────────────────────────────────────────────────
 
@@ -134,16 +128,6 @@ function getNextOrderStatus(order: TodayOrder): OrderStatus | null {
     case 'נשלחה':        return 'הושלמה בהצלחה';
     default:             return null;
   }
-}
-
-// ─── Section label ────────────────────────────────────────────────────────
-
-function SectionLabel({ label }: { label: string }) {
-  return (
-    <p className="text-[11px] font-semibold uppercase tracking-widest px-1" style={{ color: C.textMuted }}>
-      {label}
-    </p>
-  );
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────
@@ -512,15 +496,7 @@ export default function DashboardPage() {
     });
   }, [activeOrders, todayOrders, todayDeliveries, stock]);
 
-  // Today-only counts for the focus strip.
-  const today = todayIsraelISO();
-  const ordersTodayCount = todayOrders.filter(o =>
-    o.סטטוס_הזמנה !== 'בוטלה' && o.סטטוס_הזמנה !== 'טיוטה' && o.סטטוס_הזמנה !== 'הושלמה בהצלחה',
-  ).length;
-  const deliveriesTodayActive = todayDeliveries.filter(d => d.סטטוס_משלוח !== 'נמסר').length;
-  const allStock = [...stock.raw, ...stock.products, ...stock.petitFours];
-  const criticalStockCount = allStock.filter(s => s.status === 'אזל מהמלאי' || s.status === 'קריטי').length;
-  void today; // silence unused-binding if branches change later
+  void todayIsraelISO(); // todayISO computed per-render inside components that need it
 
   // Date string + greeting
   const dateStr = new Date().toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -568,6 +544,7 @@ export default function DashboardPage() {
         return;
     }
   };
+  void onQueueAction; // kept for when work queue returns; not used in executive mode
 
   // ── Render ─────────────────────────────────────────────────────────────
 
@@ -593,57 +570,14 @@ export default function DashboardPage() {
       <DashboardViewSwitcher mode={dashboardMode} onChange={setDashboardMode} />
 
       {dashboardMode === 'management' ? (
-        <div className="space-y-2">
-          <FocusStrip
-            ordersTodayCount={ordersTodayCount}
-            deliveriesTodayCount={deliveriesTodayActive}
-            unpaidAmount={stats?.unpaidAmount ?? 0}
-            unpaidCount={stats?.unpaidOrders ?? 0}
-            criticalStockCount={criticalStockCount}
-            ordersTomorrow={stats?.ordersTomorrow ?? 0}
-            onJumpOrders={() => router.push('/orders?filter=today')}
-            onJumpDeliveries={() => router.push('/deliveries')}
-            onJumpUnpaid={() => router.push('/orders?filter=unpaid')}
-            onJumpStock={() => router.push('/inventory')}
-          />
-
-          {/* 3-column operations: WorkQueue | InventoryAlerts | ProductionSummary */}
-          <div className="grid grid-cols-1 xl:grid-cols-[1fr_268px_268px] gap-3 items-start">
-            <WorkQueue
-              items={queueItems}
-              updatingId={updatingId}
-              handlers={{
-                onAction: onQueueAction,
-                onRowClick: (item) => {
-                  if (item.entity?.kind === 'order') {
-                    router.push(`/orders/${item.entity.data.id}`);
-                    return;
-                  }
-                  if (item.entity?.kind === 'delivery') {
-                    const orderId = item.entity.data.הזמנות?.id;
-                    if (orderId) router.push(`/orders/${orderId}`);
-                    else router.push('/deliveries');
-                    return;
-                  }
-                  if (item.type === 'stock') {
-                    router.push('/inventory');
-                  }
-                },
-                onChangeOrderStatus: onPickOrderStatus,
-                onChangePaymentStatus: onPickPaymentStatus,
-                onChangeDeliveryStatus: (delivery, next) => patchDelivery(delivery.id, next, delivery.סטטוס_משלוח),
-              }}
-            />
-            <DashboardInventoryAlerts stock={stock} />
-            <ProductionSummaryCard />
-          </div>
-
-          {/* Secondary row: employee tasks + quick actions */}
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-            <DashboardEmployeeTasks />
-            <AttentionPanel />
-          </div>
-        </div>
+        <ExecutiveDashboard
+          stats={stats}
+          activeOrders={activeOrders}
+          todayDeliveries={todayDeliveries}
+          stock={stock}
+          urgentItems={queueItems.filter(it => it.urgency === 'urgent_now')}
+          onNavigate={(path) => router.push(path)}
+        />
       ) : dashboardMode === 'attendance' ? (
         <KitchenAttendanceTab />
       ) : (
