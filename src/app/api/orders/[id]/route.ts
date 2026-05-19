@@ -138,6 +138,24 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     updateData.ארכיון = true;
   }
 
+  // When דמי_משלוח changes, recalculate סך_הכל_לתשלום so the order total
+  // always reflects the delivery fee. The items PUT already does this; the
+  // PATCH route was the only path that didn't.
+  if (Object.prototype.hasOwnProperty.call(body, 'דמי_משלוח')) {
+    const { data: cur } = await supabase
+      .from('הזמנות')
+      .select('סכום_לפני_הנחה, סכום_הנחה')
+      .eq('id', params.id)
+      .single();
+    if (cur) {
+      const subtotal = (cur.סכום_לפני_הנחה as number) ?? 0;
+      const discount = (cur.סכום_הנחה as number) ?? 0;
+      const shipping = body.דמי_משלוח != null ? Number(body.דמי_משלוח) : 0;
+      updateData.סך_הכל_לתשלום = Math.max(0, subtotal - discount + shipping);
+      console.log('[order PATCH] recalculating total — subtotal:', subtotal, '| discount:', discount, '| shipping:', shipping, '| new total:', updateData.סך_הכל_לתשלום);
+    }
+  }
+
   const { data, error } = await supabase
     .from('הזמנות')
     .update(updateData)
