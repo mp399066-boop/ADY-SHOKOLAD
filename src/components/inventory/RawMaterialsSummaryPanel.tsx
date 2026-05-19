@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { C } from '@/app/(dashboard)/dashboard/components/theme';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -41,11 +42,12 @@ export function RawMaterialsSummaryPanel({
   mode = 'full',
 }: {
   /**
-   * compact — kitchen view: top-5 missing rows only, no drill-down,
-   *           no no-recipe/mismatch sections.
+   * kitchen — kitchen view: actionable card rows with severity badge +
+   *           affected products, max 5 rows, no stat chips.
+   * compact — legacy: table format, top-5 missing, no drill-down.
    * full    — inventory page: all rows, drill-down, all warning sections.
    */
-  mode?: 'compact' | 'full';
+  mode?: 'compact' | 'full' | 'kitchen';
 }) {
   const [data,    setData]    = useState<SummaryData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -89,6 +91,84 @@ export function RawMaterialsSummaryPanel({
   const COMPACT_LIMIT = 5;
   const visibleMissing = mode === 'compact' ? missing.slice(0, COMPACT_LIMIT) : missing;
   const extraCount     = missing.length - COMPACT_LIMIT;
+
+  // ── Kitchen mode render ──────────────────────────────────────────────────
+  if (mode === 'kitchen') {
+    if (loading) {
+      return (
+        <div className="flex justify-center py-4">
+          <div className="w-4 h-4 rounded-full border-2 animate-spin"
+            style={{ borderColor: C.borderSoft, borderTopColor: C.brand }} />
+        </div>
+      );
+    }
+    if (!data || missing.length === 0) {
+      return (
+        <div className="rounded-lg px-3 py-3 text-center text-[12px] font-semibold"
+          style={{ color: C.green, backgroundColor: C.greenSoft, border: `1px solid #BFD4C2` }}>
+          {!data || data.orders_count === 0
+            ? 'אין הזמנות פעילות השבוע'
+            : 'כל חומרי הגלם מספיקים להזמנות הפעילות'}
+        </div>
+      );
+    }
+
+    const visibleK = missing.slice(0, 5);
+    const extraK   = missing.length - 5;
+
+    return (
+      <div className="space-y-1.5">
+        {visibleK.map(item => {
+          const severityFrac = item.required > 0 ? item.missing / item.required : 1;
+          const isCritical = severityFrac >= 0.5 || item.in_stock === 0;
+          const badgeColor = isCritical ? C.red    : C.amber;
+          const badgeBg    = isCritical ? C.redSoft : C.amberSoft;
+          const topSrc = item.sources.slice(0, 3);
+          const moreSrc = item.sources.length - 3;
+          return (
+            <div key={item.חומר_גלם_id}
+              className="flex items-start gap-2.5 rounded-lg px-3 py-2.5"
+              style={{ backgroundColor: C.card, border: `1px solid ${C.border}` }}
+            >
+              <span
+                className="text-[10px] font-bold px-2 py-1 rounded-md flex-shrink-0 mt-0.5 tabular-nums"
+                style={{ backgroundColor: badgeBg, color: badgeColor, minWidth: '4rem', textAlign: 'center' }}
+              >
+                חסר {fmtQty(item.missing, item.recipe_unit)}
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className="text-[13px] font-semibold" style={{ color: C.text }}>{item.שם}</p>
+                <p className="text-[10.5px] mt-0.5" style={{ color: C.textSoft }}>
+                  נדרש: {fmtQty(item.required, item.recipe_unit)} · קיים: {fmtQty(item.in_stock, item.recipe_unit)}
+                </p>
+                {topSrc.length > 0 && (
+                  <p className="text-[10.5px] mt-0.5 truncate" style={{ color: C.textMuted }}>
+                    משפיע: {topSrc.map(s => s.name).join(', ')}{moreSrc > 0 ? ` +${moreSrc}` : ''}
+                  </p>
+                )}
+              </div>
+            </div>
+          );
+        })}
+        {extraK > 0 && (
+          <Link
+            href="/raw-materials-summary"
+            className="flex items-center justify-center text-[11px] font-semibold py-1.5 transition-opacity hover:opacity-70"
+            style={{ color: C.brand }}
+          >
+            + {extraK} חומרים נוספים חסרים ←
+          </Link>
+        )}
+        <Link
+          href="/raw-materials-summary"
+          className="flex items-center justify-center text-[11px] font-medium py-1 transition-opacity hover:opacity-70"
+          style={{ color: C.textMuted }}
+        >
+          סיכום מלא ←
+        </Link>
+      </div>
+    );
+  }
 
   // ── Render ───────────────────────────────────────────────────────────────
   return (

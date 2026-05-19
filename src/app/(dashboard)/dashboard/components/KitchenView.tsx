@@ -176,28 +176,8 @@ export function KitchenView({
 
   return (
     <div className="space-y-2">
-      <KitchenQuickActions onNavigate={onNavigate} onProduction={onProduction} />
 
-      {/* The kitchen's most important answer: what to prepare, how much,
-          by when, and whether stock covers it. Comes FIRST on the page. */}
-      <KitchenPrepBoard data={prepData} loading={prepLoading} />
-
-      {/* Inventory panels — finished goods + raw materials + petit-fours
-          (already item-based; the panel groups by kind internally). */}
-      <KitchenInventoryPanel items={data.inventoryWarnings} onOpenInventory={() => onNavigate('/inventory')} />
-
-      {/* Raw material requirements vs. active orders — compact view */}
-      <section className="rounded-lg border p-3" style={{ backgroundColor: C.card, borderColor: C.border }}>
-        <div className="flex items-center justify-between mb-2.5">
-          <div>
-            <h2 className="text-sm font-bold" style={{ color: C.text }}>חוסרי חומרי גלם</h2>
-            <p className="text-[11px]" style={{ color: C.textSoft }}>מול הזמנות פעילות השבוע</p>
-          </div>
-        </div>
-        <RawMaterialsSummaryPanel mode="compact" />
-      </section>
-
-      {/* 3-column kanban: ממתין → בעבודה → הושלם */}
+      {/* 1. לוח עבודה — work board first, above the fold */}
       <KitchenKanban
         tasks={data.tasksByTab.today}
         updatingId={updatingId}
@@ -207,7 +187,34 @@ export function KitchenView({
         onOpenOrder={onOpenOrder}
       />
 
+      {/* 2. חוסרי חומרי גלם — critical for kitchen, immediately after board */}
+      <section className="rounded-xl border p-3" style={{ backgroundColor: C.card, borderColor: C.border }}>
+        <div className="flex items-center justify-between mb-2.5">
+          <div>
+            <h2 className="text-[13px] font-bold" style={{ color: C.text }}>חוסרי חומרי גלם</h2>
+            <p className="text-[10.5px] mt-0.5" style={{ color: C.textSoft }}>מול הזמנות פעילות השבוע</p>
+          </div>
+        </div>
+        <RawMaterialsSummaryPanel mode="kitchen" />
+      </section>
+
+      {/* 3. מה צריך להכין — prep list after shortages */}
+      <KitchenPrepBoard data={prepData} loading={prepLoading} />
+
+      {/* 4. Secondary sections — below fold, minimized */}
+      <KitchenInventoryPanel items={data.inventoryWarnings} onOpenInventory={() => onNavigate('/inventory')} />
+
       <KitchenAlerts alerts={data.alerts} onAction={handleAlert} />
+
+      {/* Quick actions at bottom — not competing with the work board */}
+      <div
+        className="rounded-xl border p-2.5"
+        style={{ backgroundColor: C.card, borderColor: C.border }}
+      >
+        <p className="text-[10.5px] font-semibold mb-2 px-0.5" style={{ color: C.textMuted }}>פעולות מהירות</p>
+        <KitchenQuickActions onNavigate={onNavigate} onProduction={onProduction} />
+      </div>
+
     </div>
   );
 }
