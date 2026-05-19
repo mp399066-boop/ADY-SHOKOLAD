@@ -24,11 +24,12 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   }
 
   const body = await req.json();
-  const { הזמנה, מוצרים = [], מארזי_פטיפורים = [] } = body;
+  const { הזמנה, מוצרים = [], מארזי_פטיפורים = [], פריטים_ידניים = [] } = body;
 
   let subtotal = 0;
   for (const item of מוצרים) subtotal += (item.כמות || 1) * (item.מחיר_ליחידה || 0);
   for (const pkg of מארזי_פטיפורים) subtotal += (pkg.כמות || 1) * (pkg.מחיר_ליחידה || 0);
+  for (const item of (פריטים_ידניים as Record<string, unknown>[])) subtotal += ((item.כמות as number) || 1) * ((item.מחיר_ליחידה as number) || 0);
 
   const discountType: 'ללא' | 'אחוז' | 'סכום' = הזמנה?.סוג_הנחה || 'ללא';
   const discountValue = Number(הזמנה?.ערך_הנחה || 0);
@@ -101,6 +102,25 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         });
       }
     }
+  }
+
+  for (const item of (פריטים_ידניים as Record<string, unknown>[])) {
+    const name = (item.שם_פריט_מותאם as string)?.trim();
+    if (!name) continue;
+    const allowedTypes = ['מוצר_ידני', 'תוספת_תשלום'];
+    const lineType = allowedTypes.includes(item.סוג_שורה as string) ? (item.סוג_שורה as string) : 'מוצר_ידני';
+    const qty = (item.כמות as number) || 1;
+    const price = (item.מחיר_ליחידה as number) || 0;
+    await supabase.from('מוצרים_בהזמנה').insert({
+      הזמנה_id: orderId,
+      מוצר_id: null,
+      סוג_שורה: lineType,
+      שם_פריט_מותאם: name,
+      כמות: qty,
+      מחיר_ליחידה: price,
+      סהכ: qty * price,
+      הערות_לשורה: (item.הערות_לשורה as string) || null,
+    });
   }
 
   return NextResponse.json({ success: true });

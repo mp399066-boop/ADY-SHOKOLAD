@@ -95,6 +95,15 @@ interface PackageItem {
   פטיפורים: { פטיפור_id: string; שם: string; כמות: number }[];
 }
 
+interface NewCustomItem {
+  סוג_שורה: 'מוצר_ידני' | 'תוספת_תשלום' | 'הנחה_תשלום';
+  שם_פריט_מותאם: string;
+  כמות: number;
+  מחיר_ליחידה: number;
+  סהכ: number;
+  הערות_לשורה: string;
+}
+
 function SectionHeader({ number, title }: { number: number; title: string }) {
   return (
     <div className="flex items-center gap-3 mb-4">
@@ -146,6 +155,7 @@ export default function NewOrderPage() {
   const [orderType, setOrderType] = useState<'רגיל' | 'סאטמר'>('רגיל');
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
   const [packageItems, setPackageItems] = useState<PackageItem[]>([]);
+  const [customItems, setCustomItems] = useState<NewCustomItem[]>([]);
 
   // Draft support
   const searchParams = useSearchParams();
@@ -253,6 +263,26 @@ export default function NewOrderPage() {
             };
           });
         setPackageItems(pkgItems);
+
+        const customItemRows = (o.מוצרים_בהזמנה || [])
+          .filter((item: Record<string, unknown>) => item.סוג_שורה === 'מוצר_ידני' || item.סוג_שורה === 'תוספת_תשלום')
+          .map((item: Record<string, unknown>) => {
+            const price = (item.מחיר_ליחידה as number) || 0;
+            const absPrice = Math.abs(price);
+            const qty = (item.כמות as number) || 1;
+            const rowType: NewCustomItem['סוג_שורה'] =
+              item.סוג_שורה === 'תוספת_תשלום' && price < 0 ? 'הנחה_תשלום' :
+              item.סוג_שורה === 'תוספת_תשלום' ? 'תוספת_תשלום' : 'מוצר_ידני';
+            return {
+              סוג_שורה: rowType,
+              שם_פריט_מותאם: (item.שם_פריט_מותאם as string) || '',
+              כמות: qty,
+              מחיר_ליחידה: absPrice,
+              סהכ: rowType === 'הנחה_תשלום' ? -(qty * absPrice) : qty * price,
+              הערות_לשורה: (item.הערות_לשורה as string) || '',
+            };
+          });
+        setCustomItems(customItemRows);
       }
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -339,7 +369,7 @@ export default function NewOrderPage() {
 
     return () => { if (autoSaveTimeoutRef.current) clearTimeout(autoSaveTimeoutRef.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCustomer, orderItems, packageItems, deliveryDate, deliveryTime, deliveryType,
+  }, [selectedCustomer, orderItems, packageItems, customItems, deliveryDate, deliveryTime, deliveryType,
       deliveryTimeFlexible,
       recipientName, recipientPhone, recipientAddress, recipientCity, deliveryInstructions,
       deliveryFee, paymentMethod, paymentStatus, greetingText, notes, discountType,
@@ -414,7 +444,7 @@ export default function NewOrderPage() {
     }
   };
 
-  const subtotal = [...orderItems, ...packageItems].reduce((sum, item) => sum + item.סהכ, 0);
+  const subtotal = [...orderItems, ...packageItems, ...customItems].reduce((sum, item) => sum + item.סהכ, 0);
   const discountAmount = discountType === 'אחוז'
     ? +(subtotal * discountValue / 100).toFixed(2)
     : discountType === 'סכום'
@@ -547,6 +577,27 @@ export default function NewOrderPage() {
     });
   };
 
+  const addCustomItem = () => {
+    setCustomItems(prev => [...prev, {
+      סוג_שורה: 'תוספת_תשלום', שם_פריט_מותאם: '', כמות: 1, מחיר_ליחידה: 0, סהכ: 0, הערות_לשורה: '',
+    }]);
+  };
+
+  const updateCustomItem = (idx: number, field: string, value: string | number) => {
+    setCustomItems(prev => {
+      const items = [...prev];
+      const item = { ...items[idx], [field]: value };
+      const qty = Number(field === 'כמות' ? value : item.כמות) || 1;
+      const price = Number(field === 'מחיר_ליחידה' ? value : item.מחיר_ליחידה) || 0;
+      const type = field === 'סוג_שורה' ? (value as NewCustomItem['סוג_שורה']) : item.סוג_שורה;
+      item.סהכ = type === 'הנחה_תשלום' ? -(qty * price) : qty * price;
+      items[idx] = item;
+      return items;
+    });
+  };
+
+  const removeCustomItem = (idx: number) => setCustomItems(prev => prev.filter((_, i) => i !== idx));
+
   const inferCategoryFromName = (name: string): string => {
     const lower = name.toLowerCase();
     if (lower.includes('עוגה') || lower.includes('עוגת')) return 'עוגה';
@@ -653,6 +704,15 @@ export default function NewOrderPage() {
       הערות_לשורה: p.הערות_לשורה || null,
       פטיפורים: p.פטיפורים.map(pf => ({ פטיפור_id: pf.פטיפור_id, כמות: pf.כמות })),
     })),
+    פריטים_ידניים: customItems
+      .filter(i => i.שם_פריט_מותאם.trim())
+      .map(i => ({
+        שם_פריט_מותאם: i.שם_פריט_מותאם.trim(),
+        סוג_שורה: i.סוג_שורה === 'הנחה_תשלום' ? 'תוספת_תשלום' : i.סוג_שורה,
+        כמות: i.כמות,
+        מחיר_ליחידה: i.סוג_שורה === 'הנחה_תשלום' ? -Math.abs(i.מחיר_ליחידה) : i.מחיר_ליחידה,
+        הערות_לשורה: i.הערות_לשורה || null,
+      })),
     משלוח: deliveryType === 'משלוח'
       ? { כתובת: recipientAddress, עיר: recipientCity, הוראות_משלוח: deliveryInstructions }
       : null,
@@ -1270,9 +1330,101 @@ export default function NewOrderPage() {
             )}
           </Card>
 
-          {/* 6. Greeting + notes */}
+          {/* Custom items: תוספות תשלום / הנחות / מוצרים ידניים */}
           <Card>
-            <SectionHeader number={deliveryType === 'משלוח' ? 6 : 5} title="ברכה והערות" />
+            <CardHeader>
+              <SectionHeader number={deliveryType === 'משלוח' ? 6 : 5} title="תוספות, הנחות, פריטים ידניים" />
+              <Button type="button" variant="outline" size="sm" onClick={addCustomItem}>
+                + הוסף פריט
+              </Button>
+            </CardHeader>
+            {customItems.length === 0 ? (
+              <p className="text-xs text-center py-4" style={{ color: '#9B7A5A' }}>
+                תוספת תשלום, הנחה / הורדה, או פריט שאינו בקטלוג
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {customItems.map((item, idx) => {
+                  const isDiscount = item.סוג_שורה === 'הנחה_תשלום';
+                  return (
+                    <div
+                      key={idx}
+                      className="p-3 rounded-xl"
+                      style={{
+                        backgroundColor: isDiscount ? '#F0FAF2' : '#FAF7F0',
+                        border: `1px solid ${isDiscount ? '#B7E0C0' : '#E8DECE'}`,
+                      }}
+                    >
+                      <div className="grid grid-cols-12 gap-2 items-end">
+                        <div className="col-span-3">
+                          <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>סוג</label>
+                          <select
+                            value={item.סוג_שורה}
+                            onChange={e => updateCustomItem(idx, 'סוג_שורה', e.target.value)}
+                            className="w-full px-2 py-1.5 text-xs border rounded-lg bg-white"
+                            style={{ borderColor: isDiscount ? '#B7E0C0' : '#DDD0BC', color: '#2B1A10' }}
+                          >
+                            <option value="תוספת_תשלום">תוספת תשלום ＋</option>
+                            <option value="הנחה_תשלום">הנחה / הורדה −</option>
+                            <option value="מוצר_ידני">מוצר ידני</option>
+                          </select>
+                        </div>
+                        <div className="col-span-3">
+                          <Input
+                            label="שם"
+                            value={item.שם_פריט_מותאם}
+                            onChange={e => updateCustomItem(idx, 'שם_פריט_מותאם', e.target.value)}
+                            placeholder="תיאור..."
+                          />
+                        </div>
+                        <div className="col-span-2">
+                          <Input
+                            label="כמות"
+                            type="number"
+                            value={item.כמות}
+                            onChange={e => updateCustomItem(idx, 'כמות', Number(e.target.value))}
+                            min={1}
+                          />
+                        </div>
+                        <div className="col-span-2">
+                          <Input
+                            label={isDiscount ? '−₪ מחיר' : '₪ מחיר'}
+                            type="number"
+                            value={item.מחיר_ליחידה}
+                            onChange={e => updateCustomItem(idx, 'מחיר_ליחידה', Number(e.target.value))}
+                            min={0}
+                            step={0.01}
+                          />
+                        </div>
+                        <div className="col-span-1">
+                          <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>סה״כ</label>
+                          <p
+                            className="text-xs font-semibold py-1.5"
+                            style={{ color: isDiscount ? '#15803D' : '#2B1A10' }}
+                          >
+                            {isDiscount ? '−' : ''}₪{Math.abs(item.סהכ).toFixed(2)}
+                          </p>
+                        </div>
+                        <div className="col-span-1 flex items-end justify-center pb-1">
+                          <button
+                            type="button"
+                            onClick={() => removeCustomItem(idx)}
+                            className="w-6 h-6 rounded-full flex items-center justify-center text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors text-lg leading-none"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </Card>
+
+          {/* 7. Greeting + notes */}
+          <Card>
+            <SectionHeader number={deliveryType === 'משלוח' ? 7 : 6} title="ברכה והערות" />
             <div className="space-y-3">
               <Textarea
                 label="טקסט ברכה"
@@ -1290,9 +1442,9 @@ export default function NewOrderPage() {
             </div>
           </Card>
 
-          {/* 7. Payment */}
+          {/* 8. Payment */}
           <Card>
-            <SectionHeader number={deliveryType === 'משלוח' ? 7 : 6} title="תשלום" />
+            <SectionHeader number={deliveryType === 'משלוח' ? 8 : 7} title="תשלום" />
             <div className="grid grid-cols-3 gap-4">
               <Select
                 label="אמצעי תשלום"
@@ -1390,6 +1542,16 @@ export default function NewOrderPage() {
                           <span className="mr-2 flex-shrink-0">₪{p.סהכ.toFixed(2)}</span>
                         </div>
                       ))}
+                      {customItems.filter(i => i.שם_פריט_מותאם).map((i, idx) => (
+                        <div key={`c${idx}`} className="flex justify-between">
+                          <span className="truncate" style={{ color: i.סוג_שורה === 'הנחה_תשלום' ? '#15803D' : '#6B4A2D' }}>
+                            {i.שם_פריט_מותאם} ×{i.כמות}
+                          </span>
+                          <span className="mr-2 flex-shrink-0" style={{ color: i.סוג_שורה === 'הנחה_תשלום' ? '#15803D' : '#6B4A2D' }}>
+                            {i.סוג_שורה === 'הנחה_תשלום' ? '−' : ''}₪{Math.abs(i.סהכ).toFixed(2)}
+                          </span>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -1415,6 +1577,17 @@ export default function NewOrderPage() {
                       <span className="text-red-600">−₪{discountAmount.toFixed(2)}</span>
                     </div>
                   )}
+                  {(() => {
+                    const itemDiscountTotal = customItems
+                      .filter(i => i.סוג_שורה === 'הנחה_תשלום')
+                      .reduce((s, i) => s + Math.abs(i.סהכ), 0);
+                    return itemDiscountTotal > 0 ? (
+                      <div className="flex justify-between text-xs mb-1" style={{ color: '#15803D' }}>
+                        <span>הנחות / הורדות בפריטים</span>
+                        <span className="font-semibold">−₪{itemDiscountTotal.toFixed(2)}</span>
+                      </div>
+                    ) : null;
+                  })()}
                   {deliveryFee > 0 && (
                     <div className="flex justify-between text-xs mb-1" style={{ color: '#6B4A2D' }}>
                       <span>דמי משלוח</span>
