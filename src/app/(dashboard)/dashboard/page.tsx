@@ -31,6 +31,8 @@ import { DashboardShell } from './components/DashboardShell';
 import { DashboardViewSwitcher, type DashboardMode } from './components/DashboardViewSwitcher';
 import { WorkQueue } from './components/WorkQueue';
 import { AttentionPanel } from './components/AttentionPanel';
+import { DashboardInventoryAlerts } from './components/DashboardInventoryAlerts';
+import { DashboardEmployeeTasks } from './components/DashboardEmployeeTasks';
 import { buildQueueItems, type QueueItem } from './components/queue-builder';
 import { buildKitchenView } from '@/lib/dashboard/kitchen-view';
 import { KitchenView } from './components/KitchenView';
@@ -573,7 +575,6 @@ export default function DashboardPage() {
 
       {dashboardMode === 'management' ? (
         <>
-          <SectionLabel label="תמונת מצב יומית" />
           <FocusStrip
             ordersTodayCount={ordersTodayCount}
             deliveriesTodayCount={deliveriesTodayActive}
@@ -589,7 +590,6 @@ export default function DashboardPage() {
 
           <ProductionSummaryCard />
 
-          <SectionLabel label="פעולות נדרשות" />
           <DashboardShell
             main={
               <WorkQueue
@@ -598,9 +598,6 @@ export default function DashboardPage() {
                 handlers={{
                   onAction: onQueueAction,
                   onRowClick: (item) => {
-                    // Where each row navigates to. Stops short of opening
-                    // anything for stock items where the action button (פתח מלאי)
-                    // already does the routing.
                     if (item.entity?.kind === 'order') {
                       router.push(`/orders/${item.entity.data.id}`);
                       return;
@@ -622,16 +619,11 @@ export default function DashboardPage() {
               />
             }
             side={
-              <AttentionPanel
-                liveOrders={activeOrders}
-                todayDeliveries={todayDeliveries}
-                stock={stock}
-                unpaidAmount={stats?.unpaidAmount ?? 0}
-                unpaidCount={stats?.unpaidOrders ?? 0}
-                updatingId={updatingId}
-                onChangePaymentStatus={onPickPaymentStatus}
-                onPatchDelivery={(delivery, next) => patchDelivery(delivery.id, next, delivery.סטטוס_משלוח)}
-              />
+              <div className="space-y-2.5">
+                <AttentionPanel />
+                <DashboardInventoryAlerts stock={stock} />
+                <DashboardEmployeeTasks />
+              </div>
             }
           />
         </>
