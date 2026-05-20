@@ -483,9 +483,12 @@ function AttentionList({ items, onNavigate }: { items: QueueItem[]; onNavigate: 
 
 // ── Tab infrastructure ────────────────────────────────────────────────────────
 
-type TabId = 'orders' | 'finance' | 'deliveries';
+type TabId = 'insights' | 'orders' | 'finance' | 'deliveries';
 
 const TABS: Array<{ id: TabId; label: string }> = [
+  // תובנות sits first so the operator's eye lands on the action items rather
+  // than raw lists when the dashboard loads.
+  { id: 'insights',   label: 'תובנות'   },
   { id: 'orders',     label: 'הזמנות'   },
   { id: 'finance',    label: 'פיננסיים' },
   { id: 'deliveries', label: 'משלוחים'  },
@@ -1415,6 +1418,321 @@ function DeliveriesTab({
   );
 }
 
+// ── Insights tab ──────────────────────────────────────────────────────────────
+// Action-oriented summary of what needs attention right now. Every card is
+// derived from existing dashboard data (props + the same /api/analytics/
+// finance/overview the Finance tab uses) and every card is clickable — either
+// drilling into a list locally or routing to a filtered page.
+
+type InsightSeverity = 'red' | 'amber' | 'green' | 'blue' | 'gold';
+
+const INSIGHT_PALETTE: Record<InsightSeverity, { accent: string; bg: string }> = {
+  red:   { accent: C.red,   bg: C.redSoft   },
+  amber: { accent: C.amber, bg: C.amberSoft },
+  green: { accent: C.green, bg: C.greenSoft },
+  blue:  { accent: C.blue,  bg: C.blueSoft  },
+  gold:  { accent: C.gold,  bg: C.goldSoft  },
+};
+
+function InsightCard({
+  title, value, explanation, severity, onClick, disabled,
+}: {
+  title: string;
+  value: string;
+  explanation: string;
+  severity: InsightSeverity;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  const { accent, bg } = INSIGHT_PALETTE[severity];
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="rounded-xl p-3 flex flex-col gap-1.5 w-full text-right transition-all hover:shadow-md disabled:hover:shadow-none"
+      style={{
+        backgroundColor: C.card,
+        border: `1px solid ${C.border}`,
+        borderRight: `3px solid ${accent}`,
+        boxShadow: '0 2px 8px rgba(47,27,20,0.04)',
+        cursor: disabled ? 'default' : 'pointer',
+        opacity: disabled ? 0.7 : 1,
+      }}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: C.textMuted }}>
+          {title}
+        </span>
+        <span
+          className="text-[9px] font-semibold px-1.5 py-0.5 rounded-md flex-shrink-0"
+          style={{ backgroundColor: bg, color: accent }}
+        >
+          {disabled ? 'תקין' : 'פתח'}
+        </span>
+      </div>
+      <span className="text-[15px] font-bold tabular-nums leading-tight" style={{ color: accent }}>
+        {value}
+      </span>
+      <p className="text-[10.5px] leading-snug" style={{ color: C.textSoft }}>
+        {explanation}
+      </p>
+    </button>
+  );
+}
+
+function InsightsTab({
+  liveOrders,
+  todayDeliveries,
+  urgentItems,
+  onNavigate,
+}: {
+  liveOrders: TodayOrder[];
+  todayDeliveries: Delivery[];
+  urgentItems: QueueItem[];
+  onNavigate: (path: string) => void;
+}) {
+  const [data, setData]         = useState<FinanceOverviewData | null>(null);
+  const [loading, setLoading]   = useState(true);
+  const [fetchErr, setFetchErr] = useState<string | null>(null);
+  const [drill, setDrill]       = useState<DrillState>(null);
+
+  useEffect(() => {
+    fetch('/api/analytics/finance/overview')
+      .then(r => r.json())
+      .then((json: FinanceOverviewData & { error?: string }) => {
+        if (json.error) { setFetchErr(json.error); return; }
+        setData(json);
+      })
+      .catch(() => setFetchErr('שגיאה בטעינת נתונים'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const today = todayISO();
+
+  // Orders whose delivery date is today but the kitchen hasn't finished them —
+  // i.e. NOT yet in "מוכנה למשלוח" / "נשלחה" / "הושלמה בהצלחה". These are the
+  // rows the operator most needs to chase before the day ends.
+  const dueTodayNotReady = useMemo(() => liveOrders.filter(o => {
+    const due = !!o.תאריך_אספקה && String(o.תאריך_אספקה).slice(0, 10) === today;
+    if (!due) return false;
+    const s = o.סטטוס_הזמנה;
+    return s !== 'מוכנה למשלוח' && s !== 'נשלחה' && s !== 'הושלמה בהצלחה';
+  }), [liveOrders, today]);
+
+  // Currently sitting in "מוכנה למשלוח" — needs a courier picked up / customer
+  // pickup arranged. Surfaces as a green positive-action card.
+  const readyToGo = useMemo(
+    () => liveOrders.filter(o => o.סטטוס_הזמנה === 'מוכנה למשלוח'),
+    [liveOrders],
+  );
+
+  // Active (not נמסר) deliveries grouped by city, sorted by count desc.
+  const cityCounts = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const d of todayDeliveries.filter(d => d.סטטוס_משלוח !== 'נמסר')) {
+      const city = (d.עיר || '').trim();
+      if (!city) continue;
+      map.set(city, (map.get(city) ?? 0) + 1);
+    }
+    return Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
+  }, [todayDeliveries]);
+  const busiestCity = cityCounts[0];
+
+  // Today's deliveries with no city populated — likely missing address data,
+  // needs to be filled before a courier is dispatched.
+  const missingCity = useMemo(
+    () => todayDeliveries.filter(d => !((d.עיר || '').trim())),
+    [todayDeliveries],
+  );
+
+  const urgentCount = urgentItems.length;
+
+  if (loading) return (
+    <div className="flex justify-center py-14">
+      <div className="w-5 h-5 rounded-full border-2 animate-spin"
+        style={{ borderColor: C.borderSoft, borderTopColor: C.brand }} />
+    </div>
+  );
+
+  if (fetchErr) return (
+    <p className="text-[12px] text-center py-10" style={{ color: C.red }}>{fetchErr}</p>
+  );
+
+  // ── Drill helpers ──
+  const openOpenOrdersDrill = () => {
+    if (!data || data.openOrders.length === 0) return;
+    setDrill({
+      title: 'חוב פתוח לגבייה',
+      subtitle: `${data.kpis.unpaid.count} הזמנות · ${formatCurrency(data.kpis.unpaid.total)}`,
+      items: data.openOrders.map(o => ({
+        ...finRowToDrillItem(o),
+        badgeBg: C.amberSoft,
+        badgeColor: C.amber,
+        badge: o.orderStatus || undefined,
+        amountColor: C.amber,
+      })),
+      allHref: '/orders?filter=unpaid',
+    });
+  };
+
+  const openDueTodayNotReady = () => {
+    if (dueTodayNotReady.length === 0) return;
+    setDrill({
+      title: 'להיום — עדיין לא מוכנות',
+      subtitle: `${dueTodayNotReady.length} הזמנות בייצור / חדשות`,
+      items: dueTodayNotReady.map(orderToDrillItem),
+      allHref: '/orders?filter=today',
+      allLabel: 'לכל ההזמנות להיום',
+    });
+  };
+
+  const openReadyToGo = () => {
+    if (readyToGo.length === 0) return;
+    setDrill({
+      title: 'מוכנות לאיסוף / משלוח',
+      subtitle: `${readyToGo.length} הזמנות`,
+      items: readyToGo.map(orderToDrillItem),
+      allHref: '/orders?filter=ready',
+    });
+  };
+
+  const openMissingCity = () => {
+    if (missingCity.length === 0) return;
+    setDrill({
+      title: 'משלוחים ללא עיר',
+      subtitle: `${missingCity.length} משלוחים — דורש השלמה`,
+      items: missingCity.map(deliveryToDrillItem),
+      allHref: '/deliveries',
+      allLabel: 'לעמוד המשלוחים',
+    });
+  };
+
+  const topCustomer = data?.topCustomers[0];
+  const topOrder    = data?.highValueOrders[0];
+
+  return (
+    <>
+      {drill && <DrillModal state={drill} onClose={() => setDrill(null)} />}
+      <div className="space-y-2" dir="rtl">
+        <p className="text-[10.5px] px-1" style={{ color: C.textMuted }}>
+          תובנות אוטומטיות מהנתונים החיים של הלוח. לחץ על כרטיס לפתיחת הרשומות.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2">
+
+          {/* 1. Open debt — Finance overview unpaid KPI */}
+          {data && (
+            <InsightCard
+              title="חוב פתוח לגבייה"
+              value={data.kpis.unpaid.count > 0
+                ? `${data.kpis.unpaid.count} הזמנות · ${formatCurrency(data.kpis.unpaid.total)}`
+                : 'אין חובות פתוחים'}
+              explanation={data.kpis.unpaid.count > 0
+                ? 'לקוחות שטרם שילמו את החשבון. מומלץ ליצור קשר ולהשלים גביה.'
+                : 'כל ההזמנות הפעילות שולמו. אין מה לעקוב אחריו כרגע.'}
+              severity={data.kpis.unpaid.count > 0 ? 'amber' : 'green'}
+              onClick={openOpenOrdersDrill}
+              disabled={data.kpis.unpaid.count === 0}
+            />
+          )}
+
+          {/* 2. Urgent now — pre-filtered queue items */}
+          <InsightCard
+            title="דחוף עכשיו"
+            value={urgentCount > 0 ? `${urgentCount} הזמנות דחופות` : 'אין דחופות'}
+            explanation={urgentCount > 0
+              ? 'הזמנות שסומנו כדחופות וטרם הושלמו. עברי עליהן ראשונות היום.'
+              : 'אין הזמנות שמסומנות כדחופות כרגע.'}
+            severity={urgentCount > 0 ? 'red' : 'green'}
+            onClick={() => onNavigate('/orders?filter=urgent')}
+            disabled={urgentCount === 0}
+          />
+
+          {/* 3. Due today, not ready — derived from liveOrders */}
+          <InsightCard
+            title="להיום — לא מוכנות"
+            value={dueTodayNotReady.length > 0
+              ? `${dueTodayNotReady.length} הזמנות`
+              : 'הכל מוכן להיום'}
+            explanation={dueTodayNotReady.length > 0
+              ? 'אספקתן היום אך הן עדיין חדשות או בייצור. דחוף לקדם.'
+              : 'כל הזמנות היום כבר מוכנות או נשלחו.'}
+            severity={dueTodayNotReady.length > 0 ? 'red' : 'green'}
+            onClick={openDueTodayNotReady}
+            disabled={dueTodayNotReady.length === 0}
+          />
+
+          {/* 4. Ready to go — needs courier / pickup arrangement */}
+          <InsightCard
+            title="מוכנות לאיסוף / משלוח"
+            value={readyToGo.length > 0 ? `${readyToGo.length} הזמנות` : 'אין הזמנות שמחכות'}
+            explanation={readyToGo.length > 0
+              ? 'הזמנות בסטטוס "מוכנה למשלוח". ודאי שמשויך שליח או שהלקוח יודע.'
+              : 'אין כרגע הזמנות שממתינות לצאת.'}
+            severity={readyToGo.length > 0 ? 'blue' : 'green'}
+            onClick={openReadyToGo}
+            disabled={readyToGo.length === 0}
+          />
+
+          {/* 5. Busiest city — only show if at least one active delivery has a city */}
+          {busiestCity ? (
+            <InsightCard
+              title="עיר עמוסה היום"
+              value={`${busiestCity[0]} · ${busiestCity[1]} משלוחים`}
+              explanation="ריכוז משלוחים פעילים. שווה לתאם מסלול אחד או שליח קבוע."
+              severity="blue"
+              onClick={() => onNavigate(`/deliveries?city=${encodeURIComponent(busiestCity[0])}`)}
+            />
+          ) : (
+            <InsightCard
+              title="עיר עמוסה היום"
+              value="אין משלוחים פעילים"
+              explanation="לא תוכנן עומס לפי עיר היום."
+              severity="green"
+              onClick={() => onNavigate('/deliveries')}
+              disabled
+            />
+          )}
+
+          {/* 6. Missing city — actionable data-quality alert */}
+          <InsightCard
+            title="משלוחים ללא עיר"
+            value={missingCity.length > 0 ? `${missingCity.length} משלוחים` : 'כל המשלוחים מלאים'}
+            explanation={missingCity.length > 0
+              ? 'משלוחים בלי עיר. דורש השלמת כתובת לפני יציאה לדרך.'
+              : 'לכל משלוח של היום יש עיר רשומה.'}
+            severity={missingCity.length > 0 ? 'amber' : 'green'}
+            onClick={openMissingCity}
+            disabled={missingCity.length === 0}
+          />
+
+          {/* 7. Top customer · 12 months — straight from finance overview */}
+          {topCustomer && (
+            <InsightCard
+              title="לקוח מוביל · 12 חודשים"
+              value={`${topCustomer.name} · ${formatCurrency(topCustomer.amount)}`}
+              explanation={`${topCustomer.count} הזמנות בשנה האחרונה. שווה לשמור על קשר אישי.`}
+              severity="gold"
+              onClick={() => onNavigate(`/customers/${topCustomer.id}`)}
+            />
+          )}
+
+          {/* 8. Highest-value order · 12 months */}
+          {topOrder && (
+            <InsightCard
+              title="הזמנה גבוהה · 12 חודשים"
+              value={`${topOrder.customerName} · ${formatCurrency(topOrder.amount)}`}
+              explanation="ההזמנה הגבוהה ביותר ב-12 החודשים האחרונים. בקרה איכותית."
+              severity="gold"
+              onClick={() => onNavigate(`/orders/${topOrder.id}`)}
+            />
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ── Main export ───────────────────────────────────────────────────────────────
 
 export function AnalyticsTabs({
@@ -1428,7 +1746,7 @@ export function AnalyticsTabs({
   urgentItems: QueueItem[];
   onNavigate: (path: string) => void;
 }) {
-  const [activeTab, setActiveTab] = useState<TabId>('orders');
+  const [activeTab, setActiveTab] = useState<TabId>('insights');
 
   return (
     <div>
@@ -1453,6 +1771,14 @@ export function AnalyticsTabs({
         ))}
       </div>
 
+      {activeTab === 'insights' && (
+        <InsightsTab
+          liveOrders={liveOrders}
+          todayDeliveries={todayDeliveries}
+          urgentItems={urgentItems}
+          onNavigate={onNavigate}
+        />
+      )}
       {activeTab === 'orders' && (
         <OrdersTab liveOrders={liveOrders} urgentItems={urgentItems} onNavigate={onNavigate} />
       )}
