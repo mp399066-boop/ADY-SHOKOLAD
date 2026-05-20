@@ -35,20 +35,27 @@ const PAYMENT_DOCS = new Set(['receipt', 'invoice_receipt']);
 // The fix is the swap below; the old layout is preserved only as comments.
 //
 // Credit card sub-fields (camelCase, per the official model):
-//   cardType     — card brand: 1=Isracard 2=Visa 3=Mastercard 4=Amex 5=Diners.
-//                  IMPORTANT: do NOT send cardType:0 ("Unknown"). Morning's
-//                  receipt validator rejects credit-card payment lines whose
-//                  cardType is 0 as an invalid card record — the receipt then
-//                  sums to 0 against the invoice income and produces 2422
-//                  ("קיים חוסר התאמה בין סכום התקבולים לסכום התשלומים").
-//                  When we don't know the brand we OMIT cardType entirely
-//                  and let Morning use its default; do not substitute 0.
+//   cardType     — card brand. Morning's PaymentCardType enum is:
+//                    0=Unknown 1=Isracard 2=Visa 3=Mastercard 4=Amex 5=Diners
+//                  IMPORTANT — on the /documents endpoint, Morning's receipt
+//                  validator rejects credit-card payment lines whose cardType
+//                  is 0 ("Unknown") AND payment lines that omit cardType
+//                  entirely (empirically verified — both produce errorCode
+//                  2422 "קיים חוסר התאמה בין סכום התקבולים לסכום התשלומים").
+//                  Morning effectively requires a real brand (1-5) on type 3
+//                  receipts. Since the CRM does not capture brand or last-4,
+//                  we default to cardType:3 (Mastercard) — Israel's most
+//                  widely-issued brand, the least-misleading generic. The
+//                  receipt header still reads "כרטיס אשראי" as before.
 //   cardNum      — last 4 digits (we don't capture them — omit when empty)
 //   dealType     — deal type: 1=Regular 2=Installments 3=Credit 4=BillingDeclined 5=Other
 //   numPayments  — number of installments (1 for a one-shot transaction)
 //
 // There is NO `subType` / `sub_type` field in the spec — we used to send it
 // and it was simply ignored.
+//
+// Reference for the enum values:
+//   https://raw.githubusercontent.com/yanivps/green-invoice/master/green_invoice/models.py
 type MorningPayment = {
   type: number;
   price: number;
@@ -64,12 +71,10 @@ type MorningPayment = {
 const PAYMENT_BUILDERS: Record<string, (price: number, date: string) => MorningPayment> = {
   'מזומן':         (price, date) => ({ type: 1, price, date, currency: 'ILS' }),
   'המחאה':         (price, date) => ({ type: 2, price, date, currency: 'ILS' }),
-  // type 3 = Credit card. We do NOT capture brand or last-4, and sending
-  // `cardType: 0` ("Unknown") causes Morning to reject the receipt with
-  // errorCode 2422. We omit `cardType` entirely — Morning uses its default
-  // and accepts the receipt as valid. `dealType` and `numPayments` stay
-  // because the API requires them for type 3.
-  'כרטיס אשראי':   (price, date) => ({ type: 3, price, date, currency: 'ILS', dealType: 1, numPayments: 1 }),
+  // type 3 = Credit card. CRM does not capture brand or last-4; default to
+  // cardType:3 (Mastercard) as the generic accepted-by-Morning brand. See
+  // the long-form note above for why 0 / omitted both fail with 2422.
+  'כרטיס אשראי':   (price, date) => ({ type: 3, price, date, currency: 'ILS', cardType: 3, dealType: 1, numPayments: 1 }),
   // type 4 = Electronic fund transfer (bank transfer). bankName is a
   // human-readable placeholder for documents where we don't know the bank.
   'העברה בנקאית':  (price, date) => ({ type: 4, price, date, currency: 'ILS', bankName: 'לא צוין' }),
@@ -440,7 +445,7 @@ serve(async (req: Request) => {
     // (JSON.stringify with indent) was getting split by Supabase's Logflare
     // pipeline so the dashboard search "[invoice-debug]" missed everything
     // after the first line. No null/2 pretty-print below.
-    console.log('[invoice-debug] VERSION: credit-card-cardType-omit-2422-fix-v7');
+    console.log('[invoice-debug] VERSION: credit-card-cardType-mastercard-default-2422-fix-v8');
     console.log('[invoice-debug] order:', order.מספר_הזמנה, '| document type:', documentType, '| morningType:', morningDocType);
     console.log('[invoice-debug] client:', JSON.stringify({
       id: order.לקוח_id,
