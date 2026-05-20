@@ -222,9 +222,13 @@ function computeSegments(slices: DonutSlice[], r: number) {
 function OrderStatusDonut({
   slices,
   onLegendClick,
+  onSegmentClick,
 }: {
   slices: DonutSlice[];
   onLegendClick?: (label: string) => void;
+  // Same drill as legend click, but triggered by clicking the SVG arc itself.
+  // Kept as a separate prop so legend-only-clickable callers stay supported.
+  onSegmentClick?: (label: string) => void;
 }) {
   const SIZE = 96;
   const r = SIZE / 2 - 10;
@@ -246,10 +250,16 @@ function OrderStatusDonut({
               strokeWidth={12}
               strokeDasharray={`${seg.arc} ${circ - seg.arc}`}
               strokeDashoffset={-seg.offset}
-            />
+              // pointer-events:stroke makes only the visible arc clickable
+              // (not the empty disk inside), so hits feel right.
+              onClick={onSegmentClick ? () => onSegmentClick(seg.label) : undefined}
+              style={onSegmentClick ? { cursor: 'pointer', pointerEvents: 'stroke' } : undefined}
+            >
+              {onSegmentClick && <title>{`${seg.label}: ${seg.count}`}</title>}
+            </circle>
           ))}
         </svg>
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
           <span className="text-[17px] font-bold tabular-nums leading-none" style={{ color: C.text }}>{total}</span>
           <span className="text-[9px] font-semibold" style={{ color: C.textMuted }}>הזמנות</span>
         </div>
@@ -539,7 +549,7 @@ function OrdersTab({
           style={{ backgroundColor: C.card, border: `1px solid ${C.border}`, boxShadow: '0 2px 8px rgba(47,27,20,0.04)' }}
         >
           <h2 className="text-[12px] font-bold mb-3" style={{ color: C.textSoft }}>סטטוס הזמנות</h2>
-          <OrderStatusDonut slices={donutSlices} onLegendClick={openByStatus} />
+          <OrderStatusDonut slices={donutSlices} onLegendClick={openByStatus} onSegmentClick={openByStatus} />
           <Link
             href="/orders"
             className="mt-3 flex items-center justify-center text-[11px] font-semibold pt-2.5 transition-opacity hover:opacity-70"
@@ -573,12 +583,15 @@ function OrdersTab({
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-[12px] font-bold" style={{ color: C.textSoft }}>דורש טיפול</h2>
             {urgentItems.length > 0 && (
-              <span
-                className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[10px] font-bold"
-                style={{ backgroundColor: C.redSoft, color: C.red }}
+              <button
+                type="button"
+                onClick={() => onNavigate('/orders?filter=urgent')}
+                className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[10px] font-bold transition-opacity hover:opacity-70"
+                style={{ backgroundColor: C.redSoft, color: C.red, cursor: 'pointer' }}
+                title="לכל ההזמנות הדחופות"
               >
                 {urgentItems.length}
-              </span>
+              </button>
             )}
           </div>
           <AttentionList items={urgentItems} onNavigate={onNavigate} />
@@ -902,6 +915,22 @@ function FinanceTab({ onNavigate }: { onNavigate: (path: string) => void }) {
     });
   };
 
+  // Drill into year-paid orders. Used by the green segment + "שולם X%" label
+  // on the collection-health bar — symmetric to openUnpaidDrill for the amber
+  // side, so both halves of the split are now interactive.
+  const openYearPaidDrill = () => {
+    const items = allFinOrders
+      .filter(o => !!o.date && o.date >= yearFrom && o.date <= todayKey)
+      .sort((a, b) => (b.date ?? '') > (a.date ?? '') ? 1 : -1)
+      .map(finRowToDrillItem);
+    setDrill({
+      title: 'שולם — השנה',
+      subtitle: `${formatCurrency(data.kpis.year.total)} · ${data.kpis.year.count} הזמנות`,
+      items,
+      allHref: '/orders',
+    });
+  };
+
   const openUnpaidDrill = () => {
     setDrill({
       title: 'ממתין לתשלום',
@@ -1019,7 +1048,13 @@ function FinanceTab({ onNavigate }: { onNavigate: (path: string) => void }) {
                 return (
                   <>
                     <div className="flex w-full rounded-full overflow-hidden" style={{ height: 8 }}>
-                      <div style={{ width: `${paidPct}%`, backgroundColor: C.green }} />
+                      <button
+                        type="button"
+                        onClick={openYearPaidDrill}
+                        className="transition-opacity hover:opacity-70"
+                        style={{ width: `${paidPct}%`, backgroundColor: C.green, cursor: 'pointer' }}
+                        title="לחץ לראות הכנסות שנתיות ששולמו"
+                      />
                       <button
                         type="button"
                         onClick={openUnpaidDrill}
@@ -1029,10 +1064,15 @@ function FinanceTab({ onNavigate }: { onNavigate: (path: string) => void }) {
                       />
                     </div>
                     <div className="flex items-center justify-between mt-1.5">
-                      <span className="flex items-center gap-1 text-[9px]" style={{ color: C.textMuted }}>
+                      <button
+                        type="button"
+                        onClick={openYearPaidDrill}
+                        className="flex items-center gap-1 text-[9px] transition-opacity hover:opacity-70"
+                        style={{ color: C.green, cursor: 'pointer' }}
+                      >
                         <span className="inline-block w-2 h-2 rounded-sm" style={{ backgroundColor: C.green }} />
                         שולם {paidPct}%
-                      </span>
+                      </button>
                       <button
                         type="button"
                         onClick={openUnpaidDrill}
@@ -1274,7 +1314,14 @@ function DeliveriesTab({
             ))}
           </div>
           {total > 0 && (
-            <>
+            <button
+              type="button"
+              onClick={() => openStatusDrill('נמסרו', 'נמסרו', delivered)}
+              disabled={delivered === 0}
+              className="w-full text-right transition-opacity hover:opacity-70"
+              style={{ cursor: delivered > 0 ? 'pointer' : 'default' }}
+              title={delivered > 0 ? 'לחץ לראות משלוחים שנמסרו' : undefined}
+            >
               <div className="flex items-center justify-between mb-1">
                 <span className="text-[10px] font-semibold" style={{ color: C.textMuted }}>התקדמות</span>
                 <span className="text-[10px] font-bold" style={{ color: C.green }}>{progress}%</span>
@@ -1282,7 +1329,7 @@ function DeliveriesTab({
               <div className="w-full rounded-full overflow-hidden" style={{ height: 6, backgroundColor: C.borderSoft }}>
                 <div className="h-full rounded-full transition-all" style={{ width: `${progress}%`, backgroundColor: C.green }} />
               </div>
-            </>
+            </button>
           )}
           <button
             onClick={() => onNavigate('/deliveries')}
