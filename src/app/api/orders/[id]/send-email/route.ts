@@ -39,6 +39,16 @@ export async function POST(_: NextRequest, { params }: { params: { id: string } 
     ? `${customer['שם_פרטי'] || ''} ${customer['שם_משפחה'] || ''}`.trim()
     : '';
 
+  // "חדש" badge: an item is "new" only when it was added AFTER the previous
+  // customer summary was sent. On the very first summary nothing is new
+  // (the customer has no prior summary to compare against), regardless of
+  // the row's סוג_שורה. Previously the route hard-coded isNew=true for
+  // every מוצר_ידני / תוספת_תשלום row, which mis-marked old manual items
+  // as new and never marked added regular products as new.
+  const lastSummarySentAt: string | null =
+    (o['summary_email_sent_at'] as string | null) ?? null;
+  const lastSummaryMs = lastSummarySentAt ? Date.parse(lastSummarySentAt) : null;
+
   const emailOrderData: OrderEmailData = {
     orderNumber:  (o['מספר_הזמנה']     as string) || '',
     orderDate:    (o['תאריך_הזמנה']     as string) || new Date().toISOString().split('T')[0],
@@ -71,13 +81,22 @@ export async function POST(_: NextRequest, { params }: { params: { id: string } 
           ? (item['שם_פריט_מותאם'] as string) || 'פריט'
           : (prod?.['שם_מוצר'] as string) || 'פריט';
 
+      // isNew when the row was created strictly after the last summary we
+      // sent the customer. Applies to ALL row types (regular product,
+      // package, manual item, extra charge) — not just custom ones.
+      const createdAtRaw = item['תאריך_יצירה'] as string | null | undefined;
+      const createdMs = createdAtRaw ? Date.parse(createdAtRaw) : NaN;
+      const isNew = lastSummaryMs !== null
+        && Number.isFinite(createdMs)
+        && createdMs > lastSummaryMs;
+
       return {
         name,
         quantity:  Number(item['כמות']          || 1),
         unitPrice: Number(item['מחיר_ליחידה']   || 0),
         lineTotal: Number(item['סהכ']            || 0),
         ...(isPackage && petitFours.length > 0 ? { petitFours } : {}),
-        ...(isCustom ? { isNew: true } : {}),
+        ...(isNew ? { isNew: true } : {}),
       };
     }),
   };
