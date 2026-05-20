@@ -35,7 +35,14 @@ const PAYMENT_DOCS = new Set(['receipt', 'invoice_receipt']);
 // The fix is the swap below; the old layout is preserved only as comments.
 //
 // Credit card sub-fields (camelCase, per the official model):
-//   cardType     — card brand: 0=Unknown 1=Isracard 2=Visa 3=Mastercard 4=Amex 5=Diners
+//   cardType     — card brand: 1=Isracard 2=Visa 3=Mastercard 4=Amex 5=Diners.
+//                  IMPORTANT: do NOT send cardType:0 ("Unknown"). Morning's
+//                  receipt validator rejects credit-card payment lines whose
+//                  cardType is 0 as an invalid card record — the receipt then
+//                  sums to 0 against the invoice income and produces 2422
+//                  ("קיים חוסר התאמה בין סכום התקבולים לסכום התשלומים").
+//                  When we don't know the brand we OMIT cardType entirely
+//                  and let Morning use its default; do not substitute 0.
 //   cardNum      — last 4 digits (we don't capture them — omit when empty)
 //   dealType     — deal type: 1=Regular 2=Installments 3=Credit 4=BillingDeclined 5=Other
 //   numPayments  — number of installments (1 for a one-shot transaction)
@@ -57,9 +64,12 @@ type MorningPayment = {
 const PAYMENT_BUILDERS: Record<string, (price: number, date: string) => MorningPayment> = {
   'מזומן':         (price, date) => ({ type: 1, price, date, currency: 'ILS' }),
   'המחאה':         (price, date) => ({ type: 2, price, date, currency: 'ILS' }),
-  // type 3 = Credit card. We don't capture brand or last-4 → cardType:0
-  // (Unknown) is the safest valid value (1–5 would mis-claim a brand).
-  'כרטיס אשראי':   (price, date) => ({ type: 3, price, date, currency: 'ILS', cardType: 0, dealType: 1, numPayments: 1 }),
+  // type 3 = Credit card. We do NOT capture brand or last-4, and sending
+  // `cardType: 0` ("Unknown") causes Morning to reject the receipt with
+  // errorCode 2422. We omit `cardType` entirely — Morning uses its default
+  // and accepts the receipt as valid. `dealType` and `numPayments` stay
+  // because the API requires them for type 3.
+  'כרטיס אשראי':   (price, date) => ({ type: 3, price, date, currency: 'ILS', dealType: 1, numPayments: 1 }),
   // type 4 = Electronic fund transfer (bank transfer). bankName is a
   // human-readable placeholder for documents where we don't know the bank.
   'העברה בנקאית':  (price, date) => ({ type: 4, price, date, currency: 'ILS', bankName: 'לא צוין' }),
@@ -430,7 +440,7 @@ serve(async (req: Request) => {
     // (JSON.stringify with indent) was getting split by Supabase's Logflare
     // pipeline so the dashboard search "[invoice-debug]" missed everything
     // after the first line. No null/2 pretty-print below.
-    console.log('[invoice-debug] VERSION: single-round-net-target-2422-fix-v6');
+    console.log('[invoice-debug] VERSION: credit-card-cardType-omit-2422-fix-v7');
     console.log('[invoice-debug] order:', order.מספר_הזמנה, '| document type:', documentType, '| morningType:', morningDocType);
     console.log('[invoice-debug] client:', JSON.stringify({
       id: order.לקוח_id,
@@ -692,6 +702,15 @@ serve(async (req: Request) => {
         '| payment_block:', JSON.stringify(documentBody.payment ?? null),
       );
     }
+
+    // ── [FINAL DOCUMENT BODY] — exact JSON about to be POSTed to Morning ──
+    // Single line, JSON.stringify with no indent (so Logflare keeps it as
+    // one searchable entry). This is the literal payload sent — if Morning
+    // rejects, this is the bytes to compare against the Morning API spec.
+    console.log('[FINAL DOCUMENT BODY]',
+      '| order:', order.מספר_הזמנה,
+      '| body:', JSON.stringify(documentBody),
+    );
 
     const docRes = await fetch(`${MORNING_API_BASE}/documents`, {
       method: 'POST',
