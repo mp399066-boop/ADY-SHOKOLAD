@@ -426,25 +426,26 @@ export async function POST(req: NextRequest) {
         await sendOrderEmail(emailTo, emailName, emailOrderData, emailContext);
         console.log('[create-full] sendOrderEmail completed successfully');
         try {
-          const snapshot = buildItemsSnapshot((fullItems || []) as Record<string, unknown>[]);
+          // Write the snapshot column INDEPENDENTLY of the legacy at/total
+          // fields — see the matching comment in the send-email route. On
+          // envs where migration 042 isn't applied a combined UPDATE would
+          // fail the whole statement and the snapshot would never persist.
+          const snapshot  = buildItemsSnapshot((fullItems || []) as Record<string, unknown>[]);
           const sentTotal = (fullOrder as Record<string, unknown>)?.['סך_הכל_לתשלום'] ?? 0;
+          const nowIso    = new Date().toISOString();
           const { error: snapErr } = await supabase
             .from('הזמנות')
-            .update({
-              summary_email_sent_at:             new Date().toISOString(),
-              summary_email_sent_total:          sentTotal,
-              summary_email_sent_items_snapshot: snapshot,
-            })
+            .update({ summary_email_sent_items_snapshot: snapshot })
             .eq('id', order!.id);
           if (snapErr) {
-            console.error('[create-full] snapshot write failed, retrying without snapshot column:', snapErr.message);
-            await supabase
-              .from('הזמנות')
-              .update({
-                summary_email_sent_at:    new Date().toISOString(),
-                summary_email_sent_total: sentTotal,
-              })
-              .eq('id', order!.id);
+            console.error('[create-full] snapshot write failed:', snapErr.message);
+          }
+          const { error: legacyErr } = await supabase
+            .from('הזמנות')
+            .update({ summary_email_sent_at: nowIso, summary_email_sent_total: sentTotal })
+            .eq('id', order!.id);
+          if (legacyErr) {
+            console.warn('[create-full] legacy summary_email_sent_* write failed (snapshot still saved):', legacyErr.message);
           }
         } catch (snapErr) {
           console.error('[create-full] snapshot persist failed:', snapErr);

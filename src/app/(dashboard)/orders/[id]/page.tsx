@@ -1433,9 +1433,14 @@ export default function OrderDetailPage() {
               if (!customerEmail) return null;
 
               const sentAt        = order.summary_email_sent_at as string | null | undefined;
-              const summarySent   = !!sentAt;
               const sentSnapshot  = (order as { summary_email_sent_items_snapshot?: { key?: string }[] | null })
                 .summary_email_sent_items_snapshot;
+              // Key off the snapshot itself rather than summary_email_sent_at
+              // — the at/total columns may be missing on envs where migration
+              // 042 isn't applied, but the snapshot (migration 043, the only
+              // one that actually has to exist) is the authoritative record
+              // that a summary has been sent to this customer.
+              const summarySent   = Array.isArray(sentSnapshot);
               const currentItems  = (order.מוצרים_בהזמנה || []) as unknown as Record<string, unknown>[];
 
               // Items added (or removed) since the last summary. We only

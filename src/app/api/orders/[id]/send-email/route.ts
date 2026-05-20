@@ -162,19 +162,33 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     await sendOrderEmail(to, customerName, emailOrderData, emailContext);
 
     // Persist what we just sent so the next "send updated summary" can diff.
-    // Failure to write the snapshot column (e.g. migration not yet applied)
-    // must NOT fail the user-facing send — fall back to the legacy fields.
-    const baseUpdate: Record<string, unknown> = {
-      summary_email_sent_at:    new Date().toISOString(),
-      summary_email_sent_total: currentTotal,
-    };
+    //
+    // CRITICAL: write the snapshot column INDEPENDENTLY of the legacy
+    // summary_email_sent_at / summary_email_sent_total fields. Migration 042
+    // (which adds those two legacy columns) is NOT applied on every
+    // environment, and a combined UPDATE fails the whole statement when any
+    // one column is missing — so previously the snapshot never persisted on
+    // such envs, the page kept rendering as "first summary", and the next
+    // send treated every row as new. The snapshot column itself comes from
+    // migration 043 (applied) and is the authoritative source of truth.
+    const nowIso = new Date().toISOString();
     const { error: snapshotErr } = await supabase
       .from('הזמנות')
-      .update({ ...baseUpdate, summary_email_sent_items_snapshot: currentSnapshot })
+      .update({ summary_email_sent_items_snapshot: currentSnapshot })
       .eq('id', params.id);
     if (snapshotErr) {
-      console.error('[send-email] snapshot write failed, retrying without snapshot column:', snapshotErr.message);
-      await supabase.from('הזמנות').update(baseUpdate).eq('id', params.id);
+      console.error('[send-email] snapshot write failed:', snapshotErr.message);
+    }
+    // Best-effort write of the legacy at/total fields — used by the dup-send
+    // guard timestamp and the "sent on" line in the right-rail. If the
+    // columns don't exist (migration 042 not applied) this fails silently
+    // and the snapshot still carries the rest.
+    const { error: legacyErr } = await supabase
+      .from('הזמנות')
+      .update({ summary_email_sent_at: nowIso, summary_email_sent_total: currentTotal })
+      .eq('id', params.id);
+    if (legacyErr) {
+      console.warn('[send-email] legacy summary_email_sent_* write failed (snapshot still saved):', legacyErr.message);
     }
 
     void logActivity({
