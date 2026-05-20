@@ -54,19 +54,25 @@ const PAYMENT_DOCS = new Set(['receipt', 'invoice_receipt']);
 //   the payment line — its sum becomes 0 against the invoice income and
 //   the request fails with errorCode 2422:
 //     "קיים חוסר התאמה בין סכום התקבולים לסכום התשלומים"
-//   Empirically verified across three permutations (all produced 2422):
-//     • cardType:0 ("Unknown")           → rejected
-//     • cardType omitted                 → rejected
-//     • cardType:3 (Mastercard generic)  → rejected
-//   Morning genuinely requires real card data on type 3 receipts.
+//   Empirically verified across these permutations (all produced 2422):
+//     • type:3 cardType:0 ("Unknown")           → rejected
+//     • type:3 cardType omitted                 → rejected
+//     • type:3 cardType:3 (Mastercard generic)  → rejected
+//     • type:11 (Other) with type+price+date+currency only → also rejected
 //
-//   The safe accepted fallback is Morning type 11 (Other / "אחר"), which
-//   takes price+date+currency only and is reliably counted as a valid
-//   receipt. We intentionally route "כרטיס אשראי" through type 11 until
-//   the CRM captures real card metadata (brand + last-4 from an acquirer
-//   webhook or operator input). The CRM-side label / logs / invoice
-//   description still read "כרטיס אשראי"; only Morning's wire `type` code
-//   changes.
+//   Type 11 was the next-most-obvious fallback (the API docs call it the
+//   generic "Other" receipt type), but Morning's /documents validator
+//   does not count type 11 as a valid receipt against invoice income —
+//   leaving the receipt sum at 0 and producing the same 2422 again.
+//
+//   Known-safe fallback is type 1 (Cash) with the SAME minimal signature
+//   (type + price + date + currency) — the universally-accepted Israeli
+//   receipt type. We intentionally route "כרטיס אשראי" through type 1
+//   until the CRM captures real card metadata (brand + last-4 from an
+//   acquirer webhook or operator input). The CRM-side label / logs /
+//   invoice description still read "כרטיס אשראי"; only Morning's wire
+//   `type` code changes — the receipt header in Morning's printed PDF
+//   will show "מזומן" until proper card data is wired through.
 //
 // Reference for the enum values:
 //   https://raw.githubusercontent.com/yanivps/green-invoice/master/green_invoice/models.py
@@ -86,10 +92,11 @@ const PAYMENT_BUILDERS: Record<string, (price: number, date: string) => MorningP
   'מזומן':         (price, date) => ({ type: 1, price, date, currency: 'ILS' }),
   'המחאה':         (price, date) => ({ type: 2, price, date, currency: 'ILS' }),
   // The CRM stores only "כרטיס אשראי" (no brand, no last-4, no dealType,
-  // no acquirer data), so we route to Morning type 11 (Other) instead of
-  // type 3 — see long-form rationale block above. Switch back to type 3
-  // once real card metadata is captured upstream.
-  'כרטיס אשראי':   (price, date) => ({ type: 11, price, date, currency: 'ILS' }),
+  // no acquirer data), so we route to Morning type 1 (Cash) instead of
+  // type 3 — see long-form rationale block above (type 3 needs real card
+  // data; type 11 "Other" is not counted by Morning as a receipt either).
+  // Switch back to type 3 once real card metadata is captured upstream.
+  'כרטיס אשראי':   (price, date) => ({ type: 1, price, date, currency: 'ILS' }),
   // type 4 = Electronic fund transfer (bank transfer). bankName is a
   // human-readable placeholder for documents where we don't know the bank.
   'העברה בנקאית':  (price, date) => ({ type: 4, price, date, currency: 'ILS', bankName: 'לא צוין' }),
@@ -515,7 +522,7 @@ serve(async (req: Request) => {
     // (JSON.stringify with indent) was getting split by Supabase's Logflare
     // pipeline so the dashboard search "[invoice-debug]" missed everything
     // after the first line. No null/2 pretty-print below.
-    console.log('[invoice-debug] VERSION: delivery-merge-into-first-line-2422-fix-v10');
+    console.log('[invoice-debug] VERSION: credit-card-route-to-type1-cash-2422-fix-v11');
     console.log('[invoice-debug] order:', order.מספר_הזמנה, '| document type:', documentType, '| morningType:', morningDocType);
     console.log('[invoice-debug] client:', JSON.stringify({
       id: order.לקוח_id,
@@ -637,6 +644,14 @@ serve(async (req: Request) => {
       console.log('[PAYMENT EF] selected builder for method:', paymentMethod);
       console.log('[PAYMENT EF] morning payment type sent to API:', paymentObj.type);
       console.log('[PAYMENT EF] full payment object:', JSON.stringify(paymentObj));
+      // Single-line audit log per user spec — explicit CRM-method → Morning-type
+      // mapping plus the exact JSON block. Independent of the [PAYMENT EF]
+      // lines above so it survives Logflare grouping/truncation.
+      console.log('[PAYMENT METHOD MAPPING]',
+        '| CRM_method:', paymentMethod,
+        '| morning_type_sent:', paymentObj.type,
+        '| payment_block:', JSON.stringify(paymentObj),
+      );
     }
 
     console.log('[morning] Calling Morning API — docType:', morningDocType, '| order:', order.מספר_הזמנה);
