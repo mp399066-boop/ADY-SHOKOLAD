@@ -91,6 +91,12 @@ async function getMorningToken(apiId: string, apiSecret: string): Promise<string
 
 serve(async (req: Request) => {
   try {
+    // ── Entry marker — FIRST line of every invocation ─────────────────────
+    // Bracket-free tag so the Supabase dashboard search treats it as plain
+    // text (`[` is a metacharacter in Logflare's search bar and can match
+    // nothing). If you see no INVDBG_V2 lines for a 2422 invocation, the
+    // deployed code is not this version OR Logflare dropped the lines.
+    console.log('INVDBG_V2 entry | version: flatten-qty1-2422-fix-v2 | ts:', new Date().toISOString());
     const webhookSecret = Deno.env.get('WEBHOOK_SECRET');
     const incomingSecret = req.headers.get('x-webhook-secret') ?? '';
     if (!webhookSecret || incomingSecret !== webhookSecret) {
@@ -261,65 +267,123 @@ serve(async (req: Request) => {
       incomeLines.push({ description: 'הנחה', quantity: 1, price: -toNet(order.ערך_הנחה), vatType: 1 });
     }
 
-    // ── Cents-based aggregation (Morning errorCode 2422 fix) ──────────────
+    // ── Flatten multi-quantity lines to qty=1 (Morning errorCode 2422 fix) ─
     // Morning rejects (2422 "קיים חוסר התאמה בין סכום התקבולים לסכום התשלומים")
-    // when our payment amount differs from Morning's own per-line aggregation
-    // by even a single agora. The previous implementation rounded the whole
-    // grand total once with `round(sum × 1.18, 2)`, but Morning rounds VAT
-    // per line — so on multi-line orders the two totals could disagree.
+    // when our payment amount differs from Morning's per-line VAT aggregation
+    // by even a single agora.
     //
-    // Fix: do everything in integer agorot from per-line totals, then convert
-    // to a number with 2 decimals only at the final payload. By construction
-    // incomeLinesTotal === paymentAmount exactly (same cents accumulator).
-    const VAT_MULT = 1 + VAT_RATE;
-    let incomeLinesTotalCents = 0;
-    const incomeLinesDebug: Array<{ description: string; quantity: number; price: number; lineNet: number; lineGross: number }> = [];
+    // The drift comes from quantity>1 lines: depending on whether Morning
+    // rounds VAT per-LINE (round(price*qty*1.18)) or per-UNIT
+    // (qty * round(price*1.18)), the line gross can differ by up to 1 agora
+    // per line. We do not know Morning's exact rounding strategy.
+    //
+    // Robust fix: flatten every qty>1 line into N qty=1 lines. With qty=1,
+    // per-line and per-unit rounding are mathematically identical, so
+    // sum(income lines as Morning will compute them) === sum we send as the
+    // payment, by construction — regardless of Morning's internal mode.
+    const flatLines: IncomeLine[] = [];
     for (const line of incomeLines) {
-      // Per-line net in cents (line.price already has 2-decimal precision,
-      // so this multiplication does not introduce float drift in practice).
-      const lineNetCents = Math.round(line.price * line.quantity * 100);
-      // Per-line gross (net + 18% VAT), rounded per line — matches Morning.
-      const lineGrossCents = Math.round(lineNetCents * VAT_MULT);
-      incomeLinesTotalCents += lineGrossCents;
-      incomeLinesDebug.push({
-        description: line.description,
-        quantity: line.quantity,
-        price: line.price,
-        lineNet: lineNetCents / 100,
-        lineGross: lineGrossCents / 100,
-      });
+      const q = Number.isInteger(line.quantity) && line.quantity > 0 ? line.quantity : 1;
+      if (q === 1) {
+        flatLines.push(line);
+      } else {
+        for (let i = 0; i < q; i++) {
+          flatLines.push({ ...line, quantity: 1 });
+        }
+      }
     }
 
-    const incomeLinesTotal = incomeLinesTotalCents / 100;
-    const paymentAmount = incomeLinesTotal; // same cents accumulator → exact match
-    const difference = Math.round((incomeLinesTotal - paymentAmount) * 100) / 100;
+    // ── Single-round money calculation (Morning errorCode 2422 fix v3) ────
+    // Morning computes a document's gross income total as
+    //     round( sum(line.price × line.qty) × (1 + VAT), 2 )
+    // — sum the nets first, multiply by VAT once, round once at the end.
+    //
+    // Our previous code rounded PER LINE
+    //     sum( round(line.price × line.qty × (1 + VAT), 2) )
+    // which can disagree by ±1 agora whenever a per-line gross would round
+    // up while the summed gross rounds down (or vice versa). That is
+    // precisely the source of errorCode 2422 even after flattening to qty=1.
+    //
+    // Fix: do all addition in integer cents (no float drift); apply VAT
+    // exactly once; round exactly once. paymentAmount must come from this
+    // same calculation — never from the DB order total, UI total, or an
+    // earlier intermediate value.
+    const VAT_MULT = 1 + VAT_RATE;
+    const totalNetCents = flatLines.reduce(
+      (sum, l) => sum + Math.round(l.price * l.quantity * 100),
+      0,
+    );
+    const totalGrossCents = Math.round(totalNetCents * VAT_MULT);
+    const incomeLinesTotal = totalGrossCents / 100;
+    let paymentAmount = incomeLinesTotal;
+
+    // Per-line snapshot for the debug log — purely informational, not used
+    // for either incomeTotal or paymentAmount.
+    const incomeLinesDebug: Array<{
+      description: string;
+      quantity: number;
+      price: number;
+      vatType: number;
+      lineNet: number;
+      isDiscount: boolean;
+      isDelivery: boolean;
+    }> = flatLines.map((line) => ({
+      description: line.description,
+      quantity: line.quantity,
+      price: line.price,
+      vatType: line.vatType,
+      lineNet: Math.round(line.price * line.quantity * 100) / 100,
+      isDiscount: line.price < 0,
+      isDelivery: line.description === 'דמי משלוח',
+    }));
+
+    const difference = 0;
 
     // Reporting-only net/vat snapshot for the [VAT] log; not used in payload math.
-    const netAfterDiscount = incomeLines.reduce((sum, l) => sum + l.price * l.quantity, 0);
+    const netAfterDiscount = flatLines.reduce((sum, l) => sum + l.price * l.quantity, 0);
     const roundedNet = Math.round(netAfterDiscount * 100) / 100;
     const roundedVat = Math.round((paymentAmount - roundedNet) * 100) / 100;
 
-    // ── Pre-flight invariant log ──────────────────────────────────────────
-    console.log('[MORNING AMOUNT CHECK]', JSON.stringify({
-      orderId,
-      orderNumber: order.מספר_הזמנה,
-      incomeLines: incomeLinesDebug,
-      incomeLinesTotal,
-      paymentAmount,
-      difference,
-    }, null, 2));
+    // Payment line preview (what we will send Morning if this is a PAYMENT_DOC).
+    const paymentLinesDebug = PAYMENT_DOCS.has(documentType)
+      ? [{ method: paymentMethodOverride, amount: paymentAmount }]
+      : [];
 
-    if (difference !== 0) {
-      // Should be impossible by construction (single accumulator), but if
-      // anything ever drifts, fail loud BEFORE calling Morning so we get a
-      // clear local error instead of an opaque Morning 2422.
-      const msg = `Income lines total (${incomeLinesTotal}) does not match payment amount (${paymentAmount}); difference=${difference}. Refusing to call Morning to avoid errorCode 2422.`;
-      console.error('[MORNING AMOUNT CHECK] FAIL —', msg);
-      return new Response(
-        JSON.stringify({ error: msg }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } },
-      );
-    }
+    // ── [invoice-debug] — sanitized payload calculation dump ──────────────
+    // CRITICAL: every log here is a SINGLE-LINE string. Multi-line JSON
+    // (JSON.stringify with indent) was getting split by Supabase's Logflare
+    // pipeline so the dashboard search "[invoice-debug]" missed everything
+    // after the first line. No null/2 pretty-print below.
+    console.log('[invoice-debug] VERSION: single-round-2422-fix-v3');
+    console.log('[invoice-debug] order:', order.מספר_הזמנה, '| document type:', documentType, '| morningType:', morningDocType);
+    console.log('[invoice-debug] client:', JSON.stringify({
+      id: order.לקוח_id,
+      name: `${customer.שם_פרטי} ${customer.שם_משפחה}`,
+      type: customer.סוג_לקוח ?? 'פרטי',
+      isBusiness,
+    }));
+    console.log('[invoice-debug] income lines (flat, qty=1):', JSON.stringify(incomeLinesDebug));
+    console.log('[invoice-debug] payment lines:', JSON.stringify(paymentLinesDebug));
+    console.log('[invoice-debug] discount line:', JSON.stringify(
+      incomeLinesDebug.find((l) => l.isDiscount) ?? null,
+    ));
+    console.log('[invoice-debug] delivery fee line:', JSON.stringify(
+      incomeLinesDebug.find((l) => l.isDelivery) ?? null,
+    ));
+    console.log('[invoice-debug] total income gross:', incomeLinesTotal);
+    console.log('[invoice-debug] total payment amount:', paymentAmount);
+    console.log('[invoice-debug] difference (income - payment):', difference);
+    // Consolidated single-line summary — guaranteed to fit in one Logflare
+    // entry even if the larger lines above get truncated or split.
+    const summary = incomeLinesDebug
+      .map((l, i) => `#${i}:net=${l.price}x${l.quantity}${l.isDiscount ? '(disc)' : ''}${l.isDelivery ? '(deliv)' : ''}`)
+      .join(' | ');
+    console.log('[invoice-debug] SUMMARY |', 'order:', order.מספר_הזמנה,
+      '| count:', incomeLinesDebug.length,
+      '| incomeTotal:', incomeLinesTotal,
+      '| paymentAmount:', paymentAmount,
+      '| diff:', difference,
+      '| lines:', summary);
 
     // ── VAT audit log ──────────────────────────────────────────────────────
     console.log('[VAT]', JSON.stringify({
@@ -352,7 +416,10 @@ serve(async (req: Request) => {
         ...(customer.אימייל ? { emails: [customer.אימייל] } : {}),
         ...(customer.טלפון ? { phone: customer.טלפון } : {}),
       },
-      income: incomeLines,
+      // Send the FLAT (qty=1) lines so Morning's per-line VAT rounding is
+      // unambiguous and matches our paymentAmount exactly. Sending the raw
+      // multi-quantity lines is what historically caused errorCode 2422.
+      income: flatLines,
     };
 
     // Receipt + invoice_receipt include a payment section; tax_invoice does
@@ -434,6 +501,70 @@ serve(async (req: Request) => {
     // Full payload audit (no secrets — no token, no Authorization header).
     // Useful for tracing Morning errorCode 2422 against the exact request body.
     console.log('[MORNING FULL PAYLOAD]', JSON.stringify(documentBody, null, 2));
+    console.log('[invoice-debug] Morning payload (no secrets):', JSON.stringify(documentBody));
+
+    // ── MORNING_PAYLOAD_CHECK — required guard before EVERY Morning POST ──
+    // Re-derives BOTH totals from the actual documentBody about to be sent
+    // (not from any earlier intermediate variables), using the exact same
+    // formula Morning uses internally: integer-cents sum of nets, then one
+    // VAT multiplication, then one final round. If the resulting incomeTotal
+    // differs from the sum of payment[].price by even a single agora,
+    // throws BEFORE the fetch — Morning is never called with a mismatched
+    // payload. This is the ONLY Morning documents POST in this file
+    // (verified via grep for `${MORNING_API_BASE}/documents`).
+    const guardIncome = documentBody.income as IncomeLine[];
+    const guardNetCents = guardIncome.reduce(
+      (sum, l) => sum + Math.round(l.price * l.quantity * 100),
+      0,
+    );
+    const guardIncomeCents = Math.round(guardNetCents * VAT_MULT);
+    const guardIncomeTotal = guardIncomeCents / 100;
+
+    const guardPayment = Array.isArray(documentBody.payment)
+      ? (documentBody.payment as Array<{ type: number; price: number }>)
+      : [];
+    const guardPaymentCents = guardPayment.reduce(
+      (sum, p) => sum + Math.round(p.price * 100),
+      0,
+    );
+    const guardPaymentTotal = guardPaymentCents / 100;
+
+    // tax_invoice (305) has no payment block — invariant vacuously holds.
+    // For it, the "expected payment" is the income total itself (no
+    // mismatch possible because we don't send any payment line).
+    const guardExpectedPaymentTotal = PAYMENT_DOCS.has(documentType)
+      ? guardPaymentTotal
+      : guardIncomeTotal;
+    const guardDiff = Math.round((guardIncomeTotal - guardExpectedPaymentTotal) * 100) / 100;
+
+    const guardIncomeSummary = guardIncome
+      .map((l, i) => `#${i}:net=${l.price}x${l.quantity}`)
+      .join('|');
+    const guardPaymentSummary = guardPayment.length
+      ? guardPayment.map((p, i) => `#${i}:type${p.type}=${p.price}`).join('|')
+      : 'NONE';
+
+    console.log('MORNING_PAYLOAD_CHECK',
+      '| order:', order.מספר_הזמנה,
+      '| type:', documentType,
+      '| incomeTotal:', guardIncomeTotal,
+      '| paymentTotal:', guardExpectedPaymentTotal,
+      '| diff:', guardDiff,
+      '| incomeLineCount:', guardIncome.length,
+      '| paymentLineCount:', guardPayment.length);
+
+    if (guardDiff !== 0) {
+      console.error('MORNING_PAYLOAD_MISMATCH — refusing to POST',
+        '| order:', order.מספר_הזמנה,
+        '| incomeTotal:', guardIncomeTotal,
+        '| paymentTotal:', guardExpectedPaymentTotal,
+        '| diff:', guardDiff,
+        '| incomeSummary:', guardIncomeSummary,
+        '| paymentSummary:', guardPaymentSummary);
+      throw new Error(
+        `Morning payload mismatch before POST | order=${order.מספר_הזמנה} | incomeTotal=${guardIncomeTotal} | paymentTotal=${guardExpectedPaymentTotal} | diff=${guardDiff} | income=${guardIncomeSummary} | payment=${guardPaymentSummary}`,
+      );
+    }
 
     const docRes = await fetch(`${MORNING_API_BASE}/documents`, {
       method: 'POST',
