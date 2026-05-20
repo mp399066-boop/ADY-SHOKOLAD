@@ -14,11 +14,22 @@ export interface OrderEmailItem {
   isNew?: boolean;
 }
 
+// Items that were present on the LAST summary but are no longer on the order.
+// Surfaced under "הוסרו בעדכון האחרון" in update emails so the customer can
+// see exactly what dropped off. unitPrice is optional — when 0/missing the
+// row renders without a price column.
+export interface OrderEmailRemovedItem {
+  name: string;
+  quantity: number;
+  unitPrice?: number;
+}
+
 export interface OrderEmailData {
   orderNumber: string;
   orderDate: string;
   deliveryDate?: string | null;
   items: OrderEmailItem[];
+  removedItems?: OrderEmailRemovedItem[];
   subtotal: number;
   discount: number;
   total: number;
@@ -77,7 +88,7 @@ function buildHtml(customerName: string, d: OrderEmailData, logoUrl?: string): s
 
     const productRow = `
     <tr>
-      <td style="${productSep}padding:${hasPf ? '11px 0 4px' : '11px 0'};font-size:14px;font-weight:600;color:#2A1C12;text-align:right;vertical-align:top">${item.name}${item.isNew ? ' <span style="background:#F59E0B;color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:8px;margin-inline-start:4px;vertical-align:middle">חדש</span>' : ''}</td>
+      <td style="${productSep}padding:${hasPf ? '11px 0 4px' : '11px 0'};font-size:14px;font-weight:600;color:#2A1C12;text-align:right;vertical-align:top">${item.name}${item.isNew ? ' <span style="display:inline-block;background:#F59E0B;color:#FFFFFF;font-size:10px;font-weight:700;line-height:1;padding:3px 8px;border-radius:999px;margin-inline-start:6px;vertical-align:middle;letter-spacing:0.02em">חדש</span>' : ''}</td>
       <td style="${productSep}padding:${hasPf ? '11px 0 4px' : '11px 0'};font-size:13px;color:#5C4A38;text-align:left;direction:ltr;white-space:nowrap;padding-right:8px;vertical-align:top">${item.quantity} &times; ${fmt(item.unitPrice)}</td>
     </tr>`;
 
@@ -116,6 +127,29 @@ function buildHtml(customerName: string, d: OrderEmailData, logoUrl?: string): s
       <td style="padding:7px 0;font-size:13px;color:#8E7D6A;text-align:right">דמי משלוח</td>
       <td style="padding:7px 0;font-size:13px;color:#5C4A38;text-align:left;direction:ltr">${fmt(d.deliveryFee)}</td>
     </tr>` : '';
+
+  // Removed-items section — shown only in update mode and only when there
+  // is at least one item to list. Visually subdued (dashed border, muted
+  // text) so the focus stays on the current order; each row keeps the same
+  // name + qty × price layout the customer is used to, with a strike-through
+  // on the name to reinforce that the item is gone.
+  const removedItemsHtml = (d.isUpdate && d.removedItems && d.removedItems.length > 0) ? `
+            <div style="font-size:11px;font-weight:700;color:#8A3228;letter-spacing:0.08em;text-align:right;margin:0 0 6px">הוסרו בעדכון האחרון</div>
+            <div style="border-top:1px dashed #E5C7C2;margin-bottom:2px"></div>
+            <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px">
+              ${d.removedItems.map((r, i) => {
+                const isLast = i === d.removedItems!.length - 1;
+                const sep    = isLast ? '' : 'border-bottom:1px dashed #F0E0DC;';
+                const priceCell = (typeof r.unitPrice === 'number' && r.unitPrice > 0)
+                  ? `${r.quantity} &times; ${fmt(r.unitPrice)}`
+                  : `${r.quantity}`;
+                return `
+              <tr>
+                <td style="${sep}padding:10px 0;font-size:13px;color:#8A7664;text-align:right;text-decoration:line-through">${r.name}</td>
+                <td style="${sep}padding:10px 0;font-size:12px;color:#A89384;text-align:left;direction:ltr;white-space:nowrap;padding-right:8px">${priceCell}</td>
+              </tr>`;
+              }).join('')}
+            </table>` : '';
 
   const summaryPreDiscount = d.discount > 0 ? `
     <tr>
@@ -187,6 +221,8 @@ function buildHtml(customerName: string, d: OrderEmailData, logoUrl?: string): s
             <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px">
               ${itemRows || `<tr><td style="padding:14px 0;text-align:center;color:#B0A090;font-size:13px">אין פריטים</td></tr>`}
             </table>
+
+            ${removedItemsHtml}
 
             <!-- Summary — VAT lines only for business + non-satmar.
                  d.total comes from the DB pre-VAT for business; we add 18%
@@ -268,6 +304,17 @@ function buildText(customerName: string, d: OrderEmailData): string {
     return `${head}\n  בחירת פטיפורים:\n${pfBody}`;
   }).join('\n');
 
+  // Text mirror of the HTML removed-items block — only included in update
+  // mode and only when there is at least one removed item.
+  const removedLines = (d.isUpdate && d.removedItems && d.removedItems.length > 0)
+    ? d.removedItems.map(r => {
+        const priceTail = (typeof r.unitPrice === 'number' && r.unitPrice > 0)
+          ? ` | מחיר ליח': ${fmt(r.unitPrice)}`
+          : '';
+        return `- ${r.name} | כמות: ${r.quantity}${priceTail}`;
+      }).join('\n')
+    : '';
+
   return [
     `שלום ${customerName},`,
     d.isUpdate ? `ההזמנה שלך עודכנה. להלן פירוט מלא:` : `קיבלנו את הזמנתך. להלן פירוט מלא.`,
@@ -281,6 +328,9 @@ function buildText(customerName: string, d: OrderEmailData): string {
     'פירוט מוצרים:',
     itemLines || 'אין פריטים',
     '',
+    removedLines ? 'הוסרו בעדכון האחרון:' : '',
+    removedLines,
+    removedLines ? '' : '',
     line,
     `סכום לפני הנחה: ${fmt(d.subtotal)}`,
     d.discount > 0 ? `הנחה: -${fmt(d.discount)}` : '',
