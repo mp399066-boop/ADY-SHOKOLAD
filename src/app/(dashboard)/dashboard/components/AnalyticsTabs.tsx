@@ -1435,7 +1435,7 @@ const INSIGHT_PALETTE: Record<InsightSeverity, { accent: string; bg: string }> =
 };
 
 function InsightCard({
-  title, value, explanation, severity, onClick, disabled,
+  title, value, explanation, severity, onClick, disabled, cta,
 }: {
   title: string;
   value: string;
@@ -1443,8 +1443,13 @@ function InsightCard({
   severity: InsightSeverity;
   onClick: () => void;
   disabled?: boolean;
+  // CTA chip in the top-left corner. Defaults to a generic "פתח" / "תקין"
+  // pair; cards pass a card-specific verb (e.g. "טפלי", "השלימי", "גבי")
+  // so the operator can read at a glance what kind of action is implied.
+  cta?: string;
 }) {
   const { accent, bg } = INSIGHT_PALETTE[severity];
+  const chip = disabled ? 'תקין' : (cta ?? 'פתח');
   return (
     <button
       type="button"
@@ -1468,7 +1473,7 @@ function InsightCard({
           className="text-[9px] font-semibold px-1.5 py-0.5 rounded-md flex-shrink-0"
           style={{ backgroundColor: bg, color: accent }}
         >
-          {disabled ? 'תקין' : 'פתח'}
+          {chip}
         </span>
       </div>
       <span className="text-[15px] font-bold tabular-nums leading-tight" style={{ color: accent }}>
@@ -1616,11 +1621,71 @@ function InsightsTab({
       {drill && <DrillModal state={drill} onClose={() => setDrill(null)} />}
       <div className="space-y-2" dir="rtl">
         <p className="text-[10.5px] px-1" style={{ color: C.textMuted }}>
-          תובנות אוטומטיות מהנתונים החיים של הלוח. לחץ על כרטיס לפתיחת הרשומות.
+          מה דורש את תשומת ליבך עכשיו. לחץ על כרטיס לפתיחת הרשומות.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2">
 
-          {/* 1. Open debt — Finance overview unpaid KPI */}
+          {/* Card order is intentional: blocking-today items first (urgent →
+              due-today → missing data → ready-to-go), then financial follow-up,
+              then ops planning, then informational/positive cards last. */}
+
+          {/* 1. Urgent now */}
+          <InsightCard
+            title="לטיפול דחוף"
+            value={urgentCount > 0 ? `${urgentCount} הזמנות דחופות` : 'אין דחופות'}
+            explanation={urgentCount > 0
+              ? 'מסומנות דחוף וטרם הושלמו. ראשונות בתור היום.'
+              : 'אין כרגע הזמנות שדורשות טיפול מיידי.'}
+            severity={urgentCount > 0 ? 'red' : 'green'}
+            cta="טפלי"
+            onClick={() => onNavigate('/orders?filter=urgent')}
+            disabled={urgentCount === 0}
+          />
+
+          {/* 2. Due today, not ready */}
+          <InsightCard
+            title="אספקה היום — בייצור"
+            value={dueTodayNotReady.length > 0
+              ? `${dueTodayNotReady.length} הזמנות`
+              : 'הכל מוכן להיום'}
+            explanation={dueTodayNotReady.length > 0
+              ? 'אספקתן היום אך הן עדיין חדשות או בייצור. סיכון לאיחור.'
+              : 'כל הזמנות היום כבר מוכנות או יצאו לדרך.'}
+            severity={dueTodayNotReady.length > 0 ? 'red' : 'green'}
+            cta="קדמי"
+            onClick={openDueTodayNotReady}
+            disabled={dueTodayNotReady.length === 0}
+          />
+
+          {/* 3. Missing city — data-quality blocker before dispatch */}
+          <InsightCard
+            title="כתובות חסרות"
+            value={missingCity.length > 0
+              ? `${missingCity.length} משלוחים`
+              : 'כל הכתובות מלאות'}
+            explanation={missingCity.length > 0
+              ? 'אי אפשר לתכנן מסלול ללא עיר. השלימי לפני יציאת השליח.'
+              : 'לכל משלוח של היום יש עיר רשומה.'}
+            severity={missingCity.length > 0 ? 'amber' : 'green'}
+            cta="השלימי"
+            onClick={openMissingCity}
+            disabled={missingCity.length === 0}
+          />
+
+          {/* 4. Ready to go — needs courier / pickup arrangement */}
+          <InsightCard
+            title="מוכנות לצאת"
+            value={readyToGo.length > 0 ? `${readyToGo.length} הזמנות` : 'אף הזמנה לא מוכנה'}
+            explanation={readyToGo.length > 0
+              ? 'הזמנות בסטטוס "מוכנה למשלוח". הקצי שליח או הודיעי ללקוח על איסוף.'
+              : 'אין כרגע הזמנות שממתינות לצאת.'}
+            severity={readyToGo.length > 0 ? 'blue' : 'green'}
+            cta="שלחי"
+            onClick={openReadyToGo}
+            disabled={readyToGo.length === 0}
+          />
+
+          {/* 5. Open debt — financial follow-up */}
           {data && (
             <InsightCard
               title="חוב פתוח לגבייה"
@@ -1628,103 +1693,58 @@ function InsightsTab({
                 ? `${data.kpis.unpaid.count} הזמנות · ${formatCurrency(data.kpis.unpaid.total)}`
                 : 'אין חובות פתוחים'}
               explanation={data.kpis.unpaid.count > 0
-                ? 'לקוחות שטרם שילמו את החשבון. מומלץ ליצור קשר ולהשלים גביה.'
+                ? 'כסף שטרם נגבה. צרי קשר עם הלקוחות להשלמת התשלום.'
                 : 'כל ההזמנות הפעילות שולמו. אין מה לעקוב אחריו כרגע.'}
               severity={data.kpis.unpaid.count > 0 ? 'amber' : 'green'}
+              cta="גבי"
               onClick={openOpenOrdersDrill}
               disabled={data.kpis.unpaid.count === 0}
             />
           )}
 
-          {/* 2. Urgent now — pre-filtered queue items */}
-          <InsightCard
-            title="דחוף עכשיו"
-            value={urgentCount > 0 ? `${urgentCount} הזמנות דחופות` : 'אין דחופות'}
-            explanation={urgentCount > 0
-              ? 'הזמנות שסומנו כדחופות וטרם הושלמו. עברי עליהן ראשונות היום.'
-              : 'אין הזמנות שמסומנות כדחופות כרגע.'}
-            severity={urgentCount > 0 ? 'red' : 'green'}
-            onClick={() => onNavigate('/orders?filter=urgent')}
-            disabled={urgentCount === 0}
-          />
-
-          {/* 3. Due today, not ready — derived from liveOrders */}
-          <InsightCard
-            title="להיום — לא מוכנות"
-            value={dueTodayNotReady.length > 0
-              ? `${dueTodayNotReady.length} הזמנות`
-              : 'הכל מוכן להיום'}
-            explanation={dueTodayNotReady.length > 0
-              ? 'אספקתן היום אך הן עדיין חדשות או בייצור. דחוף לקדם.'
-              : 'כל הזמנות היום כבר מוכנות או נשלחו.'}
-            severity={dueTodayNotReady.length > 0 ? 'red' : 'green'}
-            onClick={openDueTodayNotReady}
-            disabled={dueTodayNotReady.length === 0}
-          />
-
-          {/* 4. Ready to go — needs courier / pickup arrangement */}
-          <InsightCard
-            title="מוכנות לאיסוף / משלוח"
-            value={readyToGo.length > 0 ? `${readyToGo.length} הזמנות` : 'אין הזמנות שמחכות'}
-            explanation={readyToGo.length > 0
-              ? 'הזמנות בסטטוס "מוכנה למשלוח". ודאי שמשויך שליח או שהלקוח יודע.'
-              : 'אין כרגע הזמנות שממתינות לצאת.'}
-            severity={readyToGo.length > 0 ? 'blue' : 'green'}
-            onClick={openReadyToGo}
-            disabled={readyToGo.length === 0}
-          />
-
-          {/* 5. Busiest city — only show if at least one active delivery has a city */}
+          {/* 6. Busiest city — route planning */}
           {busiestCity ? (
             <InsightCard
-              title="עיר עמוסה היום"
+              title="ריכוז משלוחים — עיר"
               value={`${busiestCity[0]} · ${busiestCity[1]} משלוחים`}
-              explanation="ריכוז משלוחים פעילים. שווה לתאם מסלול אחד או שליח קבוע."
+              explanation="ריכוז משלוחים פעילים בעיר אחת. אפשר לתאם מסלול אחד או שליח קבוע."
               severity="blue"
+              cta="תאמי"
               onClick={() => onNavigate(`/deliveries?city=${encodeURIComponent(busiestCity[0])}`)}
             />
           ) : (
             <InsightCard
-              title="עיר עמוסה היום"
+              title="ריכוז משלוחים — עיר"
               value="אין משלוחים פעילים"
-              explanation="לא תוכנן עומס לפי עיר היום."
+              explanation="לא נמצא היום עומס שמצריך מסלול מיוחד."
               severity="green"
+              cta="פתחי"
               onClick={() => onNavigate('/deliveries')}
               disabled
             />
           )}
 
-          {/* 6. Missing city — actionable data-quality alert */}
-          <InsightCard
-            title="משלוחים ללא עיר"
-            value={missingCity.length > 0 ? `${missingCity.length} משלוחים` : 'כל המשלוחים מלאים'}
-            explanation={missingCity.length > 0
-              ? 'משלוחים בלי עיר. דורש השלמת כתובת לפני יציאה לדרך.'
-              : 'לכל משלוח של היום יש עיר רשומה.'}
-            severity={missingCity.length > 0 ? 'amber' : 'green'}
-            onClick={openMissingCity}
-            disabled={missingCity.length === 0}
-          />
-
-          {/* 7. Top customer · 12 months — straight from finance overview */}
-          {topCustomer && (
+          {/* 7. Highest-value order · 12 months — informational */}
+          {topOrder && (
             <InsightCard
-              title="לקוח מוביל · 12 חודשים"
-              value={`${topCustomer.name} · ${formatCurrency(topCustomer.amount)}`}
-              explanation={`${topCustomer.count} הזמנות בשנה האחרונה. שווה לשמור על קשר אישי.`}
+              title="הזמנה גבוהה השנה"
+              value={`${topOrder.customerName} · ${formatCurrency(topOrder.amount)}`}
+              explanation="ההזמנה היקרה ביותר ב-12 החודשים האחרונים. שווה לבדוק את חוויית הלקוח."
               severity="gold"
-              onClick={() => onNavigate(`/customers/${topCustomer.id}`)}
+              cta="לצפייה"
+              onClick={() => onNavigate(`/orders/${topOrder.id}`)}
             />
           )}
 
-          {/* 8. Highest-value order · 12 months */}
-          {topOrder && (
+          {/* 8. Top customer · 12 months — informational */}
+          {topCustomer && (
             <InsightCard
-              title="הזמנה גבוהה · 12 חודשים"
-              value={`${topOrder.customerName} · ${formatCurrency(topOrder.amount)}`}
-              explanation="ההזמנה הגבוהה ביותר ב-12 החודשים האחרונים. בקרה איכותית."
+              title="לקוח מוביל השנה"
+              value={`${topCustomer.name} · ${formatCurrency(topCustomer.amount)}`}
+              explanation={`${topCustomer.count} הזמנות ב-12 החודשים האחרונים. שמרי על קשר אישי.`}
               severity="gold"
-              onClick={() => onNavigate(`/orders/${topOrder.id}`)}
+              cta="לצפייה"
+              onClick={() => onNavigate(`/customers/${topCustomer.id}`)}
             />
           )}
         </div>
