@@ -202,6 +202,7 @@ export interface Order {
   תאריך_עדכון: string;
   summary_email_sent_at: string | null;
   summary_email_sent_total: number | null;
+  summary_email_sent_items_snapshot: { key: string; name: string; quantity: number; unitPrice: number }[] | null;
   לקוחות?: Customer;
 }
 

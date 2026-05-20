@@ -9,6 +9,7 @@ import { StatusBadge, UrgentBadge } from '@/components/ui/StatusBadge';
 import { PageLoading } from '@/components/ui/LoadingSpinner';
 import { Combobox } from '@/components/ui/Combobox';
 import { normalizeSearchText } from '@/lib/normalize';
+import { getOrderItemContentKey } from '@/lib/order-items-key';
 import { sumPetitFours, getCapacityInfo } from '@/lib/packageCapacity';
 import { formatDate, formatCurrency } from '@/lib/utils';
 import toast from 'react-hot-toast';
@@ -1421,25 +1422,60 @@ export default function OrderDetailPage() {
                 </div>
               );
             })()}
-            {/* Updated-total notice + send button */}
+            {/* Customer summary email — button label and pulse derive from a
+                CONTENT-KEY diff between the current items and the snapshot of
+                what was sent in the last customer summary email. Comparing
+                totals isn't enough: an added item plus an offsetting discount
+                row would leave the total unchanged but the customer would
+                still be missing the update. */}
             {(() => {
-              const sentTotal = order.summary_email_sent_total;
-              const currentTotal = order.סך_הכל_לתשלום ?? 0;
-              const totalChanged = sentTotal != null && Math.abs(sentTotal - currentTotal) > 0.01;
               const customerEmail = (order.לקוחות as Customer | null)?.אימייל;
               if (!customerEmail) return null;
+
+              const sentAt        = order.summary_email_sent_at as string | null | undefined;
+              const summarySent   = !!sentAt;
+              const sentSnapshot  = (order as { summary_email_sent_items_snapshot?: { key?: string }[] | null })
+                .summary_email_sent_items_snapshot;
+              const currentItems  = (order.מוצרים_בהזמנה || []) as unknown as Record<string, unknown>[];
+
+              // Items added (or removed) since the last summary. We only
+              // pulse on additions per the spec, but a removal also means
+              // "something the customer should know about", so it counts.
+              const hasUnsentChanges = (() => {
+                if (!summarySent || !Array.isArray(sentSnapshot)) return false;
+                const prevKeyList = sentSnapshot.map(s => s?.key).filter(Boolean) as string[];
+                const prevKeys    = new Set(prevKeyList);
+                const currKeys    = currentItems.map(getOrderItemContentKey);
+                if (currKeys.some(k => !prevKeys.has(k))) return true;
+                const currKeySet = new Set(currKeys);
+                if (prevKeyList.some(k => !currKeySet.has(k))) return true;
+                return false;
+              })();
+
+              const label = sendingSummaryEmail
+                ? 'שולח...'
+                : !summarySent
+                  ? 'שליחת דוח ללקוח'
+                  : hasUnsentChanges
+                    ? 'שלח סיכום הזמנה מעודכן'
+                    : 'שליחת דוח ללקוח שוב';
+
+              const prominent = hasUnsentChanges;
+
               return (
                 <div className="mt-3 pt-3 space-y-2" style={{ borderTop: '1px solid #E7D2A6' }}>
-                  {totalChanged && (
+                  {hasUnsentChanges && (
                     <div
                       className="rounded-lg px-3 py-2 text-xs leading-snug"
                       style={{ backgroundColor: '#FEF3C7', border: '1px solid #F59E0B', color: '#92400E' }}
                     >
-                      הסכום עודכן מאז הסיכום האחרון שנשלח ללקוח
-                      {order.summary_email_sent_at && (
+                      ההזמנה השתנתה מאז הסיכום האחרון שנשלח ללקוח
+                      {sentAt && (
                         <span className="block mt-0.5 opacity-75">
-                          נשלח: {new Date(order.summary_email_sent_at).toLocaleDateString('he-IL')} —
-                          {' '}{formatCurrency(sentTotal!)}
+                          נשלח: {new Date(sentAt).toLocaleDateString('he-IL')}
+                          {order.summary_email_sent_total != null && (
+                            <> — {formatCurrency(order.summary_email_sent_total)}</>
+                          )}
                         </span>
                       )}
                     </div>
@@ -1447,14 +1483,15 @@ export default function OrderDetailPage() {
                   <button
                     onClick={() => void sendSummaryEmail()}
                     disabled={sendingSummaryEmail}
-                    className="w-full text-xs font-medium py-2 px-3 rounded-lg transition-all disabled:opacity-50"
+                    className={`w-full text-xs font-medium py-2 px-3 rounded-lg transition-all disabled:opacity-50 ${prominent ? 'animate-pulse' : ''}`}
                     style={{
-                      backgroundColor: totalChanged ? '#8B5E34' : '#F5ECD8',
-                      color: totalChanged ? '#fff' : '#6B4A2D',
-                      border: '1px solid #DDD0BC',
+                      backgroundColor: prominent ? '#8B5E34' : '#F5ECD8',
+                      color:           prominent ? '#fff'    : '#6B4A2D',
+                      border:          prominent ? '1px solid #6B4A2D' : '1px solid #DDD0BC',
+                      boxShadow:       prominent ? '0 0 0 3px rgba(245, 158, 11, 0.25)' : 'none',
                     }}
                   >
-                    {sendingSummaryEmail ? 'שולח...' : totalChanged ? 'שלח סיכום מעודכן ללקוח' : 'שלח סיכום הזמנה ללקוח'}
+                    {label}
                   </button>
                 </div>
               );

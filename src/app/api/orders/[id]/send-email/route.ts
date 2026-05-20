@@ -10,6 +10,7 @@ import {
   buildItemName,
   extractPetitFours,
   buildItemsSnapshot,
+  getOrderItemContentKey,
   type OrderEmailData,
   type OrderEmailItem,
   type OrderEmailRemovedItem,
@@ -24,7 +25,7 @@ const DUPLICATE_SEND_GUARD_MS = 60_000;
 
 function snapshotKey(entries: OrderItemsSnapshotEntry[]): string {
   return entries
-    .map(e => `${e.id}|${e.quantity}|${e.unitPrice}`)
+    .map(e => `${e.key}|${e.quantity}|${e.unitPrice}`)
     .sort()
     .join(';');
 }
@@ -71,7 +72,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const prevSnapshot: OrderItemsSnapshotEntry[] | null = Array.isArray(prevSnapshotRaw)
     ? (prevSnapshotRaw as OrderItemsSnapshotEntry[])
     : null;
-  const prevIds = new Set((prevSnapshot ?? []).map(s => s.id));
+  const prevKeys = new Set((prevSnapshot ?? []).map(s => s.key));
   const isFirstSummary = prevSnapshot === null;
 
   const currentItemsRaw = (items || []) as Record<string, unknown>[];
@@ -107,15 +108,15 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     const isPackage = item['סוג_שורה'] === 'מארז';
     const name      = buildItemName(item, prod);
-    const itemId    = item['id'] as string;
+    const itemKey   = getOrderItemContentKey(item);
     const quantity  = Number(item['כמות']        || 1);
     const unitPrice = Number(item['מחיר_ליחידה'] || 0);
     const lineTotal = Number(item['סהכ']          || 0);
 
-    // "חדש" iff this is NOT the first summary AND the row id wasn't in the
-    // previous snapshot. ID-based — robust across petit-four/manual/extra/
-    // regular rows, immune to created_at drift, and unaffected by edits.
-    const isNew = !isFirstSummary && !prevIds.has(itemId);
+    // "חדש" iff this is NOT the first summary AND this content class wasn't
+    // in the previous snapshot. Content-keyed — id-based diffing would mark
+    // every row as new after the items PUT route's delete-and-reinsert.
+    const isNew = !isFirstSummary && !prevKeys.has(itemKey);
 
     return {
       name,
@@ -130,11 +131,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   // Removed = anything that WAS in the previous snapshot and is NOT in the
   // current items. Shown in the email only for update mode and only when
   // non-empty. Skipped entirely on the first summary.
-  const currentIds = new Set(currentSnapshot.map(s => s.id));
+  const currentKeys = new Set(currentSnapshot.map(s => s.key));
   const removedItems: OrderEmailRemovedItem[] = isFirstSummary
     ? []
     : (prevSnapshot ?? [])
-        .filter(s => !currentIds.has(s.id))
+        .filter(s => !currentKeys.has(s.key))
         .map(s => ({ name: s.name, quantity: s.quantity, unitPrice: s.unitPrice }));
 
   const emailOrderData: OrderEmailData = {

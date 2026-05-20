@@ -1,5 +1,11 @@
 import sgMail from '@sendgrid/mail';
 import { createAdminClient } from '@/lib/supabase/server';
+import { getOrderItemContentKey } from '@/lib/order-items-key';
+
+// Re-exported so callers that already import from @/lib/email continue to
+// resolve the helper without changing their import path. Canonical definition
+// lives in @/lib/order-items-key (client-safe).
+export { getOrderItemContentKey };
 
 export interface OrderEmailItem {
   name: string;
@@ -98,12 +104,14 @@ export function extractPetitFours(
 }
 
 // Builds the snapshot rows persisted to `summary_email_sent_items_snapshot`
-// from the same raw items the email was built from. Kept here so confirmation
-// and update paths emit identical snapshot shape (id-keyed diffing depends
-// on it). Caller is expected to have already enriched each row with the
-// `מוצרים_למכירה` join.
+// from the same raw items the email was built from. The diff is keyed by a
+// CONTENT-derived key, not the row uuid, because the items PUT route wipes
+// and re-inserts the entire order on every save — row ids regenerate, so
+// id-based diffing would mark every item as "חדש" after any edit. Content
+// keys are stable across delete-and-reinsert as long as the actual product /
+// package size / manual-row name stay the same.
 export interface OrderItemsSnapshotEntry {
-  id: string;
+  key: string;
   name: string;
   quantity: number;
   unitPrice: number;
@@ -113,7 +121,7 @@ export function buildItemsSnapshot(items: Record<string, unknown>[]): OrderItems
   return items.map(item => {
     const prod = item['מוצרים_למכירה'] as Record<string, unknown> | null;
     return {
-      id:        item['id']            as string,
+      key:       getOrderItemContentKey(item),
       name:      buildItemName(item, prod),
       quantity:  Number(item['כמות']        || 1),
       unitPrice: Number(item['מחיר_ליחידה'] || 0),
