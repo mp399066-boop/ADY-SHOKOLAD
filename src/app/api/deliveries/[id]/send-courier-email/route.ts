@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
+import { logActivity, userActor } from '@/lib/activity-log';
 import sgMail from '@sendgrid/mail';
 import { randomBytes } from 'crypto';
 import {
@@ -164,6 +165,20 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     } else {
       console.error('[send-courier-email] SendGrid error:', msg);
     }
+    void logActivity({
+      actor:        userActor(auth),
+      module:       'deliveries',
+      action:       'courier_email_failed',
+      status:       'failed',
+      entityType:   'delivery',
+      entityId:     String(params.id),
+      entityLabel:  order?.מספר_הזמנה ? String(order.מספר_הזמנה) : null,
+      title:        'שליחת מייל לשליח נכשלה',
+      description:  courier?.שם_שליח ? `שליח: ${courier.שם_שליח}` : null,
+      errorMessage: msg,
+      metadata:     { courier_id: delivery.courier_id, order_id: order?.id || null },
+      request:      req,
+    });
     return NextResponse.json({ error: `שליחת מייל נכשלה: ${msg}` }, { status: 500 });
   }
 
@@ -172,6 +187,20 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     .from('משלוחים')
     .update({ email_sent_at: new Date().toISOString(), delivery_token: token })
     .eq('id', params.id);
+
+  void logActivity({
+    actor:       userActor(auth),
+    module:      'deliveries',
+    action:      'courier_email_sent',
+    status:      'success',
+    entityType:  'delivery',
+    entityId:    String(params.id),
+    entityLabel: order?.מספר_הזמנה ? String(order.מספר_הזמנה) : null,
+    title:       'נשלח מייל לשליח',
+    description: courier.שם_שליח ? `שליח: ${courier.שם_שליח}` : null,
+    metadata:    { courier_id: delivery.courier_id, order_id: order?.id || null, item_count: courierItems.length },
+    request:     req,
+  });
 
   return NextResponse.json({ success: true, token, link });
 }

@@ -12,7 +12,7 @@ import type { BusinessSettings } from '@/types/database';
 const SETTINGS_TABS_BASE = [
   { href: '/settings',                label: 'הגדרות עסק',      adminOnly: false },
   { href: '/settings/users',          label: 'משתמשים והרשאות', adminOnly: false },
-  { href: '/settings/system-control', label: 'מרכז בקרה',        adminOnly: true  },
+  { href: '/settings/system-control', label: 'לוגים',             adminOnly: true  },
 ] as const;
 
 function SettingsTabs({ activeHref = '/settings', isAdmin = false }: {
@@ -58,7 +58,7 @@ export default function SettingsPage() {
       .then(r => r.json())
       .then(({ data }) => { setSettings(data); setForm(data || {}); })
       .finally(() => setLoading(false));
-    // Role lookup — only used to decide whether the "מרכז בקרה" tab shows.
+    // Role lookup — only used to decide whether the "לוגים" tab shows.
     // Falls through silently if /api/me fails (tab just won't appear).
     fetch('/api/me').then(r => r.ok ? r.json() : null).then(j => {
       if (j?.role === 'admin') setIsAdmin(true);

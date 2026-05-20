@@ -21,23 +21,21 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { requireAuthorizedUser, type AuthorizedUser } from '@/lib/auth/requireAuthorizedUser';
 
 // ── Vocabulary ──────────────────────────────────────────────────────────────
-
-export type ActorType = 'user' | 'system' | 'webhook' | 'cron' | 'public_token';
-
-export type ActivityStatus = 'success' | 'failed' | 'skipped' | 'warning' | 'disabled';
-
-export type ActivityModule =
-  | 'orders'
-  | 'customers'
-  | 'deliveries'
-  | 'inventory'
-  | 'products'
-  | 'finance'
-  | 'reports'
-  | 'settings'
-  | 'auth'
-  | 'integrations'
-  | 'assistant';
+// Types and Hebrew label maps live in a client-safe sibling so the new
+// /settings/system-control "לוגים" page can import them without dragging
+// the Supabase server client across the client boundary. Server callers
+// keep their existing import path.
+import type {
+  ActorType,
+  ActivityStatus,
+  ActivityModule,
+} from '@/lib/activity-log-labels';
+export type { ActorType, ActivityStatus, ActivityModule };
+export {
+  STATUS_LABEL_HE,
+  ACTOR_LABEL_HE,
+  MODULE_LABEL_HE,
+} from '@/lib/activity-log-labels';
 
 export interface ActivityActor {
   type: ActorType;
@@ -45,38 +43,6 @@ export interface ActivityActor {
   email?: string | null;
   name?: string | null;
 }
-
-// Hebrew display labels for the UI. Kept here so the UI doesn't reinvent
-// the mapping; both the page and the modal import from this file.
-export const STATUS_LABEL_HE: Record<ActivityStatus, string> = {
-  success:  'הצליח',
-  failed:   'נכשל',
-  skipped:  'דולג',
-  warning:  'אזהרה',
-  disabled: 'כבוי',
-};
-
-export const ACTOR_LABEL_HE: Record<ActorType, string> = {
-  user:         'משתמש',
-  system:       'המערכת',
-  webhook:      'אינטגרציה',
-  cron:         'פעולה מתוזמנת',
-  public_token: 'קישור ציבורי',
-};
-
-export const MODULE_LABEL_HE: Record<ActivityModule, string> = {
-  orders:       'הזמנות',
-  customers:    'לקוחות',
-  deliveries:   'משלוחים',
-  inventory:    'מלאי',
-  products:     'מוצרים',
-  finance:      'פיננסים',
-  reports:      'דוחות',
-  settings:     'הגדרות',
-  auth:         'משתמשים והרשאות',
-  integrations: 'אינטגרציות',
-  assistant:    'עוזרת חכמה',
-};
 
 // ── Inputs ──────────────────────────────────────────────────────────────────
 

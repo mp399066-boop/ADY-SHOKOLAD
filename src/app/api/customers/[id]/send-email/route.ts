@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
+import { logActivity, userActor } from '@/lib/activity-log';
 import sgMail from '@sendgrid/mail';
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
@@ -58,6 +59,20 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     .single();
 
   if (logError) return NextResponse.json({ error: logError.message }, { status: 500 });
+
+  void logActivity({
+    actor:        userActor(auth),
+    module:       'customers',
+    action:       status === 'נכשל' ? 'customer_email_failed' : 'customer_email_sent',
+    status:       status === 'נכשל' ? 'failed' : 'success',
+    entityType:   'customer',
+    entityId:     String(params.id),
+    title:        status === 'נכשל' ? 'שליחת מייל ללקוח נכשלה' : 'נשלח מייל ללקוח',
+    description:  subject ? `נושא: ${subject}` : null,
+    errorMessage: errorMsg || null,
+    metadata:     { to, subject: subject || null },
+    request:      req,
+  });
 
   if (status === 'נכשל') {
     return NextResponse.json({ error: errorMsg, data: logEntry }, { status: 500 });

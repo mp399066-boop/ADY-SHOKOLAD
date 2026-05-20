@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
+import { logActivity, userActor } from '@/lib/activity-log';
 
 // CRM → WooCommerce payment-link bridge.
 //
@@ -32,7 +33,7 @@ const WC_KEY    = process.env.WOOCOMMERCE_CONSUMER_KEY;
 const WC_SECRET = process.env.WOOCOMMERCE_CONSUMER_SECRET;
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: { id: string } },
 ) {
   const auth = await requireManagementUser();
@@ -219,6 +220,20 @@ export async function POST(
         ? 'WooCommerce דורש product_id/sku עבור line_items. יש להגדיר WOOCOMMERCE_PAYMENT_PRODUCT_ID או להשאיר את fee_lines פעיל.'
         : `WooCommerce דחה את הבקשה (HTTP ${wcRes.status}): ${wcMessage}`;
       console.error('[WC payment-link] rejected — status', wcRes.status, '| code:', wcCode, '| msg:', wcMessage);
+      void logActivity({
+        actor:        userActor(auth),
+        module:       'finance',
+        action:       'payment_link_failed',
+        status:       'failed',
+        entityType:   'order',
+        entityId:     String(orderId),
+        entityLabel:  order.מספר_הזמנה ? String(order.מספר_הזמנה) : null,
+        title:        'יצירת קישור תשלום נדחתה ע"י WooCommerce',
+        description:  friendly,
+        errorMessage: `HTTP ${wcRes.status}${wcCode ? ' · ' + wcCode : ''} · ${wcMessage}`,
+        metadata:     { channel: 'WooCommerce', wc_http_status: wcRes.status, wc_code: wcCode ?? null },
+        request:      req,
+      });
       return NextResponse.json(
         {
           error: friendly,
@@ -287,6 +302,26 @@ export async function POST(
       הערות:        wcOrderId ? `wc_order_id:${wcOrderId}${wcOrderKey ? ` · key:${wcOrderKey}` : ''}` : null,
     });
 
+    void logActivity({
+      actor:        userActor(auth),
+      module:       'finance',
+      action:       'payment_link_created',
+      status:       totalMismatch ? 'warning' : 'success',
+      entityType:   'order',
+      entityId:     String(orderId),
+      entityLabel:  order.מספר_הזמנה ? String(order.מספר_הזמנה) : null,
+      title:        'נוצר קישור תשלום',
+      description:  `נוצר קישור תשלום ב-WooCommerce עבור הזמנה ${order.מספר_הזמנה || orderId}`,
+      metadata: {
+        channel:        'WooCommerce',
+        wc_order_id:    wcOrderId ?? null,
+        crm_amount:     amount,
+        wc_total:       wcTotal ?? null,
+        total_mismatch: totalMismatch || null,
+      },
+      request: req,
+    });
+
     return NextResponse.json({
       ok: true,
       payment_url,
@@ -297,6 +332,18 @@ export async function POST(
     });
   } catch (err) {
     console.error('[WC payment-link] unexpected error:', err);
+    void logActivity({
+      actor:        userActor(auth),
+      module:       'finance',
+      action:       'payment_link_failed',
+      status:       'failed',
+      entityType:   'order',
+      entityId:     String(params.id),
+      title:        'יצירת קישור תשלום נכשלה',
+      description:  'אירעה שגיאה בלתי צפויה ביצירת קישור התשלום מול WooCommerce',
+      errorMessage: err instanceof Error ? err.message : String(err),
+      request:      req,
+    });
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }

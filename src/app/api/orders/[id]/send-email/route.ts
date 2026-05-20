@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
+import { logActivity, userActor } from '@/lib/activity-log';
 import {
   sendOrderEmail,
   isInternalEmail,
@@ -34,7 +35,7 @@ function buildItemName(item: Record<string, unknown>, prod: Record<string, unkno
   return (prod?.['שם_מוצר'] as string) || 'פריט';
 }
 
-export async function POST(_: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
@@ -168,9 +169,37 @@ export async function POST(_: NextRequest, { params }: { params: { id: string } 
       await supabase.from('הזמנות').update(baseUpdate).eq('id', params.id);
     }
 
+    void logActivity({
+      actor:       userActor(auth),
+      module:      'orders',
+      action:      'order_summary_email_sent',
+      status:      'success',
+      entityType:  'order',
+      entityId:    String(params.id),
+      entityLabel: (o['מספר_הזמנה'] as string) || null,
+      title:       'נשלח סיכום הזמנה ללקוח',
+      description: `סיכום הזמנה נשלח ל-${to}`,
+      metadata:    { to, item_count: emailItems.length, removed_count: removedItems.length, total: emailOrderData.total },
+      request:     req,
+    });
+
     return NextResponse.json({ message: `סיכום הזמנה נשלח בהצלחה ל-${to}` });
   } catch (err: unknown) {
     console.error('[send-email] sendOrderEmail failed:', err);
+    void logActivity({
+      actor:        userActor(auth),
+      module:       'orders',
+      action:       'order_summary_email_failed',
+      status:       'failed',
+      entityType:   'order',
+      entityId:     String(params.id),
+      entityLabel:  (o['מספר_הזמנה'] as string) || null,
+      title:        'שליחת סיכום הזמנה ללקוח נכשלה',
+      description:  `נסיון שליחה ל-${to} נכשל`,
+      errorMessage: err instanceof Error ? err.message : String(err),
+      metadata:     { to },
+      request:      req,
+    });
     return NextResponse.json(
       { error: `שגיאה בשליחת מייל: ${err instanceof Error ? err.message : 'שגיאה לא ידועה'}` },
       { status: 500 },

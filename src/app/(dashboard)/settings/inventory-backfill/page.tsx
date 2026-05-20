@@ -31,7 +31,7 @@ const SETTINGS_TABS = [
   { href: '/settings',                     label: 'הגדרות עסק',         adminOnly: false },
   { href: '/settings/users',               label: 'משתמשים והרשאות',    adminOnly: false },
   { href: '/settings/inventory-backfill',  label: 'תיקון מלאי',          adminOnly: true  },
-  { href: '/settings/system-control',      label: 'מרכז בקרה',           adminOnly: true  },
+  { href: '/settings/system-control',      label: 'לוגים',                adminOnly: true  },
 ];
 
 function SettingsTabs({ activeHref, isAdmin }: { activeHref: string; isAdmin: boolean }) {
