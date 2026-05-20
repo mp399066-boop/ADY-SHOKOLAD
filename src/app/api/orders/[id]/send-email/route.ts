@@ -7,32 +7,26 @@ import { logActivity, userActor } from '@/lib/activity-log';
 import {
   sendOrderEmail,
   isInternalEmail,
+  buildItemName,
+  extractPetitFours,
+  buildItemsSnapshot,
   type OrderEmailData,
   type OrderEmailItem,
   type OrderEmailRemovedItem,
+  type OrderItemsSnapshotEntry,
   type EmailContext,
 } from '@/lib/email';
 
-// Shape of one entry in summary_email_sent_items_snapshot (jsonb).
-// Stored after every successful customer summary send so the NEXT send
-// can diff and surface "חדש" / "הוסרו בעדכון האחרון" cleanly.
-interface ItemsSnapshotEntry {
-  id: string;
-  name: string;
-  quantity: number;
-  unitPrice: number;
-}
+// If the same exact summary (identical item ids+qty+price AND identical total)
+// was already sent within this window, skip a fresh send and return a friendly
+// message — protects against accidental double-clicks of "שלח סיכום מעודכן".
+const DUPLICATE_SEND_GUARD_MS = 60_000;
 
-// Build a stable display name for any supported row type (regular product,
-// package, manual item, extra charge). Used for both the email and the
-// snapshot so removed items show the same label the customer saw before.
-function buildItemName(item: Record<string, unknown>, prod: Record<string, unknown> | null): string {
-  const rowType  = item['סוג_שורה'] as string;
-  const isPackage = rowType === 'מארז';
-  const isCustom  = rowType === 'מוצר_ידני' || rowType === 'תוספת_תשלום';
-  if (isPackage) return `מארז ${item['גודל_מארז'] || ''} פטיפורים`.trim();
-  if (isCustom)  return (item['שם_פריט_מותאם'] as string) || 'פריט';
-  return (prod?.['שם_מוצר'] as string) || 'פריט';
+function snapshotKey(entries: OrderItemsSnapshotEntry[]): string {
+  return entries
+    .map(e => `${e.id}|${e.quantity}|${e.unitPrice}`)
+    .sort()
+    .join(';');
 }
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
@@ -74,29 +68,44 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   // there is no "הוסרו" section. After a successful send we overwrite this
   // column with the snapshot of items the customer just received.
   const prevSnapshotRaw = o['summary_email_sent_items_snapshot'] as unknown;
-  const prevSnapshot: ItemsSnapshotEntry[] | null = Array.isArray(prevSnapshotRaw)
-    ? (prevSnapshotRaw as ItemsSnapshotEntry[])
+  const prevSnapshot: OrderItemsSnapshotEntry[] | null = Array.isArray(prevSnapshotRaw)
+    ? (prevSnapshotRaw as OrderItemsSnapshotEntry[])
     : null;
   const prevIds = new Set((prevSnapshot ?? []).map(s => s.id));
   const isFirstSummary = prevSnapshot === null;
 
-  const currentItemsRaw = items || [];
-  const currentSnapshot: ItemsSnapshotEntry[] = [];
+  const currentItemsRaw = (items || []) as Record<string, unknown>[];
+  const currentSnapshot = buildItemsSnapshot(currentItemsRaw);
+  const currentTotal    = Number(o['סך_הכל_לתשלום'] || 0);
 
-  const emailItems: OrderEmailItem[] = currentItemsRaw.map((item: Record<string, unknown>) => {
+  // ── Soft duplicate-send guard ────────────────────────────────────────────
+  // If the exact same items+total were already sent within the last 60s,
+  // assume this is a double-click and skip. Operator gets a friendly message
+  // explaining why no email went out. Falls back to "send" if we have no
+  // snapshot of the previous send (first-ever summary).
+  const lastSentAtRaw = o['summary_email_sent_at'] as string | null | undefined;
+  const lastSentMs    = lastSentAtRaw ? Date.parse(lastSentAtRaw) : NaN;
+  const lastSentTotal = o['summary_email_sent_total'] != null ? Number(o['summary_email_sent_total']) : null;
+  if (
+    Number.isFinite(lastSentMs) &&
+    Date.now() - lastSentMs < DUPLICATE_SEND_GUARD_MS &&
+    prevSnapshot !== null &&
+    lastSentTotal !== null &&
+    Math.abs(lastSentTotal - currentTotal) < 0.005 &&
+    snapshotKey(prevSnapshot) === snapshotKey(currentSnapshot)
+  ) {
+    return NextResponse.json({
+      message: 'סיכום זהה כבר נשלח ללקוח בדקה האחרונה — לא נשלח שוב',
+      skipped: true,
+    });
+  }
+
+  const emailItems: OrderEmailItem[] = currentItemsRaw.map((item) => {
     const prod         = item['מוצרים_למכירה']           as Record<string, unknown> | null;
     const pfSelections = item['בחירת_פטיפורים_בהזמנה']  as Record<string, unknown>[] | null;
-    const petitFours   = (pfSelections ?? [])
-      .map(s => {
-        const pf = s['סוגי_פטיפורים'] as Record<string, string> | null;
-        return pf?.['שם_פטיפור']
-          ? { name: pf['שם_פטיפור'], quantity: Number(s['כמות'] ?? 0) }
-          : null;
-      })
-      .filter((p): p is { name: string; quantity: number } => p !== null && p.quantity > 0);
+    const petitFours   = extractPetitFours(pfSelections);
 
-    const rowType   = item['סוג_שורה'] as string;
-    const isPackage = rowType === 'מארז';
+    const isPackage = item['סוג_שורה'] === 'מארז';
     const name      = buildItemName(item, prod);
     const itemId    = item['id'] as string;
     const quantity  = Number(item['כמות']        || 1);
@@ -107,8 +116,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     // previous snapshot. ID-based — robust across petit-four/manual/extra/
     // regular rows, immune to created_at drift, and unaffected by edits.
     const isNew = !isFirstSummary && !prevIds.has(itemId);
-
-    currentSnapshot.push({ id: itemId, name, quantity, unitPrice });
 
     return {
       name,
@@ -136,7 +143,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     deliveryDate: (o['תאריך_אספקה']     as string) || null,
     subtotal:     Number(o['סכום_לפני_הנחה'] || 0),
     discount:     Number(o['סכום_הנחה']        || 0),
-    total:        Number(o['סך_הכל_לתשלום']    || 0),
+    total:        currentTotal,
     deliveryFee:  Number(o['דמי_משלוח']         || 0),
     customerType: (customer?.['סוג_לקוח']  as string) || null,
     orderType:    (o['סוג_הזמנה']         as string) || null,
@@ -158,7 +165,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     // must NOT fail the user-facing send — fall back to the legacy fields.
     const baseUpdate: Record<string, unknown> = {
       summary_email_sent_at:    new Date().toISOString(),
-      summary_email_sent_total: o['סך_הכל_לתשלום'] ?? 0,
+      summary_email_sent_total: currentTotal,
     };
     const { error: snapshotErr } = await supabase
       .from('הזמנות')

@@ -2,7 +2,15 @@ export const dynamic = 'force-dynamic';
 
 import { createAdminClient } from '@/lib/supabase/server';
 import { generateOrderNumber } from '@/lib/utils';
-import { sendOrderEmail, isInternalEmail, type OrderEmailData, type EmailContext } from '@/lib/email';
+import {
+  sendOrderEmail,
+  isInternalEmail,
+  buildItemName,
+  extractPetitFours,
+  buildItemsSnapshot,
+  type OrderEmailData,
+  type EmailContext,
+} from '@/lib/email';
 import { sendAdminNewOrderAlert } from '@/lib/admin-alert-email';
 import { deductOrderInventory, restoreOrderInventory } from '@/lib/inventory-deduct';
 import { isServiceEnabled, logServiceRun } from '@/lib/system-services';
@@ -619,7 +627,8 @@ export async function POST(req: Request) {
         const { data: fullItems } = await supabase
           .from('מוצרים_בהזמנה')
           .select('*, מוצרים_למכירה(*), בחירת_פטיפורים_בהזמנה(*, סוגי_פטיפורים(*))')
-          .eq('הזמנה_id', order.id);
+          .eq('הזמנה_id', order.id)
+          .order('סדר_תצוגה', { ascending: true });
 
         const o = (fullOrder ?? {}) as Record<string, unknown>;
         const emailOrderData: OrderEmailData = {
@@ -631,24 +640,16 @@ export async function POST(req: Request) {
           total: Number(o['סך_הכל_לתשלום'] || 0),
           customerPhone: phone,
           items: (fullItems || []).map((item: Record<string, unknown>) => {
-            const prod = item['מוצרים_למכירה'] as Record<string, unknown> | null;
+            const prod         = item['מוצרים_למכירה']          as Record<string, unknown> | null;
             const pfSelections = item['בחירת_פטיפורים_בהזמנה'] as Record<string, unknown>[] | null;
-            const pfNames = pfSelections
-              ?.map(s => {
-                const pf = s['סוגי_פטיפורים'] as Record<string, string> | null;
-                return pf ? `${pf['שם_פטיפור']} ×${s['כמות']}` : '';
-              })
-              .filter(Boolean)
-              .join(', ');
-            const name =
-              item['סוג_שורה'] === 'מארז'
-                ? `מארז ${item['גודל_מארז'] || ''} יח׳${pfNames ? ` (${pfNames})` : ''}`
-                : (prod?.['שם_מוצר'] as string) || 'פריט';
+            const petitFours   = extractPetitFours(pfSelections);
+            const isPackage    = item['סוג_שורה'] === 'מארז';
             return {
-              name,
-              quantity: Number(item['כמות'] || 1),
+              name:      buildItemName(item, prod),
+              quantity:  Number(item['כמות']        || 1),
               unitPrice: Number(item['מחיר_ליחידה'] || 0),
-              lineTotal: Number(item['סהכ'] || 0),
+              lineTotal: Number(item['סהכ']          || 0),
+              ...(isPackage && petitFours.length > 0 ? { petitFours } : {}),
             };
           }),
         };
@@ -658,6 +659,35 @@ export async function POST(req: Request) {
         console.log('[wc-webhook] Sending order confirmation email to', emailTo);
         await sendOrderEmail(emailTo, emailName, emailOrderData, emailContext);
         console.log('[wc-webhook] Order confirmation email queued/sent');
+
+        // Persist items snapshot + sent_at + sent_total so the FIRST
+        // operator-triggered "send updated summary" can diff against what
+        // the customer actually received in this confirmation. Failure to
+        // write the snapshot column falls back to the legacy two columns.
+        try {
+          const snapshot  = buildItemsSnapshot((fullItems || []) as Record<string, unknown>[]);
+          const sentTotal = (o['סך_הכל_לתשלום'] as number | string | undefined) ?? 0;
+          const { error: snapErr } = await supabase
+            .from('הזמנות')
+            .update({
+              summary_email_sent_at:             new Date().toISOString(),
+              summary_email_sent_total:          sentTotal,
+              summary_email_sent_items_snapshot: snapshot,
+            })
+            .eq('id', order.id);
+          if (snapErr) {
+            console.error('[wc-webhook] snapshot write failed, retrying without snapshot column:', snapErr.message);
+            await supabase
+              .from('הזמנות')
+              .update({
+                summary_email_sent_at:    new Date().toISOString(),
+                summary_email_sent_total: sentTotal,
+              })
+              .eq('id', order.id);
+          }
+        } catch (snapErr) {
+          console.error('[wc-webhook] snapshot persist failed:', snapErr);
+        }
       } catch (err) {
         console.error('[wc-webhook] Order confirmation email failed:', err instanceof Error ? err.message : err);
       }

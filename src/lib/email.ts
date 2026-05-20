@@ -65,6 +65,62 @@ function fmt(n: number) {
   return `${n.toFixed(2)} ₪`;
 }
 
+// Canonical display name for any order-item row. Shared by every code path
+// that builds an email payload so manual items / extra charges don't
+// silently render as the generic placeholder "פריט". Inputs are the raw
+// `מוצרים_בהזמנה` row and (when present) its joined `מוצרים_למכירה` row.
+export function buildItemName(
+  item: Record<string, unknown>,
+  prod: Record<string, unknown> | null | undefined,
+): string {
+  const rowType = item['סוג_שורה'] as string | undefined;
+  if (rowType === 'מארז') return `מארז ${item['גודל_מארז'] || ''} פטיפורים`.trim();
+  if (rowType === 'מוצר_ידני' || rowType === 'תוספת_תשלום') {
+    return (item['שם_פריט_מותאם'] as string) || 'פריט';
+  }
+  return (prod?.['שם_מוצר'] as string) || 'פריט';
+}
+
+// Extracts structured petit-four selections from the nested join so the
+// email can render them as a clean vertical sub-list under the package.
+export function extractPetitFours(
+  pfSelections: Record<string, unknown>[] | null | undefined,
+): { name: string; quantity: number }[] {
+  return (pfSelections ?? [])
+    .map(s => {
+      const pf = s['סוגי_פטיפורים'] as Record<string, string> | null;
+      const qty = Number(s['כמות'] ?? 0);
+      return pf?.['שם_פטיפור'] && qty > 0
+        ? { name: pf['שם_פטיפור'], quantity: qty }
+        : null;
+    })
+    .filter((p): p is { name: string; quantity: number } => p !== null);
+}
+
+// Builds the snapshot rows persisted to `summary_email_sent_items_snapshot`
+// from the same raw items the email was built from. Kept here so confirmation
+// and update paths emit identical snapshot shape (id-keyed diffing depends
+// on it). Caller is expected to have already enriched each row with the
+// `מוצרים_למכירה` join.
+export interface OrderItemsSnapshotEntry {
+  id: string;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+}
+
+export function buildItemsSnapshot(items: Record<string, unknown>[]): OrderItemsSnapshotEntry[] {
+  return items.map(item => {
+    const prod = item['מוצרים_למכירה'] as Record<string, unknown> | null;
+    return {
+      id:        item['id']            as string,
+      name:      buildItemName(item, prod),
+      quantity:  Number(item['כמות']        || 1),
+      unitPrice: Number(item['מחיר_ליחידה'] || 0),
+    };
+  });
+}
+
 function fmtPhone(raw: string): string {
   const digits = raw.replace(/\D/g, '');
   return digits.slice(0, 3) + '.' + digits.slice(3);

@@ -4,7 +4,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { generateOrderNumber } from '@/lib/utils';
-import { sendOrderEmail, isInternalEmail, type OrderEmailData, type EmailContext } from '@/lib/email';
+import {
+  sendOrderEmail,
+  isInternalEmail,
+  buildItemName,
+  extractPetitFours,
+  buildItemsSnapshot,
+  type OrderEmailData,
+  type EmailContext,
+} from '@/lib/email';
 import { logActivity, userActor } from '@/lib/activity-log';
 import { deductOrderInventory } from '@/lib/inventory-deduct';
 
@@ -391,28 +399,15 @@ export async function POST(req: NextRequest) {
       customerType: customerType || null,
       orderType: (o['סוג_הזמנה'] as string) || null,
       items: (fullItems || []).map((item: Record<string, unknown>) => {
-        const prod = item['מוצרים_למכירה'] as Record<string, unknown> | null;
-        const pfSelections = item['בחירת_פטיפורים_בהזמנה'] as Record<string, unknown>[] | null;
-        // Structured petit-four list — the email template renders this as a
-        // vertical sub-list under the product name, not stuffed into name.
-        const petitFours = (pfSelections ?? [])
-          .map(s => {
-            const pf = s['סוגי_פטיפורים'] as Record<string, string> | null;
-            return pf?.['שם_פטיפור']
-              ? { name: pf['שם_פטיפור'], quantity: Number(s['כמות'] ?? 0) }
-              : null;
-          })
-          .filter((p): p is { name: string; quantity: number } => p !== null && p.quantity > 0);
-
-        const isPackage = item['סוג_שורה'] === 'מארז';
-        const name = isPackage
-          ? `מארז ${item['גודל_מארז'] || ''} פטיפורים`
-          : (prod?.['שם_מוצר'] as string) || 'פריט';
+        const prod         = item['מוצרים_למכירה']           as Record<string, unknown> | null;
+        const pfSelections = item['בחירת_פטיפורים_בהזמנה']  as Record<string, unknown>[] | null;
+        const petitFours   = extractPetitFours(pfSelections);
+        const isPackage    = item['סוג_שורה'] === 'מארז';
         return {
-          name,
-          quantity: Number(item['כמות'] || 1),
+          name:      buildItemName(item, prod),
+          quantity:  Number(item['כמות']        || 1),
           unitPrice: Number(item['מחיר_ליחידה'] || 0),
-          lineTotal: Number(item['סהכ'] || 0),
+          lineTotal: Number(item['סהכ']          || 0),
           ...(isPackage && petitFours.length > 0 ? { petitFours } : {}),
         };
       }),
@@ -422,11 +417,38 @@ export async function POST(req: NextRequest) {
       customerId: customerId,
       orderId: order!.id,
     };
+    // Persist the snapshot of items the customer is about to receive so the
+    // NEXT "send updated summary" can correctly diff for חדש / removed.
+    // Fire-and-forget alongside the email; both must not block the response.
     void (async () => {
       try {
         console.log('[create-full] calling sendOrderEmail...');
         await sendOrderEmail(emailTo, emailName, emailOrderData, emailContext);
         console.log('[create-full] sendOrderEmail completed successfully');
+        try {
+          const snapshot = buildItemsSnapshot((fullItems || []) as Record<string, unknown>[]);
+          const sentTotal = (fullOrder as Record<string, unknown>)?.['סך_הכל_לתשלום'] ?? 0;
+          const { error: snapErr } = await supabase
+            .from('הזמנות')
+            .update({
+              summary_email_sent_at:             new Date().toISOString(),
+              summary_email_sent_total:          sentTotal,
+              summary_email_sent_items_snapshot: snapshot,
+            })
+            .eq('id', order!.id);
+          if (snapErr) {
+            console.error('[create-full] snapshot write failed, retrying without snapshot column:', snapErr.message);
+            await supabase
+              .from('הזמנות')
+              .update({
+                summary_email_sent_at:    new Date().toISOString(),
+                summary_email_sent_total: sentTotal,
+              })
+              .eq('id', order!.id);
+          }
+        } catch (snapErr) {
+          console.error('[create-full] snapshot persist failed:', snapErr);
+        }
       } catch (err) {
         console.error('[create-full] sendOrderEmail failed:', err);
       }
