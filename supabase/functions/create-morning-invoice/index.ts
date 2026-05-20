@@ -183,7 +183,7 @@ serve(async (req: Request) => {
       .from('הזמנות')
       .select(`
         id, מספר_הזמנה, לקוח_id, סך_הכל_לתשלום, סכום_לפני_הנחה, סכום_הנחה,
-        סוג_הנחה, ערך_הנחה, אופן_תשלום, דמי_משלוח,
+        סוג_הנחה, ערך_הנחה, אופן_תשלום, דמי_משלוח, זיכוי_בשימוש,
         לקוחות (שם_פרטי, שם_משפחה, אימייל, טלפון, סוג_לקוח)
       `)
       .eq('id', orderId)
@@ -195,10 +195,12 @@ serve(async (req: Request) => {
       .from('מוצרים_בהזמנה')
       .select(`
         id, סוג_שורה, גודל_מארז, כמות, מחיר_ליחידה, סהכ, הערות_לשורה,
+        שם_פריט_מותאם, סדר_תצוגה,
         מוצרים_למכירה (שם_מוצר),
         בחירת_פטיפורים_בהזמנה (כמות, סוגי_פטיפורים (שם_פטיפור))
       `)
-      .eq('הזמנה_id', orderId);
+      .eq('הזמנה_id', orderId)
+      .order('סדר_תצוגה', { ascending: true });
 
     if (itemsErr) throw new Error(`Failed to fetch items: ${itemsErr.message}`);
 
@@ -213,148 +215,179 @@ serve(async (req: Request) => {
     const customer = order.לקוחות as CustomerRow;
     const isBusiness = BUSINESS_TYPES.has(customer.סוג_לקוח ?? '');
 
-    // ── VAT rate and price conversion ─────────────────────────────────────
-    // Morning always receives NET prices (before VAT) in income lines.
-    // vatType: 1 at document level tells Morning to add 18% on top.
-    //
-    // Private customers: CRM stores VAT-INCLUSIVE prices → divide by (1+VAT)
-    //   Example: CRM price 118 → net 100 → Morning adds 18 → invoice shows 118
-    // Business customers: CRM stores pre-VAT prices → no conversion needed
-    //   Example: CRM price 100 → net 100 → Morning adds 18 → invoice shows 118
-    //
-    // In both cases the invoice always shows: net + 18% VAT = total with VAT.
+    // ── Preview total — the single source of truth ────────────────────────
+    // The invoice preview modal (orders/[id]/page.tsx, InvoicePreviewModal)
+    // takes `order.סך_הכל_לתשלום` AS-IS as the final gross total, then splits
+    // it into net + VAT 18% backwards:
+    //     total   = order.סך_הכל_לתשלום
+    //     vatAmt  = round(total * 0.18 / 1.18, 2)
+    //     exclVat = total - vatAmt
+    // The invoice we send to Morning MUST equal that same number to the
+    // agora. Customer type does NOT enter this calculation — whatever the
+    // preview shows is the contract. Any drift between Morning's per-line
+    // rounding and `crmDisplayedTotal` is closed by a single "עיגול"
+    // reconciliation line below, then asserted by a hard pre-flight guard.
     const VAT_RATE = 0.18;
-    const toNet = (price: number): number =>
-      isBusiness ? price : Math.round(price / (1 + VAT_RATE) * 100) / 100;
+    const VAT_MULT = 1 + VAT_RATE;
+    // Every CRM amount (line price, delivery, discount, credit) is treated
+    // as VAT-inclusive — same convention the preview uses. Morning still
+    // wants NET prices in income lines (it adds 18% via vatType:1), so we
+    // divide once at the boundary.
+    const toNet = (gross: number): number =>
+      Math.round(gross / VAT_MULT * 100) / 100;
 
-    // ── Build income lines ────────────────────────────────────────────────
-    // Every line price is NET (pre-VAT). Morning computes VAT per line at 18%.
+    const crmStoredTotal = Number(order.סך_הכל_לתשלום ?? 0);
+    const crmDisplayedTotal = crmStoredTotal;
+    const crmDisplayedCents = Math.round(crmDisplayedTotal * 100);
+
+    // ── Build income lines — each order item appears exactly ONCE ─────────
+    // No qty-flattening (that was the source of "duplicated products" on the
+    // customer's invoice). Each row in מוצרים_בהזמנה → one line on the
+    // invoice with its original quantity. Manual / custom items keep their
+    // operator-given name. Morning rounding drift is reconciled below.
     type IncomeLine = { description: string; quantity: number; price: number; vatType: 1 };
     const incomeLines: IncomeLine[] = [];
-    for (const item of items ?? []) {
+
+    const rawItems = (items ?? []) as Array<Record<string, unknown>>;
+    for (const item of rawItems) {
       let description = '';
-      if (item.סוג_שורה === 'מארז' && item.גודל_מארז) {
+      const lineType = item.סוג_שורה as string | undefined;
+      if (lineType === 'מארז' && item.גודל_מארז) {
         description = `מארז פטיפורים ${item.גודל_מארז} יחידות`;
         const selections = (item.בחירת_פטיפורים_בהזמנה as Array<{ כמות: number; סוגי_פטיפורים: { שם_פטיפור: string } }>) ?? [];
         if (selections.length > 0) {
-          description += ` (${selections.map(s => `${s.סוגי_פטיפורים?.שם_פטיפור} ×${s.כמות}`).join(', ')})`;
+          description += ` (${selections.map((s) => `${s.סוגי_פטיפורים?.שם_פטיפור} ×${s.כמות}`).join(', ')})`;
         }
+      } else if (lineType === 'מוצר_ידני' || lineType === 'תוספת_תשלום') {
+        // Manual / custom rows — use the operator-typed name; fall back to
+        // a generic label only if שם_פריט_מותאם is empty.
+        description = ((item.שם_פריט_מותאם as string | null) ?? '').trim()
+          || ((item.מחיר_ליחידה as number) < 0 ? 'הנחה' : 'פריט');
       } else {
         description = (item.מוצרים_למכירה as { שם_מוצר: string } | null)?.שם_מוצר ?? 'פריט';
       }
       if (item.הערות_לשורה) description += ` — ${item.הערות_לשורה}`;
-      incomeLines.push({ description, quantity: item.כמות, price: toNet(item.מחיר_ליחידה), vatType: 1 });
+      const qty = Number(item.כמות ?? 1) || 1;
+      const unit = Number(item.מחיר_ליחידה ?? 0) || 0;
+      incomeLines.push({ description, quantity: qty, price: toNet(unit), vatType: 1 });
     }
 
-    if (order.דמי_משלוח && order.דמי_משלוח > 0) {
-      // Delivery fee: included as an income line (NET), so Morning adds VAT
-      // on top exactly like every other line.
-      incomeLines.push({ description: 'דמי משלוח', quantity: 1, price: toNet(order.דמי_משלוח), vatType: 1 });
+    // Delivery fee — exactly one line.
+    if (order.דמי_משלוח && Number(order.דמי_משלוח) > 0) {
+      incomeLines.push({ description: 'דמי משלוח', quantity: 1, price: toNet(Number(order.דמי_משלוח)), vatType: 1 });
     }
 
-    const incomeBeforeDiscount = incomeLines.reduce((sum, l) => sum + l.price * l.quantity, 0);
-
-    // Discounts are represented as a NEGATIVE income line (not as Morning's
-    // separate discount field). This keeps the income-lines total == payment
-    // amount equality the only invariant we need to defend.
-    if (order.סוג_הנחה === 'אחוז' && order.ערך_הנחה && order.ערך_הנחה > 0) {
-      const discAmt = Math.round(incomeBeforeDiscount * order.ערך_הנחה / 100 * 100) / 100;
-      incomeLines.push({ description: `הנחה ${order.ערך_הנחה}%`, quantity: 1, price: -discAmt, vatType: 1 });
-    } else if (order.סוג_הנחה === 'סכום' && order.ערך_הנחה && order.ערך_הנחה > 0) {
-      // Fixed discount: convert to net for the same reason as item prices.
-      // Private: CRM discount is VAT-inclusive → divide by (1+VAT).
-      // Business: CRM discount is pre-VAT → no change.
-      incomeLines.push({ description: 'הנחה', quantity: 1, price: -toNet(order.ערך_הנחה), vatType: 1 });
+    // Discount — exactly one line (percent OR fixed; never both).
+    const discValue = Number(order.ערך_הנחה ?? 0);
+    if (order.סוג_הנחה === 'אחוז' && discValue > 0) {
+      const netBeforeDiscount = incomeLines.reduce((sum, l) => sum + l.price * l.quantity, 0);
+      const discNet = Math.round(netBeforeDiscount * discValue / 100 * 100) / 100;
+      incomeLines.push({ description: `הנחה ${discValue}%`, quantity: 1, price: -discNet, vatType: 1 });
+    } else if (order.סוג_הנחה === 'סכום' && discValue > 0) {
+      incomeLines.push({ description: 'הנחה', quantity: 1, price: -toNet(discValue), vatType: 1 });
     }
 
-    // ── Flatten multi-quantity lines to qty=1 (Morning errorCode 2422 fix) ─
-    // Morning rejects (2422 "קיים חוסר התאמה בין סכום התקבולים לסכום התשלומים")
-    // when our payment amount differs from Morning's per-line VAT aggregation
-    // by even a single agora.
-    //
-    // The drift comes from quantity>1 lines: depending on whether Morning
-    // rounds VAT per-LINE (round(price*qty*1.18)) or per-UNIT
-    // (qty * round(price*1.18)), the line gross can differ by up to 1 agora
-    // per line. We do not know Morning's exact rounding strategy.
-    //
-    // Robust fix: flatten every qty>1 line into N qty=1 lines. With qty=1,
-    // per-line and per-unit rounding are mathematically identical, so
-    // sum(income lines as Morning will compute them) === sum we send as the
-    // payment, by construction — regardless of Morning's internal mode.
-    const flatLines: IncomeLine[] = [];
-    for (const line of incomeLines) {
-      const q = Number.isInteger(line.quantity) && line.quantity > 0 ? line.quantity : 1;
-      if (q === 1) {
-        flatLines.push(line);
-      } else {
-        for (let i = 0; i < q; i++) {
-          flatLines.push({ ...line, quantity: 1 });
-        }
-      }
+    // Customer credit usage — already baked into סך_הכל_לתשלום at order time.
+    // Surface it as an explicit deduction line so the customer-facing invoice
+    // matches the CRM total without needing a generic rounding fudge.
+    const creditUsed = Number((order as Record<string, unknown>).זיכוי_בשימוש ?? 0);
+    if (creditUsed > 0) {
+      incomeLines.push({ description: 'זיכוי לקוחה', quantity: 1, price: -toNet(creditUsed), vatType: 1 });
     }
 
-    // ── Single-round money calculation (Morning errorCode 2422 fix v3) ────
-    // Morning computes a document's gross income total as
-    //     round( sum(line.price × line.qty) × (1 + VAT), 2 )
-    // — sum the nets first, multiply by VAT once, round once at the end.
-    //
-    // Our previous code rounded PER LINE
-    //     sum( round(line.price × line.qty × (1 + VAT), 2) )
-    // which can disagree by ±1 agora whenever a per-line gross would round
-    // up while the summed gross rounds down (or vice versa). That is
-    // precisely the source of errorCode 2422 even after flattening to qty=1.
-    //
-    // Fix: do all addition in integer cents (no float drift); apply VAT
-    // exactly once; round exactly once. paymentAmount must come from this
-    // same calculation — never from the DB order total, UI total, or an
-    // earlier intermediate value.
-    const VAT_MULT = 1 + VAT_RATE;
-    const totalNetCents = flatLines.reduce(
+    // ── Reconcile sum-of-lines × 1.18 with crmDisplayedTotal ──────────────
+    // Morning's per-line VAT rounding for qty>1 lines can drift by 1 agora
+    // per line from our single-round calculation. We close that drift in one
+    // place: a small "עיגול" line whose NET makes the FINAL gross match the
+    // CRM total to the agora. If the gap is larger than a handful of cents,
+    // the pre-flight guard below refuses to send.
+    const actualNetCents = incomeLines.reduce(
       (sum, l) => sum + Math.round(l.price * l.quantity * 100),
       0,
     );
-    const totalGrossCents = Math.round(totalNetCents * VAT_MULT);
-    const incomeLinesTotal = totalGrossCents / 100;
-    let paymentAmount = incomeLinesTotal;
+    // The net total Morning needs so that round(net × 1.18) === crmDisplayedCents.
+    const targetNetCents = Math.round(crmDisplayedCents / VAT_MULT);
+    const correctionCents = targetNetCents - actualNetCents;
+    if (correctionCents !== 0) {
+      incomeLines.push({
+        description: 'עיגול',
+        quantity: 1,
+        price: correctionCents / 100,
+        vatType: 1,
+      });
+    }
 
-    // Per-line snapshot for the debug log — purely informational, not used
-    // for either incomeTotal or paymentAmount.
-    const incomeLinesDebug: Array<{
-      description: string;
-      quantity: number;
-      price: number;
-      vatType: number;
-      lineNet: number;
-      isDiscount: boolean;
-      isDelivery: boolean;
-    }> = flatLines.map((line) => ({
+    // Final money snapshot — used by the guard, the [invoice-debug] log, and
+    // the payment block. paymentAmount is the CRM displayed total, by
+    // construction (this is the contract).
+    const finalNetCents = incomeLines.reduce(
+      (sum, l) => sum + Math.round(l.price * l.quantity * 100),
+      0,
+    );
+    const finalGrossCents = Math.round(finalNetCents * VAT_MULT);
+    const incomeLinesTotal = finalGrossCents / 100;
+    const paymentAmount = crmDisplayedTotal;
+    const mismatchCents = finalGrossCents - crmDisplayedCents;
+
+    // Per-line snapshot for the debug log (informational only).
+    const incomeLinesDebug = incomeLines.map((line) => ({
       description: line.description,
       quantity: line.quantity,
       price: line.price,
       vatType: line.vatType,
       lineNet: Math.round(line.price * line.quantity * 100) / 100,
-      isDiscount: line.price < 0,
+      isDiscount: line.price < 0 && line.description !== 'עיגול',
       isDelivery: line.description === 'דמי משלוח',
+      isCorrection: line.description === 'עיגול',
     }));
 
-    const difference = 0;
+    const roundedNet = finalNetCents / 100;
+    const roundedVat = Math.round((finalGrossCents - finalNetCents)) / 100;
 
-    // Reporting-only net/vat snapshot for the [VAT] log; not used in payload math.
-    const netAfterDiscount = flatLines.reduce((sum, l) => sum + l.price * l.quantity, 0);
-    const roundedNet = Math.round(netAfterDiscount * 100) / 100;
-    const roundedVat = Math.round((paymentAmount - roundedNet) * 100) / 100;
-
-    // Payment line preview (what we will send Morning if this is a PAYMENT_DOC).
     const paymentLinesDebug = PAYMENT_DOCS.has(documentType)
       ? [{ method: paymentMethodOverride, amount: paymentAmount }]
       : [];
+
+    // ── [INVOICE GUARD] required summary log on every issuance ────────────
+    console.log('[INVOICE GUARD]',
+      '| order_id:', orderId,
+      '| order_number:', order.מספר_הזמנה,
+      '| invoice_type:', documentType, `(${morningDocType})`,
+      '| customer_type:', customer.סוג_לקוח ?? 'פרטי',
+      '| isBusiness:', isBusiness,
+      '| CRM_stored_total:', crmStoredTotal,
+      '| CRM_displayed_total_used:', crmDisplayedTotal,
+      '| raw_item_count:', rawItems.length,
+      '| final_invoice_line_count:', incomeLines.length,
+      '| final_gross_before_send:', incomeLinesTotal,
+      '| mismatch_with_CRM:', mismatchCents / 100,
+      '| correction_added_cents:', correctionCents,
+    );
+
+    // ── Hard pre-flight guard — refuse to call Morning on mismatch ────────
+    // After the reconciliation line above, mismatchCents must be exactly 0.
+    // If it isn't, the input data is corrupt enough that we should stop
+    // rather than ship a wrong-amount invoice to the tax authority.
+    if (mismatchCents !== 0) {
+      console.error('[INVOICE GUARD] MISMATCH — refusing to send',
+        '| order:', order.מספר_הזמנה,
+        '| computed_gross:', incomeLinesTotal,
+        '| expected_CRM_total:', crmDisplayedTotal,
+        '| diff_cents:', mismatchCents,
+        '| lines:', JSON.stringify(incomeLinesDebug));
+      throw new Error(
+        `אי-התאמת סכום בחשבונית: סך הכל בחשבונית ${incomeLinesTotal.toFixed(2)} ₪ ` +
+        `שונה מהסכום בהזמנה ${crmDisplayedTotal.toFixed(2)} ₪. ` +
+        `הפרש: ${(mismatchCents / 100).toFixed(2)} ₪. החשבונית לא הופקה.`,
+      );
+    }
 
     // ── [invoice-debug] — sanitized payload calculation dump ──────────────
     // CRITICAL: every log here is a SINGLE-LINE string. Multi-line JSON
     // (JSON.stringify with indent) was getting split by Supabase's Logflare
     // pipeline so the dashboard search "[invoice-debug]" missed everything
     // after the first line. No null/2 pretty-print below.
-    console.log('[invoice-debug] VERSION: single-round-2422-fix-v3');
+    console.log('[invoice-debug] VERSION: crm-anchored-no-flatten-v4');
     console.log('[invoice-debug] order:', order.מספר_הזמנה, '| document type:', documentType, '| morningType:', morningDocType);
     console.log('[invoice-debug] client:', JSON.stringify({
       id: order.לקוח_id,
@@ -362,37 +395,30 @@ serve(async (req: Request) => {
       type: customer.סוג_לקוח ?? 'פרטי',
       isBusiness,
     }));
-    console.log('[invoice-debug] income lines (flat, qty=1):', JSON.stringify(incomeLinesDebug));
+    console.log('[invoice-debug] income lines:', JSON.stringify(incomeLinesDebug));
     console.log('[invoice-debug] payment lines:', JSON.stringify(paymentLinesDebug));
-    console.log('[invoice-debug] discount line:', JSON.stringify(
-      incomeLinesDebug.find((l) => l.isDiscount) ?? null,
-    ));
-    console.log('[invoice-debug] delivery fee line:', JSON.stringify(
-      incomeLinesDebug.find((l) => l.isDelivery) ?? null,
-    ));
     console.log('[invoice-debug] total income gross:', incomeLinesTotal);
     console.log('[invoice-debug] total payment amount:', paymentAmount);
-    console.log('[invoice-debug] difference (income - payment):', difference);
-    // Consolidated single-line summary — guaranteed to fit in one Logflare
-    // entry even if the larger lines above get truncated or split.
+    console.log('[invoice-debug] CRM displayed total (anchor):', crmDisplayedTotal);
     const summary = incomeLinesDebug
-      .map((l, i) => `#${i}:net=${l.price}x${l.quantity}${l.isDiscount ? '(disc)' : ''}${l.isDelivery ? '(deliv)' : ''}`)
+      .map((l, i) => `#${i}:net=${l.price}x${l.quantity}${l.isDiscount ? '(disc)' : ''}${l.isDelivery ? '(deliv)' : ''}${l.isCorrection ? '(corr)' : ''}`)
       .join(' | ');
     console.log('[invoice-debug] SUMMARY |', 'order:', order.מספר_הזמנה,
       '| count:', incomeLinesDebug.length,
       '| incomeTotal:', incomeLinesTotal,
       '| paymentAmount:', paymentAmount,
-      '| diff:', difference,
+      '| CRM:', crmDisplayedTotal,
       '| lines:', summary);
 
     // ── VAT audit log ──────────────────────────────────────────────────────
+    // VAT split mirrors the preview's "exclVat / vatAmt / total" rows. The
+    // customer type is logged for traceability only; it does NOT alter math.
     console.log('[VAT]', JSON.stringify({
       customerType: customer.סוג_לקוח ?? 'פרטי',
       isBusiness,
-      vatHandling: isBusiness
-        ? 'exclusive: CRM prices are pre-VAT — VAT added on top'
-        : 'inclusive: CRM prices include VAT — split into net + 18%',
-      orderTotalFromCRM: order.סך_הכל_לתשלום,
+      vatHandling: 'inclusive: CRM amounts (סך_הכל_לתשלום, line prices, fees, discounts) are treated as VAT-inclusive — same as the invoice preview',
+      orderTotalFromCRM: crmStoredTotal,
+      crmDisplayedTotal,
       netAmount: roundedNet,
       vatAmount: roundedVat,
       invoiceTotal: paymentAmount,
@@ -407,19 +433,20 @@ serve(async (req: Request) => {
       currency: 'ILS',
       // Always vatType: 1 (subject to standard VAT, 18%).
       // Morning receives NET prices in every income line and adds 18% on top.
-      // For private customers the net was derived by dividing inclusive CRM prices
-      // by 1.18; for business customers prices are already net — both produce
-      // the same invoice shape: net + 18% VAT = invoice total.
+      // Every CRM amount (line price, delivery, discount, credit) is treated
+      // as VAT-inclusive — same as the invoice preview — so net = gross / 1.18.
+      // Final invoice gross == order.סך_הכל_לתשלום, regardless of customer type.
       vatType: 1,
       client: {
         name: `${customer.שם_פרטי} ${customer.שם_משפחה}`,
         ...(customer.אימייל ? { emails: [customer.אימייל] } : {}),
         ...(customer.טלפון ? { phone: customer.טלפון } : {}),
       },
-      // Send the FLAT (qty=1) lines so Morning's per-line VAT rounding is
-      // unambiguous and matches our paymentAmount exactly. Sending the raw
-      // multi-quantity lines is what historically caused errorCode 2422.
-      income: flatLines,
+      // Each order item appears exactly ONCE with its original quantity. No
+      // qty-flattening — that caused visually-duplicated lines on the
+      // customer's invoice. A small "עיגול" net line was added above (if
+      // needed) to reconcile Morning's per-line rounding with the CRM total.
+      income: incomeLines,
     };
 
     // Receipt + invoice_receipt include a payment section; tax_invoice does
@@ -504,14 +531,15 @@ serve(async (req: Request) => {
     console.log('[invoice-debug] Morning payload (no secrets):', JSON.stringify(documentBody));
 
     // ── MORNING_PAYLOAD_CHECK — required guard before EVERY Morning POST ──
-    // Re-derives BOTH totals from the actual documentBody about to be sent
-    // (not from any earlier intermediate variables), using the exact same
-    // formula Morning uses internally: integer-cents sum of nets, then one
-    // VAT multiplication, then one final round. If the resulting incomeTotal
-    // differs from the sum of payment[].price by even a single agora,
-    // throws BEFORE the fetch — Morning is never called with a mismatched
-    // payload. This is the ONLY Morning documents POST in this file
-    // (verified via grep for `${MORNING_API_BASE}/documents`).
+    // Re-derives the gross from the documentBody about to be sent (NOT from
+    // earlier intermediates) and asserts THREE invariants together:
+    //   1) round(sum(income.price × qty) × 1.18) === crmDisplayedTotal
+    //      → Morning's final gross will match the CRM order page total.
+    //   2) For PAYMENT_DOCS: sum(payment[].price) === crmDisplayedTotal
+    //      → the payment block on the receipt equals the same total.
+    //   3) The two derived totals (1) and (2) are equal.
+    // Any deviation refuses the POST — Morning is never called with a
+    // mismatched payload.
     const guardIncome = documentBody.income as IncomeLine[];
     const guardNetCents = guardIncome.reduce(
       (sum, l) => sum + Math.round(l.price * l.quantity * 100),
@@ -529,12 +557,16 @@ serve(async (req: Request) => {
     );
     const guardPaymentTotal = guardPaymentCents / 100;
 
-    // tax_invoice (305) has no payment block — invariant vacuously holds.
-    // For it, the "expected payment" is the income total itself (no
-    // mismatch possible because we don't send any payment line).
+    // tax_invoice (305) has no payment block — payment invariant vacuously
+    // holds (no payment line to mismatch). For PAYMENT_DOCS (320/400) the
+    // payment block MUST equal the CRM displayed total.
     const guardExpectedPaymentTotal = PAYMENT_DOCS.has(documentType)
       ? guardPaymentTotal
       : guardIncomeTotal;
+    const guardIncomeVsCrmDiff = Math.round((guardIncomeTotal - crmDisplayedTotal) * 100) / 100;
+    const guardPaymentVsCrmDiff = PAYMENT_DOCS.has(documentType)
+      ? Math.round((guardPaymentTotal - crmDisplayedTotal) * 100) / 100
+      : 0;
     const guardDiff = Math.round((guardIncomeTotal - guardExpectedPaymentTotal) * 100) / 100;
 
     const guardIncomeSummary = guardIncome
@@ -547,22 +579,30 @@ serve(async (req: Request) => {
     console.log('MORNING_PAYLOAD_CHECK',
       '| order:', order.מספר_הזמנה,
       '| type:', documentType,
+      '| crmDisplayedTotal:', crmDisplayedTotal,
       '| incomeTotal:', guardIncomeTotal,
       '| paymentTotal:', guardExpectedPaymentTotal,
-      '| diff:', guardDiff,
+      '| income_vs_crm_diff:', guardIncomeVsCrmDiff,
+      '| payment_vs_crm_diff:', guardPaymentVsCrmDiff,
+      '| income_vs_payment_diff:', guardDiff,
       '| incomeLineCount:', guardIncome.length,
       '| paymentLineCount:', guardPayment.length);
 
-    if (guardDiff !== 0) {
+    if (guardIncomeVsCrmDiff !== 0 || guardPaymentVsCrmDiff !== 0 || guardDiff !== 0) {
       console.error('MORNING_PAYLOAD_MISMATCH — refusing to POST',
         '| order:', order.מספר_הזמנה,
+        '| crmDisplayedTotal:', crmDisplayedTotal,
         '| incomeTotal:', guardIncomeTotal,
         '| paymentTotal:', guardExpectedPaymentTotal,
-        '| diff:', guardDiff,
+        '| income_vs_crm_diff:', guardIncomeVsCrmDiff,
+        '| payment_vs_crm_diff:', guardPaymentVsCrmDiff,
+        '| income_vs_payment_diff:', guardDiff,
         '| incomeSummary:', guardIncomeSummary,
         '| paymentSummary:', guardPaymentSummary);
       throw new Error(
-        `Morning payload mismatch before POST | order=${order.מספר_הזמנה} | incomeTotal=${guardIncomeTotal} | paymentTotal=${guardExpectedPaymentTotal} | diff=${guardDiff} | income=${guardIncomeSummary} | payment=${guardPaymentSummary}`,
+        `אי-התאמת סכום בחשבונית לפני שליחה — הזמנה ${order.מספר_הזמנה}: ` +
+        `CRM=${crmDisplayedTotal} ₪, חשבונית=${guardIncomeTotal} ₪, תשלום=${guardExpectedPaymentTotal} ₪. ` +
+        `הפקת המסמך בוטלה.`,
       );
     }
 
