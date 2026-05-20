@@ -30,6 +30,36 @@ function shortMonthLabel(monthKey: string): string {
 
 type PaidRow = Record<string, unknown>;
 
+// ── Paginated fetch helper ──────────────────────────────────────────────────
+// Supabase / PostgREST caps a single GET at db.max_rows (1000 by default).
+// Previous code used `.limit(2000)` / `.limit(200)` which silently truncated
+// once the business grew past those thresholds:
+//   • paid 365d capped at 2000 → year KPIs, monthly chart, top-customers,
+//     payment-methods all silently undercounted past ~5.5 paid orders/day
+//   • unpaid capped at 200 → the unpaid amount KPI's count was right (via
+//     count:exact) but the sum it displayed was only over the top-200 rows
+// Solution: page through with .range() until a short page comes back. We
+// only request the columns we actually need, so each page is small.
+async function fetchAllPaged<T = PaidRow>(
+  build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>,
+  pageSize = 1000,
+): Promise<T[]> {
+  const all: T[] = [];
+  let offset = 0;
+  // Hard ceiling guards against accidental infinite loops if the data set
+  // were to explode. 200k paid rows / year is far past any realistic volume.
+  const maxRows = 200_000;
+  while (offset < maxRows) {
+    const { data, error } = await build(offset, offset + pageSize - 1);
+    if (error) throw error;
+    const rows = (data ?? []) as T[];
+    all.push(...rows);
+    if (rows.length < pageSize) break;
+    offset += pageSize;
+  }
+  return all;
+}
+
 const getKpi = (rows: PaidRow[], fromDate: string, toDate: string) => {
   const r = rows.filter(o => {
     const d = o['תאריך_אספקה'] as string | null;
@@ -69,39 +99,35 @@ export async function GET() {
   const yearFrom  = `${ty}-01-01`;
 
   try {
-    const [
-      { data: paidRows,   error: e1 },
-      { data: unpaidRows, count: unpaidCount, error: e2 },
-    ] = await Promise.all([
-      supabase
-        .from('הזמנות')
-        .select('id, מספר_הזמנה, לקוח_id, סך_הכל_לתשלום, אופן_תשלום, סטטוס_הזמנה, תאריך_אספקה, לקוחות(שם_פרטי, שם_משפחה)')
-        .eq('סטטוס_תשלום', 'שולם')
-        .gte('תאריך_אספקה', from365)
-        .lte('תאריך_אספקה', today)
-        .neq('סטטוס_הזמנה', 'בוטלה')
-        .order('תאריך_אספקה', { ascending: false })
-        .limit(2000),
-
-      supabase
-        .from('הזמנות')
-        .select('id, מספר_הזמנה, לקוח_id, סך_הכל_לתשלום, סטטוס_הזמנה, תאריך_אספקה, לקוחות(שם_פרטי, שם_משפחה)', { count: 'exact' })
-        .in('סטטוס_תשלום', ['ממתין', 'חלקי'])
-        .neq('סטטוס_הזמנה', 'בוטלה')
-        .neq('סטטוס_הזמנה', 'טיוטה')
-        .neq('סטטוס_הזמנה', 'הושלמה בהצלחה')
-        .order('סך_הכל_לתשלום', { ascending: false })
-        .limit(200),
+    // Paid + unpaid are fetched via paginated helpers so the KPIs/charts
+    // below are computed over the FULL data set, not a truncated slice.
+    const [paid, unpaid] = await Promise.all([
+      fetchAllPaged<PaidRow>((from, to) =>
+        supabase
+          .from('הזמנות')
+          .select('id, מספר_הזמנה, לקוח_id, סך_הכל_לתשלום, אופן_תשלום, סטטוס_הזמנה, תאריך_אספקה, לקוחות(שם_פרטי, שם_משפחה)')
+          .eq('סטטוס_תשלום', 'שולם')
+          .gte('תאריך_אספקה', from365)
+          .lte('תאריך_אספקה', today)
+          .neq('סטטוס_הזמנה', 'בוטלה')
+          .order('תאריך_אספקה', { ascending: false })
+          .range(from, to),
+      ),
+      fetchAllPaged<PaidRow>((from, to) =>
+        supabase
+          .from('הזמנות')
+          .select('id, מספר_הזמנה, לקוח_id, סך_הכל_לתשלום, סטטוס_הזמנה, תאריך_אספקה, לקוחות(שם_פרטי, שם_משפחה)')
+          .in('סטטוס_תשלום', ['ממתין', 'חלקי'])
+          .neq('סטטוס_הזמנה', 'בוטלה')
+          .neq('סטטוס_הזמנה', 'טיוטה')
+          .neq('סטטוס_הזמנה', 'הושלמה בהצלחה')
+          .order('סך_הכל_לתשלום', { ascending: false })
+          .range(from, to),
+      ),
     ]);
-
-    const firstErr = e1 ?? e2;
-    if (firstErr) {
-      console.error('[analytics/finance/overview]', firstErr.message);
-      return NextResponse.json({ error: firstErr.message }, { status: 500 });
-    }
-
-    const paid   = (paidRows   ?? []) as PaidRow[];
-    const unpaid = (unpaidRows ?? []) as PaidRow[];
+    // Count derives directly from the paginated array → exact, no separate
+    // count:exact query needed and no risk of count/sum disagreement.
+    const unpaidCount = unpaid.length;
 
     const kpis = {
       today:  getKpi(paid, today,     today),

@@ -17,8 +17,13 @@ export async function GET(req: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50');
     const offset = (page - 1) * limit;
 
-    const today = new Date().toISOString().split('T')[0];
-    const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+    // Dates anchored to Asia/Jerusalem so the "today"/"tomorrow" filters here
+    // line up with the rest of the dashboard (which is also Jerusalem-TZ).
+    // Previously these used `new Date().toISOString().split('T')[0]` which
+    // returns UTC dates — between UTC midnight and Israel midnight (a 2-3h
+    // window every night) the "today" list disagreed with the headline KPI.
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
+    const tomorrow = new Date(Date.now() + 86400000).toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
 
     let query = supabase
       .from('הזמנות')

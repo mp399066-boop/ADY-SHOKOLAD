@@ -50,7 +50,14 @@ export async function GET() {
     ] = await Promise.all([
       supabase.from('הזמנות').select('*', { count: 'exact', head: true }).eq('תאריך_אספקה', today).neq('סטטוס_הזמנה', 'בוטלה'),
       supabase.from('הזמנות').select('*', { count: 'exact', head: true }).eq('תאריך_אספקה', tomorrow).neq('סטטוס_הזמנה', 'בוטלה'),
-      supabase.from('הזמנות').select('*', { count: 'exact', head: true }).eq('הזמנה_דחופה', true).neq('סטטוס_הזמנה', 'הושלמה בהצלחה').neq('סטטוס_הזמנה', 'בוטלה'),
+      // Urgent count — must exclude drafts as well as terminal/cancelled
+      // statuses, otherwise an urgent flag on a draft shows in the KPI but
+      // is unreachable from the orders page (drafts have their own tab).
+      supabase.from('הזמנות').select('*', { count: 'exact', head: true })
+        .eq('הזמנה_דחופה', true)
+        .neq('סטטוס_הזמנה', 'הושלמה בהצלחה')
+        .neq('סטטוס_הזמנה', 'בוטלה')
+        .neq('סטטוס_הזמנה', 'טיוטה'),
       // Unpaid order count — must match the orders page filter exactly so the
       // "X הזמנות לא שולמו" pill on the dashboard navigates to a list with the
       // same X rows. Earlier this counted drafts too (סטטוס_הזמנה='טיוטה' get
@@ -77,8 +84,16 @@ export async function GET() {
       // deliveries by status — filtered to today only (תאריך_משלוח = today)
       supabase.from('משלוחים').select('*', { count: 'exact', head: true }).eq('תאריך_משלוח', today).eq('סטטוס_משלוח', 'נאסף'),
       supabase.from('משלוחים').select('*', { count: 'exact', head: true }).eq('תאריך_משלוח', today).eq('סטטוס_משלוח', 'נמסר'),
-      // revenue: paid orders with delivery date = today
-      supabase.from('הזמנות').select('סך_הכל_לתשלום').eq('תאריך_אספקה', today).eq('סטטוס_תשלום', 'שולם'),
+      // Revenue: paid orders with delivery date = today.
+      // Must exclude drafts (paid drafts shouldn't exist, but if they do they
+      // pollute the figure) and cancelled orders (a cancelled order whose
+      // payment status was not reset would otherwise inflate revenue).
+      // Aligns with the Finance tab's "today" KPI which already filters these.
+      supabase.from('הזמנות').select('סך_הכל_לתשלום')
+        .eq('תאריך_אספקה', today)
+        .eq('סטטוס_תשלום', 'שולם')
+        .neq('סטטוס_הזמנה', 'בוטלה')
+        .neq('סטטוס_הזמנה', 'טיוטה'),
       // Finished-product alerts — added in migration 021. Counts active products
       // whose trigger-computed status is below 'תקין'.
       supabase.from('מוצרים_למכירה').select('*', { count: 'exact', head: true }).eq('פעיל', true).in('סטטוס_מלאי', ['מלאי נמוך', 'קריטי', 'אזל מהמלאי']),
