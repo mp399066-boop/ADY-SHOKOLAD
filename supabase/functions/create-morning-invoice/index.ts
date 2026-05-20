@@ -147,7 +147,42 @@ serve(async (req: Request) => {
     // also passes `payment_method` to override `order.אופן_תשלום`, and
     // `force=true` to bypass the (הזמנה_id, סוג_מסמך) idempotency guard
     // when the user explicitly opts in to a duplicate.
-    const documentType: string = payload.document_type ?? 'tax_invoice';
+    let documentType: string = payload.document_type ?? 'tax_invoice';
+
+    // ── debugMorningMode — server-only diagnostic switch ──────────────────
+    // Set by an explicit API caller (NOT exposed in any UI). Lets us A/B the
+    // exact part of the payload Morning rejects with errorCode 2422 without
+    // changing default production behavior. Each mode is documented inline
+    // where its branch fires. Default (anything else) is 'normal'.
+    //   normal                     — current production behavior
+    //   no_delivery_merge          — keep separate "דמי משלוח" income line
+    //   single_gross_income_line   — collapse income to ONE line at CRM gross
+    //   single_net_income_line     — collapse income to ONE line at CRM net (gross/1.18)
+    //   tax_invoice_only           — force type 305 (no payment block)
+    type DebugMorningMode =
+      | 'normal'
+      | 'no_delivery_merge'
+      | 'single_gross_income_line'
+      | 'single_net_income_line'
+      | 'tax_invoice_only';
+    const debugMorningMode: DebugMorningMode = (() => {
+      const v = payload.debugMorningMode;
+      if (
+        v === 'no_delivery_merge' ||
+        v === 'single_gross_income_line' ||
+        v === 'single_net_income_line' ||
+        v === 'tax_invoice_only'
+      ) {
+        return v;
+      }
+      return 'normal';
+    })();
+    if (debugMorningMode !== 'normal') {
+      console.warn('[DEBUG MORNING MODE] ACTIVE:', debugMorningMode, '— NOT a production path');
+    }
+    if (debugMorningMode === 'tax_invoice_only') {
+      documentType = 'tax_invoice';
+    }
     console.log('[morning] received document_type:', documentType);
 
     const morningDocType = DOC_TYPE[documentType];
@@ -329,7 +364,12 @@ serve(async (req: Request) => {
       const deliveryNet = toNet(deliveryAmount);
       const deliveryNetCents = Math.round(deliveryNet * 100);
       deliveryNetMerged = deliveryNet;
-      if (incomeLines.length > 0) {
+      if (debugMorningMode === 'no_delivery_merge') {
+        // Diagnostic: restore the pre-fix behavior (separate "דמי משלוח"
+        // line) so we can confirm whether the merge was actually required.
+        incomeLines.push({ description: 'דמי משלוח', quantity: 1, price: deliveryNet, vatType: 1 });
+        deliveryHandling = 'DEBUG no_delivery_merge — separate "דמי משלוח" line (production behavior is to merge)';
+      } else if (incomeLines.length > 0) {
         // Merge into the first product line — its existing 2-decimal
         // precision plus deliveryNet (also 2-decimal) stays 2-decimal.
         const first = incomeLines[0];
@@ -356,13 +396,55 @@ serve(async (req: Request) => {
       deliveryHandling = 'no delivery fee on order';
     }
 
+    // ── Single-line income collapse — diagnostic modes ────────────────────
+    // These two modes replace ALL income lines (products + delivery + any
+    // earlier discount/credit) with one synthetic line so we can isolate
+    // whether Morning is rejecting per-line breakdowns vs. a single line.
+    // They run BEFORE discount/credit construction (those still append) —
+    // but since the synthetic line already encodes the CRM total, we also
+    // skip subsequent discount/credit pushes when in these modes.
+    if (debugMorningMode === 'single_gross_income_line') {
+      // ONE line whose price equals the CRM gross total. We keep vatType:1
+      // at the line level because the document-level vatType:1 is the only
+      // VAT semantic this codebase trusts — if Morning still treats this
+      // single line as net and adds 18%, the resulting gross will be
+      // crmDisplayedTotal × 1.18 (a noticeable, easily-spotted divergence
+      // in the [MORNING TOTAL DIAGNOSTICS] log).
+      incomeLines.length = 0;
+      incomeLines.push({
+        description: 'סך הכל לחיוב',
+        quantity: 1,
+        price: crmDisplayedTotal,
+        vatType: 1,
+      });
+    } else if (debugMorningMode === 'single_net_income_line') {
+      // ONE line at CRM_net = CRM_gross / 1.18 (rounded to 2 decimals).
+      // Under Morning's single-round-on-net-sum totaling, this should yield
+      // exactly crmDisplayedCents as the income gross.
+      const netCents = Math.round(crmDisplayedCents / VAT_MULT);
+      incomeLines.length = 0;
+      incomeLines.push({
+        description: 'סך הכל לחיוב (לפני מע"מ)',
+        quantity: 1,
+        price: netCents / 100,
+        vatType: 1,
+      });
+    }
+
+    // Discount + credit: skipped entirely in single_* debug modes because
+    // the synthetic single line already encodes the CRM total (which has
+    // discount/credit baked in via order.סך_הכל_לתשלום).
+    const inSingleLineMode =
+      debugMorningMode === 'single_gross_income_line' ||
+      debugMorningMode === 'single_net_income_line';
+
     // Discount — exactly one line (percent OR fixed; never both).
     const discValue = Number(order.ערך_הנחה ?? 0);
-    if (order.סוג_הנחה === 'אחוז' && discValue > 0) {
+    if (!inSingleLineMode && order.סוג_הנחה === 'אחוז' && discValue > 0) {
       const netBeforeDiscount = incomeLines.reduce((sum, l) => sum + l.price * l.quantity, 0);
       const discNet = Math.round(netBeforeDiscount * discValue / 100 * 100) / 100;
       incomeLines.push({ description: `הנחה ${discValue}%`, quantity: 1, price: -discNet, vatType: 1 });
-    } else if (order.סוג_הנחה === 'סכום' && discValue > 0) {
+    } else if (!inSingleLineMode && order.סוג_הנחה === 'סכום' && discValue > 0) {
       incomeLines.push({ description: 'הנחה', quantity: 1, price: -toNet(discValue), vatType: 1 });
     }
 
@@ -370,7 +452,7 @@ serve(async (req: Request) => {
     // Surface it as an explicit deduction line so the customer-facing invoice
     // matches the CRM total without needing a generic rounding fudge.
     const creditUsed = Number((order as Record<string, unknown>).זיכוי_בשימוש ?? 0);
-    if (creditUsed > 0) {
+    if (!inSingleLineMode && creditUsed > 0) {
       incomeLines.push({ description: 'זיכוי לקוחה', quantity: 1, price: -toNet(creditUsed), vatType: 1 });
     }
 
@@ -522,7 +604,7 @@ serve(async (req: Request) => {
     // (JSON.stringify with indent) was getting split by Supabase's Logflare
     // pipeline so the dashboard search "[invoice-debug]" missed everything
     // after the first line. No null/2 pretty-print below.
-    console.log('[invoice-debug] VERSION: credit-card-route-to-type1-cash-2422-fix-v11');
+    console.log('[invoice-debug] VERSION: diagnostics-only-v12 (no functional change to default path)');
     console.log('[invoice-debug] order:', order.מספר_הזמנה, '| document type:', documentType, '| morningType:', morningDocType);
     console.log('[invoice-debug] client:', JSON.stringify({
       id: order.לקוח_id,
@@ -797,10 +879,66 @@ serve(async (req: Request) => {
     // Single line, JSON.stringify with no indent (so Logflare keeps it as
     // one searchable entry). This is the literal payload sent — if Morning
     // rejects, this is the bytes to compare against the Morning API spec.
+    const finalBodyJson = JSON.stringify(documentBody);
     console.log('[FINAL DOCUMENT BODY]',
       '| order:', order.מספר_הזמנה,
-      '| body:', JSON.stringify(documentBody),
+      '| body:', finalBodyJson,
     );
+
+    // ── [MORNING TOTAL DIAGNOSTICS] — every angle on the payload's math ───
+    // Pure diagnostics, no functional effect. Pre-POST single-line audit
+    // showing the CRM subtotal/VAT/total, line counts, both "if Morning
+    // treats price as NET" vs "if Morning treats price as GROSS" reads,
+    // payment sums, per-line vatTypes, and document-level vatType. This is
+    // the trace to consult when Morning rejects with 2422.
+    {
+      const finalIncome = documentBody.income as IncomeLine[];
+      const finalPayment = Array.isArray(documentBody.payment)
+        ? (documentBody.payment as Array<{ type: number; price: number }>)
+        : [];
+      const sumPriceTimesQty = finalIncome.reduce(
+        (s, l) => s + Math.round(l.price * l.quantity * 100),
+        0,
+      ) / 100;
+      const sumPriceOnly = finalIncome.reduce(
+        (s, l) => s + Math.round(l.price * 100),
+        0,
+      ) / 100;
+      const expectedIfTreatedAsNet = Math.round(
+        finalIncome.reduce(
+          (s, l) => s + Math.round(l.price * l.quantity * 100),
+          0,
+        ) * VAT_MULT,
+      ) / 100;
+      const expectedIfTreatedAsGross = sumPriceTimesQty;
+      const sumPaymentPrice = finalPayment.reduce(
+        (s, p) => s + Math.round(p.price * 100),
+        0,
+      ) / 100;
+      const crmSubtotalBeforeVat = Math.round(crmDisplayedCents / VAT_MULT) / 100;
+      const crmVat = (crmDisplayedCents - Math.round(crmDisplayedCents / VAT_MULT)) / 100;
+      console.log('[MORNING TOTAL DIAGNOSTICS]',
+        '| order_id:', orderId,
+        '| order_number:', order.מספר_הזמנה,
+        '| document_type:', documentType,
+        '| documentBody.type:', documentBody.type,
+        '| documentBody.vatType:', documentBody.vatType,
+        '| crm_subtotal_before_vat:', crmSubtotalBeforeVat,
+        '| crm_vat:', crmVat,
+        '| crm_total:', crmDisplayedTotal,
+        '| income_lines_count:', finalIncome.length,
+        '| sum_income_raw_price:', sumPriceOnly,
+        '| sum_income_quantity_times_price:', sumPriceTimesQty,
+        '| expected_gross_if_NET:', expectedIfTreatedAsNet,
+        '| expected_gross_if_GROSS:', expectedIfTreatedAsGross,
+        '| sum_payment_price:', sumPaymentPrice,
+        '| selected_payment_method:', paymentMethodOverride ?? 'NONE',
+        '| debug_morning_mode:', debugMorningMode,
+        '| income_lines_vatTypes:', JSON.stringify(finalIncome.map((l) => l.vatType)),
+        '| income_lines:', JSON.stringify(finalIncome),
+        '| payment_block:', JSON.stringify(documentBody.payment ?? null),
+      );
+    }
 
     const docRes = await fetch(`${MORNING_API_BASE}/documents`, {
       method: 'POST',
@@ -808,13 +946,32 @@ serve(async (req: Request) => {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
       },
-      body: JSON.stringify(documentBody),
+      body: finalBodyJson,
     });
 
     const docData = await docRes.json();
     console.log('[morning] Response status:', docRes.status, '| body:', JSON.stringify(docData).slice(0, 300));
 
-    if (!docRes.ok) throw new Error(`Morning API failed ${docRes.status}: ${JSON.stringify(docData)}`);
+    if (!docRes.ok) {
+      // ── [MORNING RAW ERROR] — raw response audit on non-2xx ──────────────
+      // Single-line log capturing HTTP status, full response body, and a
+      // stable hash of the request body for correlation with [FINAL
+      // DOCUMENT BODY]. JSON.stringify(docData) covers the response payload
+      // even when Morning returns a typed errorCode + errorMessage struct.
+      const bodyHash = Array.from(finalBodyJson).reduce(
+        (h, c) => ((h << 5) - h + c.charCodeAt(0)) | 0,
+        0,
+      );
+      console.error('[MORNING RAW ERROR]',
+        '| order:', order.מספר_הזמנה,
+        '| http_status:', docRes.status,
+        '| response_body:', JSON.stringify(docData),
+        '| request_body_hash:', bodyHash,
+        '| request_body_length:', finalBodyJson.length,
+        '| request_body:', finalBodyJson,
+      );
+      throw new Error(`Morning API failed ${docRes.status}: ${JSON.stringify(docData)}`);
+    }
 
     const invoiceNumber: string = docData.number ?? docData.id ?? String(docData.documentId ?? '');
     const docId: string = docData.id ?? '';
