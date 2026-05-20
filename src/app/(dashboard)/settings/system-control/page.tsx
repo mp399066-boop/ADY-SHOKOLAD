@@ -1,11 +1,11 @@
 'use client';
 
-// /settings/system-control — admin-only "לוגים" feed.
+// /settings/system-control — admin-only "לוגים" page.
 //
-// V1: one clean page that reads system_activity_logs through
-// GET /api/system/activity. Replaces the previous three-view control center
-// (services / runs / activity). Service toggles and gated-run views were
-// hidden in V1; their tables and APIs stay intact for a future re-surface.
+// Single page with tabs, one per business category. Each tab is a filtered
+// view over system_activity_logs (via GET /api/system/activity). The first
+// tab covers all order events (module=orders); the rest are service-specific
+// (filtered by service_key).
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
@@ -23,7 +23,7 @@ import {
   type ActivityModule,
 } from '@/lib/activity-log-labels';
 
-// ── Settings tab strip (shared visual; matches the other settings pages) ─────
+// ── Settings tab strip (top — same visual as the other settings pages) ───────
 
 const SETTINGS_TABS = [
   { href: '/settings',                label: 'הגדרות עסק'      },
@@ -52,6 +52,82 @@ function SettingsTabs({ active }: { active: string }) {
     </div>
   );
 }
+
+// ── Category tabs (inside the page) ──────────────────────────────────────────
+
+// Each tab maps to a filter shape consumed by GET /api/system/activity.
+// 'orders' is module-based (covers all order events regardless of service);
+// the rest are service_key-based and align with the kill-switches in
+// system_services.
+type TabId =
+  | 'orders'
+  | 'morning_documents'
+  | 'customer_order_emails'
+  | 'admin_alerts'
+  | 'delivery_notifications'
+  | 'daily_orders_report'
+  | 'woocommerce_orders'
+  | 'inventory_deduction'
+  | 'payplus_payments';
+
+interface TabDef {
+  id:    TabId;
+  label: string;
+  icon:  string;
+  // Either filter by module (orders tab) or by service_key (everything else).
+  // The empty-state copy is tab-specific so the owner immediately knows what
+  // they'd expect to see in this tab.
+  filter:    { module: ActivityModule } | { serviceKey: string };
+  emptyHint: string;
+}
+
+const TABS: TabDef[] = [
+  {
+    id: 'orders', label: 'הזמנות', icon: '🧾',
+    filter: { module: 'orders' },
+    emptyHint: 'עדיין אין אירועי הזמנות לתקופה שנבחרה.',
+  },
+  {
+    id: 'morning_documents', label: 'הפקת מסמכים פיננסיים', icon: '🧾',
+    filter: { serviceKey: 'morning_documents' },
+    emptyHint: 'עדיין לא הופקו חשבוניות / קבלות דרך Morning בתקופה שנבחרה.',
+  },
+  {
+    id: 'customer_order_emails', label: 'שליחת אישורי הזמנה ללקוחות', icon: '✉️',
+    filter: { serviceKey: 'customer_order_emails' },
+    emptyHint: 'עדיין לא נשלחו אישורי הזמנה ללקוחות בתקופה שנבחרה.',
+  },
+  {
+    id: 'admin_alerts', label: 'התראות פנימיות לבעלת העסק', icon: '🔔',
+    filter: { serviceKey: 'admin_alerts' },
+    emptyHint: 'עדיין לא נשלחו התראות פנימיות בתקופה שנבחרה.',
+  },
+  {
+    id: 'delivery_notifications', label: 'משלוחים — קישורים לשליח', icon: '🚚',
+    filter: { serviceKey: 'delivery_notifications' },
+    emptyHint: 'עדיין לא נשלחו קישורים לשליחים בתקופה שנבחרה.',
+  },
+  {
+    id: 'daily_orders_report', label: 'דוח יומי אוטומטי', icon: '📊',
+    filter: { serviceKey: 'daily_orders_report' },
+    emptyHint: 'הדוח היומי טרם רץ בתקופה שנבחרה.',
+  },
+  {
+    id: 'woocommerce_orders', label: 'קבלת הזמנות — WooCommerce', icon: '🛍️',
+    filter: { serviceKey: 'woocommerce_orders' },
+    emptyHint: 'עדיין לא התקבלו הזמנות מ-WooCommerce בתקופה שנבחרה.',
+  },
+  {
+    id: 'inventory_deduction', label: 'הורדת מלאי אוטומטית', icon: '📦',
+    filter: { serviceKey: 'inventory_deduction' },
+    emptyHint: 'עדיין לא בוצעה הורדת מלאי אוטומטית בתקופה שנבחרה.',
+  },
+  {
+    id: 'payplus_payments', label: 'PayPlus — קישור תשלום', icon: '💳',
+    filter: { serviceKey: 'payplus_payments' },
+    emptyHint: 'עדיין לא נוצרו קישורי תשלום ב-PayPlus בתקופה שנבחרה.',
+  },
+];
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -90,20 +166,6 @@ const STATUS_TONE: Record<string, { bg: string; fg: string; border: string }> = 
   disabled: { bg: '#EFE7DA', fg: '#5C4A38', border: '#D5C9B5' },
 };
 
-const MODULE_ICON: Record<string, string> = {
-  orders:       '🧾',
-  customers:    '👤',
-  deliveries:   '🚚',
-  inventory:    '📦',
-  products:     '🍫',
-  finance:      '💳',
-  reports:      '📊',
-  settings:     '⚙️',
-  auth:         '🔐',
-  integrations: '🔗',
-  assistant:    '✨',
-};
-
 const PAGE_SIZE = 50;
 
 // ── Formatters ───────────────────────────────────────────────────────────────
@@ -133,19 +195,15 @@ function formatRelative(iso: string): string {
   } catch { return iso; }
 }
 
-function statusLabel(s: string): string {
-  return STATUS_LABEL_HE[s as ActivityStatus] || s;
-}
-function moduleLabel(m: string): string {
-  return MODULE_LABEL_HE[m as ActivityModule] || m;
-}
-function actorLabel(t: string): string {
-  return ACTOR_LABEL_HE[t as ActorType] || t;
-}
+function statusLabel(s: string): string { return STATUS_LABEL_HE[s as ActivityStatus] || s; }
+function moduleLabel(m: string): string { return MODULE_LABEL_HE[m as ActivityModule] || m; }
+function actorLabel(t: string): string  { return ACTOR_LABEL_HE[t as ActorType]      || t; }
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function LogsPage() {
+  const [activeTab, setActiveTab] = useState<TabId>('orders');
+
   const [items, setItems]         = useState<ActivityLog[]>([]);
   const [total, setTotal]         = useState(0);
   const [hasMore, setHasMore]     = useState(false);
@@ -154,33 +212,33 @@ export default function LogsPage() {
   const [forbidden, setForbidden] = useState(false);
   const [detail, setDetail]       = useState<ActivityLog | null>(null);
 
-  // Filters
+  // Filters (apply on top of the tab filter)
   const [q, setQ]                 = useState('');
   const [qDebounced, setQDebounced] = useState('');
-  const [moduleF, setModuleF]     = useState('');
   const [statusF, setStatusF]     = useState('');
-  const [actorF, setActorF]       = useState('');
   const [fromF, setFromF]         = useState('');
   const [toF, setToF]             = useState('');
 
-  // Debounce the free-text input so we don't hammer the API.
+  // Debounce free-text input so we don't hammer the API.
   useEffect(() => {
     const t = setTimeout(() => setQDebounced(q.trim()), 300);
     return () => clearTimeout(t);
   }, [q]);
 
+  const activeDef = useMemo(() => TABS.find(t => t.id === activeTab)!, [activeTab]);
+
   const buildParams = useCallback((offset: number) => {
     const sp = new URLSearchParams();
     sp.set('limit', String(PAGE_SIZE));
     sp.set('offset', String(offset));
+    if ('module' in activeDef.filter)    sp.set('module',      activeDef.filter.module);
+    if ('serviceKey' in activeDef.filter) sp.set('service_key', activeDef.filter.serviceKey);
     if (qDebounced) sp.set('q', qDebounced);
-    if (moduleF)    sp.set('module', moduleF);
     if (statusF)    sp.set('status', statusF);
-    if (actorF)     sp.set('actor_type', actorF);
     if (fromF)      sp.set('from', new Date(fromF).toISOString());
     if (toF)        sp.set('to',   new Date(toF + 'T23:59:59').toISOString());
     return sp;
-  }, [qDebounced, moduleF, statusF, actorF, fromF, toF]);
+  }, [activeDef, qDebounced, statusF, fromF, toF]);
 
   const loadFirstPage = useCallback(async () => {
     setLoading(true);
@@ -220,16 +278,14 @@ export default function LogsPage() {
   }, [loadFirstPage]);
 
   const filterActive = useMemo(
-    () => Boolean(qDebounced || moduleF || statusF || actorF || fromF || toF),
-    [qDebounced, moduleF, statusF, actorF, fromF, toF],
+    () => Boolean(qDebounced || statusF || fromF || toF),
+    [qDebounced, statusF, fromF, toF],
   );
 
   const clearFilters = () => {
     setQ('');
     setQDebounced('');
-    setModuleF('');
     setStatusF('');
-    setActorF('');
     setFromF('');
     setToF('');
   };
@@ -247,17 +303,20 @@ export default function LogsPage() {
   }
 
   return (
-    <div className="max-w-5xl space-y-5" dir="rtl">
+    <div className="max-w-6xl space-y-5" dir="rtl">
       <SettingsTabs active="/settings/system-control" />
 
       <div>
         <h1 className="text-xl font-bold" style={{ color: '#3A2A1A' }}>לוגים</h1>
         <p className="text-sm mt-1" style={{ color: '#8A7664' }}>
-          מה קרה במערכת — הזמנות, לקוחות, תשלומים, חשבוניות, WooCommerce, משלוחים ושגיאות חשובות. עדכון אחרון מופיע למעלה.
+          מה קרה במערכת — מחולק לפי קטגוריות. בחרי טאב כדי לראות רק את האירועים של אותה קטגוריה.
         </p>
       </div>
 
-      {/* Filter bar */}
+      {/* Category tabs */}
+      <CategoryTabs active={activeTab} onChange={(id) => { clearFilters(); setActiveTab(id); }} />
+
+      {/* In-tab filter bar */}
       <Card className="p-3">
         <div className="flex flex-wrap items-center gap-2 text-[12px]">
           <input
@@ -269,18 +328,6 @@ export default function LogsPage() {
           />
 
           <select
-            value={moduleF}
-            onChange={e => setModuleF(e.target.value)}
-            className="px-2 h-8 rounded-lg border bg-white"
-            style={{ borderColor: '#E8D8C6', color: '#3A2A1A' }}
-          >
-            <option value="">כל המודולים</option>
-            {Object.entries(MODULE_LABEL_HE).map(([k, v]) => (
-              <option key={k} value={k}>{v}</option>
-            ))}
-          </select>
-
-          <select
             value={statusF}
             onChange={e => setStatusF(e.target.value)}
             className="px-2 h-8 rounded-lg border bg-white"
@@ -289,18 +336,6 @@ export default function LogsPage() {
             <option value="">כל הסטטוסים</option>
             {(['success', 'failed', 'warning', 'skipped', 'disabled'] as ActivityStatus[]).map(s => (
               <option key={s} value={s}>{STATUS_LABEL_HE[s]}</option>
-            ))}
-          </select>
-
-          <select
-            value={actorF}
-            onChange={e => setActorF(e.target.value)}
-            className="px-2 h-8 rounded-lg border bg-white"
-            style={{ borderColor: '#E8D8C6', color: '#3A2A1A' }}
-          >
-            <option value="">כל הגורמים</option>
-            {(['user', 'system', 'webhook', 'cron', 'public_token'] as ActorType[]).map(a => (
-              <option key={a} value={a}>{ACTOR_LABEL_HE[a]}</option>
             ))}
           </select>
 
@@ -347,8 +382,8 @@ export default function LogsPage() {
       ) : items.length === 0 ? (
         <Card className="p-0">
           <EmptyState
-            title="אין פעילות מתאימה"
-            description={filterActive ? 'לא נמצאו לוגים שתואמים את הסינון. נסי לשנות את התקופה או לנקות סינון.' : 'עדיין אין פעילות מתועדת במערכת.'}
+            title={`אין פעילות בקטגוריה "${activeDef.label}"`}
+            description={filterActive ? 'לא נמצאו לוגים שתואמים את הסינון. נסי לשנות את התקופה או לנקות סינון.' : activeDef.emptyHint}
           />
         </Card>
       ) : (
@@ -356,7 +391,7 @@ export default function LogsPage() {
           <Card className="p-0 overflow-hidden">
             <ul className="divide-y" style={{ borderColor: '#F0E5D8' }}>
               {items.map(row => (
-                <LogRow key={row.id} row={row} onOpen={() => setDetail(row)} />
+                <LogRow key={row.id} row={row} icon={activeDef.icon} onOpen={() => setDetail(row)} />
               ))}
             </ul>
           </Card>
@@ -380,11 +415,35 @@ export default function LogsPage() {
   );
 }
 
+// ── Category tabs ────────────────────────────────────────────────────────────
+
+function CategoryTabs({ active, onChange }: { active: TabId; onChange: (id: TabId) => void }) {
+  return (
+    <div className="flex flex-wrap gap-1" style={{ borderBottom: '1px solid #EAE0D4' }}>
+      {TABS.map(tab => {
+        const isActive = active === tab.id;
+        return (
+          <button
+            key={tab.id}
+            onClick={() => onChange(tab.id)}
+            className="px-3 py-2 text-[12.5px] font-semibold transition-colors inline-flex items-center gap-1.5"
+            style={isActive
+              ? { color: '#5C3410', borderBottom: '2.5px solid #C9A46A', marginBottom: '-1px' }
+              : { color: '#8A7664' }}
+          >
+            <span aria-hidden>{tab.icon}</span>
+            <span>{tab.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Feed row ─────────────────────────────────────────────────────────────────
 
-function LogRow({ row, onOpen }: { row: ActivityLog; onOpen: () => void }) {
+function LogRow({ row, icon, onOpen }: { row: ActivityLog; icon: string; onOpen: () => void }) {
   const tone = STATUS_TONE[row.status] || STATUS_TONE.disabled;
-  const icon = MODULE_ICON[row.module] || '•';
   const actorText = row.actor_email || row.actor_name || actorLabel(row.actor_type);
 
   return (

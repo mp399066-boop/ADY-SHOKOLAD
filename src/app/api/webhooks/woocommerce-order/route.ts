@@ -582,6 +582,7 @@ export async function POST(req: Request) {
         title:       'מוצר מהאתר לא שויך — דורש טיפול',
         description: warnings.join('\n'),
         metadata:    { wc_order_id: wcOrderId, warnings },
+        serviceKey:  'woocommerce_orders',
         request:     req,
       });
     }
@@ -721,6 +722,7 @@ export async function POST(req: Request) {
       title:       'התקבלה הזמנה מ-WooCommerce',
       description: `סטטוס תשלום: ${paymentStatus}${newProducts.length ? ` · נוצרו ${newProducts.length} מוצרים חדשים` : ''}`,
       metadata:    { wc_order_id: wcOrderId, payment_status: paymentStatus, new_products: newProducts.length, warnings: warnings.length },
+      serviceKey:  'woocommerce_orders',
       request:     req,
     });
 
@@ -742,6 +744,7 @@ export async function POST(req: Request) {
       status:       'failed',
       title:        'עיבוד webhook של WooCommerce נכשל',
       errorMessage: error instanceof Error ? error.message : String(error),
+      serviceKey:   'woocommerce_orders',
       request:      req,
     });
     return Response.json({ success: true });

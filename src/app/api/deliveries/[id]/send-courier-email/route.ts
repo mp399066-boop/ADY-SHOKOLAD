@@ -177,6 +177,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       description:  courier?.שם_שליח ? `שליח: ${courier.שם_שליח}` : null,
       errorMessage: msg,
       metadata:     { courier_id: delivery.courier_id, order_id: order?.id || null },
+      serviceKey:   'delivery_notifications',
       request:      req,
     });
     return NextResponse.json({ error: `שליחת מייל נכשלה: ${msg}` }, { status: 500 });
@@ -199,6 +200,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     title:       'נשלח מייל לשליח',
     description: courier.שם_שליח ? `שליח: ${courier.שם_שליח}` : null,
     metadata:    { courier_id: delivery.courier_id, order_id: order?.id || null, item_count: courierItems.length },
+    serviceKey:  'delivery_notifications',
     request:     req,
   });
 

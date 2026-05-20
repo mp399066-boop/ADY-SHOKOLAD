@@ -187,6 +187,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       title:       'נשלח סיכום הזמנה ללקוח',
       description: `סיכום הזמנה נשלח ל-${to}`,
       metadata:    { to, item_count: emailItems.length, removed_count: removedItems.length, total: emailOrderData.total },
+      serviceKey:  'customer_order_emails',
       request:     req,
     });
 
@@ -205,6 +206,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       description:  `נסיון שליחה ל-${to} נכשל`,
       errorMessage: err instanceof Error ? err.message : String(err),
       metadata:     { to },
+      serviceKey:   'customer_order_emails',
       request:      req,
     });
     return NextResponse.json(

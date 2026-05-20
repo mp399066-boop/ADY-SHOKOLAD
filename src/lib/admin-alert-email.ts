@@ -1,5 +1,6 @@
 import sgMail from '@sendgrid/mail';
 import { createAdminClient } from '@/lib/supabase/server';
+import { logActivity, SYSTEM_ACTOR } from '@/lib/activity-log';
 
 // Internal "new order received" notification to the business owner.
 // Visual language mirrors the customer-facing email (src/lib/email.ts) —
@@ -472,7 +473,33 @@ export async function sendAdminNewOrderAlert(orderId: string, options: AdminAler
       html: buildHtml(args),
     });
     console.log('[admin-alert] sent for', args.orderNumber, '| source:', options.source ?? 'manual', '| newProducts:', args.newProducts.length);
+    void logActivity({
+      actor:       SYSTEM_ACTOR,
+      module:      'integrations',
+      action:      'admin_new_order_alert_sent',
+      status:      'success',
+      entityType:  'order',
+      entityId:    orderId,
+      entityLabel: args.orderNumber,
+      title:       'נשלחה התראה פנימית על הזמנה חדשה',
+      description: `אל: ${ADMIN_TO}${options.source ? ` · מקור: ${options.source}` : ''}`,
+      metadata:    { source: options.source ?? null, new_products: args.newProducts.length },
+      serviceKey:  'admin_alerts',
+    });
   } catch (err) {
     console.error('[admin-alert] failed (non-blocking):', err instanceof Error ? err.message : err);
+    void logActivity({
+      actor:        SYSTEM_ACTOR,
+      module:       'integrations',
+      action:       'admin_new_order_alert_failed',
+      status:       'failed',
+      entityType:   'order',
+      entityId:     orderId,
+      entityLabel:  args.orderNumber,
+      title:        'שליחת התראה פנימית על הזמנה חדשה נכשלה',
+      description:  `אל: ${ADMIN_TO}`,
+      errorMessage: err instanceof Error ? err.message : String(err),
+      serviceKey:   'admin_alerts',
+    });
   }
 }

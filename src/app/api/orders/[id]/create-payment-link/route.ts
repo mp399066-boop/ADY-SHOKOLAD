@@ -232,6 +232,7 @@ export async function POST(
         description:  friendly,
         errorMessage: `HTTP ${wcRes.status}${wcCode ? ' · ' + wcCode : ''} · ${wcMessage}`,
         metadata:     { channel: 'WooCommerce', wc_http_status: wcRes.status, wc_code: wcCode ?? null },
+        serviceKey:   'payplus_payments',
         request:      req,
       });
       return NextResponse.json(
@@ -319,6 +320,7 @@ export async function POST(
         wc_total:       wcTotal ?? null,
         total_mismatch: totalMismatch || null,
       },
+      serviceKey: 'payplus_payments',
       request: req,
     });
 
@@ -342,6 +344,7 @@ export async function POST(
       title:        'יצירת קישור תשלום נכשלה',
       description:  'אירעה שגיאה בלתי צפויה ביצירת קישור התשלום מול WooCommerce',
       errorMessage: err instanceof Error ? err.message : String(err),
+      serviceKey:   'payplus_payments',
       request:      req,
     });
     return NextResponse.json({ error: String(err) }, { status: 500 });
