@@ -295,39 +295,88 @@ serve(async (req: Request) => {
       incomeLines.push({ description: 'זיכוי לקוחה', quantity: 1, price: -toNet(creditUsed), vatType: 1 });
     }
 
-    // ── Reconcile sum-of-lines × 1.18 with crmDisplayedTotal ──────────────
-    // Morning's per-line VAT rounding for qty>1 lines can drift by 1 agora
-    // per line from our single-round calculation. We close that drift in one
-    // place: a small "עיגול" line whose NET makes the FINAL gross match the
-    // CRM total to the agora. If the gap is larger than a handful of cents,
-    // the pre-flight guard below refuses to send.
-    const actualNetCents = incomeLines.reduce(
-      (sum, l) => sum + Math.round(l.price * l.quantity * 100),
-      0,
-    );
-    // The net total Morning needs so that round(net × 1.18) === crmDisplayedCents.
-    const targetNetCents = Math.round(crmDisplayedCents / VAT_MULT);
-    const correctionCents = targetNetCents - actualNetCents;
-    if (correctionCents !== 0) {
-      incomeLines.push({
-        description: 'עיגול',
-        quantity: 1,
-        price: correctionCents / 100,
-        vatType: 1,
-      });
+    // ── Reconcile per-line × 1.18 with crmDisplayedTotal ──────────────────
+    // Morning computes a document's income gross as
+    //     sum_i( round( line_i.price × line_i.quantity × 1.18 , 2 ) )
+    // — i.e. PER-LINE VAT rounding, then sum. Our previous reconciliation
+    // used the single-round formula  round(sum(net) × 1.18) , which agrees
+    // with the per-line formula on most orders by coincidence but disagrees
+    // by ±1 agora on others (e.g. order e251406e-…) — that disagreement is
+    // exactly Morning's errorCode 2422. The local pre-flight passed because
+    // it used the same single-round formula on both sides.
+    //
+    // Fix: compute the gross with Morning's actual per-line formula and
+    // reconcile against crmDisplayedCents using one or more small "עיגול"
+    // net correction lines. Because round(n × 1.18) for integer n in cents
+    // does not cover every integer (e.g. gross=3 and gross=10 are skipped),
+    // a single correction may not hit the target exactly — we add up to a
+    // few correction lines greedily until the per-line sum equals
+    // crmDisplayedCents on the agora. The pre-flight guard below verifies
+    // this with the same per-line formula before the Morning POST.
+    const perLineGrossCents = (lines: IncomeLine[]): number =>
+      lines.reduce(
+        (sum, l) => sum + Math.round(l.price * l.quantity * 100 * VAT_MULT),
+        0,
+      );
+    // Best single-line net (in agorot) whose Morning-rounded gross is the
+    // largest value ≤ maxGrossCents. Returns net AND its actual gross.
+    const bestCorrectionNet = (maxGrossCents: number): { net: number; gross: number } => {
+      // Start from floor(max / 1.18); scan a small window to handle the
+      // rounding edge cases (some integer grosses are unreachable from a
+      // single net, so we may stop short and pick up the residual on the
+      // next iteration).
+      let bestNet = 0;
+      let bestGross = 0;
+      const start = Math.max(1, Math.floor(maxGrossCents / VAT_MULT) - 2);
+      const end = Math.ceil(maxGrossCents / VAT_MULT) + 2;
+      for (let n = start; n <= end; n++) {
+        const g = Math.round(n * VAT_MULT);
+        if (g <= maxGrossCents && g > bestGross) {
+          bestNet = n;
+          bestGross = g;
+        }
+      }
+      return { net: bestNet, gross: bestGross };
+    };
+
+    let totalCorrectionGrossCents = 0;
+    let correctionLineCount = 0;
+    {
+      let remaining = crmDisplayedCents - perLineGrossCents(incomeLines);
+      // Cap at 5 correction lines — typical orders need 0 or 1, edge cases
+      // (e.g. unreachable single-line grosses) need 2. More than 5 is a
+      // sign the input is so off that we want to fail loudly via the
+      // pre-flight guard rather than paper over it.
+      let safety = 5;
+      while (remaining !== 0 && safety-- > 0) {
+        const sign = remaining > 0 ? 1 : -1;
+        const { net, gross } = bestCorrectionNet(Math.abs(remaining));
+        if (net === 0 || gross === 0) break; // can't make progress
+        incomeLines.push({
+          description: 'עיגול',
+          quantity: 1,
+          price: (sign * net) / 100,
+          vatType: 1,
+        });
+        totalCorrectionGrossCents += sign * gross;
+        correctionLineCount += 1;
+        remaining -= sign * gross;
+      }
     }
 
-    // Final money snapshot — used by the guard, the [invoice-debug] log, and
-    // the payment block. paymentAmount is the CRM displayed total, by
-    // construction (this is the contract).
+    // Final money snapshot — used by the guard, the [INVOICE PAYLOAD TOTALS]
+    // log, and the payment block. paymentAmount is the CRM displayed total
+    // by construction (this is the contract).
+    const finalGrossCents = perLineGrossCents(incomeLines);
+    const incomeLinesTotal = finalGrossCents / 100;
+    const paymentAmount = crmDisplayedTotal;
+    const mismatchCents = finalGrossCents - crmDisplayedCents;
+    // Net snapshot for the [VAT] log only — informational, never used for
+    // totals or payment math.
     const finalNetCents = incomeLines.reduce(
       (sum, l) => sum + Math.round(l.price * l.quantity * 100),
       0,
     );
-    const finalGrossCents = Math.round(finalNetCents * VAT_MULT);
-    const incomeLinesTotal = finalGrossCents / 100;
-    const paymentAmount = crmDisplayedTotal;
-    const mismatchCents = finalGrossCents - crmDisplayedCents;
 
     // Per-line snapshot for the debug log (informational only).
     const incomeLinesDebug = incomeLines.map((line) => ({
@@ -361,7 +410,23 @@ serve(async (req: Request) => {
       '| final_invoice_line_count:', incomeLines.length,
       '| final_gross_before_send:', incomeLinesTotal,
       '| mismatch_with_CRM:', mismatchCents / 100,
-      '| correction_added_cents:', correctionCents,
+      '| correction_lines_added:', correctionLineCount,
+      '| correction_gross_total_cents:', totalCorrectionGrossCents,
+    );
+
+    // ── [INVOICE PAYLOAD TOTALS] — required user-spec totals log ──────────
+    // Single-line, pre-POST. Mirrors the exact totals that will leave this
+    // process for Morning. Covers every invoice type and payment method.
+    console.log('[INVOICE PAYLOAD TOTALS]',
+      '| order_id:', orderId,
+      '| order_number:', order.מספר_הזמנה,
+      '| CRM_preview_total:', crmDisplayedTotal,
+      '| income_gross_total:', incomeLinesTotal,
+      '| payment_amount:', paymentAmount,
+      '| diff_income_vs_payment:', Math.round((incomeLinesTotal - paymentAmount) * 100) / 100,
+      '| document_type:', documentType,
+      '| payment_method:', paymentMethodOverride ?? 'NONE',
+      '| income_line_count:', incomeLines.length,
     );
 
     // ── Hard pre-flight guard — refuse to call Morning on mismatch ────────
@@ -387,7 +452,7 @@ serve(async (req: Request) => {
     // (JSON.stringify with indent) was getting split by Supabase's Logflare
     // pipeline so the dashboard search "[invoice-debug]" missed everything
     // after the first line. No null/2 pretty-print below.
-    console.log('[invoice-debug] VERSION: crm-anchored-no-flatten-v4');
+    console.log('[invoice-debug] VERSION: per-line-vat-2422-fix-v5');
     console.log('[invoice-debug] order:', order.מספר_הזמנה, '| document type:', documentType, '| morningType:', morningDocType);
     console.log('[invoice-debug] client:', JSON.stringify({
       id: order.לקוח_id,
@@ -532,20 +597,19 @@ serve(async (req: Request) => {
 
     // ── MORNING_PAYLOAD_CHECK — required guard before EVERY Morning POST ──
     // Re-derives the gross from the documentBody about to be sent (NOT from
-    // earlier intermediates) and asserts THREE invariants together:
-    //   1) round(sum(income.price × qty) × 1.18) === crmDisplayedTotal
-    //      → Morning's final gross will match the CRM order page total.
-    //   2) For PAYMENT_DOCS: sum(payment[].price) === crmDisplayedTotal
-    //      → the payment block on the receipt equals the same total.
-    //   3) The two derived totals (1) and (2) are equal.
+    // earlier intermediates), using Morning's actual per-line VAT formula:
+    //     income gross = sum_i( round(line_i.price × qty_i × 100 × 1.18) )
+    // — same formula `perLineGrossCents` used during reconciliation. Asserts:
+    //   1) per-line gross === crmDisplayedTotal (Morning's view of income).
+    //   2) For PAYMENT_DOCS: sum(payment[].price) === crmDisplayedTotal.
+    //   3) Income and payment agree to the agora.
     // Any deviation refuses the POST — Morning is never called with a
-    // mismatched payload.
+    // payload that would trigger errorCode 2422.
     const guardIncome = documentBody.income as IncomeLine[];
-    const guardNetCents = guardIncome.reduce(
-      (sum, l) => sum + Math.round(l.price * l.quantity * 100),
+    const guardIncomeCents = guardIncome.reduce(
+      (sum, l) => sum + Math.round(l.price * l.quantity * 100 * VAT_MULT),
       0,
     );
-    const guardIncomeCents = Math.round(guardNetCents * VAT_MULT);
     const guardIncomeTotal = guardIncomeCents / 100;
 
     const guardPayment = Array.isArray(documentBody.payment)
