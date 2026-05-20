@@ -221,8 +221,10 @@ serve(async (req: Request) => {
     const toNet = (price: number): number =>
       isBusiness ? price : Math.round(price / (1 + VAT_RATE) * 100) / 100;
 
-    // Build income lines
-    const incomeLines: object[] = [];
+    // ── Build income lines ────────────────────────────────────────────────
+    // Every line price is NET (pre-VAT). Morning computes VAT per line at 18%.
+    type IncomeLine = { description: string; quantity: number; price: number; vatType: 1 };
+    const incomeLines: IncomeLine[] = [];
     for (const item of items ?? []) {
       let description = '';
       if (item.סוג_שורה === 'מארז' && item.גודל_מארז) {
@@ -239,12 +241,16 @@ serve(async (req: Request) => {
     }
 
     if (order.דמי_משלוח && order.דמי_משלוח > 0) {
+      // Delivery fee: included as an income line (NET), so Morning adds VAT
+      // on top exactly like every other line.
       incomeLines.push({ description: 'דמי משלוח', quantity: 1, price: toNet(order.דמי_משלוח), vatType: 1 });
     }
 
-    const incomeBeforeDiscount = (incomeLines as Array<{ price: number; quantity: number }>)
-      .reduce((sum, l) => sum + l.price * l.quantity, 0);
+    const incomeBeforeDiscount = incomeLines.reduce((sum, l) => sum + l.price * l.quantity, 0);
 
+    // Discounts are represented as a NEGATIVE income line (not as Morning's
+    // separate discount field). This keeps the income-lines total == payment
+    // amount equality the only invariant we need to defend.
     if (order.סוג_הנחה === 'אחוז' && order.ערך_הנחה && order.ערך_הנחה > 0) {
       const discAmt = Math.round(incomeBeforeDiscount * order.ערך_הנחה / 100 * 100) / 100;
       incomeLines.push({ description: `הנחה ${order.ערך_הנחה}%`, quantity: 1, price: -discAmt, vatType: 1 });
@@ -255,15 +261,65 @@ serve(async (req: Request) => {
       incomeLines.push({ description: 'הנחה', quantity: 1, price: -toNet(order.ערך_הנחה), vatType: 1 });
     }
 
-    // Net total after discounts (all income lines are already in net / pre-VAT amounts).
-    const netAfterDiscount = (incomeLines as Array<{ price: number; quantity: number }>)
-      .reduce((sum, l) => sum + l.price * l.quantity, 0);
+    // ── Cents-based aggregation (Morning errorCode 2422 fix) ──────────────
+    // Morning rejects (2422 "קיים חוסר התאמה בין סכום התקבולים לסכום התשלומים")
+    // when our payment amount differs from Morning's own per-line aggregation
+    // by even a single agora. The previous implementation rounded the whole
+    // grand total once with `round(sum × 1.18, 2)`, but Morning rounds VAT
+    // per line — so on multi-line orders the two totals could disagree.
+    //
+    // Fix: do everything in integer agorot from per-line totals, then convert
+    // to a number with 2 decimals only at the final payload. By construction
+    // incomeLinesTotal === paymentAmount exactly (same cents accumulator).
+    const VAT_MULT = 1 + VAT_RATE;
+    let incomeLinesTotalCents = 0;
+    const incomeLinesDebug: Array<{ description: string; quantity: number; price: number; lineNet: number; lineGross: number }> = [];
+    for (const line of incomeLines) {
+      // Per-line net in cents (line.price already has 2-decimal precision,
+      // so this multiplication does not introduce float drift in practice).
+      const lineNetCents = Math.round(line.price * line.quantity * 100);
+      // Per-line gross (net + 18% VAT), rounded per line — matches Morning.
+      const lineGrossCents = Math.round(lineNetCents * VAT_MULT);
+      incomeLinesTotalCents += lineGrossCents;
+      incomeLinesDebug.push({
+        description: line.description,
+        quantity: line.quantity,
+        price: line.price,
+        lineNet: lineNetCents / 100,
+        lineGross: lineGrossCents / 100,
+      });
+    }
+
+    const incomeLinesTotal = incomeLinesTotalCents / 100;
+    const paymentAmount = incomeLinesTotal; // same cents accumulator → exact match
+    const difference = Math.round((incomeLinesTotal - paymentAmount) * 100) / 100;
+
+    // Reporting-only net/vat snapshot for the [VAT] log; not used in payload math.
+    const netAfterDiscount = incomeLines.reduce((sum, l) => sum + l.price * l.quantity, 0);
     const roundedNet = Math.round(netAfterDiscount * 100) / 100;
-    const roundedVat = Math.round(netAfterDiscount * VAT_RATE * 100) / 100;
-    // paymentAmount = invoice total including VAT (net × 1.18).
-    // This is the amount used in the payment block (receipt / invoice_receipt)
-    // and stored in the חשבוניות table.
-    const paymentAmount = Math.round(netAfterDiscount * (1 + VAT_RATE) * 100) / 100;
+    const roundedVat = Math.round((paymentAmount - roundedNet) * 100) / 100;
+
+    // ── Pre-flight invariant log ──────────────────────────────────────────
+    console.log('[MORNING AMOUNT CHECK]', JSON.stringify({
+      orderId,
+      orderNumber: order.מספר_הזמנה,
+      incomeLines: incomeLinesDebug,
+      incomeLinesTotal,
+      paymentAmount,
+      difference,
+    }, null, 2));
+
+    if (difference !== 0) {
+      // Should be impossible by construction (single accumulator), but if
+      // anything ever drifts, fail loud BEFORE calling Morning so we get a
+      // clear local error instead of an opaque Morning 2422.
+      const msg = `Income lines total (${incomeLinesTotal}) does not match payment amount (${paymentAmount}); difference=${difference}. Refusing to call Morning to avoid errorCode 2422.`;
+      console.error('[MORNING AMOUNT CHECK] FAIL —', msg);
+      return new Response(
+        JSON.stringify({ error: msg }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } },
+      );
+    }
 
     // ── VAT audit log ──────────────────────────────────────────────────────
     console.log('[VAT]', JSON.stringify({
@@ -374,6 +430,10 @@ serve(async (req: Request) => {
       payment: documentBody.payment,
       fullPaymentKeys: Object.keys(documentBody).filter(k => k.toLowerCase().includes('pay')),
     }, null, 2));
+
+    // Full payload audit (no secrets — no token, no Authorization header).
+    // Useful for tracing Morning errorCode 2422 against the exact request body.
+    console.log('[MORNING FULL PAYLOAD]', JSON.stringify(documentBody, null, 2));
 
     const docRes = await fetch(`${MORNING_API_BASE}/documents`, {
       method: 'POST',
