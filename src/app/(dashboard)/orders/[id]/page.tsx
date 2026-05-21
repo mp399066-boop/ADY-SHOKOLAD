@@ -289,16 +289,12 @@ export default function OrderDetailPage() {
   // Single source of truth for the manual issuance request. All three buttons
   // (tax_invoice via confirm, receipt + invoice_receipt via the payment-method
   // modal) call this. POSTs to the existing /api/orders/{id}/create-document
-  // endpoint — no new API surface.
-  //
-  // creditCard is required by the API only when paymentMethod is "כרטיס אשראי"
-  // — the modal collects it and passes it through. For every other payment
-  // method it stays `undefined` and the API ignores it.
+  // endpoint — no new API surface. Credit card is one-click: no extra fields
+  // collected here (the EF builds the type-3 payment with cardType:0 default).
   const issueDocument = async (
     documentType: 'tax_invoice' | 'receipt' | 'invoice_receipt',
     paymentMethod: string | undefined,
     force: boolean,
-    creditCard?: { cardType: number; cardNum: string; dealType?: number; numPayments?: number },
   ): Promise<boolean> => {
     if (!order) return false;
     setIssuingDocType(documentType);
@@ -308,8 +304,7 @@ export default function OrderDetailPage() {
     console.log('[PAYMENT UI] documentType:', documentType,
       '| selected paymentMethod:', JSON.stringify(paymentMethod ?? null),
       '| source: manual_modal',
-      '| order id:', order.id,
-      '| creditCard present:', !!creditCard);
+      '| order id:', order.id);
     try {
       const res = await fetch(`/api/orders/${order.id}/create-document`, {
         method: 'POST',
@@ -317,7 +312,7 @@ export default function OrderDetailPage() {
         // PAYMENT_DOCS (receipt + invoice_receipt) require the explicit
         // `manual_modal` source. tax_invoice doesn't need it but we send
         // it anyway for shape consistency — the API ignores it on that type.
-        body: JSON.stringify({ documentType, paymentMethod, paymentMethodSource: 'manual_modal', force, creditCard }),
+        body: JSON.stringify({ documentType, paymentMethod, paymentMethodSource: 'manual_modal', force }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -2504,8 +2499,8 @@ export default function OrderDetailPage() {
           documentType={previewDocType}
           loading={issuingDoc}
           onClose={() => setPreviewDocType(null)}
-          onIssue={async (paymentMethod, force, creditCard) => {
-            const ok = await issueDocument(previewDocType, paymentMethod, force, creditCard);
+          onIssue={async (paymentMethod, force) => {
+            const ok = await issueDocument(previewDocType, paymentMethod, force);
             if (ok) setPreviewDocType(null);
           }}
         />
@@ -2960,15 +2955,6 @@ function PreviewRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-// Morning PaymentCardType enum — only 1..5 are accepted on type-3 receipts.
-const CARD_TYPE_OPTIONS: ReadonlyArray<{ value: number; label: string }> = [
-  { value: 1, label: 'ישראכרט' },
-  { value: 2, label: 'Visa' },
-  { value: 3, label: 'Mastercard' },
-  { value: 4, label: 'American Express' },
-  { value: 5, label: 'Diners' },
-];
-
 function InvoicePreviewModal({
   order,
   documentType,
@@ -2980,30 +2966,14 @@ function InvoicePreviewModal({
   documentType: 'tax_invoice' | 'receipt' | 'invoice_receipt';
   loading: boolean;
   onClose: () => void;
-  onIssue: (
-    paymentMethod: string | undefined,
-    force: boolean,
-    creditCard?: { cardType: number; cardNum: string; dealType?: number; numPayments?: number },
-  ) => void | Promise<void>;
+  onIssue: (paymentMethod: string | undefined, force: boolean) => void | Promise<void>;
 }) {
   const [payMethod, setPayMethod]     = useState<string>('');
   const [customMethod, setCustomMethod] = useState<string>('');
 
-  // Credit-card metadata — only populated/used when payMethod === 'כרטיס אשראי'.
-  // numPayments + dealType default to 1 (Regular single payment); operator can
-  // override numPayments via the input. dealType isn't exposed in the modal
-  // yet because the CRM only handles regular sales — flip if installments
-  // become a thing.
-  const [cardType, setCardType]       = useState<number | null>(null);
-  const [cardNum, setCardNum]         = useState<string>('');
-  const [numPayments, setNumPayments] = useState<number>(1);
-
   const needsPayment    = documentType === 'receipt' || documentType === 'invoice_receipt';
   const effectiveMethod = payMethod === 'אחר' ? customMethod.trim() : payMethod;
-  const isCreditCard    = effectiveMethod === 'כרטיס אשראי';
-  const cardNumOk       = /^[0-9]{4}$/.test(cardNum);
-  const cardFieldsOk    = !isCreditCard || (cardType !== null && cardNumOk && numPayments >= 1);
-  const canSubmit       = (!needsPayment || !!effectiveMethod) && cardFieldsOk;
+  const canSubmit       = !needsPayment || !!effectiveMethod;
   const docLabel        = DOC_LABEL[documentType];
 
   const duplicate = (order.חשבוניות ?? []).some(i =>
@@ -3024,10 +2994,7 @@ function InvoicePreviewModal({
 
   const handleIssue = async () => {
     if (!canSubmit) return;
-    const creditCard = isCreditCard && cardType !== null
-      ? { cardType, cardNum, dealType: 1, numPayments }
-      : undefined;
-    await onIssue(needsPayment ? effectiveMethod : undefined, duplicate, creditCard);
+    await onIssue(needsPayment ? effectiveMethod : undefined, duplicate);
   };
 
   return (
@@ -3203,90 +3170,6 @@ function InvoicePreviewModal({
                 <div className="mt-2 text-[12px] px-3 py-2 rounded-lg"
                   style={{ backgroundColor: '#F1F8EE', color: '#2F5C2C', border: '1px solid #B8D5A8' }}>
                   ✓ המסמך יופק עם אמצעי תשלום: <strong>{effectiveMethod}</strong>
-                </div>
-              )}
-
-              {/* Credit-card metadata — only visible when "כרטיס אשראי" is
-                  picked. Morning requires real cardType (1..5) + cardNum
-                  (last-4 digits) + numPayments on type-3 receipts; if any
-                  is missing the [PAYMENT EF] refuses with a Hebrew toast
-                  before the Morning POST. */}
-              {isCreditCard && (
-                <div className="mt-3 space-y-2.5 px-3 py-3 rounded-lg" style={{ backgroundColor: '#FFFAF0', border: '1px solid #EDD7B2' }}>
-                  <p className="text-[11px] font-semibold" style={{ color: '#7A4A27' }}>
-                    פרטי כרטיס אשראי <span style={{ color: '#A8442D' }}>*</span>
-                  </p>
-
-                  {/* Card brand */}
-                  <div>
-                    <p className="text-[11px] mb-1" style={{ color: '#8A735F' }}>סוג כרטיס</p>
-                    <div className="grid grid-cols-5 gap-1.5">
-                      {CARD_TYPE_OPTIONS.map(opt => {
-                        const active = cardType === opt.value;
-                        return (
-                          <button
-                            key={opt.value}
-                            type="button"
-                            onClick={() => setCardType(opt.value)}
-                            className="text-[11px] font-medium h-9 rounded-lg transition-colors border"
-                            style={{
-                              backgroundColor: active ? '#7A4A27' : '#FFFFFF',
-                              color:           active ? '#FFFFFF' : '#2B1A10',
-                              borderColor:     active ? '#7A4A27' : '#E8DED2',
-                            }}
-                          >
-                            {opt.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Last 4 digits */}
-                  <div>
-                    <p className="text-[11px] mb-1" style={{ color: '#8A735F' }}>4 ספרות אחרונות של הכרטיס</p>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      maxLength={4}
-                      value={cardNum}
-                      onChange={e => setCardNum(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                      placeholder="1234"
-                      className="w-full px-3 h-9 text-[13px] rounded-lg border focus:outline-none focus:ring-2"
-                      style={{
-                        borderColor: cardNum !== '' && !cardNumOk ? '#A8442D' : '#E8DED2',
-                        color: '#2B1A10',
-                      }}
-                    />
-                    {cardNum !== '' && !cardNumOk && (
-                      <p className="text-[10.5px] mt-1" style={{ color: '#A8442D' }}>
-                        חובה להזין בדיוק 4 ספרות.
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Number of payments */}
-                  <div>
-                    <p className="text-[11px] mb-1" style={{ color: '#8A735F' }}>מספר תשלומים</p>
-                    <input
-                      type="number"
-                      min={1}
-                      step={1}
-                      value={numPayments}
-                      onChange={e => {
-                        const n = parseInt(e.target.value, 10);
-                        setNumPayments(Number.isFinite(n) && n >= 1 ? n : 1);
-                      }}
-                      className="w-24 px-3 h-9 text-[13px] rounded-lg border focus:outline-none focus:ring-2"
-                      style={{ borderColor: '#E8DED2', color: '#2B1A10' }}
-                    />
-                  </div>
-
-                  {!cardFieldsOk && (
-                    <p className="text-[11px]" style={{ color: '#A8442D' }}>
-                      להפקת חשבונית מס קבלה בכרטיס אשראי יש לבחור סוג כרטיס ולהזין 4 ספרות אחרונות.
-                    </p>
-                  )}
                 </div>
               )}
             </PreviewSec>

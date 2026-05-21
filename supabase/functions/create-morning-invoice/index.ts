@@ -48,40 +48,31 @@ const PAYMENT_DOCS = new Set(['receipt', 'invoice_receipt']);
 //  PAYMENT METHOD MAPPING — CRM button → Morning payment type
 // ─────────────────────────────────────────────────────────────────────────
 //
-//  Owner directive: each CRM button maps to its *correct, honest* Morning
-//  type. No silent re-labeling (e.g. credit card → cash). Methods whose
-//  required Morning metadata is not provided are BLOCKED with a clear
-//  Hebrew error before any POST — better to fail loudly than to issue a
-//  wrong receipt to the tax authority.
+//  Restored to the one-click form that worked in commit e2f837f7 (the last
+//  proven-good state before the 2422 chase mistakenly attributed the
+//  receipts mismatch to the payment block; the actual root cause was the
+//  income/totals math, which is fixed separately by the reconciliation
+//  block further down). credit card receipts issue with NO manual operator
+//  input — cardType:0 ("Unknown") + dealType:1 (Regular) + numPayments:1.
 //
-//  CRM label       Morning   Morning type     Required Morning extras
-//                  type      name             beyond {type,price,date,currency}      Safe now?
-//  ─────────────── ───────   ──────────────   ────────────────────────────────────   ──────────
-//  מזומן            1         Cash             none                                    YES
-//  צ'ק / המחאה      2         Check            chequeNum + bankName/Branch/Account     NO  (CRM does not store cheque metadata) → BLOCKED
-//  כרטיס אשראי     3         Credit card      cardType (1-5) + cardNum (last 4) +
-//                                              dealType (default 1) + numPayments
-//                                              (default 1)                             YES (if the request body's `credit_card`
-//                                                                                          object carries all required fields,
-//                                                                                          else BLOCKED with Hebrew error)
-//  העברה בנקאית     4         Bank transfer    bankName (placeholder accepted)         YES
-//  PayPal           5         PayPal           none                                    YES
-//  ביט / bit        10        Payment app      none (per IDocumentPayment schema —
-//                                              no subType/appType field in spec)       YES
-//  PayBox           10        Payment app      none                                    YES
-//  אחר              11        Other            none                                    NO  (Morning empirically does not count type 11 as a receipt → produces 2422) → BLOCKED
+//  CRM label       Morning   Morning type     Notes
+//                  type      name
+//  ─────────────── ───────   ──────────────   ────────────────────────────
+//  מזומן            1         Cash             minimal — type/price/date/currency
+//  צ'ק / המחאה      2         Check            BLOCKED — needs chequeNum + bank details we don't store
+//  כרטיס אשראי     3         Credit card      cardType:0 / dealType:1 / numPayments:1 (one-click)
+//  העברה בנקאית     4         Bank transfer    bankName placeholder
+//  PayPal           5         PayPal           minimal
+//  ביט / bit        10        Payment app      minimal (no subType/appType in IDocumentPayment schema)
+//  PayBox           10        Payment app      minimal
+//  אחר              11        Other            BLOCKED — Morning empirically does not count type 11 as a receipt
 //
-//  Reference for the schema (IDocumentPayment TypedDict — exposes
-//  cardType (PaymentCardType enum), cardNum, dealType (PaymentDealType
-//  enum), numPayments, firstPayment for type 3; no subType/appType field
-//  for type 10):
+//  Reference for the schema:
 //    https://raw.githubusercontent.com/yanivps/green-invoice/master/green_invoice/models.py
 //
-//  Credit card metadata source: passed through the request body as a
-//  `credit_card: { cardType, cardNum, dealType?, numPayments? }` object by
-//  the manual-issuance API route (which forwards what the InvoicePreview
-//  modal collected from the operator). The Edge Function validates the
-//  fields and refuses with a Hebrew error if anything is missing.
+//  If a credit-card 2422 returns despite this, the single-line income
+//  fallback retry further down should still close the gap — but in
+//  testing on 2026-05-13 this builder issued cleanly with one click.
 //
 // Reference for the enum values:
 //   https://raw.githubusercontent.com/yanivps/green-invoice/master/green_invoice/models.py
@@ -102,13 +93,8 @@ type MorningPayment = {
 // returned to the caller (and surfaced in the UI toast). Keys cover every
 // label the CRM may send including back-compat synonyms (המחאה ↔ צ'ק).
 const BLOCKED_METHODS: Record<string, string> = {
-  // 'כרטיס אשראי' is NOT blocked at the static-table level any more — it is
-  // accepted when the request body's `credit_card` object carries the
-  // required metadata (cardType 1-5, cardNum last-4, dealType, numPayments).
-  // The runtime validation lives in the request handler below; if the
-  // metadata is missing the operator gets the Hebrew error
-  //   "להפקת חשבונית מס קבלה בכרטיס אשראי יש לבחור סוג כרטיס ולהזין 4 ספרות אחרונות."
-  // emitted from there.
+  // 'כרטיס אשראי' is NOT blocked — it issues as one-click type 3 via the
+  // PAYMENT_BUILDERS entry below (cardType:0 / dealType:1 / numPayments:1).
   "צ'ק":
     'לא ניתן להפיק חשבונית מס קבלה לצ\'ק בלי פרטי הצ\'ק שמורנינג דורש (מספר צ\'ק, בנק, סניף, חשבון). יש להזין פרטי צ\'ק תקפים או לבחור אמצעי תשלום אחר.',
   'המחאה':
@@ -131,6 +117,12 @@ const MORNING_TYPE_NAMES: Record<number, string> = {
 
 const PAYMENT_BUILDERS: Record<string, (price: number, date: string) => MorningPayment> = {
   'מזומן':         (price, date) => ({ type: 1, price, date, currency: 'ILS' }),
+  // type 3 = Credit card. One-click — we don't capture brand or last-4
+  // upstream, so cardType:0 (Unknown) is the safest valid enum value
+  // (1-5 would mis-claim a brand). dealType:1 (Regular) and numPayments:1
+  // are the defaults Morning expects for a single-payment swipe. Matches
+  // the proven-good builder from commit e2f837f7 (2026-05-13).
+  'כרטיס אשראי':   (price, date) => ({ type: 3, price, date, currency: 'ILS', cardType: 0, dealType: 1, numPayments: 1 }),
   // type 4 = Electronic fund transfer (bank transfer). bankName is a
   // human-readable placeholder for documents where we don't know the bank.
   'העברה בנקאית':  (price, date) => ({ type: 4, price, date, currency: 'ILS', bankName: 'לא צוין' }),
@@ -247,23 +239,6 @@ serve(async (req: Request) => {
         ? payload.payment_method_source.trim()
         : null;
     const force: boolean = payload.force === true;
-
-    // Credit-card metadata — populated by the manual-issuance API route when
-    // the operator selects "כרטיס אשראי" in the InvoicePreview modal.
-    // Validation is enforced below right before the payment block is built;
-    // an invalid/missing object for a credit-card payment is rejected with a
-    // clear Hebrew error before any Morning POST.
-    type CreditCardInput = {
-      cardType?: number;
-      cardNum?: string;
-      dealType?: number;
-      numPayments?: number;
-    };
-    const creditCardInput: CreditCardInput | null =
-      payload.credit_card && typeof payload.credit_card === 'object'
-        ? (payload.credit_card as CreditCardInput)
-        : null;
-    console.log('[PAYMENT EF] received credit_card metadata:', JSON.stringify(creditCardInput));
 
     console.log('[PAYMENT EF] document_type:', documentType);
     console.log('[PAYMENT EF] payload.type:', payload.type);
@@ -659,7 +634,7 @@ serve(async (req: Request) => {
     // (JSON.stringify with indent) was getting split by Supabase's Logflare
     // pipeline so the dashboard search "[invoice-debug]" missed everything
     // after the first line. No null/2 pretty-print below.
-    console.log('[invoice-debug] VERSION: credit-card-type-3-with-metadata-v15');
+    console.log('[invoice-debug] VERSION: restore-one-click-credit-card-v16');
     console.log('[invoice-debug] order:', order.מספר_הזמנה, '| document type:', documentType, '| morningType:', morningDocType);
     console.log('[invoice-debug] client:', JSON.stringify({
       id: order.לקוח_id,
@@ -789,80 +764,25 @@ serve(async (req: Request) => {
         );
       }
 
-      // ── Credit card branch — validate metadata + build type-3 payment ──
-      // 'כרטיס אשראי' is NOT in PAYMENT_BUILDERS because it needs runtime
-      // metadata from the request body (cardType/cardNum/dealType/numPayments).
-      // We validate per the IDocumentPayment schema and Morning's runtime
-      // requirements; missing or invalid fields produce the exact Hebrew
-      // error the spec requires (surfaced in the InvoicePreview modal toast).
-      let paymentObj: MorningPayment;
-      if (paymentMethod === 'כרטיס אשראי') {
-        const issueDate = new Date().toISOString().slice(0, 10);
-        const cardType = Number(creditCardInput?.cardType);
-        const cardNumRaw = typeof creditCardInput?.cardNum === 'string'
-          ? creditCardInput.cardNum.trim()
-          : '';
-        const dealType = Number(creditCardInput?.dealType ?? 1);
-        const numPayments = Number(creditCardInput?.numPayments ?? 1);
-        // Validation:
-        //   • cardType must be 1..5 (Isracard / Visa / Mastercard / Amex /
-        //     Diners — the PaymentCardType enum values Morning accepts;
-        //     cardType:0 "Unknown" silently drops the receipt).
-        //   • cardNum must be exactly 4 numeric digits.
-        //   • dealType defaults to 1 (Regular).
-        //   • numPayments defaults to 1, must be a positive integer.
-        const cardTypeOk = Number.isInteger(cardType) && cardType >= 1 && cardType <= 5;
-        const cardNumOk = /^[0-9]{4}$/.test(cardNumRaw);
-        const numPaymentsOk = Number.isInteger(numPayments) && numPayments >= 1;
-        const dealTypeOk = Number.isInteger(dealType) && dealType >= 1 && dealType <= 5;
-        if (!cardTypeOk || !cardNumOk || !numPaymentsOk || !dealTypeOk) {
-          console.error('[PAYMENT EF] REFUSE — credit_card metadata missing or invalid',
-            '| cardTypeOk:', cardTypeOk,
-            '| cardNumOk:', cardNumOk,
-            '| numPaymentsOk:', numPaymentsOk,
-            '| dealTypeOk:', dealTypeOk,
-            '| received:', JSON.stringify(creditCardInput));
-          console.log('[PAYMENT METHOD MAPPING]',
-            '| CRM_label:', paymentMethod,
-            '| Morning_type:', 3,
-            '| Morning_type_name:', 'Credit card',
-            '| Required_extra_fields_present:', false,
-            '| Payment_block:', 'null (refused — invalid credit_card metadata)',
-          );
-          return new Response(
-            JSON.stringify({
-              error: 'להפקת חשבונית מס קבלה בכרטיס אשראי יש לבחור סוג כרטיס ולהזין 4 ספרות אחרונות.',
-            }),
-            { status: 400, headers: { 'Content-Type': 'application/json' } },
-          );
-        }
-        paymentObj = {
-          type: 3,
-          price: paymentAmount,
-          date: issueDate,
-          currency: 'ILS',
-          cardType,
-          cardNum: cardNumRaw,
-          dealType,
-          numPayments,
-        };
-      } else {
-        const builder = PAYMENT_BUILDERS[paymentMethod];
-        if (!builder) {
-          console.error('[PAYMENT EF] REFUSE — payment method not in PAYMENT_BUILDERS:',
-            JSON.stringify(paymentMethod),
-            '| documentType:', documentType,
-            '| supported:', Object.keys(PAYMENT_BUILDERS).join(', '),
-            '| blocked:', Object.keys(BLOCKED_METHODS).join(', '));
-          return new Response(
-            JSON.stringify({
-              error: `אמצעי התשלום "${paymentMethod}" לא ממופה למורנינג. יש לבחור אמצעי תשלום אחר או לעדכן את המיפוי.`,
-            }),
-            { status: 400, headers: { 'Content-Type': 'application/json' } },
-          );
-        }
-        paymentObj = builder(paymentAmount, new Date().toISOString().slice(0, 10));
+      // Plain PAYMENT_BUILDERS lookup — credit card now has its own entry
+      // (no runtime metadata input needed). Methods in BLOCKED_METHODS are
+      // refused above; methods that are neither in the builders table nor
+      // the block list (truly unrecognized) fall through to the 400 below.
+      const builder = PAYMENT_BUILDERS[paymentMethod];
+      if (!builder) {
+        console.error('[PAYMENT EF] REFUSE — payment method not in PAYMENT_BUILDERS:',
+          JSON.stringify(paymentMethod),
+          '| documentType:', documentType,
+          '| supported:', Object.keys(PAYMENT_BUILDERS).join(', '),
+          '| blocked:', Object.keys(BLOCKED_METHODS).join(', '));
+        return new Response(
+          JSON.stringify({
+            error: `אמצעי התשלום "${paymentMethod}" לא ממופה למורנינג. יש לבחור אמצעי תשלום אחר או לעדכן את המיפוי.`,
+          }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } },
+        );
       }
+      const paymentObj = builder(paymentAmount, new Date().toISOString().slice(0, 10));
       documentBody.payment = [paymentObj];
       console.log('[PAYMENT EF] selected builder for method:', paymentMethod);
       console.log('[PAYMENT EF] morning payment type sent to API:', paymentObj.type);
@@ -878,9 +798,8 @@ serve(async (req: Request) => {
       const requiredExtrasPresent = (() => {
         switch (paymentObj.type) {
           case 1: return true;                              // Cash — none required
-          case 3:                                           // Credit card — cardType/cardNum/dealType/numPayments
-            return Number.isInteger(paymentObj.cardType) && paymentObj.cardType! >= 1 && paymentObj.cardType! <= 5
-              && /^[0-9]{4}$/.test(paymentObj.cardNum ?? '')
+          case 3:                                           // Credit card — cardType (0..5) + dealType + numPayments
+            return Number.isInteger(paymentObj.cardType) && paymentObj.cardType! >= 0 && paymentObj.cardType! <= 5
               && Number.isInteger(paymentObj.dealType) && paymentObj.dealType! >= 1
               && Number.isInteger(paymentObj.numPayments) && paymentObj.numPayments! >= 1;
           case 4: return Boolean(paymentObj.bankName);      // Bank transfer — bankName
