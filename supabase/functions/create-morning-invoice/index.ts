@@ -44,35 +44,34 @@ const PAYMENT_DOCS = new Set(['receipt', 'invoice_receipt']);
 // There is NO `subType` / `sub_type` field in the spec — we used to send it
 // and it was simply ignored.
 //
-// IMPORTANT — DO NOT use Morning type 3 (credit card) for the CRM's generic
-// "כרטיס אשראי" payment method:
+// IMPORTANT — Morning type 3 (credit card) requires real card metadata.
 //
 //   The CRM currently stores only "כרטיס אשראי" as a payment method, not
 //   actual card brand / transaction metadata (cardType=1..5, cardNum last
-//   4 digits, dealType, numPayments) required by Morning. Without that
-//   real metadata, Morning's /documents receipt validator silently drops
-//   the payment line — its sum becomes 0 against the invoice income and
-//   the request fails with errorCode 2422:
+//   4 digits, dealType, numPayments). Without that real metadata,
+//   Morning's /documents receipt validator silently drops the payment
+//   line — its sum becomes 0 against the invoice income and the request
+//   fails with errorCode 2422:
 //     "קיים חוסר התאמה בין סכום התקבולים לסכום התשלומים"
 //   Empirically verified across these permutations (all produced 2422):
 //     • type:3 cardType:0 ("Unknown")           → rejected
 //     • type:3 cardType omitted                 → rejected
 //     • type:3 cardType:3 (Mastercard generic)  → rejected
-//     • type:11 (Other) with type+price+date+currency only → also rejected
+//     • type:11 (Other) with minimal signature  → rejected
+//     • type:1 (Cash) with minimal signature    → mislabels receipt as
+//                                                  cash on Morning's PDF
 //
-//   Type 11 was the next-most-obvious fallback (the API docs call it the
-//   generic "Other" receipt type), but Morning's /documents validator
-//   does not count type 11 as a valid receipt against invoice income —
-//   leaving the receipt sum at 0 and producing the same 2422 again.
-//
-//   Known-safe fallback is type 1 (Cash) with the SAME minimal signature
-//   (type + price + date + currency) — the universally-accepted Israeli
-//   receipt type. We intentionally route "כרטיס אשראי" through type 1
-//   until the CRM captures real card metadata (brand + last-4 from an
-//   acquirer webhook or operator input). The CRM-side label / logs /
-//   invoice description still read "כרטיס אשראי"; only Morning's wire
-//   `type` code changes — the receipt header in Morning's printed PDF
-//   will show "מזומן" until proper card data is wired through.
+//   Owner directive: do NOT fake credit card as cash. Use a Morning-
+//   supported, accepted-and-honest, card-like generic type that this
+//   codebase already proves works with the minimal signature
+//   (type+price+date+currency). That type is **10 = Payment app** — the
+//   same builder shape used for 'bit' and 'PayBox' which has been
+//   issuing receipts cleanly. Type 10 prints as "אפליקציית תשלום" on
+//   Morning's PDF, which is closer to the truth for an electronic
+//   payment than "מזומן" and is accepted as a valid receipt against
+//   invoice income. Switch back to type 3 once real card metadata is
+//   captured upstream (brand + last-4 from an acquirer webhook or
+//   operator input field).
 //
 // Reference for the enum values:
 //   https://raw.githubusercontent.com/yanivps/green-invoice/master/green_invoice/models.py
@@ -92,11 +91,13 @@ const PAYMENT_BUILDERS: Record<string, (price: number, date: string) => MorningP
   'מזומן':         (price, date) => ({ type: 1, price, date, currency: 'ILS' }),
   'המחאה':         (price, date) => ({ type: 2, price, date, currency: 'ILS' }),
   // The CRM stores only "כרטיס אשראי" (no brand, no last-4, no dealType,
-  // no acquirer data), so we route to Morning type 1 (Cash) instead of
-  // type 3 — see long-form rationale block above (type 3 needs real card
-  // data; type 11 "Other" is not counted by Morning as a receipt either).
-  // Switch back to type 3 once real card metadata is captured upstream.
-  'כרטיס אשראי':   (price, date) => ({ type: 1, price, date, currency: 'ILS' }),
+  // no acquirer data). Route to Morning type 10 (Payment app — same
+  // minimal builder shape as bit/PayBox, accepted by Morning's receipt
+  // validator) instead of type 3 (which needs real card metadata) or
+  // type 1 (which would mislabel the receipt as cash). See long-form
+  // rationale block above. Switch back to type 3 once real card metadata
+  // is captured upstream.
+  'כרטיס אשראי':   (price, date) => ({ type: 10, price, date, currency: 'ILS' }),
   // type 4 = Electronic fund transfer (bank transfer). bankName is a
   // human-readable placeholder for documents where we don't know the bank.
   'העברה בנקאית':  (price, date) => ({ type: 4, price, date, currency: 'ILS', bankName: 'לא צוין' }),
@@ -604,7 +605,7 @@ serve(async (req: Request) => {
     // (JSON.stringify with indent) was getting split by Supabase's Logflare
     // pipeline so the dashboard search "[invoice-debug]" missed everything
     // after the first line. No null/2 pretty-print below.
-    console.log('[invoice-debug] VERSION: diagnostics-only-v12 (no functional change to default path)');
+    console.log('[invoice-debug] VERSION: final-fix-single-line-fallback-v13');
     console.log('[invoice-debug] order:', order.מספר_הזמנה, '| document type:', documentType, '| morningType:', morningDocType);
     console.log('[invoice-debug] client:', JSON.stringify({
       id: order.לקוח_id,
@@ -940,17 +941,87 @@ serve(async (req: Request) => {
       );
     }
 
-    const docRes = await fetch(`${MORNING_API_BASE}/documents`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-      body: finalBodyJson,
-    });
+    // ── [MORNING PRIMARY PAYLOAD] — exact bytes of the primary attempt ────
+    console.log('[MORNING PRIMARY PAYLOAD]',
+      '| order:', order.מספר_הזמנה,
+      '| body:', finalBodyJson,
+    );
 
-    const docData = await docRes.json();
+    const morningPost = async (jsonBody: string) => {
+      const res = await fetch(`${MORNING_API_BASE}/documents`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: jsonBody,
+      });
+      const data = await res.json();
+      return { res, data };
+    };
+
+    let { res: docRes, data: docData } = await morningPost(finalBodyJson);
     console.log('[morning] Response status:', docRes.status, '| body:', JSON.stringify(docData).slice(0, 300));
+
+    let usedFallback = false;
+    let fallbackBodyJson: string | null = null;
+
+    // ── Single-line fallback on errorCode 2422 ────────────────────────────
+    // The detailed line breakdown (products + delivery merge + discount +
+    // credit + עיגול correction) can still trip Morning's receipt validator
+    // for reasons we cannot fully introspect from the outside (e.g. its
+    // shipping-bucket allocation). When that happens, retry ONCE with the
+    // most stable shape Morning accepts: a single net income line whose
+    // gross equals the CRM total exactly, plus the same payment block.
+    //
+    // The customer-facing CRM preview and order page still show the full
+    // breakdown — only Morning's wire payload collapses to one line for
+    // legal-document issuance reliability.
+    if (
+      !docRes.ok &&
+      (docData?.errorCode === 2422 ||
+        (typeof docData?.errorMessage === 'string' &&
+          docData.errorMessage.includes('סכום התקבולים')))
+    ) {
+      const fallbackNetCents = Math.round(crmDisplayedCents / VAT_MULT);
+      const fallbackBody: Record<string, unknown> = {
+        ...documentBody,
+        income: [
+          {
+            description: 'סך הכל הזמנה',
+            quantity: 1,
+            price: fallbackNetCents / 100,
+            vatType: 1,
+          },
+        ],
+        // Keep documentBody.payment as-is. Same payment object (same type,
+        // same crmDisplayedTotal price, same date/currency) — the issue is
+        // line shape, not payment shape.
+      };
+      fallbackBodyJson = JSON.stringify(fallbackBody);
+      console.warn(
+        '[MORNING FALLBACK PAYLOAD]',
+        '| order:', order.מספר_הזמנה,
+        '| triggered_by_error_code:', docData?.errorCode ?? 'none',
+        '| body:', fallbackBodyJson,
+      );
+      const fallback = await morningPost(fallbackBodyJson);
+      docRes = fallback.res;
+      docData = fallback.data;
+      usedFallback = true;
+      console.log('[morning] Fallback response status:', docRes.status, '| body:', JSON.stringify(docData).slice(0, 300));
+    }
+
+    // ── [MORNING FINAL RESULT] — single line summarizing the outcome ──────
+    console.log('[MORNING FINAL RESULT]',
+      '| order:', order.מספר_הזמנה,
+      '| used_fallback:', usedFallback,
+      '| http_status:', docRes.status,
+      '| ok:', docRes.ok,
+      '| error_code:', docData?.errorCode ?? 'none',
+      '| error_message:', docData?.errorMessage ?? 'none',
+      '| invoice_number:', docData?.number ?? docData?.id ?? 'none',
+    );
 
     if (!docRes.ok) {
       // ── [MORNING RAW ERROR] — raw response audit on non-2xx ──────────────
@@ -958,17 +1029,19 @@ serve(async (req: Request) => {
       // stable hash of the request body for correlation with [FINAL
       // DOCUMENT BODY]. JSON.stringify(docData) covers the response payload
       // even when Morning returns a typed errorCode + errorMessage struct.
-      const bodyHash = Array.from(finalBodyJson).reduce(
+      const lastBody = fallbackBodyJson ?? finalBodyJson;
+      const bodyHash = Array.from(lastBody).reduce(
         (h, c) => ((h << 5) - h + c.charCodeAt(0)) | 0,
         0,
       );
       console.error('[MORNING RAW ERROR]',
         '| order:', order.מספר_הזמנה,
         '| http_status:', docRes.status,
+        '| used_fallback:', usedFallback,
         '| response_body:', JSON.stringify(docData),
         '| request_body_hash:', bodyHash,
-        '| request_body_length:', finalBodyJson.length,
-        '| request_body:', finalBodyJson,
+        '| request_body_length:', lastBody.length,
+        '| request_body:', lastBody,
       );
       throw new Error(`Morning API failed ${docRes.status}: ${JSON.stringify(docData)}`);
     }
