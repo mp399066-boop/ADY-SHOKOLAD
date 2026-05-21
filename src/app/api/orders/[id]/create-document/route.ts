@@ -79,6 +79,18 @@ function canonicalizePaymentMethod(raw: string): string | null {
   return null;
 }
 
+// Credit-card metadata accepted from the InvoicePreview modal when the
+// operator selects "כרטיס אשראי". Forwarded to the Edge Function as
+// `credit_card` so Morning gets a real type-3 payment block (cardType
+// 1..5 / cardNum last-4 / dealType / numPayments). See the EF header
+// for the full mapping table.
+const creditCardSchema = z.object({
+  cardType:    z.number().int().min(1).max(5),
+  cardNum:     z.string().regex(/^[0-9]{4}$/, '4 ספרות אחרונות בלבד'),
+  dealType:    z.number().int().min(1).max(5).default(1),
+  numPayments: z.number().int().min(1).default(1),
+});
+
 const bodySchema = z.object({
   documentType: z.enum(['tax_invoice', 'receipt', 'invoice_receipt']),
   paymentMethod: z.string().optional(),
@@ -89,6 +101,10 @@ const bodySchema = z.object({
   // require this literal exactly; missing/wrong value = 400.
   paymentMethodSource: z.literal('manual_modal').optional(),
   force: z.boolean().optional(),
+  // Credit-card metadata — only required when paymentMethod is the credit-
+  // card label (or any of its aliases). Validated below; missing fields
+  // produce the Hebrew error the InvoicePreview modal surfaces.
+  creditCard: creditCardSchema.optional(),
 });
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
@@ -104,7 +120,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({ error: parsed.error.errors[0]?.message || 'נתונים לא תקינים' }, { status: 400 });
   }
 
-  const { documentType, paymentMethod, paymentMethodSource, force } = parsed.data;
+  const { documentType, paymentMethod, paymentMethodSource, force, creditCard } = parsed.data;
   const orderId = params.id;
 
   // ── CONTROL CENTER GATE ────────────────────────────────────────────────
@@ -160,6 +176,18 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     if (!canonicalMethod) {
       return NextResponse.json(
         { error: `אמצעי התשלום "${paymentMethod}" לא נתמך במיפוי. יש לבחור אמצעי תשלום אחר או לעדכן את המיפוי.` },
+        { status: 400 },
+      );
+    }
+    // ── Credit-card metadata gate ────────────────────────────────────────
+    // For PAYMENT_DOCS with method "כרטיס אשראי", the operator must have
+    // filled cardType + cardNum (the modal blocks submit if either is
+    // missing, but we re-validate here as belt-and-suspenders so a custom
+    // client cannot bypass the metadata). Surfaces the exact Hebrew error
+    // the EF would emit on the same condition — fewer round trips.
+    if (canonicalMethod === 'כרטיס אשראי' && !creditCard) {
+      return NextResponse.json(
+        { error: 'להפקת חשבונית מס קבלה בכרטיס אשראי יש לבחור סוג כרטיס ולהזין 4 ספרות אחרונות.' },
         { status: 400 },
       );
     }
@@ -222,6 +250,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         // belt-and-suspenders against a future caller that bypasses this route.
         payment_method_source: paymentMethodSource ?? undefined,
         force: !!force,
+        // Credit-card metadata for the EF's type-3 payment-block builder.
+        // Only forwarded when the operator selected "כרטיס אשראי" and the
+        // modal collected the required fields. Snake-case key to match the
+        // EF's payload reader.
+        credit_card: canonicalMethod === 'כרטיס אשראי' ? creditCard : undefined,
         record: { הזמנה_id: orderId },
         old_record: {},
       }),
