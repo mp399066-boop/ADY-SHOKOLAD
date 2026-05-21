@@ -382,54 +382,26 @@ serve(async (req: Request) => {
       incomeLines.push({ description, quantity: qty, price: unit, vatType: 1 });
     }
 
-    // ── Delivery fee — merged into an existing income line ────────────────
-    // We MUST NOT send a separate "דמי משלוח" income line. Empirically
-    // (verified against a Blimi order with delivery, all totals matching
-    // and payment type=11 Other), Morning's /documents validator rejects
-    // any invoice that contains a שירות-style "דמי משלוח" income line with
-    // errorCode 2422 — its receipt-vs-payment reconciliation evidently
-    // classifies the shipping bucket separately from invoice income, so
-    // the bucketed sums diverge from our flat payment even though the
-    // arithmetic totals match. Removing the line (no delivery) lets the
-    // same order issue cleanly. Therefore we MERGE the delivery NET into
-    // the first product income line's net and append a short marker to
-    // its description. Final gross is unchanged to the agora; the customer
-    // still sees a single charge that already covers shipping.
+    // ── Delivery fee — separate income line ──────────────────────────────
+    // Customer-facing requirement: the printed invoice must show delivery
+    // on its own line ("דמי משלוח"), not merged into a product. This is
+    // the same shape the 11 production invoices (60057..60073) used before
+    // the merge was introduced as a 2422 workaround. The 2422 turned out
+    // to be a VAT-semantics bug (fixed in 89cb602e), not a delivery-line
+    // bug — a separate delivery line works correctly under the restored
+    // semantics. The reconciliation `עיגול` line below still handles any
+    // sub-agora drift between item math and the CRM total.
     const deliveryAmount = Number(order.דמי_משלוח ?? 0);
     let deliveryHandling: string;
-    let deliveryNetMerged = 0;
     if (deliveryAmount > 0) {
-      // Raw CRM amount — same units as item prices (no toNet conversion).
-      const deliveryPrice = deliveryAmount;
-      const deliveryPriceCents = Math.round(deliveryPrice * 100);
-      deliveryNetMerged = deliveryPrice;
-      if (debugMorningMode === 'no_delivery_merge') {
-        // Diagnostic: restore the pre-fix behavior (separate "דמי משלוח"
-        // line) so we can confirm whether the merge was actually required.
-        incomeLines.push({ description: 'דמי משלוח', quantity: 1, price: deliveryPrice, vatType: 1 });
-        deliveryHandling = 'DEBUG no_delivery_merge — separate "דמי משלוח" line (production behavior is to merge)';
-      } else if (incomeLines.length > 0) {
-        // Merge into the first product line.
-        const first = incomeLines[0];
-        const newPriceCents = Math.round(first.price * 100) + deliveryPriceCents;
-        incomeLines[0] = {
-          ...first,
-          price: newPriceCents / 100,
-          description: `${first.description} (כולל משלוח)`,
-        };
-        deliveryHandling = `merged into line #0 "${first.description}"`;
-      } else {
-        // No product items (rare — typically a manual/delivery-only doc):
-        // issue a single neutral "תשלום" line covering the whole amount.
-        // We avoid the description "דמי משלוח" entirely.
-        incomeLines.push({
-          description: 'תשלום',
-          quantity: 1,
-          price: deliveryPrice,
-          vatType: 1,
-        });
-        deliveryHandling = 'standalone "תשלום" line (no product items present)';
-      }
+      // Raw CRM amount — same units as item prices.
+      incomeLines.push({
+        description: 'דמי משלוח',
+        quantity: 1,
+        price: deliveryAmount,
+        vatType: 1,
+      });
+      deliveryHandling = `separate "דמי משלוח" line @ ${deliveryAmount}`;
     } else {
       deliveryHandling = 'no delivery fee on order';
     }
@@ -611,12 +583,10 @@ serve(async (req: Request) => {
 
     // ── [DELIVERY FEE INVOICE HANDLING] — required delivery-handling log ──
     // Single-line, pre-POST. Records how delivery was represented in the
-    // Morning income array for this invoice — surfaces both the original
-    // CRM amount (gross, VAT-inclusive) and the net merged into income.
+    // Morning income array for this invoice.
     console.log('[DELIVERY FEE INVOICE HANDLING]',
       '| order_number:', order.מספר_הזמנה,
       '| delivery_fee_original_amount:', deliveryAmount,
-      '| delivery_net_merged:', deliveryNetMerged,
       '| handling:', deliveryHandling,
       '| final_income_total:', incomeLinesTotal,
       '| final_payment_total:', paymentAmount,
@@ -645,7 +615,7 @@ serve(async (req: Request) => {
     // (JSON.stringify with indent) was getting split by Supabase's Logflare
     // pipeline so the dashboard search "[invoice-debug]" missed everything
     // after the first line. No null/2 pretty-print below.
-    console.log('[invoice-debug] VERSION: revert-VAT-semantics-from-48a811a1-v17');
+    console.log('[invoice-debug] VERSION: delivery-as-separate-line-v18');
     console.log('[invoice-debug] order:', order.מספר_הזמנה, '| document type:', documentType, '| morningType:', morningDocType);
     console.log('[invoice-debug] client:', JSON.stringify({
       id: order.לקוח_id,
