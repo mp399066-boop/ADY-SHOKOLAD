@@ -44,34 +44,38 @@ const PAYMENT_DOCS = new Set(['receipt', 'invoice_receipt']);
 // There is NO `subType` / `sub_type` field in the spec — we used to send it
 // and it was simply ignored.
 //
-// IMPORTANT — Morning type 3 (credit card) requires real card metadata.
+// ─────────────────────────────────────────────────────────────────────────
+//  PAYMENT METHOD MAPPING — CRM button → Morning payment type
+// ─────────────────────────────────────────────────────────────────────────
 //
-//   The CRM currently stores only "כרטיס אשראי" as a payment method, not
-//   actual card brand / transaction metadata (cardType=1..5, cardNum last
-//   4 digits, dealType, numPayments). Without that real metadata,
-//   Morning's /documents receipt validator silently drops the payment
-//   line — its sum becomes 0 against the invoice income and the request
-//   fails with errorCode 2422:
-//     "קיים חוסר התאמה בין סכום התקבולים לסכום התשלומים"
-//   Empirically verified across these permutations (all produced 2422):
-//     • type:3 cardType:0 ("Unknown")           → rejected
-//     • type:3 cardType omitted                 → rejected
-//     • type:3 cardType:3 (Mastercard generic)  → rejected
-//     • type:11 (Other) with minimal signature  → rejected
-//     • type:1 (Cash) with minimal signature    → mislabels receipt as
-//                                                  cash on Morning's PDF
+//  Owner directive: each CRM button maps to its *correct, honest* Morning
+//  type. No silent re-labeling (e.g. credit card → cash). Methods whose
+//  required Morning metadata is not stored in the CRM are BLOCKED with a
+//  clear Hebrew error before any POST — better to fail loudly than to
+//  issue a wrong receipt to the tax authority.
 //
-//   Owner directive: do NOT fake credit card as cash. Use a Morning-
-//   supported, accepted-and-honest, card-like generic type that this
-//   codebase already proves works with the minimal signature
-//   (type+price+date+currency). That type is **10 = Payment app** — the
-//   same builder shape used for 'bit' and 'PayBox' which has been
-//   issuing receipts cleanly. Type 10 prints as "אפליקציית תשלום" on
-//   Morning's PDF, which is closer to the truth for an electronic
-//   payment than "מזומן" and is accepted as a valid receipt against
-//   invoice income. Switch back to type 3 once real card metadata is
-//   captured upstream (brand + last-4 from an acquirer webhook or
-//   operator input field).
+//  CRM label       Morning   Morning type     Required Morning extras
+//                  type      name             beyond {type,price,date,currency}      Safe now?
+//  ─────────────── ───────   ──────────────   ────────────────────────────────────   ──────────
+//  מזומן            1         Cash             none                                    YES
+//  צ'ק / המחאה      2         Check            chequeNum + bankName/Branch/Account     NO  (CRM does not store cheque metadata) → BLOCKED
+//  כרטיס אשראי     3         Credit card      cardType (1-5) + cardNum + dealType +
+//                                              numPayments                             NO  (CRM does not store card metadata)   → BLOCKED
+//  העברה בנקאית     4         Bank transfer    bankName (placeholder accepted)         YES
+//  PayPal           5         PayPal           none                                    YES
+//  ביט / bit        10        Payment app      none (per IDocumentPayment schema —
+//                                              no subType/appType field in spec)       YES
+//  PayBox           10        Payment app      none                                    YES
+//  אחר              11        Other            none                                    NO  (Morning empirically does not count type 11 as a receipt → produces 2422) → BLOCKED
+//
+//  Reference for the schema (IDocumentPayment TypedDict — no subType/appType
+//  field exists for type 10; payment-app payments are valid with just the
+//  minimal {type,price,date,currency} signature):
+//    https://raw.githubusercontent.com/yanivps/green-invoice/master/green_invoice/models.py
+//
+//  For credit-card payments, switch back to type 3 once an acquirer webhook
+//  (or operator input field) populates real brand+last-4 metadata; then add
+//  the entry back into PAYMENT_BUILDERS and remove it from BLOCKED_METHODS.
 //
 // Reference for the enum values:
 //   https://raw.githubusercontent.com/yanivps/green-invoice/master/green_invoice/models.py
@@ -87,24 +91,46 @@ type MorningPayment = {
   bankName?: string;
 };
 
+// CRM methods whose required Morning metadata is not stored upstream — we
+// refuse to issue rather than guess. The value is the exact Hebrew error
+// returned to the caller (and surfaced in the UI toast). Keys cover every
+// label the CRM may send including back-compat synonyms (המחאה ↔ צ'ק).
+const BLOCKED_METHODS: Record<string, string> = {
+  'כרטיס אשראי':
+    'לא ניתן להפיק חשבונית מס קבלה בכרטיס אשראי בלי פרטי עסקת אשראי תקינים למורנינג. יש לבחור אמצעי תשלום שבוצע בפועל או להוסיף פרטי אשראי נדרשים.',
+  "צ'ק":
+    'לא ניתן להפיק חשבונית מס קבלה לצ\'ק בלי פרטי הצ\'ק שמורנינג דורש (מספר צ\'ק, בנק, סניף, חשבון). יש להזין פרטי צ\'ק תקפים או לבחור אמצעי תשלום אחר.',
+  'המחאה':
+    'לא ניתן להפיק חשבונית מס קבלה להמחאה בלי פרטי ההמחאה שמורנינג דורש (מספר המחאה, בנק, סניף, חשבון). יש להזין פרטי המחאה תקפים או לבחור אמצעי תשלום אחר.',
+  'אחר':
+    'לא ניתן להפיק חשבונית מס קבלה עם אמצעי תשלום "אחר" — מורנינג אינו סופר סוג זה כתקבול תקף ומחזיר שגיאה 2422. יש לבחור אמצעי תשלום ספציפי.',
+};
+
+// Human-readable Morning type names — used in the [PAYMENT METHOD MAPPING]
+// audit log so the wire-level number always appears alongside its name.
+const MORNING_TYPE_NAMES: Record<number, string> = {
+  1: 'Cash',
+  2: 'Check',
+  3: 'Credit card',
+  4: 'Bank transfer',
+  5: 'PayPal',
+  10: 'Payment app',
+  11: 'Other',
+};
+
 const PAYMENT_BUILDERS: Record<string, (price: number, date: string) => MorningPayment> = {
   'מזומן':         (price, date) => ({ type: 1, price, date, currency: 'ILS' }),
-  'המחאה':         (price, date) => ({ type: 2, price, date, currency: 'ILS' }),
-  // The CRM stores only "כרטיס אשראי" (no brand, no last-4, no dealType,
-  // no acquirer data). Route to Morning type 10 (Payment app — same
-  // minimal builder shape as bit/PayBox, accepted by Morning's receipt
-  // validator) instead of type 3 (which needs real card metadata) or
-  // type 1 (which would mislabel the receipt as cash). See long-form
-  // rationale block above. Switch back to type 3 once real card metadata
-  // is captured upstream.
-  'כרטיס אשראי':   (price, date) => ({ type: 10, price, date, currency: 'ILS' }),
   // type 4 = Electronic fund transfer (bank transfer). bankName is a
   // human-readable placeholder for documents where we don't know the bank.
   'העברה בנקאית':  (price, date) => ({ type: 4, price, date, currency: 'ILS', bankName: 'לא צוין' }),
   // type 5 = PayPal (its own dedicated enum value).
   'PayPal':        (price, date) => ({ type: 5, price, date, currency: 'ILS' }),
-  // type 10 = Payment app — bit / PayBox / similar Israeli wallets. Closer
-  // to reality than tagging them as credit card.
+  // type 10 = Payment app — bit / PayBox / similar Israeli wallets. The
+  // official IDocumentPayment schema has NO subType/appType field for type
+  // 10, so the minimal {type,price,date,currency} signature is correct.
+  // Two keys for "bit" — Hebrew 'ביט' (current CRM button label) and
+  // English 'bit' (back-compat for older order rows).
+  'ביט':           (price, date) => ({ type: 10, price, date, currency: 'ILS' }),
   'bit':           (price, date) => ({ type: 10, price, date, currency: 'ILS' }),
   'PayBox':        (price, date) => ({ type: 10, price, date, currency: 'ILS' }),
 };
@@ -605,7 +631,7 @@ serve(async (req: Request) => {
     // (JSON.stringify with indent) was getting split by Supabase's Logflare
     // pipeline so the dashboard search "[invoice-debug]" missed everything
     // after the first line. No null/2 pretty-print below.
-    console.log('[invoice-debug] VERSION: final-fix-single-line-fallback-v13');
+    console.log('[invoice-debug] VERSION: payment-method-honest-mapping-v14');
     console.log('[invoice-debug] order:', order.מספר_הזמנה, '| document type:', documentType, '| morningType:', morningDocType);
     console.log('[invoice-debug] client:', JSON.stringify({
       id: order.לקוח_id,
@@ -709,12 +735,39 @@ serve(async (req: Request) => {
         );
       }
       const paymentMethod = paymentMethodOverride;
+
+      // ── Block list — fail loud with a clear Hebrew error if Morning
+      // requires metadata the CRM does not (yet) capture for this method.
+      // Runs BEFORE the PAYMENT_BUILDERS lookup so a blocked method never
+      // gets silently re-routed through a different builder.
+      const blockReason = BLOCKED_METHODS[paymentMethod];
+      if (blockReason) {
+        console.error('[PAYMENT EF] REFUSE — payment method blocked (missing Morning metadata):',
+          '| CRM_method:', JSON.stringify(paymentMethod),
+          '| documentType:', documentType,
+          '| reason:', blockReason);
+        // Also emit the audit log so [PAYMENT METHOD MAPPING] is present on
+        // every issuance attempt, even refused ones.
+        console.log('[PAYMENT METHOD MAPPING]',
+          '| CRM_label:', paymentMethod,
+          '| Morning_type:', 'BLOCKED',
+          '| Morning_type_name:', 'BLOCKED',
+          '| Required_extra_fields_present:', false,
+          '| Payment_block:', 'null (refused)',
+        );
+        return new Response(
+          JSON.stringify({ error: blockReason }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+
       const builder = PAYMENT_BUILDERS[paymentMethod];
       if (!builder) {
         console.error('[PAYMENT EF] REFUSE — payment method not in PAYMENT_BUILDERS:',
           JSON.stringify(paymentMethod),
           '| documentType:', documentType,
-          '| supported:', Object.keys(PAYMENT_BUILDERS).join(', '));
+          '| supported:', Object.keys(PAYMENT_BUILDERS).join(', '),
+          '| blocked:', Object.keys(BLOCKED_METHODS).join(', '));
         return new Response(
           JSON.stringify({
             error: `אמצעי התשלום "${paymentMethod}" לא ממופה למורנינג. יש לבחור אמצעי תשלום אחר או לעדכן את המיפוי.`,
@@ -727,13 +780,29 @@ serve(async (req: Request) => {
       console.log('[PAYMENT EF] selected builder for method:', paymentMethod);
       console.log('[PAYMENT EF] morning payment type sent to API:', paymentObj.type);
       console.log('[PAYMENT EF] full payment object:', JSON.stringify(paymentObj));
-      // Single-line audit log per user spec — explicit CRM-method → Morning-type
-      // mapping plus the exact JSON block. Independent of the [PAYMENT EF]
-      // lines above so it survives Logflare grouping/truncation.
+      // Single-line audit log — full mapping table fields exposed per spec
+      // so each invocation logs CRM label, Morning type number + name,
+      // whether all method-specific required extras are present in the
+      // payment block, and the exact JSON block sent. Independent of the
+      // [PAYMENT EF] lines above so it survives Logflare grouping.
+      const morningTypeName = MORNING_TYPE_NAMES[paymentObj.type] ?? 'UNKNOWN';
+      // Required-extras presence check — per the mapping table at the top
+      // of this file. Only the types we actively send appear here.
+      const requiredExtrasPresent = (() => {
+        switch (paymentObj.type) {
+          case 1: return true;                              // Cash — none required
+          case 4: return Boolean(paymentObj.bankName);      // Bank transfer — bankName
+          case 5: return true;                              // PayPal — none required
+          case 10: return true;                             // Payment app — none in schema
+          default: return false;                            // anything else here is a programmer error
+        }
+      })();
       console.log('[PAYMENT METHOD MAPPING]',
-        '| CRM_method:', paymentMethod,
-        '| morning_type_sent:', paymentObj.type,
-        '| payment_block:', JSON.stringify(paymentObj),
+        '| CRM_label:', paymentMethod,
+        '| Morning_type:', paymentObj.type,
+        '| Morning_type_name:', morningTypeName,
+        '| Required_extra_fields_present:', requiredExtrasPresent,
+        '| Payment_block:', JSON.stringify(paymentObj),
       );
     }
 
