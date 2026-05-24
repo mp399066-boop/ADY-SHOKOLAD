@@ -62,7 +62,11 @@ export async function GET(req: NextRequest) {
 
   const recipient = (toParam && toParam.includes('@')) ? toParam : DEFAULT_RECIPIENT;
   const recipientLogSafe = recipient.split('@')[0] + '@***';
-  console.log(`[backup-export] started | month: ${year}-${mmStr} | recipient: ${recipientLogSafe} | isCron: ${isCron}`);
+  // Safe diagnostic — exact resolved window so an "empty backup" complaint
+  // can be self-verified from logs without reading the DB. No row data.
+  console.log(
+    `[backup-export] started | month: ${year}-${mmStr} | startIso: ${startIso} | endIso (exclusive): ${endIso} | filter_column: תאריך_יצירה | recipient: ${recipientLogSafe} | isCron: ${isCron}`,
+  );
 
   // ── Fetch all needed data — READ-ONLY ─────────────────────────────────
   const supabase = createAdminClient();
