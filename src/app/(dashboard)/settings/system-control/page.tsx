@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { PageLoading } from '@/components/ui/LoadingSpinner';
 import { EmptyState } from '@/components/ui/EmptyState';
+import toast from 'react-hot-toast';
 import {
   STATUS_LABEL_HE,
   MODULE_LABEL_HE,
@@ -313,6 +314,13 @@ export default function LogsPage() {
         </p>
       </div>
 
+      {/* Manual trigger for the monthly backup export — calls the existing
+          /api/reports/monthly-backup-export route (the same one Vercel cron
+          fires on the 1st of every month). Optional ?to= override in the
+          input lets the operator send to any test address; empty input
+          defaults to adi548419927@gmail.com (the route's default). */}
+      <MonthlyBackupCard />
+
       {/* Category tabs */}
       <CategoryTabs active={activeTab} onChange={(id) => { clearFilters(); setActiveTab(id); }} />
 
@@ -595,5 +603,58 @@ function JsonBlock({ label, value }: { label: string; value: unknown }) {
         {text}
       </pre>
     </div>
+  );
+}
+
+// ─── MonthlyBackupCard ──────────────────────────────────────────────────────
+// Tiny operator-side trigger for the existing backup route. Pure UI shim —
+// no business logic, no new endpoints. Defaults to the previous calendar
+// month (route default); empty input field sends to the route's default
+// recipient (adi548419927@gmail.com).
+function MonthlyBackupCard() {
+  const [testEmail, setTestEmail] = useState<string>('');
+  const [sending,   setSending]   = useState<boolean>(false);
+
+  const send = async () => {
+    setSending(true);
+    try {
+      const qs = testEmail.trim() && testEmail.includes('@')
+        ? `?to=${encodeURIComponent(testEmail.trim())}`
+        : '';
+      const res  = await fetch(`/api/reports/monthly-backup-export${qs}`, { method: 'GET' });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || json?.message || 'שגיאה בשליחת הגיבוי');
+      toast.success('הגיבוי נשלח למייל');
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'שגיאה בשליחת הגיבוי');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <Card className="p-4">
+      <div className="flex items-baseline justify-between mb-1">
+        <h2 className="text-[15px] font-bold" style={{ color: '#3A2A1A' }}>גיבוי חודשי</h2>
+        <span className="text-[11px]" style={{ color: '#8A7664' }}>ברירת מחדל: חודש קודם · adi548419927@gmail.com</span>
+      </div>
+      <p className="text-[12px] mb-3" style={{ color: '#8A7664' }}>
+        מפעיל את אותו הראוט שרץ אוטומטית ב-1 בחודש. שולח קובץ Excel עם נתוני CRM של החודש הקודם.
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          type="email"
+          value={testEmail}
+          onChange={e => setTestEmail(e.target.value)}
+          placeholder="מייל לבדיקה (אופציונלי) — ריק = ברירת מחדל"
+          disabled={sending}
+          className="px-3 h-9 rounded-lg border bg-white text-[13px]"
+          style={{ borderColor: '#E8D8C6', color: '#3A2A1A', minWidth: '18rem' }}
+        />
+        <Button onClick={send} loading={sending} disabled={sending}>
+          שלחי גיבוי חודשי לבדיקה
+        </Button>
+      </div>
+    </Card>
   );
 }
