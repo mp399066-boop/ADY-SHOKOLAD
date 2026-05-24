@@ -75,7 +75,13 @@ interface EditCustomItem {
 type FullOrder = Order & {
   לקוחות: Customer;
   מוצרים_בהזמנה: (OrderItem & { מוצרים_למכירה?: Product })[];
-  משלוח: { סטטוס_משלוח: string; שם_שליח: string; עיר: string } | null;
+  משלוח: {
+    סטטוס_משלוח: string;
+    שם_שליח: string;
+    עיר: string;
+    courier_id?: string | null;
+    שליחים?: { id: string; שם_שליח: string; טלפון_שליח: string | null } | null;
+  } | null;
   תשלומים: { id: string; סכום: number; אמצעי_תשלום: string; תאריך_תשלום: string }[];
   חשבוניות: { id: string; מספר_חשבונית: string; סכום: number; סטטוס: string; קישור_חשבונית?: string | null; סוג_מסמך?: string | null; תאריך_יצירה?: string | null }[];
 };
@@ -419,6 +425,79 @@ export default function OrderDetailPage() {
   const [editCustomItems, setEditCustomItems] = useState<EditCustomItem[]>([]);
   // Recipient type state for edit modal (UI-only until migration 015 is applied)
   const [editRecipientType, setEditRecipientType] = useState<'customer' | 'other'>('customer');
+
+  // ── Courier picker — small inline UI in the delivery card ──────────────────
+  // Couriers come from the existing שליחים table via the existing
+  // GET /api/couriers endpoint. Assignment writes only משלוחים.courier_id
+  // via POST /api/orders/[id]/courier — no other delivery fields touched.
+  type CourierOption = { id: string; שם_שליח: string; טלפון_שליח: string | null };
+  const [courierOptions, setCourierOptions] = useState<CourierOption[]>([]);
+  const [savingCourier, setSavingCourier]   = useState(false);
+
+  useEffect(() => {
+    fetch('/api/couriers')
+      .then(r => r.json())
+      .then(({ data }) => {
+        if (Array.isArray(data)) {
+          setCourierOptions(data.map((c: Record<string, unknown>) => ({
+            id:          String(c.id ?? ''),
+            שם_שליח:    String(c.שם_שליח ?? ''),
+            טלפון_שליח: (c.טלפון_שליח as string | null) ?? null,
+          })));
+        }
+      })
+      .catch(() => { /* picker just stays empty — non-fatal */ });
+  }, []);
+
+  const assignCourier = async (courierId: string | null) => {
+    if (!order) return;
+    setSavingCourier(true);
+    try {
+      const res = await fetch(`/api/orders/${order.id}/courier`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ courier_id: courierId }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || 'שגיאה בשמירת שליח');
+      toast.success(courierId ? 'שליח שובץ' : 'שיוך שליח בוטל');
+      reloadOrder();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'שגיאה בשמירת שליח');
+    } finally {
+      setSavingCourier(false);
+    }
+  };
+
+  // Builds the wa.me URL for the assigned courier. Returns null when there
+  // is no courier or the courier has no phone — caller renders a small
+  // notice in that case.
+  const buildCourierWhatsappUrl = (): string | null => {
+    if (!order) return null;
+    const courier = order.משלוח?.שליחים;
+    const phone = courier?.טלפון_שליח?.replace(/\D/g, '') ?? '';
+    if (!phone) return null;
+    // wa.me wants international format; default Israeli mobile (0...) to 972.
+    const intl = phone.startsWith('0') ? `972${phone.slice(1)}` : phone;
+    const recipient   = order.שם_מקבל || `${order.לקוחות?.שם_פרטי ?? ''} ${order.לקוחות?.שם_משפחה ?? ''}`.trim();
+    const recipPhone  = order.טלפון_מקבל || order.לקוחות?.טלפון || '';
+    const address     = [order.כתובת_מקבל_ההזמנה, order.עיר].filter(Boolean).join(', ');
+    const when        = [order.תאריך_אספקה, order.שעת_אספקה].filter(Boolean).join(' ');
+    const instr       = order.הוראות_משלוח || '';
+    const trackingUrl = order.משלוח && (order.משלוח as Record<string, unknown>)['delivery_token']
+      ? `${typeof window !== 'undefined' ? window.location.origin : ''}/d/${(order.משלוח as Record<string, unknown>)['delivery_token']}`
+      : '';
+    const lines = [
+      `שלום! משלוח חדש להזמנה ${order.מספר_הזמנה}`,
+      recipient   ? `מקבל: ${recipient}`              : '',
+      recipPhone  ? `טלפון: ${recipPhone}`            : '',
+      address     ? `כתובת: ${address}`               : '',
+      when        ? `מועד אספקה: ${when}`             : '',
+      instr       ? `הוראות: ${instr}`                : '',
+      trackingUrl ? `קישור עדכון משלוח: ${trackingUrl}` : '',
+    ].filter(Boolean).join('\n');
+    return `https://wa.me/${intl}?text=${encodeURIComponent(lines)}`;
+  };
 
   // ── Load order ──────────────────────────────────────────────────────────────
 
@@ -1171,6 +1250,57 @@ export default function OrderDetailPage() {
                     {order.הוראות_משלוח && (
                       <InfoField icon="note" label="הוראות">
                         <span className="text-xs leading-snug" style={{ color: '#4A2F1B' }}>{order.הוראות_משלוח}</span>
+                      </InfoField>
+                    )}
+
+                    {/* Courier assignment + WhatsApp action — visible only
+                        when a משלוחים row exists (the GET route returns
+                        order.משלוח=null for איסוף עצמי / pre-delivery orders).
+                        Picker writes to משלוחים.courier_id via the dedicated
+                        tiny PATCH /api/orders/[id]/courier endpoint. */}
+                    {order.משלוח && (
+                      <InfoField icon="truck" label="שליח">
+                        <div className="flex flex-col gap-2 w-full">
+                          <select
+                            value={order.משלוח?.courier_id ?? ''}
+                            onChange={e => assignCourier(e.target.value || null)}
+                            disabled={savingCourier}
+                            className="text-[13px] h-9 px-2 rounded-lg border bg-white"
+                            style={{ borderColor: '#E8DED2', color: '#2B1A10', minWidth: '12rem' }}
+                          >
+                            <option value="">— בחרי שליח —</option>
+                            {courierOptions.map(c => (
+                              <option key={c.id} value={c.id}>{c.שם_שליח}</option>
+                            ))}
+                          </select>
+                          {order.משלוח?.שליחים && (
+                            <div className="text-[12px]" style={{ color: '#4A2F1B' }}>
+                              <span className="font-medium">{order.משלוח.שליחים.שם_שליח}</span>
+                              {order.משלוח.שליחים.טלפון_שליח && (
+                                <span className="ms-2" style={{ color: '#6B4A2D' }}>
+                                  · <a href={`tel:${order.משלוח.שליחים.טלפון_שליח}`} className="hover:underline">{order.משלוח.שליחים.טלפון_שליח}</a>
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          {order.משלוח?.שליחים && (
+                            order.משלוח.שליחים.טלפון_שליח ? (
+                              <a
+                                href={buildCourierWhatsappUrl() ?? '#'}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center justify-center text-[12.5px] font-medium h-9 px-3 rounded-lg text-white transition-colors"
+                                style={{ backgroundColor: '#25D366', width: 'fit-content' }}
+                              >
+                                שלח וואטסאפ לשליח
+                              </a>
+                            ) : (
+                              <span className="text-[11.5px]" style={{ color: '#A8442D' }}>
+                                אין מספר טלפון לשליח
+                              </span>
+                            )
+                          )}
+                        </div>
                       </InfoField>
                     )}
                   </>

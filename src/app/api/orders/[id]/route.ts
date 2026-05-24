@@ -28,7 +28,7 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
 
   const { data: delivery } = await supabase
     .from('משלוחים')
-    .select('*')
+    .select('*, שליחים:courier_id(id, שם_שליח, טלפון_שליח)')
     .eq('הזמנה_id', params.id)
     .single();
 
