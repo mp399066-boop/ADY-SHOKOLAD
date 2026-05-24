@@ -144,6 +144,8 @@ export async function sendSatmarSummaryEmail(
       to,
       subject,
       html,
+      // Customer-facing Satmar summary — replies route to the admin inbox.
+      replyTo: 'adi548419927@gmail.com',
     });
 
     if (sendError) throw new Error(sendError.message);

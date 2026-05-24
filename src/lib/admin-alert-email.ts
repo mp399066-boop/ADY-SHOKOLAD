@@ -471,6 +471,8 @@ export async function sendAdminNewOrderAlert(orderId: string, options: AdminAler
       subject,
       text: buildText(args),
       html: buildHtml(args),
+      // Internal admin/staff alert — replies route to the staff inbox.
+      replyTo: 'adi8st@gmail.com',
     });
     console.log('[admin-alert] sent for', args.orderNumber, '| source:', options.source ?? 'manual', '| newProducts:', args.newProducts.length);
     void logActivity({

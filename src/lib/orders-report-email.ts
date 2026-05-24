@@ -509,6 +509,8 @@ export async function sendOrdersReport(
     from: { email: from, name: BUSINESS },
     subject,
     html,
+    // Employee daily-orders report — replies go to the staff inbox.
+    replyTo: 'adi8st@gmail.com',
   });
 
   return { summary, subject, orderIds };
