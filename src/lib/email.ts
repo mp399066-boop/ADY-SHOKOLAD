@@ -483,7 +483,9 @@ export async function sendOrderEmail(
   try {
     // Customer-facing emails (order confirmation / summary / update) — replies
     // route to the admin inbox monitored by the owner.
-    const [response] = await sgMail.send({ to, from, subject, html, text, replyTo: 'adi548419927@gmail.com' });
+    const replyTo = 'adi548419927@gmail.com';
+    console.log('[email-replyto] path: sendOrderEmail | replyTo:', replyTo);
+    const [response] = await sgMail.send({ to, from, subject, html, text, replyTo });
     messageId = response?.headers?.['x-message-id'] as string | undefined;
   } catch (err) {
     sendError = err instanceof Error ? err.message : String(err);

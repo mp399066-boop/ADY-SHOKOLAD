@@ -504,13 +504,15 @@ export async function sendOrdersReport(
   }
 
   sgMail.setApiKey(apiKey);
+  // Employee daily-orders report — replies go to the staff inbox.
+  const replyTo = 'adi8st@gmail.com';
+  console.log('[email-replyto] path: sendOrdersReport | replyTo:', replyTo);
   await sgMail.send({
     to: recipientEmail,
     from: { email: from, name: BUSINESS },
     subject,
     html,
-    // Employee daily-orders report — replies go to the staff inbox.
-    replyTo: 'adi8st@gmail.com',
+    replyTo,
   });
 
   return { summary, subject, orderIds };

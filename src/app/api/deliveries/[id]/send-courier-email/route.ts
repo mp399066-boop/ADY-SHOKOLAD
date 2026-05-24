@@ -146,12 +146,16 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   try {
     sgMail.setApiKey(apiKey);
+    // Employee/staff path — replies go to the staff inbox.
+    const replyTo = 'adi8st@gmail.com';
+    console.log('[email-replyto] path: send-courier-email | replyTo:', replyTo);
     const [sgResponse] = await sgMail.send({
       to:      courier.אימייל_שליח,
       from,
       subject,
       html:    htmlContent,
       text:    textContent,
+      replyTo,
     });
     console.log('[send-courier-email] SendGrid response status:', sgResponse.statusCode);
   } catch (err: unknown) {

@@ -139,13 +139,15 @@ export async function sendSatmarSummaryEmail(
     const resend = new Resend(apiKey);
     const fromAddress = process.env.EMAIL_FROM || 'adi@adi-shokolad.co.il';
 
+    // Customer-facing Satmar summary — replies route to the admin inbox.
+    const replyTo = 'adi548419927@gmail.com';
+    console.log('[email-replyto] path: sendSatmarSummaryEmail | replyTo:', replyTo);
     const { error: sendError } = await resend.emails.send({
       from: `עדי תכשיט שוקולד <${fromAddress}>`,
       to,
       subject,
       html,
-      // Customer-facing Satmar summary — replies route to the admin inbox.
-      replyTo: 'adi548419927@gmail.com',
+      replyTo,
     });
 
     if (sendError) throw new Error(sendError.message);

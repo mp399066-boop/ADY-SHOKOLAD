@@ -465,14 +465,16 @@ export async function sendAdminNewOrderAlert(orderId: string, options: AdminAler
 
   sgMail.setApiKey(apiKey);
   try {
+    // Internal admin/staff alert — replies route to the staff inbox.
+    const replyTo = 'adi8st@gmail.com';
+    console.log('[email-replyto] path: sendAdminNewOrderAlert | replyTo:', replyTo);
     await sgMail.send({
       to: ADMIN_TO,
       from,
       subject,
       text: buildText(args),
       html: buildHtml(args),
-      // Internal admin/staff alert — replies route to the staff inbox.
-      replyTo: 'adi8st@gmail.com',
+      replyTo,
     });
     console.log('[admin-alert] sent for', args.orderNumber, '| source:', options.source ?? 'manual', '| newProducts:', args.newProducts.length);
     void logActivity({

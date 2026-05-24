@@ -26,12 +26,16 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (apiKey && from) {
     try {
       sgMail.setApiKey(apiKey);
+      // Customer-facing path — replies route to the admin inbox.
+      const replyTo = 'adi548419927@gmail.com';
+      console.log('[email-replyto] path: customers-send-email | replyTo:', replyTo);
       const [response] = await sgMail.send({
         to,
         from,
         subject: subject || 'הודעה מעדי תכשיט שוקולד',
         html: `<html dir="rtl"><body style="font-family:Arial,Helvetica,sans-serif;direction:rtl;text-align:right;padding:24px;color:#2B1A10">${content.replace(/\n/g, '<br>')}<br><br><p style="color:#9B7A5A;font-size:12px;border-top:1px solid #eee;padding-top:12px">עדי תכשיט שוקולד | adi548419927@gmail.com</p></body></html>`,
         text: `${content}\n\nעדי תכשיט שוקולד | adi548419927@gmail.com`,
+        replyTo,
       });
       messageId = response?.headers?.['x-message-id'] as string | undefined;
     } catch (err) {
