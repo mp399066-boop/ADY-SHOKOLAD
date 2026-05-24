@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/send-daily-orders-report",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/reports/monthly-backup-export",
+      "schedule": "0 4 1 * *"
     }
   ]
 }
