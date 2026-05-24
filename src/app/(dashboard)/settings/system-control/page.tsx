@@ -609,19 +609,41 @@ function JsonBlock({ label, value }: { label: string; value: unknown }) {
 // ─── MonthlyBackupCard ──────────────────────────────────────────────────────
 // Tiny operator-side trigger for the existing backup route. Pure UI shim —
 // no business logic, no new endpoints. Defaults to the previous calendar
-// month (route default); empty input field sends to the route's default
-// recipient (adi548419927@gmail.com).
+// month (matches the route's own default behavior); empty email field sends
+// to the route's default recipient (adi548419927@gmail.com).
+const HEBREW_MONTHS = [
+  'ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני',
+  'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר',
+] as const;
+
 function MonthlyBackupCard() {
+  // Default to previous calendar month — same logic the backend uses when
+  // no ?month/?year are provided. Computed once on mount via useState init.
+  const [defaultMonth, defaultYear] = (() => {
+    const now = new Date();
+    const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    return [prev.getMonth() + 1, prev.getFullYear()] as const;
+  })();
+  const [month, setMonth]         = useState<number>(defaultMonth);
+  const [year, setYear]           = useState<number>(defaultYear);
   const [testEmail, setTestEmail] = useState<string>('');
   const [sending,   setSending]   = useState<boolean>(false);
+
+  // Year options — current year ± 3 either side. Plenty of range for testing
+  // historical or near-future months without growing a giant dropdown.
+  const currentYear = new Date().getFullYear();
+  const yearOptions: number[] = [];
+  for (let y = currentYear + 1; y >= currentYear - 3; y--) yearOptions.push(y);
 
   const send = async () => {
     setSending(true);
     try {
-      const qs = testEmail.trim() && testEmail.includes('@')
-        ? `?to=${encodeURIComponent(testEmail.trim())}`
-        : '';
-      const res  = await fetch(`/api/reports/monthly-backup-export${qs}`, { method: 'GET' });
+      const params = new URLSearchParams();
+      params.set('month', String(month));
+      params.set('year',  String(year));
+      const trimmed = testEmail.trim();
+      if (trimmed && trimmed.includes('@')) params.set('to', trimmed);
+      const res  = await fetch(`/api/reports/monthly-backup-export?${params.toString()}`, { method: 'GET' });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || json?.message || 'שגיאה בשליחת הגיבוי');
       toast.success('הגיבוי נשלח למייל');
@@ -636,21 +658,52 @@ function MonthlyBackupCard() {
     <Card className="p-4">
       <div className="flex items-baseline justify-between mb-1">
         <h2 className="text-[15px] font-bold" style={{ color: '#3A2A1A' }}>גיבוי חודשי</h2>
-        <span className="text-[11px]" style={{ color: '#8A7664' }}>ברירת מחדל: חודש קודם · adi548419927@gmail.com</span>
+        <span className="text-[11px]" style={{ color: '#8A7664' }}>נשלח אוטומטית ב-1 בחודש · ברירת מחדל: adi548419927@gmail.com</span>
       </div>
       <p className="text-[12px] mb-3" style={{ color: '#8A7664' }}>
-        מפעיל את אותו הראוט שרץ אוטומטית ב-1 בחודש. שולח קובץ Excel עם נתוני CRM של החודש הקודם.
+        ברירת המחדל היא החודש הקודם. לבדיקה אפשר לבחור חודש אחר.
       </p>
-      <div className="flex flex-wrap items-center gap-2">
-        <input
-          type="email"
-          value={testEmail}
-          onChange={e => setTestEmail(e.target.value)}
-          placeholder="מייל לבדיקה (אופציונלי) — ריק = ברירת מחדל"
-          disabled={sending}
-          className="px-3 h-9 rounded-lg border bg-white text-[13px]"
-          style={{ borderColor: '#E8D8C6', color: '#3A2A1A', minWidth: '18rem' }}
-        />
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="flex flex-col gap-1">
+          <label className="text-[11px] font-medium" style={{ color: '#6B4A2D' }}>חודש לגיבוי</label>
+          <select
+            value={month}
+            onChange={e => setMonth(Number(e.target.value))}
+            disabled={sending}
+            className="px-2 h-9 rounded-lg border bg-white text-[13px]"
+            style={{ borderColor: '#E8D8C6', color: '#3A2A1A', minWidth: '8.5rem' }}
+          >
+            {HEBREW_MONTHS.map((name, i) => (
+              <option key={i + 1} value={i + 1}>{name}</option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-[11px] font-medium" style={{ color: '#6B4A2D' }}>שנה</label>
+          <select
+            value={year}
+            onChange={e => setYear(Number(e.target.value))}
+            disabled={sending}
+            className="px-2 h-9 rounded-lg border bg-white text-[13px]"
+            style={{ borderColor: '#E8D8C6', color: '#3A2A1A', minWidth: '5.5rem' }}
+          >
+            {yearOptions.map(y => (
+              <option key={y} value={y}>{y}</option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1 flex-1 min-w-[16rem]">
+          <label className="text-[11px] font-medium" style={{ color: '#6B4A2D' }}>מייל לבדיקה (אופציונלי)</label>
+          <input
+            type="email"
+            value={testEmail}
+            onChange={e => setTestEmail(e.target.value)}
+            placeholder="ריק = ברירת מחדל"
+            disabled={sending}
+            className="px-3 h-9 rounded-lg border bg-white text-[13px]"
+            style={{ borderColor: '#E8D8C6', color: '#3A2A1A' }}
+          />
+        </div>
         <Button onClick={send} loading={sending} disabled={sending}>
           שלחי גיבוי חודשי לבדיקה
         </Button>
