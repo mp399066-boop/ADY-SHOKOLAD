@@ -349,6 +349,14 @@ export interface Recipe {
   id: string;
   שם_מתכון: string;
   מוצר_id: string | null;
+  // Polymorphic production target (migration 044). production_target_type
+  // tells the production route which inventory table to increment:
+  //   'sale_product' → מוצרים_למכירה.כמות_במלאי (legacy default)
+  //   'petit_four'   → סוגי_פטיפורים.כמות_במלאי
+  // production_target_id holds the matching row id. NULL on either means
+  // the recipe is unlinked and production is blocked.
+  production_target_type: 'sale_product' | 'petit_four';
+  production_target_id: string | null;
   כמות_תוצר: number;
   הערות: string | null;
   תאריך_יצירה: string;

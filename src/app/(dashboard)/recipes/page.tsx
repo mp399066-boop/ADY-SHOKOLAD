@@ -118,22 +118,38 @@ export default function RecipesPage() {
   };
 
   // ── Manual per-recipe link modal ──────────────────────────────────────
-  // The primary workflow: pick one recipe, pick one product, save. Reuses
-  // the existing PATCH /api/recipes/[id] which validates the product is
-  // active and allows re-linking (the operator may correct a wrong link).
-  const [linkRecipeId, setLinkRecipeId]           = useState<string | null>(null);
-  const [linkSelectedProduct, setLinkSelectedProduct] = useState<string>('');
-  const [linkSaving, setLinkSaving]               = useState(false);
+  // Primary workflow: pick one recipe → pick a target TYPE → pick the
+  // matching row. PATCH /api/recipes/[id] validates and writes the new
+  // polymorphic columns (production_target_type / production_target_id).
+  const [linkRecipeId, setLinkRecipeId]             = useState<string | null>(null);
+  const [linkTargetType, setLinkTargetType]         = useState<'sale_product' | 'petit_four'>('sale_product');
+  const [linkSelectedTargetId, setLinkSelectedTargetId] = useState<string>('');
+  const [linkSaving, setLinkSaving]                 = useState(false);
+  const [petitFourTypes, setPetitFourTypes]         = useState<{ id: string; שם_פטיפור: string; פעיל?: boolean }[]>([]);
   const linkRecipe = recipes.find(r => r.id === linkRecipeId) || null;
 
-  const openLinkModal = (recipeId: string, currentProductId: string | null) => {
+  // Load active petit-four types alongside the existing fetches so the
+  // picker can render them without an extra round-trip on modal open.
+  useEffect(() => {
+    fetch('/api/petit-four-types?active=true')
+      .then(r => r.json())
+      .then(({ data }) => setPetitFourTypes(Array.isArray(data) ? data.filter((p: { פעיל?: boolean }) => p.פעיל !== false) : []))
+      .catch(() => {});
+  }, []);
+
+  const openLinkModal = (
+    recipeId: string,
+    currentTargetType: 'sale_product' | 'petit_four' | null,
+    currentTargetId: string | null,
+  ) => {
     setLinkRecipeId(recipeId);
-    setLinkSelectedProduct(currentProductId ?? '');
+    setLinkTargetType(currentTargetType ?? 'sale_product');
+    setLinkSelectedTargetId(currentTargetId ?? '');
   };
 
   const saveLink = async () => {
-    if (!linkRecipeId || !linkSelectedProduct) {
-      toast.error('יש לבחור מוצר לפני שמירה');
+    if (!linkRecipeId || !linkSelectedTargetId) {
+      toast.error('יש לבחור יעד לפני שמירה');
       return;
     }
     setLinkSaving(true);
@@ -141,13 +157,16 @@ export default function RecipesPage() {
       const res = await fetch(`/api/recipes/${linkRecipeId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ מוצר_id: linkSelectedProduct }),
+        body: JSON.stringify({
+          production_target_type: linkTargetType,
+          production_target_id:   linkSelectedTargetId,
+        }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'שגיאה בשיוך');
-      toast.success('המתכון שויך למוצר');
+      toast.success(linkTargetType === 'petit_four' ? 'המתכון שויך לסוג פטיפור' : 'המתכון שויך למוצר');
       setLinkRecipeId(null);
-      setLinkSelectedProduct('');
+      setLinkSelectedTargetId('');
       fetchAll();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'שגיאה בשיוך');
@@ -390,11 +409,20 @@ export default function RecipesPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {recipes.map(r => {
                     const ings = (r as Recipe & { רכיבי_מתכון?: RecipeIngredient[] }).רכיבי_מתכון ?? [];
-                    const linkedProductId =
-                      ((r as Recipe & { מוצר_id?: string | null }).מוצר_id) ?? null;
-                    const linkedProduct = linkedProductId
-                      ? products.find(p => p.id === linkedProductId) ?? null
+                    const targetType = (r as Recipe & { production_target_type?: 'sale_product' | 'petit_four' | null }).production_target_type ?? null;
+                    const targetId   = (r as Recipe & { production_target_id?: string | null }).production_target_id ?? null;
+                    const linkedSaleProduct = targetType === 'sale_product' && targetId
+                      ? products.find(p => p.id === targetId) ?? null
                       : null;
+                    const linkedPetitFour   = targetType === 'petit_four' && targetId
+                      ? petitFourTypes.find(p => p.id === targetId) ?? null
+                      : null;
+                    const isLinked = !!(linkedSaleProduct || linkedPetitFour);
+                    const linkedLabel = linkedSaleProduct
+                      ? `מוצר למכירה: ${linkedSaleProduct.שם_מוצר}`
+                      : linkedPetitFour
+                        ? `סוג פטיפור: ${linkedPetitFour.שם_פטיפור}`
+                        : null;
                     return (
                       <Card key={r.id}>
                         <div className="flex justify-between mb-3">
@@ -418,32 +446,31 @@ export default function RecipesPage() {
                           </div>
                         </div>
 
-                        {/* ── Product link row — the primary manual control ───
-                            Every recipe card surfaces its מוצר_id status so
-                            the operator always knows whether production will
-                            close the inventory loop. The button on the right
-                            opens the per-recipe manual picker. */}
+                        {/* ── Production-target link row ────────────────────
+                            Every recipe card surfaces its target so the
+                            operator always knows whether production will
+                            close the loop (and to WHICH inventory table). */}
                         <div
                           className="flex items-center justify-between gap-2 mb-3 px-2.5 py-2 rounded-lg border"
-                          style={linkedProduct
+                          style={isLinked
                             ? { backgroundColor: '#F1F8EE', borderColor: '#B8D5A8', color: '#2F5C2C' }
                             : { backgroundColor: '#FFF7ED', borderColor: '#FCD9A8', color: '#92602A' }}
                         >
                           <div className="text-[12px] leading-snug">
-                            <span className="font-bold">משויך למוצר: </span>
-                            {linkedProduct ? (
-                              <span className="font-semibold">{linkedProduct.שם_מוצר}</span>
+                            <span className="font-bold">משויך לייצור: </span>
+                            {linkedLabel ? (
+                              <span className="font-semibold">{linkedLabel}</span>
                             ) : (
-                              <span>לא משויך — ייצור לא יוסיף מלאי מוגמר</span>
+                              <span>לא משויך — ייצור לא יעדכן מלאי מוגמר</span>
                             )}
                           </div>
                           <button
                             type="button"
-                            onClick={() => openLinkModal(r.id, linkedProductId)}
+                            onClick={() => openLinkModal(r.id, targetType, targetId)}
                             className="text-[11.5px] px-2.5 py-1 rounded-md font-bold text-white shrink-0"
-                            style={{ backgroundColor: linkedProduct ? '#7A4A27' : '#A8442D' }}
+                            style={{ backgroundColor: isLinked ? '#7A4A27' : '#A8442D' }}
                           >
-                            {linkedProduct ? 'שני שיוך' : 'שייכי למוצר'}
+                            {isLinked ? 'שני שיוך' : 'שייכי למלאי'}
                           </button>
                         </div>
 
@@ -854,34 +881,84 @@ export default function RecipesPage() {
       </Modal>
 
       {/* ── Manual per-recipe link picker ──────────────────────────────────
-          The primary, obvious manual workflow per the spec. Opens from the
-          green/orange link row on each recipe card. PATCHes the recipe's
-          מוצר_id via /api/recipes/[id]; server-side re-validates the
-          product is active before writing. */}
-      <Modal open={!!linkRecipeId} onClose={() => setLinkRecipeId(null)} title="שיוך מתכון למוצר למכירה" size="md">
+          Asks the operator first for the target TYPE (sale product / petit
+          four), then renders the matching dropdown. PATCHes the recipe's
+          production_target_type + production_target_id via
+          /api/recipes/[id]; server re-validates the row is active. */}
+      <Modal open={!!linkRecipeId} onClose={() => setLinkRecipeId(null)} title="שיוך מתכון למלאי מוגמר" size="md">
         <div className="space-y-4" dir="rtl">
           {linkRecipe && (
             <p className="text-[12px]" style={{ color: '#6B4A2D' }}>
               מתכון: <strong style={{ color: '#2B1A10' }}>{linkRecipe.שם_מתכון}</strong>
             </p>
           )}
+
+          {/* Target-type selector — two big radio-style buttons */}
           <div>
-            <Combobox
-              label="לאיזה מוצר למכירה המתכון הזה מייצר מלאי?"
-              value={linkSelectedProduct}
-              onChange={setLinkSelectedProduct}
-              options={products.map(p => ({ value: p.id, label: p.שם_מוצר }))}
-              placeholder="בחירת מוצר…"
-              searchPlaceholder="חיפוש מוצר..."
-              emptyText="לא נמצאו מוצרים"
-            />
-            <p className="text-[10.5px] mt-1.5" style={{ color: '#8A735F' }}>
-              כשנרשום ייצור למתכון הזה, המערכת תוסיף מלאי למוצר שבחרת כאן.
+            <p className="text-[12px] font-bold mb-2" style={{ color: '#2B1A10' }}>
+              לאיזה מלאי המתכון הזה מוסיף כמות?
             </p>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { value: 'sale_product' as const, label: 'מוצר למכירה' },
+                { value: 'petit_four'  as const, label: 'סוג פטיפור' },
+              ].map(opt => {
+                const active = linkTargetType === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => { setLinkTargetType(opt.value); setLinkSelectedTargetId(''); }}
+                    className="text-[13px] font-medium h-10 rounded-lg transition-colors border"
+                    style={{
+                      backgroundColor: active ? '#7A4A27' : '#FFFFFF',
+                      color:           active ? '#FFFFFF' : '#2B1A10',
+                      borderColor:     active ? '#7A4A27' : '#E8DED2',
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
+
+          {/* Matching picker — sale-product or petit-four based on type */}
+          {linkTargetType === 'sale_product' ? (
+            <div>
+              <Combobox
+                label="בחרי את המוצר למכירה"
+                value={linkSelectedTargetId}
+                onChange={setLinkSelectedTargetId}
+                options={products.map(p => ({ value: p.id, label: p.שם_מוצר }))}
+                placeholder="בחירת מוצר…"
+                searchPlaceholder="חיפוש מוצר..."
+                emptyText="לא נמצאו מוצרים"
+              />
+              <p className="text-[10.5px] mt-1.5" style={{ color: '#8A735F' }}>
+                כשנרשום ייצור למתכון הזה, המערכת תוסיף מלאי למוצר שבחרת כאן.
+              </p>
+            </div>
+          ) : (
+            <div>
+              <Combobox
+                label="בחרי את סוג הפטיפור"
+                value={linkSelectedTargetId}
+                onChange={setLinkSelectedTargetId}
+                options={petitFourTypes.map(p => ({ value: p.id, label: p.שם_פטיפור }))}
+                placeholder="בחירת סוג פטיפור…"
+                searchPlaceholder="חיפוש סוג פטיפור..."
+                emptyText="לא נמצאו סוגי פטיפורים פעילים"
+              />
+              <p className="text-[10.5px] mt-1.5" style={{ color: '#8A735F' }}>
+                כשנרשום ייצור למתכון הזה, המערכת תוסיף מלאי לסוג הפטיפור שבחרת כאן.
+              </p>
+            </div>
+          )}
+
           <div className="flex gap-3 justify-end pt-2 border-t" style={{ borderColor: '#EDE0CE' }}>
             <Button variant="outline" onClick={() => setLinkRecipeId(null)} disabled={linkSaving}>ביטול</Button>
-            <Button onClick={saveLink} disabled={linkSaving || !linkSelectedProduct}>
+            <Button onClick={saveLink} disabled={linkSaving || !linkSelectedTargetId}>
               {linkSaving ? 'שומרת…' : 'שמירה'}
             </Button>
           </div>

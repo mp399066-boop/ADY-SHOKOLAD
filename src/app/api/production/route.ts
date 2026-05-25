@@ -41,23 +41,40 @@ export async function POST(req: NextRequest) {
     יחידת_מידה: string;
     מלאי_חומרי_גלם: { שם_חומר_גלם: string; כמות_במלאי: number; יחידת_מידה: string } | null;
   };
-  type RecipeRow = { id: string; שם_מתכון: string; כמות_תוצר: number; רכיבי_מתכון: IngredientRow[] };
+  type RecipeRow = {
+    id: string;
+    שם_מתכון: string;
+    כמות_תוצר: number;
+    מוצר_id: string | null;
+    production_target_type: 'sale_product' | 'petit_four';
+    production_target_id: string | null;
+    רכיבי_מתכון: IngredientRow[];
+  };
+
+  // SELECT must include the new polymorphic columns so the loop below
+  // can route the finished increment to the right table per recipe.
+  const recipeColumns =
+    'id, שם_מתכון, כמות_תוצר, מוצר_id, production_target_type, production_target_id, רכיבי_מתכון(id, חומר_גלם_id, כמות_נדרשת, יחידת_מידה, מלאי_חומרי_גלם(שם_חומר_גלם, כמות_במלאי, יחידת_מידה))';
 
   let recipes: RecipeRow[] = [];
 
   if (body.מתכון_id) {
     const { data, error } = await supabase
       .from('מתכונים')
-      .select('id, שם_מתכון, כמות_תוצר, רכיבי_מתכון(id, חומר_גלם_id, כמות_נדרשת, יחידת_מידה, מלאי_חומרי_גלם(שם_חומר_גלם, כמות_במלאי, יחידת_מידה))')
+      .select(recipeColumns)
       .eq('id', body.מתכון_id)
       .single();
     if (error || !data) return NextResponse.json({ error: 'מתכון לא נמצא' }, { status: 404 });
     recipes = [data as RecipeRow];
   } else {
+    // Legacy mode: caller passed a מוצר_id (sale product). Fetch all
+    // recipes whose target is that sale product. Petit-four recipes
+    // aren't reachable through legacy mode — they require מתכון_id.
     const { data } = await supabase
       .from('מתכונים')
-      .select('id, שם_מתכון, כמות_תוצר, רכיבי_מתכון(id, חומר_גלם_id, כמות_נדרשת, יחידת_מידה, מלאי_חומרי_גלם(שם_חומר_גלם, כמות_במלאי, יחידת_מידה))')
-      .eq('מוצר_id', body.מוצר_id);
+      .select(recipeColumns)
+      .eq('production_target_type', 'sale_product')
+      .eq('production_target_id', body.מוצר_id);
     recipes = (data ?? []) as RecipeRow[];
   }
 
@@ -95,58 +112,82 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // ── Recipe → product link validation ────────────────────────────────────
-  // Production must close the inventory loop: raws OUT → finished product IN.
-  // Both halves require knowing WHICH finished product to increment, which
-  // lives on מתכונים.מוצר_id. If any fetched recipe has no מוצר_id, we cannot
-  // safely deduct raws (operator would lose raw stock without a corresponding
-  // finished-product increase). Reject the whole request — no ייצור row, no
-  // raw deduction. Same gate must catch the empty-recipes case (legacy mode
-  // with a מוצר_id that no recipe is bound to).
+  // ── Recipe → production-target link validation ──────────────────────────
+  // Production must close the inventory loop: raws OUT → finished IN. Each
+  // recipe declares its target via two columns (migration 044):
+  //   production_target_type ∈ {'sale_product','petit_four'}
+  //   production_target_id   = id in the target table (NULL = unlinked)
+  // We refuse the whole request if any fetched recipe is unlinked OR if
+  // recipes in the same request resolve to different (type,id) pairs.
   if (recipes.length === 0) {
     return NextResponse.json(
-      { error: 'לא ניתן לרשום ייצור: לא נמצא מתכון למוצר זה' },
+      { error: 'לא ניתן לרשום ייצור: לא נמצא מתכון מתאים' },
       { status: 400 },
     );
   }
-  type RecipeWithProduct = RecipeRow & { מוצר_id: string | null };
-  const recipesWithProduct = recipes as RecipeWithProduct[];
-  const missingLink = recipesWithProduct.some(r => !r.מוצר_id);
+  const missingLink = recipes.some(r => !r.production_target_id);
   if (missingLink) {
     return NextResponse.json(
-      { error: 'לא ניתן לרשום ייצור: המתכון לא משויך למוצר למכירה' },
+      { error: 'המתכון לא משויך למלאי מוגמר — לא ניתן לרשום ייצור' },
       { status: 400 },
     );
   }
-  const targetProductIds = new Set(recipesWithProduct.map(r => r.מוצר_id as string));
-  if (targetProductIds.size !== 1) {
-    // Legacy-mode safeguard: every recipe fetched for a given מוצר_id should
-    // map back to the same product. If somehow not, refuse rather than guess.
+  const targetKey = (r: RecipeRow) => `${r.production_target_type}:${r.production_target_id}`;
+  const distinctTargets = new Set(recipes.map(targetKey));
+  if (distinctTargets.size !== 1) {
     return NextResponse.json(
-      { error: 'לא ניתן לרשום ייצור: מתכונים מקושרים למוצרים שונים' },
+      { error: 'לא ניתן לרשום ייצור: מתכונים מקושרים ליעדים שונים' },
       { status: 400 },
     );
   }
-  const targetProductId = recipesWithProduct[0].מוצר_id as string;
+  const targetType = recipes[0].production_target_type;
+  const targetId   = recipes[0].production_target_id as string;
 
-  // ── Fetch target finished product (current stock + name for the movement) ─
-  const { data: targetProduct, error: prodFetchError } = await supabase
-    .from('מוצרים_למכירה')
-    .select('id, שם_מוצר, כמות_במלאי, פעיל')
-    .eq('id', targetProductId)
-    .single();
-  if (prodFetchError || !targetProduct) {
-    return NextResponse.json(
-      { error: 'לא ניתן לרשום ייצור: המוצר המקושר לא נמצא במלאי' },
-      { status: 400 },
-    );
+  // ── Fetch target finished item (sale product OR petit-four type) ────────
+  // Two table layouts share the same column names for stock + status —
+  // we just pick the right table by production_target_type.
+  let finishedBefore = 0;
+  let finishedItemName = '';
+  if (targetType === 'sale_product') {
+    const { data, error } = await supabase
+      .from('מוצרים_למכירה')
+      .select('id, שם_מוצר, כמות_במלאי, פעיל')
+      .eq('id', targetId)
+      .single();
+    if (error || !data) {
+      return NextResponse.json(
+        { error: 'לא ניתן לרשום ייצור: המוצר המקושר לא נמצא במלאי' },
+        { status: 400 },
+      );
+    }
+    finishedBefore   = Number(data.כמות_במלאי) || 0;
+    finishedItemName = String(data.שם_מוצר ?? '');
+  } else {
+    const { data, error } = await supabase
+      .from('סוגי_פטיפורים')
+      .select('id, שם_פטיפור, כמות_במלאי, פעיל')
+      .eq('id', targetId)
+      .single();
+    if (error || !data) {
+      return NextResponse.json(
+        { error: 'לא ניתן לרשום ייצור: סוג הפטיפור המקושר לא נמצא במלאי' },
+        { status: 400 },
+      );
+    }
+    finishedBefore   = Number(data.כמות_במלאי) || 0;
+    finishedItemName = String(data.שם_פטיפור ?? '');
   }
 
   // ── Create production record ────────────────────────────────────────────
+  // ייצור.מוצר_id is the legacy sale-product link — we keep populating it
+  // ONLY for sale-product targets so historical reads stay accurate. For
+  // petit-four targets it's left null (the polymorphic info lives on
+  // מתכונים, joined via מתכון_id). מתכון_id is set whenever the caller
+  // supplied one.
   const { data: production, error: prodError } = await supabase
     .from('ייצור')
     .insert({
-      מוצר_id:       body.מוצר_id || targetProductId,
+      מוצר_id:       targetType === 'sale_product' ? targetId : null,
       מתכון_id:      body.מתכון_id || null,
       כמות_שיוצרה:  batches,
       תאריך_ייצור:  body.תאריך_ייצור || new Date().toISOString().split('T')[0],
@@ -163,7 +204,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // ── Increase finished product stock FIRST ───────────────────────────────
+  // ── Increase finished stock FIRST ───────────────────────────────────────
   // Ordering rationale (no DB transaction available — Supabase JS client
   // chains separate requests). We do this BEFORE the raw-material loop so
   // that if this single UPDATE fails (network glitch, RLS, etc.) no raws
@@ -172,17 +213,15 @@ export async function POST(req: NextRequest) {
   // exactly what was deducted so the discrepancy is reconcilable from
   // תנועות_מלאי. Both halves write a movement row.
   //
-  // Output unit count = `batches` (the operator's "כמות לייצור" input). In
-  // recipe-direct mode this is per-batch by design; in legacy mode the raw
-  // multiplier (batches / recipe.כמות_תוצר) is already scaled to produce
-  // `batches` units total — so the finished increment is `batches` either
-  // way, exactly once per production request.
-  const finishedBefore = Number(targetProduct.כמות_במלאי) || 0;
+  // Output unit count = `batches` (the operator's "כמות לייצור" input).
+  // Both target types treat batches as a unit count.
   const finishedAfter = finishedBefore + batches;
+  const targetTable = targetType === 'sale_product' ? 'מוצרים_למכירה' : 'סוגי_פטיפורים';
+  const ledgerKind: 'מוצר' | 'פטיפור' = targetType === 'sale_product' ? 'מוצר' : 'פטיפור';
   const { error: finUpdateError } = await supabase
-    .from('מוצרים_למכירה')
+    .from(targetTable)
     .update({ כמות_במלאי: finishedAfter })
-    .eq('id', targetProductId);
+    .eq('id', targetId);
   if (finUpdateError) {
     return NextResponse.json(
       { error: `לא הצלחנו לעדכן את מלאי המוצר — לא הופחתו חומרי גלם. ${finUpdateError.message}` },
@@ -190,19 +229,19 @@ export async function POST(req: NextRequest) {
     );
   }
   await recordStockMovement(supabase, {
-    itemKind:   'מוצר',
-    itemId:     targetProductId,
-    itemName:   targetProduct.שם_מוצר,
+    itemKind:   ledgerKind,
+    itemId:     targetId,
+    itemName:   finishedItemName,
     before:     finishedBefore,
     after:      finishedAfter,
     sourceKind: 'מערכת',
     sourceId:   production.id,
-    notes:      `הוספת מוצר מייצור (${batches} יחידות) — מתכון: ${recipesWithProduct.map(r => r.שם_מתכון).join(' / ') || '—'}`,
+    notes:      `הוספת ${ledgerKind === 'פטיפור' ? 'סוג פטיפור' : 'מוצר'} מייצור (${batches} יחידות) — מתכון: ${recipes.map(r => r.שם_מתכון).join(' / ') || '—'}`,
     createdBy:  auth.email,
   });
 
   // ── Deduct raw materials and record movements ───────────────────────────
-  for (const recipe of recipesWithProduct) {
+  for (const recipe of recipes) {
     const multiplier = body.מתכון_id ? batches : batches / (recipe.כמות_תוצר || 1);
     for (const ing of recipe.רכיבי_מתכון ?? []) {
       const mat = ing.מלאי_חומרי_גלם;
@@ -234,9 +273,10 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     data: production,
-    finishedProductDelta: {
-      productId: targetProductId,
-      productName: targetProduct.שם_מוצר,
+    finishedDelta: {
+      targetType,
+      targetId,
+      targetName: finishedItemName,
       before: finishedBefore,
       after: finishedAfter,
       added: batches,

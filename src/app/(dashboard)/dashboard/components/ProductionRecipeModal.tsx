@@ -61,17 +61,27 @@ export function ProductionRecipeModal({
   }, [multiplier, rawById, selectedRecipe]);
 
   const hasMissing = previewRows.some(row => row.missing);
-  const canSubmit = !!selectedRecipe?.מוצר_id && amount > 0 && previewRows.length > 0 && !submitting;
+  // A recipe is linked if it has EITHER a polymorphic production target
+  // (new — sale_product OR petit_four) OR a legacy מוצר_id (kept for
+  // back-compat). Either is sufficient to allow production.
+  const recipeIsLinked = !!(
+    (selectedRecipe as { production_target_id?: string | null } | null)?.production_target_id
+    || selectedRecipe?.מוצר_id
+  );
+  const canSubmit = recipeIsLinked && amount > 0 && previewRows.length > 0 && !submitting;
 
   async function confirmProduction() {
-    if (!selectedRecipe?.מוצר_id || amount <= 0) return;
+    if (!recipeIsLinked || !selectedRecipe || amount <= 0) return;
     setSubmitting(true);
     try {
+      // Submit by מתכון_id so the production route reads the recipe's
+      // polymorphic target columns and routes the finished increment to
+      // the right table (מוצרים_למכירה OR סוגי_פטיפורים).
       const res = await fetch('/api/production', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          מוצר_id: selectedRecipe.מוצר_id,
+          מתכון_id: selectedRecipe.id,
           כמות_שיוצרה: amount,
           הערות: `ייצור לפי מתכון: ${selectedRecipe.שם_מתכון}`,
         }),
@@ -126,9 +136,9 @@ export function ProductionRecipeModal({
           </label>
         </div>
 
-        {selectedRecipe && !selectedRecipe.מוצר_id && (
+        {selectedRecipe && !recipeIsLinked && (
           <div className="rounded-lg border px-3 py-2 text-sm font-semibold" style={{ borderColor: C.border, color: C.amber, backgroundColor: C.amberSoft }}>
-            המתכון לא משויך למוצר למכירה — לא ניתן לרשום ייצור
+            המתכון לא משויך למלאי מוגמר — לא ניתן לרשום ייצור
           </div>
         )}
 
