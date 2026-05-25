@@ -420,6 +420,14 @@ export function KitchenAttendanceTab() {
         </div>
       </section>
 
+      {/* ── Monthly attendance summary — V1 ────────────────────────────────
+          Self-contained card with its own month/year/worker selectors. Hits
+          the same /api/kitchen-attendance endpoint with from/to set to the
+          first/last day of the chosen month. Aggregates per-worker counts
+          + total hours + missing-exit count, then renders the daily rows
+          below. Excel export via dynamic xlsx import (already installed). */}
+      <MonthlySummarySection workers={data?.workers || []} />
+
       {data?.isAdmin && (
         <section className="rounded-lg border p-3" style={{ backgroundColor: C.card, borderColor: C.border }}>
           <h3 className="mb-3 text-sm font-bold" style={{ color: C.text }}>ניהול עובדות</h3>
@@ -505,5 +513,275 @@ function IconButton({ title, onClick, children }: { title: string; onClick: () =
     >
       {children}
     </button>
+  );
+}
+
+// ─── MonthlySummarySection ────────────────────────────────────────────────
+// V1 monthly summary that lives inside the existing נוכחות עובדות tab.
+// Reuses the existing GET /api/kitchen-attendance endpoint with a wider
+// from/to range (full month) — no new endpoint, no new table.
+const HEBREW_MONTHS_ATT = [
+  'ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני',
+  'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר',
+] as const;
+
+type WorkerSummary = {
+  workerId: string;
+  name: string;
+  days: number;
+  totalHours: number;
+  avgHours: number;
+  missingExit: number;
+  notes: number;
+};
+
+function MonthlySummarySection({ workers }: { workers: Worker[] }) {
+  // Defaults: previous calendar month (matches the backup-card default).
+  const [defaultMonth, defaultYear] = (() => {
+    const now = new Date();
+    const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    return [prev.getMonth() + 1, prev.getFullYear()] as const;
+  })();
+  const [month, setMonth]           = useState<number>(defaultMonth);
+  const [year, setYear]             = useState<number>(defaultYear);
+  const [workerFilter, setWorkerFilter] = useState<string>('');
+  const [rows, setRows]             = useState<AttendanceRow[]>([]);
+  const [loading, setLoading]       = useState<boolean>(false);
+  const [error, setError]           = useState<string | null>(null);
+  const [exporting, setExporting]   = useState<boolean>(false);
+
+  const currentYear = new Date().getFullYear();
+  const yearOptions: number[] = [];
+  for (let y = currentYear + 1; y >= currentYear - 3; y--) yearOptions.push(y);
+
+  // Resolves the chosen month/year into ISO `from`/`to` date strings the
+  // existing endpoint expects (inclusive on both ends — that's how the API
+  // already filters).
+  const range = useMemo(() => {
+    const last = new Date(year, month, 0).getDate(); // last day of selected month
+    const mm = String(month).padStart(2, '0');
+    return {
+      from: `${year}-${mm}-01`,
+      to:   `${year}-${mm}-${String(last).padStart(2, '0')}`,
+    };
+  }, [year, month]);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const qs = new URLSearchParams();
+      qs.set('from', range.from);
+      qs.set('to', range.to);
+      if (workerFilter) qs.set('workerId', workerFilter);
+      const res = await fetch(`/api/kitchen-attendance?${qs.toString()}`);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'שגיאה בטעינת נוכחות חודשית');
+      setRows((json.report || []) as AttendanceRow[]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'שגיאה בטעינת נוכחות חודשית');
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [range.from, range.to, workerFilter]);
+
+  // Auto-load on mount + whenever selectors change.
+  useEffect(() => { void load(); }, [load]);
+
+  // Per-worker aggregation. סהכ_שעות from the row is the existing CRM's own
+  // calculation — we just sum what's already there. Rows missing שעת_יציאה
+  // have סהכ_שעות=null and are excluded from totals (per the spec: "do not
+  // count incomplete rows in total hours unless existing logic already does
+  // so" — and the API only fills סהכ_שעות when both times exist).
+  const summary: WorkerSummary[] = useMemo(() => {
+    const map = new Map<string, WorkerSummary>();
+    for (const r of rows) {
+      const wId = r.עובדת_id;
+      const name = r.עובדות_מטבח?.שם_עובדת || '—';
+      const cur = map.get(wId) ?? { workerId: wId, name, days: 0, totalHours: 0, avgHours: 0, missingExit: 0, notes: 0 };
+      cur.days += 1;
+      if (typeof r.סהכ_שעות === 'number') cur.totalHours += r.סהכ_שעות;
+      if (!r.שעת_יציאה) cur.missingExit += 1;
+      if (r.הערות && r.הערות.trim()) cur.notes += 1;
+      map.set(wId, cur);
+    }
+    return Array.from(map.values()).map(s => ({
+      ...s,
+      avgHours: s.days > 0 ? s.totalHours / s.days : 0,
+    })).sort((a, b) => a.name.localeCompare(b.name, 'he'));
+  }, [rows]);
+
+  const exportExcel = useCallback(async () => {
+    setExporting(true);
+    try {
+      const XLSX = await import('xlsx');
+      const wb = XLSX.utils.book_new();
+
+      // Sheet 1 — סיכום לפי עובדת
+      const summaryRows = summary.length === 0
+        ? [{ הודעה: 'אין נתוני נוכחות לחודש זה' }]
+        : summary.map(s => ({
+            'שם עובדת':              s.name,
+            'מספר ימי נוכחות':       s.days,
+            'סך שעות':               Number(s.totalHours.toFixed(2)),
+            'ממוצע שעות ליום':       Number(s.avgHours.toFixed(2)),
+            'רשומות חסרות שעת יציאה': s.missingExit,
+            'הערות':                 s.notes,
+          }));
+      const ws1 = XLSX.utils.json_to_sheet(summaryRows);
+      ws1['!cols'] = [{ wch: 22 }, { wch: 16 }, { wch: 12 }, { wch: 16 }, { wch: 22 }, { wch: 10 }];
+      XLSX.utils.book_append_sheet(wb, ws1, 'סיכום לפי עובדת');
+
+      // Sheet 2 — פירוט יומי
+      const detailRows = rows.length === 0
+        ? [{ הודעה: 'אין נתוני נוכחות לחודש זה' }]
+        : rows.map(r => ({
+            'תאריך':         r.תאריך,
+            'עובדת':         r.עובדות_מטבח?.שם_עובדת || '—',
+            'שעת כניסה':     trimTime(r.שעת_כניסה) || '—',
+            'שעת יציאה':     trimTime(r.שעת_יציאה) || '—',
+            'סה"כ שעות':     typeof r.סהכ_שעות === 'number' ? Number(r.סהכ_שעות.toFixed(2)) : '—',
+            'סטטוס':         r.שעת_יציאה ? r.סטטוס : 'חסר שעת יציאה',
+            'הערות':         r.הערות || '',
+          }));
+      const ws2 = XLSX.utils.json_to_sheet(detailRows);
+      ws2['!cols'] = [{ wch: 12 }, { wch: 22 }, { wch: 12 }, { wch: 12 }, { wch: 11 }, { wch: 16 }, { wch: 30 }];
+      XLSX.utils.book_append_sheet(wb, ws2, 'פירוט יומי');
+
+      const fileName = `attendance-${year}-${String(month).padStart(2, '0')}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'שגיאה בייצוא לאקסל');
+    } finally {
+      setExporting(false);
+    }
+  }, [summary, rows, year, month]);
+
+  return (
+    <section className="rounded-lg border p-3" style={{ backgroundColor: C.card, borderColor: C.border }}>
+      <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-bold" style={{ color: C.text }}>סיכום חודשי</h3>
+          <p className="text-[11px]" style={{ color: C.textSoft }}>סיכום נוכחות לפי עובדת לחודש שנבחר. ברירת מחדל: חודש קודם.</p>
+        </div>
+        <div className="flex flex-wrap items-end gap-2">
+          <Field label="חודש">
+            <select
+              value={month}
+              onChange={e => setMonth(Number(e.target.value))}
+              className="h-8 rounded-md border px-2 text-xs"
+              style={{ borderColor: C.border }}
+            >
+              {HEBREW_MONTHS_ATT.map((name, i) => (
+                <option key={i + 1} value={i + 1}>{name}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="שנה">
+            <select
+              value={year}
+              onChange={e => setYear(Number(e.target.value))}
+              className="h-8 rounded-md border px-2 text-xs"
+              style={{ borderColor: C.border }}
+            >
+              {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </Field>
+          <Field label="עובדת">
+            <select
+              value={workerFilter}
+              onChange={e => setWorkerFilter(e.target.value)}
+              className="h-8 rounded-md border px-2 text-xs"
+              style={{ borderColor: C.border }}
+            >
+              <option value="">כל העובדות</option>
+              {workers.map(w => <option key={w.id} value={w.id}>{w.שם_עובדת}</option>)}
+            </select>
+          </Field>
+          <button
+            type="button"
+            onClick={exportExcel}
+            disabled={exporting || loading}
+            className="h-8 rounded-md border px-3 text-xs font-bold disabled:opacity-50"
+            style={{ backgroundColor: C.card, borderColor: C.border, color: C.cocoa }}
+          >
+            {exporting ? 'מייצא…' : 'ייצוא לאקסל'}
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <div className="mb-3 rounded-md border px-3 py-2 text-xs font-bold" style={{ backgroundColor: C.redSoft, borderColor: '#E4C2BE', color: C.red }}>
+          {error}
+        </div>
+      )}
+
+      {/* Summary table — per worker */}
+      <div className="mb-4 overflow-x-auto rounded-md border" style={{ borderColor: C.borderSoft }}>
+        <table className="min-w-[700px] w-full text-right text-xs">
+          <thead style={{ backgroundColor: C.brandSoft, color: C.text }}>
+            <tr>
+              <Th>עובדת</Th>
+              <Th>ימי נוכחות</Th>
+              <Th>סך שעות</Th>
+              <Th>ממוצע שעות / יום</Th>
+              <Th>חסרות שעת יציאה</Th>
+              <Th>הערות</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={6} className="px-3 py-5 text-center font-semibold" style={{ color: C.textSoft }}>טוען…</td></tr>
+            ) : summary.length === 0 ? (
+              <tr><td colSpan={6} className="px-3 py-5 text-center font-semibold" style={{ color: C.textSoft }}>אין נתוני נוכחות לחודש זה</td></tr>
+            ) : summary.map(s => (
+              <tr key={s.workerId} className="border-t" style={{ borderColor: C.borderSoft }}>
+                <Td>{s.name}</Td>
+                <Td>{s.days}</Td>
+                <Td>{s.totalHours.toFixed(2)}</Td>
+                <Td>{s.avgHours.toFixed(2)}</Td>
+                <Td>{s.missingExit}</Td>
+                <Td>{s.notes}</Td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Daily details — full row list for the selected month/worker */}
+      <div className="overflow-x-auto rounded-md border" style={{ borderColor: C.borderSoft }}>
+        <table className="min-w-[760px] w-full text-right text-xs">
+          <thead style={{ backgroundColor: C.brandSoft, color: C.text }}>
+            <tr>
+              <Th>תאריך</Th>
+              <Th>עובדת</Th>
+              <Th>שעת כניסה</Th>
+              <Th>שעת יציאה</Th>
+              <Th>סה&quot;כ שעות</Th>
+              <Th>סטטוס</Th>
+              <Th>הערות</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={7} className="px-3 py-5 text-center font-semibold" style={{ color: C.textSoft }}>טוען…</td></tr>
+            ) : rows.length === 0 ? (
+              <tr><td colSpan={7} className="px-3 py-5 text-center font-semibold" style={{ color: C.textSoft }}>אין נתוני נוכחות לחודש זה</td></tr>
+            ) : rows.map(r => (
+              <tr key={r.id} className="border-t" style={{ borderColor: C.borderSoft }}>
+                <Td>{r.תאריך}</Td>
+                <Td>{r.עובדות_מטבח?.שם_עובדת || '—'}</Td>
+                <Td>{trimTime(r.שעת_כניסה) || '—'}</Td>
+                <Td>{trimTime(r.שעת_יציאה) || '—'}</Td>
+                <Td>{typeof r.סהכ_שעות === 'number' ? r.סהכ_שעות.toFixed(2) : '—'}</Td>
+                <Td>{r.שעת_יציאה ? <StatusBadge status={r.סטטוס} /> : <StatusBadge status="חסר שעת יציאה" />}</Td>
+                <Td>{r.הערות || '—'}</Td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
