@@ -117,6 +117,45 @@ export default function RecipesPage() {
     });
   };
 
+  // ── Manual per-recipe link modal ──────────────────────────────────────
+  // The primary workflow: pick one recipe, pick one product, save. Reuses
+  // the existing PATCH /api/recipes/[id] which validates the product is
+  // active and allows re-linking (the operator may correct a wrong link).
+  const [linkRecipeId, setLinkRecipeId]           = useState<string | null>(null);
+  const [linkSelectedProduct, setLinkSelectedProduct] = useState<string>('');
+  const [linkSaving, setLinkSaving]               = useState(false);
+  const linkRecipe = recipes.find(r => r.id === linkRecipeId) || null;
+
+  const openLinkModal = (recipeId: string, currentProductId: string | null) => {
+    setLinkRecipeId(recipeId);
+    setLinkSelectedProduct(currentProductId ?? '');
+  };
+
+  const saveLink = async () => {
+    if (!linkRecipeId || !linkSelectedProduct) {
+      toast.error('יש לבחור מוצר לפני שמירה');
+      return;
+    }
+    setLinkSaving(true);
+    try {
+      const res = await fetch(`/api/recipes/${linkRecipeId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ מוצר_id: linkSelectedProduct }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'שגיאה בשיוך');
+      toast.success('המתכון שויך למוצר');
+      setLinkRecipeId(null);
+      setLinkSelectedProduct('');
+      fetchAll();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'שגיאה בשיוך');
+    } finally {
+      setLinkSaving(false);
+    }
+  };
+
   const today = new Date().toISOString().split('T')[0];
   const [productionForm, setProductionForm] = useState({
     מתכון_id: '',
@@ -324,11 +363,14 @@ export default function RecipesPage() {
           </button>
         )}
         {tab === 'recipes' && (
+          // Secondary action — main workflow is manual per-recipe linking.
+          // Tooltip + helper toast inside the modal explain when it's safe
+          // to use this shortcut.
           <button onClick={openAutoLink}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-xl border bg-white hover:bg-[#FAF7F2] transition-all"
-            style={{ borderColor: '#D8CCBA', color: '#8B5E34' }}
-            title="שיוך אוטומטי של מתכונים לא משויכים למוצרי מכירה לפי התאמת שם">
-            שייכי מתכונים למוצרים אוטומטית
+            className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium rounded-lg border bg-transparent hover:bg-[#FAF7F2] transition-all opacity-75 hover:opacity-100"
+            style={{ borderColor: '#E7D2A6', color: '#9B7A5A' }}
+            title="אופציונלי — מתאים רק כששמות המתכונים והמוצרים זהים וברורים.">
+            שייכי אוטומטית לפי שמות
           </button>
         )}
         <div className="mr-auto">
@@ -348,6 +390,11 @@ export default function RecipesPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {recipes.map(r => {
                     const ings = (r as Recipe & { רכיבי_מתכון?: RecipeIngredient[] }).רכיבי_מתכון ?? [];
+                    const linkedProductId =
+                      ((r as Recipe & { מוצר_id?: string | null }).מוצר_id) ?? null;
+                    const linkedProduct = linkedProductId
+                      ? products.find(p => p.id === linkedProductId) ?? null
+                      : null;
                     return (
                       <Card key={r.id}>
                         <div className="flex justify-between mb-3">
@@ -369,6 +416,35 @@ export default function RecipesPage() {
                             </button>
                             <ActionBtn title="מחיקה" variant="danger" onClick={() => setConfirmId(r.id)} icon={<IconTrash className="w-4 h-4" />} />
                           </div>
+                        </div>
+
+                        {/* ── Product link row — the primary manual control ───
+                            Every recipe card surfaces its מוצר_id status so
+                            the operator always knows whether production will
+                            close the inventory loop. The button on the right
+                            opens the per-recipe manual picker. */}
+                        <div
+                          className="flex items-center justify-between gap-2 mb-3 px-2.5 py-2 rounded-lg border"
+                          style={linkedProduct
+                            ? { backgroundColor: '#F1F8EE', borderColor: '#B8D5A8', color: '#2F5C2C' }
+                            : { backgroundColor: '#FFF7ED', borderColor: '#FCD9A8', color: '#92602A' }}
+                        >
+                          <div className="text-[12px] leading-snug">
+                            <span className="font-bold">משויך למוצר: </span>
+                            {linkedProduct ? (
+                              <span className="font-semibold">{linkedProduct.שם_מוצר}</span>
+                            ) : (
+                              <span>לא משויך — ייצור לא יוסיף מלאי מוגמר</span>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => openLinkModal(r.id, linkedProductId)}
+                            className="text-[11.5px] px-2.5 py-1 rounded-md font-bold text-white shrink-0"
+                            style={{ backgroundColor: linkedProduct ? '#7A4A27' : '#A8442D' }}
+                          >
+                            {linkedProduct ? 'שני שיוך' : 'שייכי למוצר'}
+                          </button>
                         </div>
 
                         {/* Ingredients section */}
@@ -660,6 +736,9 @@ export default function RecipesPage() {
 
           {!autoLinkLoading && autoLinkPreview && (
             <>
+              <p className="text-[11.5px] px-3 py-2 rounded-lg" style={{ backgroundColor: '#FFF7ED', color: '#92602A', border: '1px solid #FCD9A8' }}>
+                אופציונלי — מתאים רק כששמות המתכונים והמוצרים זהים וברורים. השיוך הרגיל הוא ידני, ישירות מכרטיס המתכון.
+              </p>
               <div className="text-[11.5px] flex flex-wrap gap-x-4 gap-y-1 px-3 py-2 rounded-lg" style={{ backgroundColor: '#FAF7F0', color: '#6B4A2D' }}>
                 <span>מתכונים ללא שיוך: <strong>{autoLinkPreview.totals.unlinkedRecipes}</strong></span>
                 <span>מוצרים פעילים: <strong>{autoLinkPreview.totals.activeProducts}</strong></span>
@@ -771,6 +850,41 @@ export default function RecipesPage() {
               </div>
             </>
           )}
+        </div>
+      </Modal>
+
+      {/* ── Manual per-recipe link picker ──────────────────────────────────
+          The primary, obvious manual workflow per the spec. Opens from the
+          green/orange link row on each recipe card. PATCHes the recipe's
+          מוצר_id via /api/recipes/[id]; server-side re-validates the
+          product is active before writing. */}
+      <Modal open={!!linkRecipeId} onClose={() => setLinkRecipeId(null)} title="שיוך מתכון למוצר למכירה" size="md">
+        <div className="space-y-4" dir="rtl">
+          {linkRecipe && (
+            <p className="text-[12px]" style={{ color: '#6B4A2D' }}>
+              מתכון: <strong style={{ color: '#2B1A10' }}>{linkRecipe.שם_מתכון}</strong>
+            </p>
+          )}
+          <div>
+            <Combobox
+              label="לאיזה מוצר למכירה המתכון הזה מייצר מלאי?"
+              value={linkSelectedProduct}
+              onChange={setLinkSelectedProduct}
+              options={products.map(p => ({ value: p.id, label: p.שם_מוצר }))}
+              placeholder="בחירת מוצר…"
+              searchPlaceholder="חיפוש מוצר..."
+              emptyText="לא נמצאו מוצרים"
+            />
+            <p className="text-[10.5px] mt-1.5" style={{ color: '#8A735F' }}>
+              כשנרשום ייצור למתכון הזה, המערכת תוסיף מלאי למוצר שבחרת כאן.
+            </p>
+          </div>
+          <div className="flex gap-3 justify-end pt-2 border-t" style={{ borderColor: '#EDE0CE' }}>
+            <Button variant="outline" onClick={() => setLinkRecipeId(null)} disabled={linkSaving}>ביטול</Button>
+            <Button onClick={saveLink} disabled={linkSaving || !linkSelectedProduct}>
+              {linkSaving ? 'שומרת…' : 'שמירה'}
+            </Button>
+          </div>
         </div>
       </Modal>
     </div>
