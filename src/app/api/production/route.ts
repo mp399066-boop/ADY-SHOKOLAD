@@ -95,11 +95,58 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // ── Recipe → product link validation ────────────────────────────────────
+  // Production must close the inventory loop: raws OUT → finished product IN.
+  // Both halves require knowing WHICH finished product to increment, which
+  // lives on מתכונים.מוצר_id. If any fetched recipe has no מוצר_id, we cannot
+  // safely deduct raws (operator would lose raw stock without a corresponding
+  // finished-product increase). Reject the whole request — no ייצור row, no
+  // raw deduction. Same gate must catch the empty-recipes case (legacy mode
+  // with a מוצר_id that no recipe is bound to).
+  if (recipes.length === 0) {
+    return NextResponse.json(
+      { error: 'לא ניתן לרשום ייצור: לא נמצא מתכון למוצר זה' },
+      { status: 400 },
+    );
+  }
+  type RecipeWithProduct = RecipeRow & { מוצר_id: string | null };
+  const recipesWithProduct = recipes as RecipeWithProduct[];
+  const missingLink = recipesWithProduct.some(r => !r.מוצר_id);
+  if (missingLink) {
+    return NextResponse.json(
+      { error: 'לא ניתן לרשום ייצור: המתכון לא משויך למוצר למכירה' },
+      { status: 400 },
+    );
+  }
+  const targetProductIds = new Set(recipesWithProduct.map(r => r.מוצר_id as string));
+  if (targetProductIds.size !== 1) {
+    // Legacy-mode safeguard: every recipe fetched for a given מוצר_id should
+    // map back to the same product. If somehow not, refuse rather than guess.
+    return NextResponse.json(
+      { error: 'לא ניתן לרשום ייצור: מתכונים מקושרים למוצרים שונים' },
+      { status: 400 },
+    );
+  }
+  const targetProductId = recipesWithProduct[0].מוצר_id as string;
+
+  // ── Fetch target finished product (current stock + name for the movement) ─
+  const { data: targetProduct, error: prodFetchError } = await supabase
+    .from('מוצרים_למכירה')
+    .select('id, שם_מוצר, כמות_במלאי, פעיל')
+    .eq('id', targetProductId)
+    .single();
+  if (prodFetchError || !targetProduct) {
+    return NextResponse.json(
+      { error: 'לא ניתן לרשום ייצור: המוצר המקושר לא נמצא במלאי' },
+      { status: 400 },
+    );
+  }
+
   // ── Create production record ────────────────────────────────────────────
   const { data: production, error: prodError } = await supabase
     .from('ייצור')
     .insert({
-      מוצר_id:       body.מוצר_id || null,
+      מוצר_id:       body.מוצר_id || targetProductId,
       מתכון_id:      body.מתכון_id || null,
       כמות_שיוצרה:  batches,
       תאריך_ייצור:  body.תאריך_ייצור || new Date().toISOString().split('T')[0],
@@ -116,8 +163,46 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // ── Increase finished product stock FIRST ───────────────────────────────
+  // Ordering rationale (no DB transaction available — Supabase JS client
+  // chains separate requests). We do this BEFORE the raw-material loop so
+  // that if this single UPDATE fails (network glitch, RLS, etc.) no raws
+  // are deducted — operator simply re-runs after fixing the cause. If it
+  // succeeds and the raw loop then partial-fails, the ledger captures
+  // exactly what was deducted so the discrepancy is reconcilable from
+  // תנועות_מלאי. Both halves write a movement row.
+  //
+  // Output unit count = `batches` (the operator's "כמות לייצור" input). In
+  // recipe-direct mode this is per-batch by design; in legacy mode the raw
+  // multiplier (batches / recipe.כמות_תוצר) is already scaled to produce
+  // `batches` units total — so the finished increment is `batches` either
+  // way, exactly once per production request.
+  const finishedBefore = Number(targetProduct.כמות_במלאי) || 0;
+  const finishedAfter = finishedBefore + batches;
+  const { error: finUpdateError } = await supabase
+    .from('מוצרים_למכירה')
+    .update({ כמות_במלאי: finishedAfter })
+    .eq('id', targetProductId);
+  if (finUpdateError) {
+    return NextResponse.json(
+      { error: `לא הצלחנו לעדכן את מלאי המוצר — לא הופחתו חומרי גלם. ${finUpdateError.message}` },
+      { status: 500 },
+    );
+  }
+  await recordStockMovement(supabase, {
+    itemKind:   'מוצר',
+    itemId:     targetProductId,
+    itemName:   targetProduct.שם_מוצר,
+    before:     finishedBefore,
+    after:      finishedAfter,
+    sourceKind: 'מערכת',
+    sourceId:   production.id,
+    notes:      `הוספת מוצר מייצור (${batches} יחידות) — מתכון: ${recipesWithProduct.map(r => r.שם_מתכון).join(' / ') || '—'}`,
+    createdBy:  auth.email,
+  });
+
   // ── Deduct raw materials and record movements ───────────────────────────
-  for (const recipe of recipes) {
+  for (const recipe of recipesWithProduct) {
     const multiplier = body.מתכון_id ? batches : batches / (recipe.כמות_תוצר || 1);
     for (const ing of recipe.רכיבי_מתכון ?? []) {
       const mat = ing.מלאי_חומרי_גלם;
@@ -147,5 +232,14 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ data: production }, { status: 201 });
+  return NextResponse.json({
+    data: production,
+    finishedProductDelta: {
+      productId: targetProductId,
+      productName: targetProduct.שם_מוצר,
+      before: finishedBefore,
+      after: finishedAfter,
+      added: batches,
+    },
+  }, { status: 201 });
 }

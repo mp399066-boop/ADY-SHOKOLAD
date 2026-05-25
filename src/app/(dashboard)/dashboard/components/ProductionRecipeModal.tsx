@@ -128,7 +128,7 @@ export function ProductionRecipeModal({
 
         {selectedRecipe && !selectedRecipe.מוצר_id && (
           <div className="rounded-lg border px-3 py-2 text-sm font-semibold" style={{ borderColor: C.border, color: C.amber, backgroundColor: C.amberSoft }}>
-            למתכון הזה אין מוצר מקושר, ולכן אי אפשר להריץ ייצור דרך API הייצור הקיים.
+            המתכון לא משויך למוצר למכירה — לא ניתן לרשום ייצור
           </div>
         )}
 
