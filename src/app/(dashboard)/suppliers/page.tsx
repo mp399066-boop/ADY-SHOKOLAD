@@ -246,15 +246,21 @@ export default function SuppliersPage() {
     const items = groupItems.filter(i => selected.has(i.id));
     if (!items.length) { showToast('לא נבחרו פריטים', false); return; }
     const today = new Date().toLocaleDateString('he-IL');
-    const rows = items.map(i => `
-      <tr>
-        <td>${escapeHtml(i.שם_מוצר_אצל_הספק || i.שם_חומר_גלם)}</td>
-        <td>${escapeHtml(i.מקט_ספק || '—')}</td>
-        <td class="num">${orderQty[i.id] ?? i.כמות_להזמנה ?? i.כמות_מינימום}</td>
-        <td>${escapeHtml(i.יחידת_קניה || i.יחידת_מידה)}</td>
-        <td>${escapeHtml(i.הערות_רכש || '')}</td>
-      </tr>`).join('');
     const supplierName = supplier?.שם_ספק ?? 'ללא ספק מוגדר';
+    const rows = items.map(i => {
+      const productName = (i.שם_חומר_גלם && i.שם_חומר_גלם.trim()) ? i.שם_חומר_גלם : 'שם מוצר חסר';
+      const supplierAlias = i.שם_מוצר_אצל_הספק && i.שם_מוצר_אצל_הספק.trim() && i.שם_מוצר_אצל_הספק !== i.שם_חומר_גלם
+        ? `<div class="alias">${escapeHtml(i.שם_מוצר_אצל_הספק)}${i.מקט_ספק ? ` · מק"ט ${escapeHtml(i.מקט_ספק)}` : ''}</div>`
+        : i.מקט_ספק ? `<div class="alias">מק"ט ${escapeHtml(i.מקט_ספק)}</div>` : '';
+      return `
+      <tr>
+        <td><div class="name">${escapeHtml(productName)}</div>${supplierAlias}</td>
+        <td>${escapeHtml(supplierName)}</td>
+        <td class="num">${orderQty[i.id] ?? i.כמות_להזמנה ?? i.כמות_מינימום}</td>
+        <td>${escapeHtml(i.יחידת_קניה || i.יחידת_מידה || '')}</td>
+        <td>${escapeHtml(i.הערות_רכש || '')}</td>
+      </tr>`;
+    }).join('');
     const meta = [
       supplier?.איש_קשר ? `איש קשר: ${escapeHtml(supplier.איש_קשר)}` : '',
       supplier?.טלפון   ? `טלפון: ${escapeHtml(supplier.טלפון)}`     : '',
@@ -274,6 +280,8 @@ export default function SuppliersPage() {
   th { background: #F3EDE4; text-align: right; padding: 9px 12px; font-size: 13px; border-bottom: 2px solid #E8DED4; }
   td { padding: 8px 12px; border-bottom: 1px solid #eee; font-size: 13px; }
   td.num { text-align: left; font-variant-numeric: tabular-nums; }
+  td .name { font-weight: 600; color: #222; }
+  td .alias { color: #777; font-size: 12px; margin-top: 2px; }
   .footer { margin-top: 32px; font-size: 12px; color: #999; border-top: 1px solid #eee; padding-top: 12px; }
   @media print { @page { margin: 20mm; } body { padding: 0; } }
 </style>
@@ -282,7 +290,7 @@ export default function SuppliersPage() {
   <h1>הזמנת רכש — ${escapeHtml(supplierName)}</h1>
   <div class="meta">${meta}</div>
   <table>
-    <thead><tr><th>שם מוצר</th><th>מקט</th><th>כמות</th><th>יחידה</th><th>הערות</th></tr></thead>
+    <thead><tr><th>שם מוצר</th><th>ספק</th><th>כמות</th><th>יחידה</th><th>הערה</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>
   <div class="footer">עדי תכשיט שוקולד &bull; הופק ב-${today}</div>
