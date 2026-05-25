@@ -44,6 +44,79 @@ export default function RecipesPage() {
     רכיבים: { חומר_גלם_id: string; כמות_נדרשת: number; יחידת_מידה: string }[];
   }>({ שם_מתכון: '', מוצר_id: '', כמות_תוצר: 1, הערות: '', רכיבים: [] });
 
+  // ── Auto-link recipes → products (preview + confirm) ─────────────────────
+  type AutoLinkSafe    = { recipeId: string; recipeName: string; productId: string; productName: string; matchType: 'exact' | 'contains' };
+  type AutoLinkCand    = { productId: string; productName: string; matchType: 'exact' | 'contains' };
+  type AutoLinkReview  = { recipeId: string; recipeName: string; candidates: AutoLinkCand[] };
+  type AutoLinkUnmatch = { recipeId: string; recipeName: string };
+  type AutoLinkPreview = {
+    safe: AutoLinkSafe[];
+    review: AutoLinkReview[];
+    unmatched: AutoLinkUnmatch[];
+    totals: { unlinkedRecipes: number; activeProducts: number; safe: number; review: number; unmatched: number };
+  };
+  const [autoLinkOpen, setAutoLinkOpen]       = useState(false);
+  const [autoLinkLoading, setAutoLinkLoading] = useState(false);
+  const [autoLinkApplying, setAutoLinkApplying] = useState(false);
+  const [autoLinkPreview, setAutoLinkPreview] = useState<AutoLinkPreview | null>(null);
+  const [autoLinkChecked, setAutoLinkChecked] = useState<Set<string>>(new Set());
+
+  const openAutoLink = async () => {
+    setAutoLinkOpen(true);
+    setAutoLinkLoading(true);
+    setAutoLinkPreview(null);
+    try {
+      const res = await fetch('/api/recipes/auto-link-preview');
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'שגיאה בטעינת הצעות שיוך');
+      setAutoLinkPreview(json as AutoLinkPreview);
+      setAutoLinkChecked(new Set((json.safe ?? []).map((r: AutoLinkSafe) => r.recipeId)));
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'שגיאה בטעינת הצעות שיוך');
+      setAutoLinkOpen(false);
+    } finally {
+      setAutoLinkLoading(false);
+    }
+  };
+
+  const applyAutoLink = async () => {
+    if (!autoLinkPreview) return;
+    const pairs = autoLinkPreview.safe
+      .filter(r => autoLinkChecked.has(r.recipeId))
+      .map(r => ({ recipeId: r.recipeId, productId: r.productId }));
+    if (pairs.length === 0) {
+      toast('לא נבחרו זוגות לאישור', { icon: 'ℹ️' });
+      return;
+    }
+    setAutoLinkApplying(true);
+    try {
+      const res = await fetch('/api/recipes/auto-link-apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pairs }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'שגיאה בשיוך');
+      const reviewCount = autoLinkPreview.review.length;
+      toast.success(`נשייכו ${json.linked} מתכונים · ${json.skipped?.length ?? 0} דולגו · ${reviewCount} ממתינים לבדיקה ידנית`);
+      setAutoLinkOpen(false);
+      setAutoLinkPreview(null);
+      fetchAll();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'שגיאה בשיוך');
+    } finally {
+      setAutoLinkApplying(false);
+    }
+  };
+
+  const toggleAutoLinkRow = (recipeId: string) => {
+    setAutoLinkChecked(prev => {
+      const next = new Set(prev);
+      if (next.has(recipeId)) next.delete(recipeId); else next.add(recipeId);
+      return next;
+    });
+  };
+
   const today = new Date().toISOString().split('T')[0];
   const [productionForm, setProductionForm] = useState({
     מתכון_id: '',
@@ -250,6 +323,14 @@ export default function RecipesPage() {
             ייצוא לאקסל
           </button>
         )}
+        {tab === 'recipes' && (
+          <button onClick={openAutoLink}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-xl border bg-white hover:bg-[#FAF7F2] transition-all"
+            style={{ borderColor: '#D8CCBA', color: '#8B5E34' }}
+            title="שיוך אוטומטי של מתכונים לא משויכים למוצרי מכירה לפי התאמת שם">
+            שייכי מתכונים למוצרים אוטומטית
+          </button>
+        )}
         <div className="mr-auto">
           {tab === 'recipes'
             ? <Button size="sm" onClick={() => setShowRecipeModal(true)}>+ מתכון חדש</Button>
@@ -389,10 +470,15 @@ export default function RecipesPage() {
           <div className="grid grid-cols-2 gap-4">
             <Input label="שם מתכון *" value={recipeForm.שם_מתכון}
               onChange={e => setRecipeForm(p => ({ ...p, שם_מתכון: e.target.value }))} />
-            <Combobox label="מוצר משויך" value={recipeForm.מוצר_id}
-              onChange={v => setRecipeForm(p => ({ ...p, מוצר_id: v }))}
-              options={products.map(p => ({ value: p.id, label: p.שם_מוצר }))}
-              placeholder="ללא שיוך" searchPlaceholder="חיפוש מוצר..." emptyText="לא נמצאו מוצרים" />
+            <div>
+              <Combobox label="משויך למוצר למכירה" value={recipeForm.מוצר_id}
+                onChange={v => setRecipeForm(p => ({ ...p, מוצר_id: v }))}
+                options={products.map(p => ({ value: p.id, label: p.שם_מוצר }))}
+                placeholder="ללא שיוך" searchPlaceholder="חיפוש מוצר..." emptyText="לא נמצאו מוצרים" />
+              <p className="text-[10.5px] mt-1" style={{ color: '#8A735F' }}>
+                שיוך זה מאפשר לרישום ייצור להוסיף מלאי למוצר המוגמר.
+              </p>
+            </div>
             <Input label="כמות תוצר לאצווה" type="number" value={recipeForm.כמות_תוצר}
               onChange={e => setRecipeForm(p => ({ ...p, כמות_תוצר: Number(e.target.value) }))} min={1} />
             <Textarea label="הערות" value={recipeForm.הערות}
@@ -557,6 +643,134 @@ export default function RecipesPage() {
               אישור ייצור
             </Button>
           </div>
+        </div>
+      </Modal>
+
+      {/* ── Auto-link preview modal ───────────────────────────────────────
+          Three sections per spec: ready-to-link (checkboxes, default
+          checked), needs-manual-review (with candidate lists), and
+          no-match. Confirm sends only the checked safe pairs to
+          /api/recipes/auto-link-apply, which re-validates server-side
+          before writing מתכונים.מוצר_id. */}
+      <Modal open={autoLinkOpen} onClose={() => setAutoLinkOpen(false)} title="שיוך מתכונים למוצרים אוטומטית" size="lg">
+        <div className="space-y-4" dir="rtl">
+          {autoLinkLoading && (
+            <p className="text-sm py-6 text-center" style={{ color: '#8A735F' }}>טוען הצעות שיוך…</p>
+          )}
+
+          {!autoLinkLoading && autoLinkPreview && (
+            <>
+              <div className="text-[11.5px] flex flex-wrap gap-x-4 gap-y-1 px-3 py-2 rounded-lg" style={{ backgroundColor: '#FAF7F0', color: '#6B4A2D' }}>
+                <span>מתכונים ללא שיוך: <strong>{autoLinkPreview.totals.unlinkedRecipes}</strong></span>
+                <span>מוצרים פעילים: <strong>{autoLinkPreview.totals.activeProducts}</strong></span>
+                <span style={{ color: '#2F5C2C' }}>מוכן לשיוך: <strong>{autoLinkPreview.totals.safe}</strong></span>
+                <span style={{ color: '#92602A' }}>צריך בדיקה ידנית: <strong>{autoLinkPreview.totals.review}</strong></span>
+                <span style={{ color: '#7A2E2E' }}>לא נמצא מוצר: <strong>{autoLinkPreview.totals.unmatched}</strong></span>
+              </div>
+
+              {/* Ready to link */}
+              <section>
+                <h4 className="text-sm font-bold mb-2" style={{ color: '#2F5C2C' }}>מוכן לשיוך</h4>
+                {autoLinkPreview.safe.length === 0 ? (
+                  <p className="text-xs px-2 py-3 rounded-lg" style={{ backgroundColor: '#F4F4F4', color: '#8A735F' }}>אין מתכונים שמוכנים לשיוך אוטומטי.</p>
+                ) : (
+                  <div className="border rounded-lg overflow-hidden" style={{ borderColor: '#E8DED2' }}>
+                    <table className="w-full text-xs">
+                      <thead style={{ backgroundColor: '#F1F8EE' }}>
+                        <tr>
+                          <th className="px-2 py-2 w-8"></th>
+                          <th className="px-2 py-2 text-right font-bold" style={{ color: '#2B1A10' }}>שם מתכון</th>
+                          <th className="px-2 py-2 text-right font-bold" style={{ color: '#2B1A10' }}>מוצר מוצע</th>
+                          <th className="px-2 py-2 text-right font-bold" style={{ color: '#2B1A10' }}>סוג התאמה</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {autoLinkPreview.safe.map(row => (
+                          <tr key={row.recipeId} className="border-t" style={{ borderColor: '#EDE0CE' }}>
+                            <td className="px-2 py-2">
+                              <input
+                                type="checkbox"
+                                checked={autoLinkChecked.has(row.recipeId)}
+                                onChange={() => toggleAutoLinkRow(row.recipeId)}
+                              />
+                            </td>
+                            <td className="px-2 py-2" style={{ color: '#2B1A10' }}>{row.recipeName}</td>
+                            <td className="px-2 py-2" style={{ color: '#2B1A10' }}>{row.productName}</td>
+                            <td className="px-2 py-2" style={{ color: '#8A735F' }}>
+                              {row.matchType === 'exact' ? 'התאמה מדויקת' : 'התאמה לפי הכלה'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
+
+              {/* Needs manual review */}
+              {autoLinkPreview.review.length > 0 && (
+                <section>
+                  <h4 className="text-sm font-bold mb-2" style={{ color: '#92602A' }}>צריך בדיקה ידנית</h4>
+                  <div className="border rounded-lg overflow-hidden" style={{ borderColor: '#FCD9A8' }}>
+                    <table className="w-full text-xs">
+                      <thead style={{ backgroundColor: '#FFF7ED' }}>
+                        <tr>
+                          <th className="px-2 py-2 text-right font-bold" style={{ color: '#2B1A10' }}>שם מתכון</th>
+                          <th className="px-2 py-2 text-right font-bold" style={{ color: '#2B1A10' }}>מועמדים</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {autoLinkPreview.review.map(row => (
+                          <tr key={row.recipeId} className="border-t" style={{ borderColor: '#FCD9A8' }}>
+                            <td className="px-2 py-2" style={{ color: '#2B1A10' }}>{row.recipeName}</td>
+                            <td className="px-2 py-2" style={{ color: '#2B1A10' }}>
+                              {row.candidates.map(c => `${c.productName} (${c.matchType === 'exact' ? 'מדויקת' : 'הכלה'})`).join(' · ')}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              )}
+
+              {/* No match found */}
+              {autoLinkPreview.unmatched.length > 0 && (
+                <section>
+                  <h4 className="text-sm font-bold mb-2" style={{ color: '#7A2E2E' }}>לא נמצא מוצר מתאים</h4>
+                  <div className="border rounded-lg overflow-hidden" style={{ borderColor: '#E4C2BE' }}>
+                    <table className="w-full text-xs">
+                      <thead style={{ backgroundColor: '#FBEDEB' }}>
+                        <tr>
+                          <th className="px-2 py-2 text-right font-bold" style={{ color: '#2B1A10' }}>שם מתכון</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {autoLinkPreview.unmatched.map(row => (
+                          <tr key={row.recipeId} className="border-t" style={{ borderColor: '#E4C2BE' }}>
+                            <td className="px-2 py-2" style={{ color: '#2B1A10' }}>{row.recipeName}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="text-[11px] mt-1.5" style={{ color: '#8A735F' }}>
+                    יש לפתוח כל מתכון ולשייך אותו ידנית למוצר למכירה דרך טופס המתכון.
+                  </p>
+                </section>
+              )}
+
+              <div className="flex gap-3 justify-end pt-2 border-t" style={{ borderColor: '#EDE0CE' }}>
+                <Button variant="outline" onClick={() => setAutoLinkOpen(false)} disabled={autoLinkApplying}>בטלי</Button>
+                <Button
+                  onClick={applyAutoLink}
+                  disabled={autoLinkApplying || autoLinkPreview.safe.length === 0 || autoLinkChecked.size === 0}
+                >
+                  {autoLinkApplying ? 'משייכת…' : `אשרי שיוך אוטומטי (${autoLinkChecked.size})`}
+                </Button>
+              </div>
+            </>
+          )}
         </div>
       </Modal>
     </div>
