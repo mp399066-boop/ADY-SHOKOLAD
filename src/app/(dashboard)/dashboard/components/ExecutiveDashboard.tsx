@@ -393,7 +393,13 @@ export function ExecutiveDashboard({
   );
 
   const activeCount  = liveOrders.length;
-  const urgentCount  = stats?.urgentOrders ?? urgentItems.length;
+  // stats?.urgentOrders is the authoritative server count (orders only,
+  // הזמנה_דחופה=true AND status NOT IN cancelled/draft/completed). The
+  // fallback path runs when /api/dashboard hasn't returned yet; without
+  // .filter(type=order) it would mix in critical stock alerts and the KPI
+  // could read e.g. "6 דחוף עכשיו" while the modal (which uses liveOrders,
+  // orders only) shows 0. See queue-builder.ts:155 for the mixed urgency.
+  const urgentCount  = stats?.urgentOrders ?? urgentItems.filter(it => it.type === 'order').length;
   const deliveryCount = stats?.deliveriesToday ?? 0;
   const unpaidAmount  = stats?.unpaidAmount ?? 0;
   const unpaidCount   = stats?.unpaidOrders ?? 0;
@@ -524,7 +530,11 @@ export function ExecutiveDashboard({
           {deliveryCities.map(([city, count]) => (
             <button
               key={city}
-              onClick={() => onNavigate(`/deliveries?city=${encodeURIComponent(city)}`)}
+              // Append &date=<today-IL> so the deliveries page lands today-
+              // scoped — deliveryCities is built from todayDeliveries only,
+              // and without the date param the target page defaulted to ALL
+              // dates which exaggerated the count vs the pill.
+              onClick={() => onNavigate(`/deliveries?city=${encodeURIComponent(city)}&date=${new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' })}`)}
               className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold px-2 py-0.5 rounded-full transition-all hover:-translate-y-0.5 cursor-pointer"
               style={{ backgroundColor: C.blueSoft, color: C.blue }}
             >

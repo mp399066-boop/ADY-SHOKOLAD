@@ -585,7 +585,14 @@ function OrdersTab({
         >
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-[12px] font-bold" style={{ color: C.textSoft }}>דורש טיפול</h2>
-            {urgentItems.length > 0 && (
+            {/* Badge counts ORDERS ONLY because the click navigates to
+                /orders?filter=urgent, which returns only urgent orders.
+                `urgentItems` itself is a mixed list (urgent orders + critical
+                stock alerts) so the list below still renders both — but the
+                count on the link target must equal the rows the target page
+                will show. Without this filter, a count of 6 + zero urgent
+                orders silently navigated to an empty orders page. */}
+            {urgentItems.filter(it => it.type === 'order').length > 0 && (
               <button
                 type="button"
                 onClick={() => onNavigate('/orders?filter=urgent')}
@@ -593,7 +600,7 @@ function OrdersTab({
                 style={{ backgroundColor: C.redSoft, color: C.red, cursor: 'pointer' }}
                 title="לכל ההזמנות הדחופות"
               >
-                {urgentItems.length}
+                {urgentItems.filter(it => it.type === 'order').length}
               </button>
             )}
           </div>
@@ -1357,7 +1364,10 @@ function DeliveriesTab({
                 <div key={city}>
                   <div className="flex items-center justify-between mb-0.5">
                     <button
-                      onClick={() => onNavigate(`/deliveries?city=${encodeURIComponent(city)}`)}
+                      // Append &date=<today-IL> so the deliveries page lands
+                      // scoped to today — matches the pill count's date scope
+                      // (cityBreakdown is built from today's deliveries only).
+                      onClick={() => onNavigate(`/deliveries?city=${encodeURIComponent(city)}&date=${todayISO()}`)}
                       className="text-[11.5px] font-semibold truncate hover:underline"
                       style={{ color: C.blue }}
                     >
@@ -1551,7 +1561,13 @@ function InsightsTab({
     [todayDeliveries],
   );
 
-  const urgentCount = urgentItems.length;
+  // urgentItems is a mixed list (urgent orders + critical stock alerts —
+  // see queue-builder.ts: stock rows with status 'קריטי' / 'אזל מהמלאי'
+  // get urgency 'urgent_now' too). The InsightCard below labels its number
+  // "X הזמנות דחופות" and clicks navigate to /orders?filter=urgent — both
+  // of which only mean ORDERS. Counting mixed items here is the exact bug
+  // that caused dashboard "6 הזמנות דחופות" → /orders → 0 rows.
+  const urgentCount = urgentItems.filter(it => it.type === 'order').length;
 
   if (loading) return (
     <div className="flex justify-center py-14">
@@ -1710,7 +1726,9 @@ function InsightsTab({
               explanation="ריכוז משלוחים פעילים בעיר אחת. אפשר לתאם מסלול אחד או שליח קבוע."
               severity="blue"
               cta="תאמי"
-              onClick={() => onNavigate(`/deliveries?city=${encodeURIComponent(busiestCity[0])}`)}
+              // &date=<today-IL> keeps the deliveries page scoped to today —
+              // busiestCity is derived from today's active deliveries only.
+              onClick={() => onNavigate(`/deliveries?city=${encodeURIComponent(busiestCity[0])}&date=${today}`)}
             />
           ) : (
             <InsightCard
