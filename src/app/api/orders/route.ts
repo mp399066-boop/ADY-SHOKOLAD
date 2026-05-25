@@ -80,6 +80,19 @@ export async function GET(req: NextRequest) {
           // throws on empty .in()).
           : query.eq('סטטוס_הזמנה', 'טיוטה').eq('id', '00000000-0000-0000-0000-000000000000');
       }
+    } else if (filter === 'paid-today') {
+      // ── Revenue-today drilldown ────────────────────────────────────────
+      // This branch INTENTIONALLY does NOT exclude 'הושלמה בהצלחה' — the
+      // dashboard's "הכנסות היום" KPI counts every paid order delivered
+      // today regardless of workflow status, so the drilldown list must do
+      // the same. Predicate is kept byte-for-byte aligned with the count
+      // query in src/app/api/dashboard/route.ts (the "Revenue: paid orders
+      // with delivery date = today" block). If you change one, change both.
+      query = query
+        .eq('תאריך_אספקה', today)
+        .eq('סטטוס_תשלום', 'שולם')
+        .neq('סטטוס_הזמנה', 'בוטלה')
+        .neq('סטטוס_הזמנה', 'טיוטה');
     } else {
       // All other views: exclude completed / cancelled / drafts. Cancelled
       // orders belong in the archive, not in the active workflow tabs.

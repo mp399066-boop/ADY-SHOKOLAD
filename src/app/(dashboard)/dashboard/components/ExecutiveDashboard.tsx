@@ -407,11 +407,20 @@ export function ExecutiveDashboard({
   useEffect(() => {
     if (modal !== 'revenue') return;
     setRevenueLoading(true);
-    fetch('/api/orders?filter=today&limit=100')
+    // Drilldown for "הכנסות היום". Uses the dedicated `paid-today` filter
+    // mode whose WHERE clause is byte-aligned with the KPI count query in
+    // src/app/api/dashboard/route.ts. NO client-side post-filter: dropping
+    // it was the whole point of the dedicated filter mode (a previous
+    // version fetched filter=today and then filtered to סטטוס_תשלום='שולם'
+    // here, which excluded completed-and-paid orders that the count
+    // included — count=N, modal=0 mismatch).
+    fetch('/api/orders?filter=paid-today&limit=200')
       .then(r => r.json())
       .then(json => {
         const rows = (json.data || []) as TodayOrder[];
-        setRevenueOrders(rows.filter(o => o.סטטוס_תשלום === 'שולם'));
+        // Safe drill log — card key + row count only. No PII.
+        console.log('[dashboard-drill] kind: revenue | filter: paid-today | rows:', rows.length);
+        setRevenueOrders(rows);
       })
       .catch(() => {})
       .finally(() => setRevenueLoading(false));
