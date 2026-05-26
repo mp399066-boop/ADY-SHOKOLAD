@@ -396,13 +396,13 @@ export default function LogsPage() {
         </Card>
       ) : (
         <>
-          <Card className="p-0 overflow-hidden">
-            <ul className="divide-y" style={{ borderColor: '#F0E5D8' }}>
-              {items.map(row => (
-                <LogRow key={row.id} row={row} icon={activeDef.icon} onOpen={() => setDetail(row)} />
-              ))}
-            </ul>
-          </Card>
+          <StatusSummary items={items} total={total} />
+
+          <div className="space-y-3">
+            {items.map(row => (
+              <LogCard key={row.id} row={row} icon={activeDef.icon} onOpen={() => setDetail(row)} />
+            ))}
+          </div>
 
           <div className="flex items-center justify-between gap-3 text-[12px]" style={{ color: '#8A7664' }}>
             <span>מציג {items.length} מתוך {total}</span>
@@ -448,67 +448,177 @@ function CategoryTabs({ active, onChange }: { active: TabId; onChange: (id: TabI
   );
 }
 
-// ── Feed row ─────────────────────────────────────────────────────────────────
+// ── Status summary (Make-style chips on top of the feed) ─────────────────────
 
-function LogRow({ row, icon, onOpen }: { row: ActivityLog; icon: string; onOpen: () => void }) {
-  const tone = STATUS_TONE[row.status] || STATUS_TONE.disabled;
-  const actorText = row.actor_email || row.actor_name || actorLabel(row.actor_type);
+function StatusSummary({ items, total }: { items: ActivityLog[]; total: number }) {
+  const counts = useMemo(() => {
+    const c = { success: 0, failed: 0, warning: 0, skipped: 0, disabled: 0 } as Record<string, number>;
+    for (const it of items) {
+      if (c[it.status] != null) c[it.status]++;
+    }
+    return c;
+  }, [items]);
+
+  const Chip = ({ icon, label, count, bg, fg, border }: {
+    icon: string; label: string; count: number; bg: string; fg: string; border: string;
+  }) => (
+    <div
+      className="inline-flex items-center gap-2 px-3 h-9 rounded-xl border"
+      style={{ backgroundColor: bg, color: fg, borderColor: border }}
+    >
+      <span aria-hidden className="text-[14px] font-bold leading-none">{icon}</span>
+      <span className="text-[12px] font-semibold">{label}</span>
+      <span className="text-[13px] font-bold tabular-nums">{count}</span>
+    </div>
+  );
 
   return (
-    <li>
-      <button
-        onClick={onOpen}
-        className="w-full text-right px-4 py-3 hover:bg-amber-50 transition-colors"
+    <div className="flex flex-wrap items-center gap-2">
+      <div
+        className="inline-flex items-center gap-2 px-3 h-9 rounded-xl border"
+        style={{ backgroundColor: '#FAF5EC', color: '#5C3410', borderColor: '#EAE0D4' }}
       >
-        <div className="flex items-start gap-3">
-          <span
-            aria-hidden
-            className="text-[16px] leading-none mt-0.5 select-none"
-            style={{ width: 20, textAlign: 'center' }}
-          >
-            {icon}
-          </span>
+        <span className="text-[12px] font-semibold">סך הכל</span>
+        <span className="text-[13px] font-bold tabular-nums">{total}</span>
+      </div>
+      <Chip icon="✓" label="הצליחו" count={counts.success} bg={STATUS_TONE.success.bg} fg={STATUS_TONE.success.fg} border={STATUS_TONE.success.border} />
+      <Chip icon="✗" label="נכשלו"  count={counts.failed}  bg={STATUS_TONE.failed.bg}  fg={STATUS_TONE.failed.fg}  border={STATUS_TONE.failed.border}  />
+      <Chip icon="⚠" label="אזהרות" count={counts.warning} bg={STATUS_TONE.warning.bg} fg={STATUS_TONE.warning.fg} border={STATUS_TONE.warning.border} />
+      {(counts.skipped > 0 || counts.disabled > 0) && (
+        <Chip icon="⏸" label="דולגו / כבויים" count={counts.skipped + counts.disabled} bg={STATUS_TONE.skipped.bg} fg={STATUS_TONE.skipped.fg} border={STATUS_TONE.skipped.border} />
+      )}
+    </div>
+  );
+}
 
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span
-                className="inline-flex items-center text-[10.5px] font-bold px-2 py-0.5 rounded-full border"
-                style={{ backgroundColor: tone.bg, color: tone.fg, borderColor: tone.border }}
-              >
-                {statusLabel(row.status)}
-              </span>
-              <span className="text-[14px] font-semibold leading-tight" style={{ color: '#2B1A10' }}>
-                {row.title}
-              </span>
+// ── Make-style log card ──────────────────────────────────────────────────────
+// One card per event. Big status strip on the right (RTL — visual "leading"
+// edge), status icon + label up top, bold scenario title, prominent entity
+// chip, and — when failed — the error reason rendered inline in a red box so
+// the operator never has to open the modal to know "what broke".
+
+const STATUS_ICON: Record<string, string> = {
+  success:  '✓',
+  failed:   '✗',
+  warning:  '⚠',
+  skipped:  '⏸',
+  disabled: '⏻',
+};
+
+const STATUS_VERB: Record<string, string> = {
+  success:  'הצליח',
+  failed:   'נכשל',
+  warning:  'הסתיים עם אזהרה',
+  skipped:  'דולג',
+  disabled: 'השירות היה כבוי',
+};
+
+function LogCard({ row, icon, onOpen }: { row: ActivityLog; icon: string; onOpen: () => void }) {
+  const tone = STATUS_TONE[row.status] || STATUS_TONE.disabled;
+  const actorText = row.actor_email || row.actor_name || actorLabel(row.actor_type);
+  const statusIcon = STATUS_ICON[row.status] || '•';
+  const statusVerb = STATUS_VERB[row.status] || statusLabel(row.status);
+  const isError = row.status === 'failed';
+  const isWarn  = row.status === 'warning';
+
+  return (
+    <button
+      onClick={onOpen}
+      className="w-full text-right rounded-xl transition-shadow hover:shadow-md focus:outline-none focus-visible:ring-2"
+      style={{
+        backgroundColor: '#FFFFFF',
+        border: `1px solid ${isError ? tone.border : '#EAE0D4'}`,
+        boxShadow: isError
+          ? '0 1px 6px rgba(160,60,44,0.10)'
+          : '0 1px 6px rgba(58,42,26,0.05)',
+        overflow: 'hidden',
+      }}
+    >
+      <div className="flex">
+        {/* Status strip on the leading edge (right in RTL) — large color bar
+            so the eye picks up success/failure from across the screen. */}
+        <div
+          aria-hidden
+          style={{ width: 6, backgroundColor: tone.fg, flex: '0 0 6px' }}
+        />
+
+        <div className="flex-1 p-4">
+          {/* Top row: big status pill on the right, time on the left */}
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <div
+              className="inline-flex items-center gap-2 px-3 h-8 rounded-full border"
+              style={{ backgroundColor: tone.bg, color: tone.fg, borderColor: tone.border }}
+            >
+              <span aria-hidden className="text-[15px] font-bold leading-none">{statusIcon}</span>
+              <span className="text-[13px] font-bold">{statusVerb}</span>
             </div>
-
-            <div className="mt-1 text-[11.5px]" style={{ color: '#8A7664' }}>
-              {moduleLabel(row.module)}
-              <span style={{ color: '#C9B89E' }}> · </span>
-              <span dir="ltr" style={{ fontFamily: 'monospace' }}>{row.action}</span>
-              <span style={{ color: '#C9B89E' }}> · </span>
-              {actorText}
-              {row.entity_label && (
-                <>
-                  <span style={{ color: '#C9B89E' }}> · </span>
-                  <span style={{ color: '#5C4A38', fontWeight: 600 }}>{row.entity_label}</span>
-                </>
-              )}
+            <div className="text-[11.5px]" style={{ color: '#A0907D' }} title={formatTime(row.created_at)}>
+              {formatRelative(row.created_at)} <span style={{ color: '#C9B89E' }}>·</span> {formatTime(row.created_at)}
             </div>
-
-            {row.description && (
-              <div className="mt-1 text-[12px] truncate" style={{ color: '#5C4A38' }}>
-                {row.description}
-              </div>
-            )}
           </div>
 
-          <div className="text-[11px] whitespace-nowrap" style={{ color: '#A0907D' }} title={formatTime(row.created_at)}>
-            {formatRelative(row.created_at)}
+          {/* Title — the "scenario" line. Big and bold so it dominates. */}
+          <div className="flex items-start gap-2">
+            <span aria-hidden className="text-[18px] leading-none mt-0.5 select-none">{icon}</span>
+            <h3 className="text-[15.5px] font-bold leading-snug flex-1" style={{ color: '#2B1A10' }}>
+              {row.title}
+            </h3>
+          </div>
+
+          {/* Entity chip + meta */}
+          <div className="mt-2 flex items-center gap-2 flex-wrap text-[12px]" style={{ color: '#6B4A2D' }}>
+            {row.entity_label && (
+              <span
+                className="inline-flex items-center px-2 py-0.5 rounded-md text-[11.5px] font-semibold"
+                style={{ backgroundColor: '#FAF5EC', color: '#5C3410', border: '1px solid #E7D2A6' }}
+              >
+                {row.entity_label}
+              </span>
+            )}
+            <span style={{ color: '#8A7664' }}>{moduleLabel(row.module)}</span>
+            <span style={{ color: '#C9B89E' }}>·</span>
+            <span style={{ color: '#8A7664' }}>בוצע על ידי: <span style={{ color: '#5C4A38', fontWeight: 600 }}>{actorText}</span></span>
+          </div>
+
+          {/* Description — short context line */}
+          {row.description && (
+            <div className="mt-2 text-[13px] leading-relaxed" style={{ color: '#3A2A1A' }}>
+              {row.description}
+            </div>
+          )}
+
+          {/* Inline error / warning panel — visible without opening the modal */}
+          {(isError || isWarn) && row.error_message && (
+            <div
+              className="mt-3 p-3 rounded-lg text-[12.5px] leading-relaxed flex items-start gap-2"
+              style={{
+                backgroundColor: isError ? '#FBF1EE' : '#FFF7E6',
+                color:           isError ? '#7A2C1F' : '#7A5618',
+                border: `1px solid ${isError ? '#F0C7BF' : '#EDCF98'}`,
+              }}
+            >
+              <span aria-hidden className="text-[14px] font-bold leading-none mt-0.5">
+                {isError ? '✗' : '⚠'}
+              </span>
+              <div className="flex-1 min-w-0">
+                <div className="font-bold mb-0.5">
+                  {isError ? 'מה השתבש:' : 'אזהרה:'}
+                </div>
+                <div dir="ltr" style={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                  {row.error_message}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Footer — open-details affordance */}
+          <div className="mt-3 flex items-center justify-between text-[11px]" style={{ color: '#A0907D' }}>
+            <span dir="ltr" style={{ fontFamily: 'monospace' }}>{row.action}</span>
+            <span className="font-semibold" style={{ color: '#8B5E34' }}>פרטים מלאים ←</span>
           </div>
         </div>
-      </button>
-    </li>
+      </div>
+    </button>
   );
 }
 
