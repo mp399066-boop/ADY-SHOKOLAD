@@ -359,6 +359,179 @@ th{background:#F3EDE4}</style></head>
     }
   }
 
+  function downloadDesigned(supplier: Supplier | null, groupItems: PurchaseMaterial[]) {
+    const items = groupItems.filter(i => selected.has(i.id));
+    if (!items.length) { showToast('לא נבחרו פריטים', false); return; }
+    const today = new Date().toLocaleDateString('he-IL');
+    const supplierName = supplier?.שם_ספק ?? 'ללא ספק מוגדר';
+    const orderRef = `PO-${Date.now().toString().slice(-8)}`;
+    const logoUrl = `${window.location.origin}/logo.png`;
+    const rows = items.map((i, idx) => `
+      <tr>
+        <td class="num idx">${idx + 1}</td>
+        <td>
+          <div class="prod-name">${escapeHtml(i.שם_חומר_גלם || '')}</div>
+          ${i.מקט_ספק ? `<div class="prod-meta">מק"ט ${escapeHtml(i.מקט_ספק)}</div>` : ''}
+        </td>
+        <td>${escapeHtml(i.שם_מוצר_אצל_הספק || '—')}</td>
+        <td class="num qty">${orderQty[i.id] ?? i.כמות_להזמנה ?? i.כמות_מינימום}</td>
+        <td>${escapeHtml(i.יחידת_קניה || i.יחידת_מידה || '')}</td>
+        <td>${escapeHtml(i.הערות_רכש || '')}</td>
+      </tr>`).join('');
+    const itemNotes = items.filter(i => i.הערות_רכש)
+      .map(i => `• ${escapeHtml(i.שם_חומר_גלם)} — ${escapeHtml(i.הערות_רכש!)}`)
+      .join('<br>');
+    const downloadName = `הזמנת_רכש_${safeFileName(supplierName)}_${today}.html`;
+    const html = `<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+<meta charset="UTF-8">
+<title>הזמנת רכש — ${escapeHtml(supplierName)}</title>
+<style>
+  :root { --gold:#C7A46B; --brown:#2A1A0E; --bg:#FAF7F0; --ink:#2A1A0E; --soft:#7A6A55; --line:#E8DED4; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #ECE5DA; }
+  body { font-family: 'Segoe UI', Arial, Helvetica, sans-serif; direction: rtl; color: var(--ink); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .toolbar { position: sticky; top: 0; z-index: 10; background: var(--brown); color: #FAF7F0; padding: 10px 16px; display: flex; gap: 8px; justify-content: center; box-shadow: 0 2px 6px rgba(0,0,0,.15); }
+  .toolbar button { background: var(--gold); color: var(--brown); border: 0; padding: 8px 18px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .toolbar button.ghost { background: transparent; color: #FAF7F0; border: 1px solid #FAF7F0; }
+  .sheet { width: 210mm; min-height: 297mm; margin: 24px auto; background: #FFFFFF; padding: 22mm 18mm; box-shadow: 0 4px 24px rgba(0,0,0,.08); position: relative; }
+  .sheet::before { content: ''; position: absolute; top: 0; right: 0; left: 0; height: 6px; background: linear-gradient(90deg, var(--gold), #E5C892, var(--gold)); }
+  .header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+  .brand { display: flex; align-items: center; gap: 14px; }
+  .brand img { width: 64px; height: 64px; object-fit: contain; }
+  .brand h1 { margin: 0; font-size: 22px; color: var(--brown); letter-spacing: .5px; }
+  .brand .tag { color: var(--soft); font-size: 12px; margin-top: 2px; }
+  .doc-meta { text-align: left; font-size: 12px; color: var(--soft); line-height: 1.7; }
+  .doc-meta b { color: var(--ink); font-weight: 600; }
+  .title-bar { margin: 26px 0 14px; padding: 10px 14px; background: var(--bg); border-right: 4px solid var(--gold); display: flex; align-items: center; justify-content: space-between; }
+  .title-bar h2 { margin: 0; font-size: 20px; color: var(--brown); }
+  .title-bar .ref { font-size: 12px; color: var(--soft); font-variant-numeric: tabular-nums; }
+  .sup-card { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px 18px; font-size: 12.5px; }
+  .sup-card .lbl { color: var(--soft); font-size: 11px; }
+  .sup-card .val { color: var(--ink); font-weight: 600; margin-top: 1px; }
+  table.items { width: 100%; border-collapse: separate; border-spacing: 0; margin-top: 18px; font-size: 13px; }
+  table.items thead th { background: var(--brown); color: #FAF7F0; padding: 10px; text-align: right; font-size: 12.5px; font-weight: 600; letter-spacing: .3px; }
+  table.items thead th:first-child { border-radius: 0 8px 0 0; }
+  table.items thead th:last-child  { border-radius: 8px 0 0 0; }
+  table.items tbody td { padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.items tbody tr:nth-child(even) td { background: #FBF8F2; }
+  table.items .idx { color: var(--soft); width: 28px; }
+  table.items .num { font-variant-numeric: tabular-nums; }
+  table.items .qty { font-weight: 700; text-align: left; color: var(--brown); }
+  table.items .prod-name { font-weight: 600; color: var(--ink); }
+  table.items .prod-meta { font-size: 11px; color: var(--soft); margin-top: 2px; }
+  .summary { margin-top: 14px; display: flex; justify-content: space-between; font-size: 12.5px; color: var(--soft); }
+  .summary b { color: var(--ink); }
+  .notes { margin-top: 22px; border: 1px dashed var(--line); border-radius: 10px; padding: 12px 14px; min-height: 60px; font-size: 12.5px; color: var(--ink); }
+  .notes .lbl { color: var(--soft); font-size: 11px; margin-bottom: 6px; }
+  .signature { margin-top: 28px; display: flex; justify-content: space-between; gap: 32px; }
+  .sig-block { flex: 1; }
+  .sig-block .line { border-bottom: 1px solid #999; height: 36px; }
+  .sig-block .lbl { font-size: 11.5px; color: var(--soft); margin-top: 6px; text-align: center; }
+  .footer-bar { margin-top: 28px; padding-top: 10px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; font-size: 11px; color: var(--soft); }
+  @media print {
+    body { background: #fff; }
+    .toolbar { display: none; }
+    .sheet { box-shadow: none; margin: 0; padding: 14mm 14mm; width: auto; min-height: auto; }
+    @page { size: A4; margin: 0; }
+  }
+</style>
+</head>
+<body>
+  <div class="toolbar">
+    <button onclick="window.print()">🖨 הדפס / שמור PDF</button>
+    <button id="dl">⬇ שמור קובץ</button>
+    <button class="ghost" onclick="window.close()">סגור</button>
+  </div>
+
+  <div class="sheet">
+    <div class="header">
+      <div class="brand">
+        <img src="${logoUrl}" onerror="this.style.display='none'" alt="">
+        <div>
+          <h1>עדי תכשיט שוקולד</h1>
+          <div class="tag">שוקולד בעבודת יד</div>
+        </div>
+      </div>
+      <div class="doc-meta">
+        <div><b>תאריך:</b> ${today}</div>
+        <div><b>מס׳ הזמנה:</b> ${orderRef}</div>
+      </div>
+    </div>
+
+    <div class="title-bar">
+      <h2>הזמנת רכש</h2>
+      <span class="ref">סה״כ פריטים: ${items.length}</span>
+    </div>
+
+    <div class="sup-card">
+      <div><div class="lbl">ספק</div><div class="val">${escapeHtml(supplierName)}</div></div>
+      <div>${supplier?.איש_קשר ? `<div class="lbl">איש קשר</div><div class="val">${escapeHtml(supplier.איש_קשר)}</div>` : ''}</div>
+      <div>${supplier?.טלפון ? `<div class="lbl">טלפון</div><div class="val" dir="ltr" style="text-align:right">${escapeHtml(supplier.טלפון)}</div>` : ''}</div>
+      ${supplier?.אימייל ? `<div style="grid-column: span 3"><div class="lbl">אימייל</div><div class="val" dir="ltr" style="text-align:right">${escapeHtml(supplier.אימייל)}</div></div>` : ''}
+    </div>
+
+    <table class="items">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>שם מוצר</th>
+          <th>שם אצל ספק</th>
+          <th>כמות</th>
+          <th>יחידה</th>
+          <th>הערה</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+
+    <div class="summary">
+      <span>* הכמויות לפי הצורך המעודכן במלאי</span>
+      <span><b>סה״כ שורות:</b> ${items.length}</span>
+    </div>
+
+    <div class="notes">
+      <div class="lbl">הערות כלליות</div>
+      ${itemNotes || '&nbsp;'}
+    </div>
+
+    <div class="signature">
+      <div class="sig-block">
+        <div class="line"></div>
+        <div class="lbl">חתימת ספק / קבלת הזמנה</div>
+      </div>
+      <div class="sig-block">
+        <div class="line"></div>
+        <div class="lbl">תאריך אספקה</div>
+      </div>
+    </div>
+
+    <div class="footer-bar">
+      <span>עדי תכשיט שוקולד · הופק אוטומטית</span>
+      <span>${today} · ${orderRef}</span>
+    </div>
+  </div>
+
+<script>
+  document.getElementById('dl').addEventListener('click', function () {
+    var blob = new Blob(['\\ufeff', document.documentElement.outerHTML], { type: 'text/html;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = ${JSON.stringify(downloadName)};
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+  });
+</script>
+</body>
+</html>`;
+    const w = window.open('', '_blank');
+    if (!w) { showToast('לא ניתן לפתוח חלון — אפשר חלונות קופצים בדפדפן', false); return; }
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+  }
+
   async function whatsappWithFile(supplier: Supplier, groupItems: PurchaseMaterial[]) {
     const items = groupItems.filter(i => selected.has(i.id));
     if (!items.length) { showToast('לא נבחרו פריטים', false); return; }
@@ -843,6 +1016,29 @@ th{background:#F3EDE4}</style></head>
                               Excel
                             </button>
 
+                            {/* Designed branded file */}
+                            <button
+                              onClick={() => downloadDesigned(group.supplier, group.items)}
+                              className="px-3 py-1.5 rounded-lg text-xs font-medium text-white transition-opacity hover:opacity-90"
+                              style={{ background: '#C7A46B' }}
+                              title="קובץ מעוצב — תצוגה מקדימה, הדפסה ושמירה"
+                            >
+                              קובץ מעוצב
+                            </button>
+
+                            {/* WhatsApp — generates Excel then opens WhatsApp with prefilled note */}
+                            {group.supplier?.טלפון && (
+                              <button
+                                onClick={() => whatsappWithFile(group.supplier!, group.items)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-white font-medium transition-opacity hover:opacity-90"
+                                style={{ background: '#25D366' }}
+                                title="הורד קובץ ופתח וואטסאפ"
+                              >
+                                <IconWhatsApp className="w-3.5 h-3.5" />
+                                WhatsApp + קובץ
+                              </button>
+                            )}
+
                             {/* Copy text */}
                             <button
                               onClick={() => {
@@ -862,19 +1058,6 @@ th{background:#F3EDE4}</style></head>
                               >
                                 שלח מייל
                               </a>
-                            )}
-
-                            {/* WhatsApp — generates Excel then opens WhatsApp with prefilled note */}
-                            {group.supplier?.טלפון && (
-                              <button
-                                onClick={() => whatsappWithFile(group.supplier!, group.items)}
-                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-white font-medium transition-opacity hover:opacity-90"
-                                style={{ background: '#25D366' }}
-                                title="הורד קובץ ופתח וואטסאפ"
-                              >
-                                <IconWhatsApp className="w-3.5 h-3.5" />
-                                WhatsApp + קובץ
-                              </button>
                             )}
 
                             {/* Execute (mark as ordered) */}
