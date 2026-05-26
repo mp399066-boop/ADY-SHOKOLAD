@@ -336,18 +336,18 @@ th{background:#F3EDE4}</style></head>
       const XLSX = await import('xlsx');
       const supplierName = supplier?.שם_ספק ?? 'ללא ספק מוגדר';
       const today = new Date().toLocaleDateString('he-IL');
-      const header = ['שם מוצר', 'שם אצל ספק', 'מק"ט', 'ספק', 'כמות', 'יחידה', 'הערה'];
+      const header = ['שם מוצר', 'כמות', 'יחידה', 'שם אצל ספק', 'מק"ט', 'ספק', 'הערה'];
       const rows = items.map(i => ({
         'שם מוצר':      i.שם_חומר_גלם || '',
+        'כמות':         orderQty[i.id] ?? i.כמות_להזמנה ?? i.כמות_מינימום,
+        'יחידה':        i.יחידת_קניה || i.יחידת_מידה || '',
         'שם אצל ספק':   i.שם_מוצר_אצל_הספק || '',
         'מק"ט':         i.מקט_ספק || '',
         'ספק':          supplierName,
-        'כמות':         orderQty[i.id] ?? i.כמות_להזמנה ?? i.כמות_מינימום,
-        'יחידה':        i.יחידת_קניה || i.יחידת_מידה || '',
         'הערה':         i.הערות_רכש || '',
       }));
       const ws = XLSX.utils.json_to_sheet(rows, { header });
-      ws['!cols'] = [{ wch: 26 }, { wch: 22 }, { wch: 14 }, { wch: 20 }, { wch: 10 }, { wch: 10 }, { wch: 28 }];
+      ws['!cols'] = [{ wch: 26 }, { wch: 10 }, { wch: 10 }, { wch: 22 }, { wch: 14 }, { wch: 20 }, { wch: 28 }];
       // RTL view (SheetJS reads `!views` with uppercase `RTL`)
       (ws as unknown as { '!views'?: Array<{ RTL: boolean }> })['!views'] = [{ RTL: true }];
       const wb = XLSX.utils.book_new();
