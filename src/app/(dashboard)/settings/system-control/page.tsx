@@ -304,13 +304,13 @@ export default function LogsPage() {
   }
 
   return (
-    <div className="max-w-6xl space-y-5" dir="rtl">
+    <div className="max-w-7xl space-y-5" dir="rtl">
       <SettingsTabs active="/settings/system-control" />
 
       <div>
         <h1 className="text-xl font-bold" style={{ color: '#3A2A1A' }}>לוגים</h1>
         <p className="text-sm mt-1" style={{ color: '#8A7664' }}>
-          מה קרה במערכת — מחולק לפי קטגוריות. בחרי טאב כדי לראות רק את האירועים של אותה קטגוריה.
+          מה קרה במערכת — בחרי קטגוריה מהתפריט מצד ימין כדי לראות רק את האירועים של אותה קטגוריה.
         </p>
       </div>
 
@@ -321,99 +321,118 @@ export default function LogsPage() {
           defaults to adi548419927@gmail.com (the route's default). */}
       <MonthlyBackupCard />
 
-      {/* Category tabs */}
-      <CategoryTabs active={activeTab} onChange={(id) => { clearFilters(); setActiveTab(id); }} />
-
-      {/* In-tab filter bar */}
-      <Card className="p-3">
-        <div className="flex flex-wrap items-center gap-2 text-[12px]">
-          <input
-            value={q}
-            onChange={e => setQ(e.target.value)}
-            placeholder="חיפוש חופשי (כותרת / תיאור / לקוח / משתמש)"
-            className="px-2 h-8 rounded-lg border bg-white min-w-[230px] flex-1"
-            style={{ borderColor: '#E8D8C6', color: '#3A2A1A' }}
+      {/* Two-column layout: sidebar (categories) on the right, feed on the
+          left. On narrow widths the sidebar collapses to a horizontal pill
+          row that scrolls. */}
+      <div className="flex flex-col lg:flex-row gap-4">
+        {/* Sidebar / horizontal scroller */}
+        <aside className="lg:w-64 lg:flex-shrink-0">
+          <CategorySidebar
+            active={activeTab}
+            onChange={(id) => { clearFilters(); setActiveTab(id); }}
           />
+        </aside>
 
-          <select
-            value={statusF}
-            onChange={e => setStatusF(e.target.value)}
-            className="px-2 h-8 rounded-lg border bg-white"
-            style={{ borderColor: '#E8D8C6', color: '#3A2A1A' }}
-          >
-            <option value="">כל הסטטוסים</option>
-            {(['success', 'failed', 'warning', 'skipped', 'disabled'] as ActivityStatus[]).map(s => (
-              <option key={s} value={s}>{STATUS_LABEL_HE[s]}</option>
-            ))}
-          </select>
+        {/* Main content */}
+        <main className="flex-1 min-w-0 space-y-4">
+          {/* In-tab filter bar */}
+          <Card className="p-3">
+            <div className="flex flex-wrap items-center gap-2 text-[12px]">
+              <input
+                value={q}
+                onChange={e => setQ(e.target.value)}
+                placeholder="חיפוש חופשי (כותרת / תיאור / לקוח / משתמש)"
+                className="px-2 h-8 rounded-lg border bg-white min-w-[200px] flex-1"
+                style={{ borderColor: '#E8D8C6', color: '#3A2A1A' }}
+              />
 
-          <span style={{ color: '#8A7664' }}>מ-</span>
-          <input
-            type="date"
-            value={fromF}
-            onChange={e => setFromF(e.target.value)}
-            className="px-2 h-8 rounded-lg border bg-white"
-            style={{ borderColor: '#E8D8C6', color: '#3A2A1A' }}
-          />
-          <span style={{ color: '#8A7664' }}>עד-</span>
-          <input
-            type="date"
-            value={toF}
-            onChange={e => setToF(e.target.value)}
-            className="px-2 h-8 rounded-lg border bg-white"
-            style={{ borderColor: '#E8D8C6', color: '#3A2A1A' }}
-          />
+              <select
+                value={statusF}
+                onChange={e => setStatusF(e.target.value)}
+                className="px-2 h-8 rounded-lg border bg-white"
+                style={{ borderColor: '#E8D8C6', color: '#3A2A1A' }}
+              >
+                <option value="">כל הסטטוסים</option>
+                {(['success', 'failed', 'warning', 'skipped', 'disabled'] as ActivityStatus[]).map(s => (
+                  <option key={s} value={s}>{STATUS_LABEL_HE[s]}</option>
+                ))}
+              </select>
 
-          {filterActive && (
-            <button
-              onClick={clearFilters}
-              className="text-[11px] font-semibold hover:underline"
-              style={{ color: '#8B5E34' }}
-            >
-              נקי סינון
-            </button>
+              <span style={{ color: '#8A7664' }}>מ-</span>
+              <input
+                type="date"
+                value={fromF}
+                onChange={e => setFromF(e.target.value)}
+                className="px-2 h-8 rounded-lg border bg-white"
+                style={{ borderColor: '#E8D8C6', color: '#3A2A1A' }}
+              />
+              <span style={{ color: '#8A7664' }}>עד-</span>
+              <input
+                type="date"
+                value={toF}
+                onChange={e => setToF(e.target.value)}
+                className="px-2 h-8 rounded-lg border bg-white"
+                style={{ borderColor: '#E8D8C6', color: '#3A2A1A' }}
+              />
+
+              {filterActive && (
+                <button
+                  onClick={clearFilters}
+                  className="text-[11px] font-semibold hover:underline"
+                  style={{ color: '#8B5E34' }}
+                >
+                  נקי סינון
+                </button>
+              )}
+
+              <button
+                onClick={() => void loadFirstPage()}
+                className="text-[11px] font-semibold hover:underline mr-auto"
+                style={{ color: '#8B5E34' }}
+              >
+                רענן
+              </button>
+            </div>
+          </Card>
+
+          {/* Active category header — gives the feed a clear "you are here" anchor */}
+          <div className="flex items-center gap-2">
+            <span aria-hidden className="text-[20px] leading-none">{activeDef.icon}</span>
+            <h2 className="text-[16px] font-bold" style={{ color: '#3A2A1A' }}>{activeDef.label}</h2>
+          </div>
+
+          {/* Feed */}
+          {loading ? (
+            <PageLoading />
+          ) : items.length === 0 ? (
+            <Card className="p-0">
+              <EmptyState
+                title={`אין פעילות בקטגוריה "${activeDef.label}"`}
+                description={filterActive ? 'לא נמצאו לוגים שתואמים את הסינון. נסי לשנות את התקופה או לנקות סינון.' : activeDef.emptyHint}
+              />
+            </Card>
+          ) : (
+            <>
+              <StatusSummary items={items} total={total} />
+
+              <div className="space-y-3">
+                {items.map(row => (
+                  <LogCard key={row.id} row={row} icon={activeDef.icon} onOpen={() => setDetail(row)} />
+                ))}
+              </div>
+
+              <div className="flex items-center justify-between gap-3 text-[12px]" style={{ color: '#8A7664' }}>
+                <span>מציג {items.length} מתוך {total}</span>
+                {hasMore && (
+                  <Button variant="outline" onClick={() => void loadMore()} disabled={loadingMore}>
+                    {loadingMore ? 'טוען...' : 'טען עוד'}
+                  </Button>
+                )}
+              </div>
+            </>
           )}
-
-          <button
-            onClick={() => void loadFirstPage()}
-            className="text-[11px] font-semibold hover:underline mr-auto"
-            style={{ color: '#8B5E34' }}
-          >
-            רענן
-          </button>
-        </div>
-      </Card>
-
-      {/* Feed */}
-      {loading ? (
-        <PageLoading />
-      ) : items.length === 0 ? (
-        <Card className="p-0">
-          <EmptyState
-            title={`אין פעילות בקטגוריה "${activeDef.label}"`}
-            description={filterActive ? 'לא נמצאו לוגים שתואמים את הסינון. נסי לשנות את התקופה או לנקות סינון.' : activeDef.emptyHint}
-          />
-        </Card>
-      ) : (
-        <>
-          <StatusSummary items={items} total={total} />
-
-          <div className="space-y-3">
-            {items.map(row => (
-              <LogCard key={row.id} row={row} icon={activeDef.icon} onOpen={() => setDetail(row)} />
-            ))}
-          </div>
-
-          <div className="flex items-center justify-between gap-3 text-[12px]" style={{ color: '#8A7664' }}>
-            <span>מציג {items.length} מתוך {total}</span>
-            {hasMore && (
-              <Button variant="outline" onClick={() => void loadMore()} disabled={loadingMore}>
-                {loadingMore ? 'טוען...' : 'טען עוד'}
-              </Button>
-            )}
-          </div>
-        </>
-      )}
+        </main>
+      </div>
 
       {/* Detail modal */}
       <Modal open={!!detail} onClose={() => setDetail(null)} title="פרטי לוג" size="lg">
@@ -423,28 +442,63 @@ export default function LogsPage() {
   );
 }
 
-// ── Category tabs ────────────────────────────────────────────────────────────
+// ── Category sidebar (right rail in RTL) ─────────────────────────────────────
+// Vertical list of categories. On narrow widths (<lg) the same list renders
+// as a horizontally-scrollable pill row above the feed so nothing gets cut
+// off on mobile.
 
-function CategoryTabs({ active, onChange }: { active: TabId; onChange: (id: TabId) => void }) {
+function CategorySidebar({ active, onChange }: { active: TabId; onChange: (id: TabId) => void }) {
   return (
-    <div className="flex flex-wrap gap-1" style={{ borderBottom: '1px solid #EAE0D4' }}>
-      {TABS.map(tab => {
-        const isActive = active === tab.id;
-        return (
-          <button
-            key={tab.id}
-            onClick={() => onChange(tab.id)}
-            className="px-3 py-2 text-[12.5px] font-semibold transition-colors inline-flex items-center gap-1.5"
-            style={isActive
-              ? { color: '#5C3410', borderBottom: '2.5px solid #C9A46A', marginBottom: '-1px' }
-              : { color: '#8A7664' }}
-          >
-            <span aria-hidden>{tab.icon}</span>
-            <span>{tab.label}</span>
-          </button>
-        );
-      })}
-    </div>
+    <>
+      {/* Desktop / tablet — vertical list */}
+      <nav className="hidden lg:block">
+        <Card className="p-2">
+          <ul className="space-y-1">
+            {TABS.map(tab => {
+              const isActive = active === tab.id;
+              return (
+                <li key={tab.id}>
+                  <button
+                    onClick={() => onChange(tab.id)}
+                    className="w-full text-right px-3 py-2 rounded-lg inline-flex items-center gap-2.5 transition-colors"
+                    style={isActive
+                      ? { backgroundColor: '#FAF5EC', color: '#5C3410', borderRight: '3px solid #C9A46A', paddingRight: 9 }
+                      : { color: '#5C4A38' }}
+                    onMouseEnter={e => { if (!isActive) e.currentTarget.style.backgroundColor = '#FAF7F0'; }}
+                    onMouseLeave={e => { if (!isActive) e.currentTarget.style.backgroundColor = ''; }}
+                  >
+                    <span aria-hidden className="text-[16px] leading-none w-5 text-center">{tab.icon}</span>
+                    <span className="text-[12.5px] font-semibold leading-tight flex-1">{tab.label}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </Card>
+      </nav>
+
+      {/* Mobile — horizontal scroll of pill buttons */}
+      <div className="lg:hidden -mx-1 px-1 overflow-x-auto">
+        <div className="flex gap-2 pb-1" style={{ minWidth: 'max-content' }}>
+          {TABS.map(tab => {
+            const isActive = active === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => onChange(tab.id)}
+                className="inline-flex items-center gap-1.5 px-3 h-9 rounded-full border whitespace-nowrap text-[12.5px] font-semibold transition-colors"
+                style={isActive
+                  ? { backgroundColor: '#5C3410', color: '#FFFFFF', borderColor: '#5C3410' }
+                  : { backgroundColor: '#FFFFFF', color: '#5C4A38', borderColor: '#EAE0D4' }}
+              >
+                <span aria-hidden>{tab.icon}</span>
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </>
   );
 }
 
