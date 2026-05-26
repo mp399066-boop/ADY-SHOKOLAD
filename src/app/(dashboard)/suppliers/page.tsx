@@ -62,6 +62,8 @@ export default function SuppliersPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [orderQty, setOrderQty] = useState<Record<string, number>>({});
   const [orderSaving, setOrderSaving] = useState<string | null>(null);
+  const [executedGroups, setExecutedGroups] = useState<Set<string>>(new Set());
+  const [qtySaving, setQtySaving] = useState<Set<string>>(new Set());
 
   // ── Toast ────────────────────────────────────────────────────────────────
   const [toast, setToast] = useState<{ text: string; ok: boolean } | null>(null);
@@ -115,9 +117,50 @@ export default function SuppliersPage() {
         const qty: Record<string, number> = {};
         for (const item of items) qty[item.id] = item.כמות_להזמנה ?? item.כמות_מינימום;
         setOrderQty(qty);
+        setExecutedGroups(new Set());
       }
     } finally {
       setLoadingNeeded(false);
+    }
+  }
+
+  // Refresh stock numbers only — preserves selection, quantity edits and executed badges.
+  async function refreshNeededStock() {
+    try {
+      const res = await fetch('/api/purchasing');
+      const json = await res.json();
+      if (!json.data) return;
+      const items: PurchaseMaterial[] = json.data;
+      setNeeded(prev => {
+        const byId = new Map(items.map(i => [i.id, i]));
+        const merged = prev.map(p => {
+          const fresh = byId.get(p.id);
+          if (!fresh) return p;
+          return { ...p, כמות_במלאי: fresh.כמות_במלאי, סטטוס_מלאי: fresh.סטטוס_מלאי };
+        });
+        for (const i of items) if (!merged.find(m => m.id === i.id)) merged.push(i);
+        return merged;
+      });
+    } catch { /* silent */ }
+  }
+
+  async function persistOrderQty(itemId: string, qty: number) {
+    const current = needed.find(i => i.id === itemId);
+    if (!current) return;
+    if (!Number.isFinite(qty) || qty < 0) return;
+    if (Number(current.כמות_להזמנה ?? NaN) === qty) return;
+    setQtySaving(prev => { const s = new Set(prev); s.add(itemId); return s; });
+    try {
+      const res = await fetch(`/api/inventory/${itemId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ כמות_להזמנה: qty }),
+      });
+      if (!res.ok) { showToast('שמירת כמות נכשלה', false); return; }
+      setNeeded(prev => prev.map(i => i.id === itemId ? { ...i, כמות_להזמנה: qty } : i));
+    } catch { showToast('שגיאת רשת', false); }
+    finally {
+      setQtySaving(prev => { const s = new Set(prev); s.delete(itemId); return s; });
     }
   }
 
@@ -191,10 +234,10 @@ export default function SuppliersPage() {
         }),
       });
       if (!res.ok) { showToast('שגיאה', false); return; }
-      const orderedIds = new Set(items.map(i => i.id));
-      setNeeded(prev => prev.filter(i => !orderedIds.has(i.id)));
-      setSelected(prev => { const s = new Set(prev); orderedIds.forEach(id => s.delete(id)); return s; });
-      showToast('הזמנת רכש נוצרה');
+      setExecutedGroups(prev => new Set(prev).add(key));
+      showToast('בוצע — הזמנת רכש נוצרה');
+      // Refresh stock numbers without resetting selection, quantities, or executed badges.
+      refreshNeededStock();
     } catch { showToast('שגיאת רשת', false); }
     finally { setOrderSaving(null); }
   }
@@ -240,6 +283,94 @@ export default function SuppliersPage() {
     const subject = `הזמנת רכש — ${new Date().toLocaleDateString('he-IL')}`;
     const body = buildCopyText(supplier.שם_ספק, items);
     return `mailto:${supplier.אימייל}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  }
+
+  function safeFileName(s: string): string {
+    return s.replace(/[\\/:*?"<>|]+/g, '_').slice(0, 80);
+  }
+
+  function downloadWord(supplier: Supplier | null, groupItems: PurchaseMaterial[]) {
+    const items = groupItems.filter(i => selected.has(i.id));
+    if (!items.length) { showToast('לא נבחרו פריטים', false); return; }
+    const today = new Date().toLocaleDateString('he-IL');
+    const supplierName = supplier?.שם_ספק ?? 'ללא ספק מוגדר';
+    const rows = items.map(i => {
+      const alias = i.שם_מוצר_אצל_הספק && i.שם_מוצר_אצל_הספק !== i.שם_חומר_גלם
+        ? ` (${escapeHtml(i.שם_מוצר_אצל_הספק)})` : '';
+      return `<tr>
+        <td>${escapeHtml(i.שם_חומר_גלם || '')}${alias}${i.מקט_ספק ? `<br><span style="color:#777;font-size:11px">מק"ט ${escapeHtml(i.מקט_ספק)}</span>` : ''}</td>
+        <td>${escapeHtml(supplierName)}</td>
+        <td style="text-align:left">${orderQty[i.id] ?? i.כמות_להזמנה ?? i.כמות_מינימום}</td>
+        <td>${escapeHtml(i.יחידת_קניה || i.יחידת_מידה || '')}</td>
+        <td>${escapeHtml(i.הערות_רכש || '')}</td>
+      </tr>`;
+    }).join('');
+    const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40" dir="rtl" lang="he">
+<head><meta charset="UTF-8"><title>הזמנת רכש</title>
+<style>body{font-family:Arial,Helvetica,sans-serif;direction:rtl;color:#222}
+h1{font-size:20px;margin:0 0 6px}
+.meta{color:#555;font-size:12px;margin-bottom:18px}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{border:1px solid #C9BFB1;padding:6px 8px;text-align:right;vertical-align:top}
+th{background:#F3EDE4}</style></head>
+<body>
+<h1>הזמנת רכש — ${escapeHtml(supplierName)}</h1>
+<div class="meta">תאריך: ${today}${supplier?.איש_קשר ? `  |  איש קשר: ${escapeHtml(supplier.איש_קשר)}` : ''}${supplier?.טלפון ? `  |  טלפון: ${escapeHtml(supplier.טלפון)}` : ''}</div>
+<table><thead><tr><th>שם מוצר</th><th>ספק</th><th>כמות</th><th>יחידה</th><th>הערה</th></tr></thead><tbody>${rows}</tbody></table>
+</body></html>`;
+    const blob = new Blob(['﻿', html], { type: 'application/msword' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `הזמנת_רכש_${safeFileName(supplierName)}_${today}.doc`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  async function downloadExcel(supplier: Supplier | null, groupItems: PurchaseMaterial[]): Promise<boolean> {
+    const items = groupItems.filter(i => selected.has(i.id));
+    if (!items.length) { showToast('לא נבחרו פריטים', false); return false; }
+    try {
+      const XLSX = await import('xlsx');
+      const supplierName = supplier?.שם_ספק ?? 'ללא ספק מוגדר';
+      const today = new Date().toLocaleDateString('he-IL');
+      const rows = items.map(i => ({
+        'שם מוצר':      i.שם_חומר_גלם || '',
+        'שם אצל ספק':   i.שם_מוצר_אצל_הספק || '',
+        'מק"ט':         i.מקט_ספק || '',
+        'ספק':          supplierName,
+        'כמות':         orderQty[i.id] ?? i.כמות_להזמנה ?? i.כמות_מינימום,
+        'יחידה':        i.יחידת_קניה || i.יחידת_מידה || '',
+        'הערה':         i.הערות_רכש || '',
+      }));
+      const ws = XLSX.utils.json_to_sheet(rows);
+      ws['!cols'] = [{ wch: 26 }, { wch: 22 }, { wch: 14 }, { wch: 20 }, { wch: 10 }, { wch: 10 }, { wch: 28 }];
+      // RTL view
+      (ws as unknown as { '!sheetViews'?: Array<{ rightToLeft: boolean }> })['!sheetViews'] = [{ rightToLeft: true }];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'הזמנת רכש');
+      XLSX.writeFile(wb, `הזמנת_רכש_${safeFileName(supplierName)}_${today}.xlsx`);
+      return true;
+    } catch {
+      showToast('שגיאה ביצירת קובץ Excel', false);
+      return false;
+    }
+  }
+
+  async function whatsappWithFile(supplier: Supplier, groupItems: PurchaseMaterial[]) {
+    const items = groupItems.filter(i => selected.has(i.id));
+    if (!items.length) { showToast('לא נבחרו פריטים', false); return; }
+    const ok = await downloadExcel(supplier, groupItems);
+    if (!ok) return;
+    showToast('הקובץ הורד — צרף אותו בוואטסאפ', true);
+    const raw = supplier.טלפון?.replace(/\D/g, '') ?? '';
+    const phone = raw.startsWith('972') ? raw : raw.startsWith('0') ? '972' + raw.slice(1) : raw;
+    const msg = `שלום ${supplier.שם_ספק},\nרשימת הקניות מצורפת.\nתודה רבה,\nעדי תכשיט שוקולד`;
+    setTimeout(() => {
+      window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener,noreferrer');
+    }, 500);
   }
 
   function downloadPdf(supplier: Supplier | null, groupItems: PurchaseMaterial[]) {
@@ -657,14 +788,20 @@ export default function SuppliersPage() {
                 {supplierGroups.map(group => {
                   const gKey = group.supplierId ?? 'none';
                   const selectedInGroup = group.items.filter(i => selected.has(i.id));
+                  const isExecuted = executedGroups.has(gKey);
                   return (
                     <div key={gKey} className="bg-white rounded-xl shadow-sm overflow-hidden">
                       {/* Group header */}
                       <div className="px-5 py-4" style={{ background: '#F3EDE4', borderBottom: '1px solid #E8DED4' }}>
                         <div className="flex items-center justify-between">
                           <div>
-                            <div className="font-semibold text-gray-900 text-base">
-                              {group.supplier?.שם_ספק ?? 'ללא ספק מוגדר'}
+                            <div className="font-semibold text-gray-900 text-base flex items-center gap-2">
+                              <span>{group.supplier?.שם_ספק ?? 'ללא ספק מוגדר'}</span>
+                              {isExecuted && (
+                                <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                                  ✓ בוצע · עודכן למלאי
+                                </span>
+                              )}
                             </div>
                             <div className="flex gap-3 mt-0.5 flex-wrap">
                               {group.supplier?.טלפון && (
@@ -685,7 +822,25 @@ export default function SuppliersPage() {
                               className="px-3 py-1.5 rounded-lg text-xs border border-gray-300 hover:bg-white text-gray-600 transition-colors"
                               title="הורד PDF"
                             >
-                              הורד PDF
+                              PDF
+                            </button>
+
+                            {/* Word download */}
+                            <button
+                              onClick={() => downloadWord(group.supplier, group.items)}
+                              className="px-3 py-1.5 rounded-lg text-xs border border-gray-300 hover:bg-white text-gray-600 transition-colors"
+                              title="הורד Word"
+                            >
+                              Word
+                            </button>
+
+                            {/* Excel download */}
+                            <button
+                              onClick={() => downloadExcel(group.supplier, group.items)}
+                              className="px-3 py-1.5 rounded-lg text-xs border border-gray-300 hover:bg-white text-gray-600 transition-colors"
+                              title="הורד Excel"
+                            >
+                              Excel
                             </button>
 
                             {/* Copy text */}
@@ -709,28 +864,27 @@ export default function SuppliersPage() {
                               </a>
                             )}
 
-                            {/* WhatsApp */}
+                            {/* WhatsApp — generates Excel then opens WhatsApp with prefilled note */}
                             {group.supplier?.טלפון && (
-                              <a
-                                href={buildWaUrl(group.supplier, group.items)}
-                                target="_blank"
-                                rel="noopener noreferrer"
+                              <button
+                                onClick={() => whatsappWithFile(group.supplier!, group.items)}
                                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-white font-medium transition-opacity hover:opacity-90"
                                 style={{ background: '#25D366' }}
+                                title="הורד קובץ ופתח וואטסאפ"
                               >
                                 <IconWhatsApp className="w-3.5 h-3.5" />
-                                WhatsApp
-                              </a>
+                                WhatsApp + קובץ
+                              </button>
                             )}
 
-                            {/* Mark as ordered */}
+                            {/* Execute (mark as ordered) */}
                             <button
                               onClick={() => handleMarkOrdered(group.supplierId, group.items)}
                               disabled={orderSaving === gKey || selectedInGroup.length === 0}
                               className="px-3 py-1.5 rounded-lg text-xs text-white font-medium disabled:opacity-40 transition-opacity"
                               style={{ background: '#C7A46B' }}
                             >
-                              {orderSaving === gKey ? 'שומר...' : `סמן כנשלח (${selectedInGroup.length})`}
+                              {orderSaving === gKey ? 'שומר...' : `ביצוע (${selectedInGroup.length})`}
                             </button>
                           </div>
                         </div>
@@ -781,11 +935,15 @@ export default function SuppliersPage() {
                                   type="number"
                                   value={orderQty[item.id] ?? item.כמות_להזמנה ?? item.כמות_מינימום}
                                   onChange={e => setOrderQty(q => ({ ...q, [item.id]: Number(e.target.value) }))}
+                                  onBlur={e => persistOrderQty(item.id, Number(e.target.value))}
                                   className="border border-gray-300 rounded px-2 py-1 text-sm w-20 text-center focus:outline-none focus:border-[#C7A46B]"
                                   min={0}
                                   step="0.001"
                                 />
                                 <span className="text-xs text-gray-500 w-10 truncate">{item.יחידת_קניה || item.יחידת_מידה}</span>
+                                {qtySaving.has(item.id) && (
+                                  <span className="text-[10px] text-gray-400">שומר...</span>
+                                )}
                               </div>
                             </div>
                           );
