@@ -336,6 +336,7 @@ th{background:#F3EDE4}</style></head>
       const XLSX = await import('xlsx');
       const supplierName = supplier?.שם_ספק ?? 'ללא ספק מוגדר';
       const today = new Date().toLocaleDateString('he-IL');
+      const header = ['שם מוצר', 'שם אצל ספק', 'מק"ט', 'ספק', 'כמות', 'יחידה', 'הערה'];
       const rows = items.map(i => ({
         'שם מוצר':      i.שם_חומר_גלם || '',
         'שם אצל ספק':   i.שם_מוצר_אצל_הספק || '',
@@ -345,11 +346,12 @@ th{background:#F3EDE4}</style></head>
         'יחידה':        i.יחידת_קניה || i.יחידת_מידה || '',
         'הערה':         i.הערות_רכש || '',
       }));
-      const ws = XLSX.utils.json_to_sheet(rows);
+      const ws = XLSX.utils.json_to_sheet(rows, { header });
       ws['!cols'] = [{ wch: 26 }, { wch: 22 }, { wch: 14 }, { wch: 20 }, { wch: 10 }, { wch: 10 }, { wch: 28 }];
-      // RTL view
-      (ws as unknown as { '!sheetViews'?: Array<{ rightToLeft: boolean }> })['!sheetViews'] = [{ rightToLeft: true }];
+      // RTL view (SheetJS reads `!views` with uppercase `RTL`)
+      (ws as unknown as { '!views'?: Array<{ RTL: boolean }> })['!views'] = [{ RTL: true }];
       const wb = XLSX.utils.book_new();
+      (wb as unknown as { Workbook?: { Views?: Array<{ RTL: boolean }> } }).Workbook = { Views: [{ RTL: true }] };
       XLSX.utils.book_append_sheet(wb, ws, 'הזמנת רכש');
       XLSX.writeFile(wb, `הזמנת_רכש_${safeFileName(supplierName)}_${today}.xlsx`);
       return true;
