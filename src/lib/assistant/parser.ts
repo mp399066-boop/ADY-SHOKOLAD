@@ -503,6 +503,24 @@ export function parseIntent(
     if (subject.length >= 2) return { type: 'stock_query', query: subject };
   }
 
+  // 9b. Bare-number input → stock query for that number ("מארז 36" / "24")
+  //     or a heuristic package match — without a hint word, treat a
+  //     standalone number as a package size lookup, which is the most
+  //     common operator shortcut.
+  if (/^\d{1,4}$/.test(text)) {
+    return { type: 'find_package', query: text };
+  }
+
+  // 9c. Bare Hebrew name → try resolving as a stock entity ("פיסטוק",
+  //     "שוהם", "אודם") or a customer lookup. Heuristic: short text
+  //     (1-3 Hebrew words, no verbs/hints) most often means "what is
+  //     this thing?". Hand it to stock_query — the resolver will figure
+  //     out if it's a petit-four / product / raw-material / package.
+  const isShortHebrew = /^[א-ת\s'״׳]+$/.test(text) && text.split(' ').length <= 3 && text.length >= 2;
+  if (isShortHebrew) {
+    return { type: 'stock_query', query: text };
+  }
+
   // Help intent — "what can I ask you" / "תני לי דוגמאות"
   if (
     text === 'עזרה' || text === 'help' ||

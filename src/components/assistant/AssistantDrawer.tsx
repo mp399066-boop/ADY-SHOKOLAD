@@ -383,9 +383,27 @@ export default function AssistantDrawer() {
 
 // ───── Sub-components ──────────────────────────────────────────────────────
 
+// Pick a Hebrew greeting based on the operator's local time. Same heuristic
+// the back-of-house staff would use in person — "בוקר טוב" until 12,
+// "צהריים טובים" until 17, "ערב טוב" until 22, then "לילה טוב".
+function timeAwareGreeting(): string {
+  const hour = new Date().toLocaleString('en-US', {
+    timeZone: 'Asia/Jerusalem',
+    hour: 'numeric',
+    hour12: false,
+  });
+  const h = parseInt(hour, 10);
+  if (Number.isNaN(h))              return 'היי';
+  if (h >= 5  && h < 12)            return 'בוקר טוב';
+  if (h >= 12 && h < 17)            return 'צהריים טובים';
+  if (h >= 17 && h < 22)            return 'ערב טוב';
+  return 'לילה טוב';
+}
+
 function EmptyState({ onPick, recent }: { onPick: (t: string) => void; recent: string[] }) {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [snapshotLoading, setSnapshotLoading] = useState(true);
+  const [greeting] = useState(timeAwareGreeting);
 
   useEffect(() => {
     let cancelled = false;
@@ -397,13 +415,25 @@ function EmptyState({ onPick, recent }: { onPick: (t: string) => void; recent: s
     return () => { cancelled = true; };
   }, []);
 
+  // Welcome subtitle changes based on what the snapshot actually shows.
+  // "Everything calm" reads very differently from "you have 3 unpaid + 2 failures".
+  const subtitle = (() => {
+    if (!snapshot) return 'רגע, בודקת מה קורה אצלך…';
+    const hasNoise =
+      snapshot.unpaid_orders + snapshot.deliveries_today +
+      snapshot.low_stock_count + snapshot.errors_7d > 0;
+    return hasNoise
+      ? 'הנה תמונת מצב מהירה. לחצי על כרטיס כדי לראות פירוט.'
+      : 'הכל רגוע כרגע 🌿 שאלי אותי מה שתרצי.';
+  })();
+
   return (
     <div style={{ paddingTop: '4px' }}>
-      <div style={{ fontSize: '13px', color: '#3A2A1A', fontWeight: 600, marginBottom: '4px' }}>
-        בוקר טוב 👋
+      <div style={{ fontSize: '14px', color: '#3A2A1A', fontWeight: 700, marginBottom: '4px' }}>
+        {greeting} 👋
       </div>
       <div style={{ fontSize: '12px', color: '#8A7664', marginBottom: '14px' }}>
-        הנה תמונת מצב מהירה. לחצי על כרטיס כדי לקבל פירוט מלא.
+        {subtitle}
       </div>
 
       <LiveSnapshot snapshot={snapshot} loading={snapshotLoading} onPick={onPick} />

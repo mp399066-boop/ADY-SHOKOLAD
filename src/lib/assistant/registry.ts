@@ -246,11 +246,12 @@ async function actionCountOrders(range: Range, filters: Filters): Promise<Assist
   ];
 
   if (summary.total === 0) {
-    return { kind: 'answer', blocks: [{ type: 'text', text: `לא מצאתי הזמנות ${desc} 😊` }] };
+    return { kind: 'answer', blocks: [{ type: 'text', text: `אין הזמנות ${desc} — יום שקט 🌿` }] };
   }
 
   blocks.push({
     type: 'list',
+    title: 'פירוט',
     items: [
       { label: 'דחופות',     value: String(summary.urgent),   emoji: '⚡', tone: summary.urgent > 0 ? 'warn' : 'neutral' },
       { label: 'משלוחים',    value: String(summary.delivery), emoji: '🚚', tone: 'neutral' },
@@ -275,11 +276,13 @@ async function actionFindOrders(range: Range, filters: Filters): Promise<Assista
 
   const desc = describeOrders(range, filters);
   if (orders.length === 0) {
-    return { kind: 'answer', blocks: [{ type: 'text', text: `לא מצאתי הזמנות ${desc} 😊` }] };
+    return { kind: 'answer', blocks: [{ type: 'text', text: `אין הזמנות ${desc} — יום שקט 🌿` }] };
   }
 
   const summaries = orders.slice(0, 20).map(toOrderSummary);
-  const title = `מצאתי ${orders.length} הזמנות ${desc}`;
+  const title = orders.length === 1
+    ? `הנה ההזמנה ${desc}`
+    : `הנה ${orders.length} ההזמנות ${desc}`;
   const blocks: Block[] = [{ type: 'orders', title, orders: summaries }];
 
   if (!filters.urgentOnly && summary.urgent > 0) {
@@ -307,7 +310,7 @@ async function actionListLowStock(): Promise<AssistantResponse> {
   const rows = (data || []) as Record<string, unknown>[];
 
   if (rows.length === 0) {
-    return { kind: 'answer', blocks: [{ type: 'text', text: '🟢 הכל תקין במלאי 😊' }] };
+    return { kind: 'answer', blocks: [{ type: 'text', text: 'הכל תקין במלאי — אין למה לדאוג 🟢' }] };
   }
 
   let outCount = 0;
@@ -326,7 +329,7 @@ async function actionListLowStock(): Promise<AssistantResponse> {
   });
 
   const blocks: Block[] = [
-    { type: 'list', title: `מצאתי ${rows.length} פריטים שדורשים תשומת לב`, items },
+    { type: 'list', title: `${rows.length} פריטים שדורשים תשומת לב`, items },
   ];
   if (outCount > 0) {
     blocks.push({ type: 'insight', text: `${outCount} פריטים אזלו מהמלאי`, tone: 'bad', emoji: '🔴' });
@@ -1345,7 +1348,26 @@ async function dispatch(intent: ParsedIntent): Promise<AssistantResponse> {
 // of natural follow-ups for moods where it makes sense (greeting,
 // how_are_you, praise) so the operator has somewhere to go next without
 // having to start from scratch.
+// Hebrew greeting by Asia/Jerusalem local hour — kept consistent with the
+// welcome-state greeting on the client. Replicated here (not imported) so
+// the server-only registry has no client dependency.
+function timeAwareHelloHe(): string {
+  try {
+    const hourStr = new Date().toLocaleString('en-US', {
+      timeZone: 'Asia/Jerusalem', hour: 'numeric', hour12: false,
+    });
+    const h = parseInt(hourStr, 10);
+    if (Number.isNaN(h))   return 'היי';
+    if (h >= 5  && h < 12) return 'בוקר טוב';
+    if (h >= 12 && h < 17) return 'צהריים טובים';
+    if (h >= 17 && h < 22) return 'ערב טוב';
+    return 'לילה טוב';
+  } catch { return 'היי'; }
+}
+
 async function actionChitchat(mood: ChitchatMood): Promise<AssistantResponse> {
+  const hello = timeAwareHelloHe();
+
   const replies: Record<ChitchatMood, string[]> = {
     thanks: [
       'בכיף 😊',
@@ -1369,9 +1391,9 @@ async function actionChitchat(mood: ChitchatMood): Promise<AssistantResponse> {
       'אוקיי. אולי תרצי לראות מה אני יודעת לענות? כתבי "עזרה"',
     ],
     greeting: [
-      'היי! 👋 איך אני יכולה לעזור היום?',
-      'שלום! 😊 על מה תרצי לדעת?',
-      'היי, ברוכה הבאה. תרצי תמונת מצב של היום?',
+      `${hello}! 👋 איך אני יכולה לעזור?`,
+      `${hello} 😊 על מה תרצי לדעת?`,
+      `${hello}, ברוכה הבאה. תרצי תמונת מצב של היום?`,
     ],
     farewell: [
       'להתראות! 👋 אני פה כשתצטרכי',
