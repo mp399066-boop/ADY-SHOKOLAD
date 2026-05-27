@@ -136,8 +136,12 @@ export const QUESTION_CATALOG: CatalogEntry[] = [
   {
     phrases: [
       'הזמנות שלא שולמו', 'הזמנות לא שולמו', 'הזמנות שלא משולמות',
-      'מי לא שילם', 'מי עוד לא שילם', 'מי חייב לי', 'מי חייבת לי', 'מי חייבים',
-      'הזמנות חייבות', 'הזמנות בחוב', 'הזמנות במחיקה',
+      'מי לא שילם', 'מי עוד לא שילם', 'מי עדיין לא שילם', 'מי לא שילמה',
+      'מי עדיין לא שילמה', 'מי עוד לא שילמה',
+      'מי חייב לי', 'מי חייבת לי', 'מי חייבים',
+      'מי עוד חייב', 'מי עדיין חייב',
+      'הזמנות חייבות', 'הזמנות בחוב',
+      'הזמנות ממתינות לתשלום', 'הזמנות שעוד לא שולמו',
     ],
     intent: { type: 'find_orders', range: WEEK, filters: { unpaidOnly: true } },
     category: 'orders',
@@ -397,17 +401,30 @@ function normalize(text: string): string {
     .trim();
 }
 
-// First-pass exact match. Returns the intent of the first catalog entry
-// whose phrase is found as a substring of the normalized input. Factory
-// entries that return null defer to the keyword parser (same as a non-match).
+// First-pass match. Returns the intent of the first catalog entry whose
+// phrase matches the normalized input.
+//
+// Matching rules differ by category:
+//   - chitchat   → EXACT match only. "תודה" / "לא" / "כן" are one-word
+//                  phrases; substring-matching them would intercept any
+//                  longer query that happens to contain those words
+//                  (e.g. "מי עדיין לא שילם" should NOT be "disagree").
+//   - everything else → substring OR exact, so natural extra words
+//                       like "תני לי…" / "אילו…" still hit the same
+//                       intent.
+//
+// Factory entries that return null defer to the keyword parser (same as a
+// non-match).
 export function matchCatalog(rawText: string): ParsedIntent | null {
   const text = normalize(rawText);
   if (!text) return null;
   for (const entry of QUESTION_CATALOG) {
+    const exactOnly = entry.category === 'chitchat';
     for (const phrase of entry.phrases) {
       const p = normalize(phrase);
       if (!p) continue;
-      if (text === p || text.includes(p)) {
+      const hit = exactOnly ? text === p : (text === p || text.includes(p));
+      if (hit) {
         if (typeof entry.intent === 'function') {
           const out = entry.intent(text);
           if (out) return out;
