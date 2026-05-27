@@ -29,6 +29,12 @@ function deriveContextFromIntent(intent: ParsedIntent): ConversationContext {
     case 'top_products':
     case 'top_petit_fours':
     case 'new_customers':
+    case 'count_suppliers':
+    case 'list_business_customers':
+    case 'kitchen_attendance_today':
+    case 'kitchen_prep_summary':
+    case 'invoices_recent':
+    case 'finished_products_stock':
     case 'help':                      ctx.lastAction = 'list'; break;
     case 'chitchat':                  /* no action label — pure social glue */ break;
     case 'stock_query':               ctx.lastAction = 'stock_lookup'; break;

@@ -333,6 +333,100 @@ export const QUESTION_CATALOG: CatalogEntry[] = [
     label: 'יש שגיאות במערכת?',
   },
 
+  // ── Suppliers ──────────────────────────────────────────────────────────
+  {
+    phrases: [
+      'כמה ספקים', 'כמה ספקים יש', 'כמה ספקים יש לי', 'ספקים',
+      'אילו ספקים יש', 'איזה ספקים יש', 'רשימת ספקים',
+      'מי הספקים שלי', 'הספקים שלי', 'ספקים פעילים',
+    ],
+    intent: { type: 'count_suppliers' },
+    category: 'inventory',
+    label: 'אילו ספקים יש לי',
+  },
+
+  // ── Business customers ────────────────────────────────────────────────
+  {
+    phrases: [
+      'יש לקוחות עסקיים', 'לקוחות עסקיים', 'הלקוחות העסקיים שלי',
+      'מי הלקוחות העסקיים', 'איזה לקוחות עסקיים יש', 'אילו לקוחות עסקיים',
+      'לקוחות עסקיים פעילים', 'כמה לקוחות עסקיים', 'בתי עסק',
+    ],
+    intent: { type: 'list_business_customers' },
+    category: 'customers',
+    label: 'הלקוחות העסקיים שלי',
+  },
+
+  // ── Kitchen — production prep ─────────────────────────────────────────
+  // "מטבח" = production of cakes/petit-fours, not orders. These map to
+  // /api/dashboard/kitchen-prep — what to make + earliest dispatch dates.
+  {
+    phrases: [
+      'מה צריך להכין במטבח', 'מה צריך להכין', 'מה במטבח',
+      'מה צריך לייצר', 'מה צריך להכין היום', 'מה צריך להכין מחר',
+      'מה צריך להכין השבוע', 'מה צריך להכין עבור הזמנות',
+      'מה צריך להכין במטבח עבור הזמנות', 'מה צריך לעבוד היום',
+      'מה צריך להכין במטבח עבור הזמנות השבוע',
+      'מה במטבח היום', 'מה במטבח מחר', 'מה במטבח השבוע',
+      'תכנון מטבח', 'תכנון ייצור', 'תכנון יצור',
+      'מה לייצר', 'מה ייצור',
+    ],
+    intent: (text) => {
+      // Decide range from the same SYN_* words the keyword parser uses, so
+      // "מה צריך להכין מחר" and "מה במטבח השבוע" all land on the right window.
+      if (text.includes('מחר') || text.includes('למחר'))
+        return { type: 'kitchen_prep_summary', range: TOMORROW };
+      if (text.includes('השבוע') || text.includes('שבוע'))
+        return { type: 'kitchen_prep_summary', range: WEEK };
+      return { type: 'kitchen_prep_summary', range: TODAY };
+    },
+    category: 'production',
+    label: 'מה צריך להכין במטבח (היום)',
+  },
+
+  // ── Kitchen workers / attendance ──────────────────────────────────────
+  {
+    phrases: [
+      'מי עבדה היום', 'מי עבדו היום', 'איזה עובדות היו היום',
+      'אילו עובדות עבדו', 'האם יש עובדות שהיו היום',
+      'עובדות מטבח', 'מי במשמרת', 'מי במשמרת היום',
+      'מי בעבודה היום', 'מי הגיעה היום', 'מי הגיעו היום',
+      'נוכחות עובדות', 'דוח נוכחות', 'מי במטבח היום',
+    ],
+    intent: { type: 'kitchen_attendance_today' },
+    category: 'production',
+    label: 'מי עבדה היום במטבח',
+  },
+
+  // ── Invoices ──────────────────────────────────────────────────────────
+  {
+    phrases: [
+      'חשבוניות', 'מה קורה בחשבוניות', 'חשבוניות החודש',
+      'כמה חשבוניות הופקו', 'איזה חשבוניות יש', 'רשימת חשבוניות',
+      'חשבוניות אחרונות', 'מה החשבוניות שלי',
+      // "Failed invoices" — map to the same recent-invoices view; the answer
+      // also calls out failures from system_activity_logs.
+      'האם יש נכשל בחשבוניות', 'יש כשלים בחשבוניות', 'חשבוניות שנכשלו',
+      'תקלות בחשבוניות', 'בעיות בחשבוניות',
+    ],
+    intent: { type: 'invoices_recent' },
+    category: 'revenue',
+    label: 'מה קורה בחשבוניות',
+  },
+
+  // ── Finished products stock (מוגמרים) ─────────────────────────────────
+  {
+    phrases: [
+      'כמה מוצרים יש במוגמרים', 'מוגמרים', 'מלאי מוגמרים',
+      'כמה מוצרים מוכנים יש', 'מוצרים מוכנים', 'כמה מוצרים מוכנים',
+      'מלאי מוצרים מוכנים', 'מה יש במוגמרים', 'מה במוגמרים',
+      'איזה מוצרים יש מוכנים',
+    ],
+    intent: { type: 'finished_products_stock' },
+    category: 'inventory',
+    label: 'מה יש במוגמרים',
+  },
+
   // ── Chitchat — conversational glue. Catches short social utterances so
   //     the assistant doesn't robotically reply "לא הבנתי" to "תודה" /
   //     "מצוין" / "היי". Each entry maps to a chitchat mood; registry picks

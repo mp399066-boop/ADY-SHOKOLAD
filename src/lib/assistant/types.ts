@@ -172,6 +172,19 @@ export type ParsedIntent =
   | { type: 'top_petit_fours'; scope: CustomerActivityScope }
   // New customers created in the last 30 days.
   | { type: 'new_customers' }
+  // ── Additive (May 2026 v2 expansion) ────────────────────────────────
+  // Supplier list / count.
+  | { type: 'count_suppliers' }
+  // Business customers (סוג_לקוח in ['עסקי','עסקי - קבוע','עסקי - כמות']).
+  | { type: 'list_business_customers' }
+  // Kitchen workers active today (נוכחות_עובדות for today).
+  | { type: 'kitchen_attendance_today' }
+  // "מה צריך להכין במטבח" — wraps /api/dashboard/kitchen-prep.
+  | { type: 'kitchen_prep_summary'; range: Range }
+  // Recent invoices (חשבוניות) + count this month.
+  | { type: 'invoices_recent' }
+  // Finished-product stock (מוצרים_למכירה.כמות_במלאי).
+  | { type: 'finished_products_stock' }
   // "מה אני יכולה לשאול אותך" — surfaces the full question catalog
   // grouped by category. Pure UI intent, no DB read.
   | { type: 'help' }

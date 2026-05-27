@@ -544,7 +544,29 @@ async function actionStockQuery(rawQuery: string): Promise<AssistantResponse> {
   });
 
   if (resolveResult.alternatives.length === 0) {
-    return { kind: 'answer', blocks: [{ type: 'text', text: `לא מצאתי "${q}" במלאי 😊 נסי שם אחר?` }] };
+    // Stock-query that didn't match a real item is the cold-feedback path
+    // operators ran into the most ("לא מצאתי 'חשבוניות' במלאי 😊"). Give
+    // a warmer message and a few targeted next steps that match the most
+    // common categories the search term might *actually* belong to.
+    return {
+      kind: 'answer',
+      blocks: [
+        {
+          type: 'text',
+          text: `לא הצלחתי לקשר את "${q}" לפריט במלאי. אולי התכוונת לאחת מאלה?`,
+        },
+        {
+          type: 'suggestions',
+          title: 'קטגוריות קרובות',
+          items: [
+            { label: 'מה במלאי נמוך',                text: 'מה במלאי נמוך?' },
+            { label: 'אילו סוגי פטיפורים יש',         text: 'איזה סוגי פטיפורים קיימים?' },
+            { label: 'מה יש במוגמרים',                text: 'מה יש במוגמרים?' },
+            { label: 'מה אני יכולה לשאול אותך?',      text: 'עזרה' },
+          ],
+        },
+      ],
+    };
   }
 
   // Group resolved IDs by kind so we can pull live stock data with a
@@ -1280,6 +1302,333 @@ async function actionNewCustomers(): Promise<AssistantResponse> {
   };
 }
 
+// ── v2 expansion (May 2026) — suppliers / business customers / kitchen /
+//     invoices / finished-products stock. All read-only. ──────────────────
+
+async function actionCountSuppliers(): Promise<AssistantResponse> {
+  const supabase = createAdminClient();
+  const { data, error, count } = await supabase
+    .from('ספקים')
+    .select('id, שם_ספק, טלפון, איש_קשר, פעיל, הערות', { count: 'exact' })
+    .order('שם_ספק', { ascending: true })
+    .limit(50);
+  if (error) throw new Error(error.message);
+
+  type Row = { id: string; שם_ספק: string | null; טלפון: string | null; איש_קשר: string | null; פעיל: boolean | null; הערות: string | null };
+  const rows = (data || []) as Row[];
+  const total = count ?? rows.length;
+  const active = rows.filter(r => r.פעיל !== false).length;
+
+  if (total === 0) {
+    return { kind: 'answer', blocks: [{ type: 'text', text: 'עוד אין ספקים רשומים אצלך 📋' }] };
+  }
+
+  const items: ListItem[] = rows.slice(0, 20).map(r => ({
+    label: r.שם_ספק || 'ללא שם',
+    value: r.פעיל === false ? 'לא פעיל' : 'פעיל',
+    sublabel: [r.איש_קשר, r.טלפון].filter(Boolean).join(' · ') || undefined,
+    tone:  r.פעיל === false ? 'neutral' : 'good',
+    emoji: r.פעיל === false ? '⚪' : '🟢',
+  }));
+
+  return {
+    kind: 'answer',
+    blocks: [
+      { type: 'stat', label: 'ספקים פעילים', value: `${active} / ${total}`, emoji: '📋', tone: 'neutral' },
+      { type: 'list', title: rows.length < total ? `מציגה ${rows.length} מתוך ${total}` : 'הספקים שלך', items },
+    ],
+  };
+}
+
+async function actionListBusinessCustomers(): Promise<AssistantResponse> {
+  const supabase = createAdminClient();
+  const { data, error, count } = await supabase
+    .from('לקוחות')
+    .select('id, שם_פרטי, שם_משפחה, טלפון, אימייל, סוג_לקוח', { count: 'exact' })
+    .in('סוג_לקוח', ['עסקי', 'עסקי - קבוע', 'עסקי - כמות'])
+    .order('שם_משפחה', { ascending: true })
+    .limit(30);
+  if (error) throw new Error(error.message);
+
+  type Row = { id: string; שם_פרטי: string | null; שם_משפחה: string | null; טלפון: string | null; אימייל: string | null; סוג_לקוח: string | null };
+  const rows = (data || []) as Row[];
+  const total = count ?? rows.length;
+
+  if (total === 0) {
+    return {
+      kind: 'answer',
+      blocks: [{ type: 'text', text: 'אין כרגע לקוחות עסקיים רשומים אצלך 📋' }],
+    };
+  }
+
+  const items: ListItem[] = rows.map(r => {
+    const name = `${r.שם_פרטי || ''} ${r.שם_משפחה || ''}`.trim() || 'ללא שם';
+    const contact = [r.טלפון, r.אימייל].filter(Boolean).join(' · ');
+    return {
+      label:    name,
+      value:    r.סוג_לקוח || 'עסקי',
+      sublabel: contact || undefined,
+      tone:     'neutral',
+      emoji:    '🏢',
+    };
+  });
+
+  return {
+    kind: 'answer',
+    blocks: [
+      { type: 'stat', label: 'לקוחות עסקיים', value: String(total), emoji: '🏢', tone: 'neutral' },
+      { type: 'list', title: rows.length < total ? `מציגה ${rows.length} מתוך ${total}` : 'הלקוחות העסקיים שלך', items },
+    ],
+  };
+}
+
+async function actionKitchenAttendanceToday(): Promise<AssistantResponse> {
+  const supabase = createAdminClient();
+  const today = todayInTZ();
+  const { data, error } = await supabase
+    .from('נוכחות_עובדות')
+    .select('id, שעת_כניסה, שעת_יציאה, סהכ_שעות, סטטוס, עובדות_מטבח(שם_עובדת, תפקיד)')
+    .eq('תאריך', today)
+    .order('שעת_כניסה', { ascending: true });
+  if (error) throw new Error(error.message);
+
+  type Row = {
+    id: string; שעת_כניסה: string | null; שעת_יציאה: string | null;
+    סהכ_שעות: number | null; סטטוס: string | null;
+    עובדות_מטבח?: { שם_עובדת?: string | null; תפקיד?: string | null } | null;
+  };
+  const rows = (data || []) as Row[];
+
+  if (rows.length === 0) {
+    return { kind: 'answer', blocks: [{ type: 'text', text: 'עוד אף אחת לא נרשמה היום במטבח 👩‍🍳' }] };
+  }
+
+  const items: ListItem[] = rows.map(r => {
+    const name  = r.עובדות_מטבח?.שם_עובדת || 'עובדת';
+    const role  = r.עובדות_מטבח?.תפקיד    || '';
+    const into  = r.שעת_כניסה?.slice(0, 5) || '';
+    const out   = r.שעת_יציאה?.slice(0, 5) || '';
+    const hours = r.סהכ_שעות != null ? `${Number(r.סהכ_שעות).toFixed(1)} ש'` : '';
+    return {
+      label:    role ? `${name} · ${role}` : name,
+      value:    out ? `${into}–${out}${hours ? ' · ' + hours : ''}` : (into ? `${into} (פתוח)` : '—'),
+      sublabel: r.סטטוס || undefined,
+      tone:     r.סטטוס === 'הושלם' ? 'good' : r.סטטוס === 'חסרה יציאה' ? 'warn' : 'neutral',
+      emoji:    '👩‍🍳',
+    };
+  });
+
+  return {
+    kind: 'answer',
+    blocks: [
+      { type: 'stat', label: 'עובדות שהיו היום', value: String(rows.length), emoji: '👩‍🍳', tone: 'good' },
+      { type: 'list', title: 'נוכחות מטבח להיום', items },
+    ],
+  };
+}
+
+async function actionKitchenPrepSummary(range: Range): Promise<AssistantResponse> {
+  // The kitchen-prep endpoint expects no range query param — it always
+  // returns the upcoming 14-day window with status banding. We filter on
+  // the client (here) by earliestDispatchISO against the requested range.
+  // Bypassing fetch keeps this purely server-side; we replicate the same
+  // Supabase reads the dashboard endpoint does, but at a much lower depth.
+
+  const supabase = createAdminClient();
+  const today = todayInTZ();
+  const horizon = (() => {
+    if (range.kind === 'today')    return today;
+    if (range.kind === 'tomorrow') {
+      const d = new Date(today + 'T00:00:00+03:00');
+      d.setDate(d.getDate() + 1);
+      return d.toISOString().slice(0, 10);
+    }
+    if (range.kind === 'week') {
+      const d = new Date(today + 'T00:00:00+03:00');
+      d.setDate(d.getDate() + 7);
+      return d.toISOString().slice(0, 10);
+    }
+    return range.date;
+  })();
+
+  // Pull active orders in the window, then sum line items by product/package.
+  const { data: orderRows, error: ordersErr } = await supabase
+    .from('הזמנות')
+    .select('id, תאריך_אספקה')
+    .gte('תאריך_אספקה', range.kind === 'tomorrow' ? horizon : today)
+    .lte('תאריך_אספקה', horizon)
+    .neq('סטטוס_הזמנה', 'בוטלה')
+    .neq('סטטוס_הזמנה', 'טיוטה');
+  if (ordersErr) throw new Error(ordersErr.message);
+
+  const orderIds = ((orderRows || []) as Array<{ id: string }>).map(r => r.id);
+  const rangeDesc = range.kind === 'today' ? 'היום'
+                  : range.kind === 'tomorrow' ? 'מחר'
+                  : range.kind === 'week' ? 'השבוע'
+                  : `לתאריך ${range.date}`;
+
+  if (orderIds.length === 0) {
+    return { kind: 'answer', blocks: [{ type: 'text', text: `אין הזמנות לייצור ${rangeDesc} 🌿` }] };
+  }
+
+  const { data: itemRows, error: itemsErr } = await supabase
+    .from('מוצרים_בהזמנה')
+    .select('כמות, סוג_שורה, גודל_מארז, מוצרים_למכירה(שם_מוצר)')
+    .in('הזמנה_id', orderIds)
+    .limit(2000);
+  if (itemsErr) throw new Error(itemsErr.message);
+
+  type ItemRow = {
+    כמות: number | null;
+    סוג_שורה: string | null;
+    גודל_מארז: number | null;
+    מוצרים_למכירה: { שם_מוצר?: string | null } | null;
+  };
+
+  // Tally cakes/products + packages separately.
+  const productTally = new Map<string, number>();
+  const packageTally = new Map<string, number>();
+  for (const it of ((itemRows || []) as unknown as ItemRow[])) {
+    const qty = Number(it.כמות || 0);
+    if (qty <= 0) continue;
+    if (it.סוג_שורה === 'מארז') {
+      const key = `מארז ${it.גודל_מארז ?? ''} פטיפורים`.trim();
+      packageTally.set(key, (packageTally.get(key) || 0) + qty);
+    } else {
+      const name = it.מוצרים_למכירה?.שם_מוצר?.trim();
+      if (!name) continue;
+      productTally.set(name, (productTally.get(name) || 0) + qty);
+    }
+  }
+
+  const productItems: ListItem[] = Array.from(productTally.entries())
+    .sort((a, b) => b[1] - a[1]).slice(0, 15)
+    .map(([name, qty]) => ({ label: name, value: `${qty} יח'`, tone: 'neutral', emoji: '🧁' }));
+  const packageItems: ListItem[] = Array.from(packageTally.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, qty]) => ({ label: name, value: `${qty} מארזים`, tone: 'neutral', emoji: '📦' }));
+
+  const blocks: Block[] = [
+    { type: 'stat', label: `הזמנות לייצור ${rangeDesc}`, value: String(orderIds.length), emoji: '👩‍🍳', tone: 'neutral' },
+  ];
+  if (productItems.length > 0) blocks.push({ type: 'list', title: 'עוגות ומוצרים', items: productItems });
+  if (packageItems.length > 0) blocks.push({ type: 'list', title: 'מארזי פטיפורים', items: packageItems });
+  if (productItems.length === 0 && packageItems.length === 0) {
+    blocks.push({ type: 'text', text: 'יש הזמנות אבל בלי פריטים לייצור 🤔' });
+  }
+  return { kind: 'answer', blocks };
+}
+
+async function actionInvoicesRecent(): Promise<AssistantResponse> {
+  const supabase = createAdminClient();
+  const sinceMonth = startOfMonthISO();
+  const sinceErrors = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  const [invoiceRes, failedRes] = await Promise.all([
+    supabase
+      .from('חשבוניות')
+      .select('id, מספר_חשבונית, סכום, סטטוס, תאריך_יצירה, לקוחות(שם_פרטי, שם_משפחה)', { count: 'exact' })
+      .gte('תאריך_יצירה', sinceMonth)
+      .order('תאריך_יצירה', { ascending: false })
+      .limit(15),
+    supabase
+      .from('system_activity_logs')
+      .select('title, error_message, created_at', { count: 'exact' })
+      .eq('service_key', 'morning_documents')
+      .eq('status', 'failed')
+      .gte('created_at', sinceErrors)
+      .order('created_at', { ascending: false })
+      .limit(5),
+  ]);
+  if (invoiceRes.error) throw new Error(invoiceRes.error.message);
+
+  type InvRow = {
+    id: string; מספר_חשבונית: string | null; סכום: number | string | null;
+    סטטוס: string | null; תאריך_יצירה: string | null;
+    לקוחות?: { שם_פרטי?: string | null; שם_משפחה?: string | null } | null;
+  };
+  const invoices = (invoiceRes.data || []) as InvRow[];
+  const invoiceTotal = invoiceRes.count ?? invoices.length;
+  const failedCount = failedRes.count ?? 0;
+
+  if (invoiceTotal === 0 && failedCount === 0) {
+    return { kind: 'answer', blocks: [{ type: 'text', text: 'עוד לא הופקו חשבוניות החודש 🧾' }] };
+  }
+
+  const blocks: Block[] = [
+    { type: 'stat', label: 'חשבוניות החודש', value: String(invoiceTotal), emoji: '🧾', tone: 'neutral' },
+  ];
+
+  if (failedCount > 0) {
+    blocks.push({
+      type: 'insight',
+      text: `${failedCount} הפקות חשבונית נכשלו ב-7 ימים האחרונים — שווה לבדוק בלוגים`,
+      tone: 'warn',
+      emoji: '⚠',
+    });
+  }
+
+  if (invoices.length > 0) {
+    const items: ListItem[] = invoices.map(inv => {
+      const c = inv.לקוחות;
+      const name = c ? `${c.שם_פרטי || ''} ${c.שם_משפחה || ''}`.trim() : '';
+      return {
+        label:    inv.מספר_חשבונית ? `#${inv.מספר_חשבונית}` : 'חשבונית',
+        value:    fmtCurrency(Number(inv.סכום || 0)),
+        sublabel: [name || null, fmtDateHe(inv.תאריך_יצירה), inv.סטטוס].filter(Boolean).join(' · '),
+        tone:     inv.סטטוס === 'בוטלה' ? 'bad' : 'neutral',
+        emoji:    '🧾',
+      };
+    });
+    blocks.push({
+      type: 'list',
+      title: invoices.length < invoiceTotal ? `מציגה ${invoices.length} אחרונות מתוך ${invoiceTotal}` : 'החשבוניות החודש',
+      items,
+    });
+  }
+
+  return { kind: 'answer', blocks };
+}
+
+async function actionFinishedProductsStock(): Promise<AssistantResponse> {
+  const supabase = createAdminClient();
+  const { data, error, count } = await supabase
+    .from('מוצרים_למכירה')
+    .select('שם_מוצר, כמות_במלאי, פעיל', { count: 'exact' })
+    .eq('פעיל', true)
+    .order('כמות_במלאי', { ascending: false })
+    .limit(30);
+  if (error) throw new Error(error.message);
+
+  type Row = { שם_מוצר: string | null; כמות_במלאי: number | null; פעיל: boolean | null };
+  const rows = (data || []) as Row[];
+  const total = count ?? rows.length;
+
+  if (total === 0) {
+    return { kind: 'answer', blocks: [{ type: 'text', text: 'אין כרגע מוצרים מוכנים במלאי 📦' }] };
+  }
+
+  const inStock = rows.filter(r => Number(r.כמות_במלאי || 0) > 0);
+  const items: ListItem[] = inStock.slice(0, 20).map(r => {
+    const qty = Number(r.כמות_במלאי || 0);
+    const tone: Tone = qty > 5 ? 'good' : qty > 0 ? 'warn' : 'bad';
+    return {
+      label: r.שם_מוצר || 'מוצר',
+      value: `${qty} יח'`,
+      tone,
+      emoji: tone === 'good' ? '🟢' : tone === 'warn' ? '🟡' : '🔴',
+    };
+  });
+
+  return {
+    kind: 'answer',
+    blocks: [
+      { type: 'stat', label: 'מוצרים מוכנים פעילים', value: `${inStock.length} / ${total}`, emoji: '📦', tone: 'neutral' },
+      { type: 'list', title: inStock.length < total ? `מציגה ${inStock.length} עם מלאי` : 'המוצרים המוכנים שלך', items },
+    ],
+  };
+}
+
 // Strip undefined/false flags so the JSON payload sent to the API stays
 // minimal. Returns undefined when no filter is active so the API receives
 // no `filters` key at all.
@@ -1317,6 +1666,12 @@ async function dispatch(intent: ParsedIntent): Promise<AssistantResponse> {
     case 'top_products':              return actionTopProducts();
     case 'top_petit_fours':           return actionTopPetitFours();
     case 'new_customers':             return actionNewCustomers();
+    case 'count_suppliers':           return actionCountSuppliers();
+    case 'list_business_customers':   return actionListBusinessCustomers();
+    case 'kitchen_attendance_today':  return actionKitchenAttendanceToday();
+    case 'kitchen_prep_summary':      return actionKitchenPrepSummary(intent.range);
+    case 'invoices_recent':           return actionInvoicesRecent();
+    case 'finished_products_stock':   return actionFinishedProductsStock();
     case 'help':                      return actionHelp();
     case 'chitchat':                  return actionChitchat(intent.mood);
     case 'unknown': {
