@@ -132,6 +132,21 @@ const TABS: TabDef[] = [
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
+interface SummaryCounts {
+  failed:  number;
+  warning: number;
+  success: number;
+  total:   number;
+}
+
+interface ActivitySummary {
+  window_days: number;
+  since:       string;
+  by_service:  Record<string, SummaryCounts>;
+  by_module:   Record<string, SummaryCounts>;
+  totals:      SummaryCounts;
+}
+
 interface ActivityLog {
   id: string;
   created_at: string;
@@ -212,6 +227,7 @@ export default function LogsPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [forbidden, setForbidden] = useState(false);
   const [detail, setDetail]       = useState<ActivityLog | null>(null);
+  const [summary, setSummary]     = useState<ActivitySummary | null>(null);
 
   // Filters (apply on top of the tab filter)
   const [q, setQ]                 = useState('');
@@ -278,6 +294,40 @@ export default function LogsPage() {
     void loadFirstPage();
   }, [loadFirstPage]);
 
+  // Cross-category failure summary for the sidebar badges + hero banner.
+  // Re-fetched on every loadFirstPage so the badges stay roughly in sync
+  // when the user filters / refreshes.
+  const loadSummary = useCallback(async () => {
+    try {
+      const res = await fetch('/api/system/activity/summary?days=7');
+      if (!res.ok) return;
+      const json = (await res.json()) as ActivitySummary;
+      setSummary(json);
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => { void loadSummary(); }, [loadSummary]);
+
+  // Quick lookup: how many failures (last 7d) per tab?
+  const failuresByTab = useMemo<Record<TabId, number>>(() => {
+    const out: Record<TabId, number> = {
+      orders: 0, morning_documents: 0, customer_order_emails: 0, admin_alerts: 0,
+      delivery_notifications: 0, daily_orders_report: 0, woocommerce_orders: 0,
+      inventory_deduction: 0, payplus_payments: 0,
+    };
+    if (!summary) return out;
+    for (const tab of TABS) {
+      const f = tab.filter;
+      const c = 'module' in f
+        ? summary.by_module[f.module]
+        : summary.by_service[f.serviceKey];
+      out[tab.id] = c?.failed ?? 0;
+    }
+    return out;
+  }, [summary]);
+
+  const totalFailures7d = summary?.totals.failed ?? 0;
+
   const filterActive = useMemo(
     () => Boolean(qDebounced || statusF || fromF || toF),
     [qDebounced, statusF, fromF, toF],
@@ -314,6 +364,23 @@ export default function LogsPage() {
         </p>
       </div>
 
+      {/* Hero failure banner — only shown when there are failures in the
+          last 7 days. Clicking the action jumps to the category with the
+          most failures and applies a status=failed filter so the operator
+          lands directly on the broken items. */}
+      {totalFailures7d > 0 && (
+        <FailureBanner
+          totalFailures={totalFailures7d}
+          failuresByTab={failuresByTab}
+          windowDays={summary?.window_days ?? 7}
+          onJump={(tabId) => {
+            clearFilters();
+            setStatusF('failed');
+            setActiveTab(tabId);
+          }}
+        />
+      )}
+
       {/* Manual trigger for the monthly backup export — calls the existing
           /api/reports/monthly-backup-export route (the same one Vercel cron
           fires on the 1st of every month). Optional ?to= override in the
@@ -329,6 +396,8 @@ export default function LogsPage() {
         <aside className="lg:w-64 lg:flex-shrink-0">
           <CategorySidebar
             active={activeTab}
+            failuresByTab={failuresByTab}
+            windowDays={summary?.window_days ?? 7}
             onChange={(id) => { clearFilters(); setActiveTab(id); }}
           />
         </aside>
@@ -447,15 +516,26 @@ export default function LogsPage() {
 // as a horizontally-scrollable pill row above the feed so nothing gets cut
 // off on mobile.
 
-function CategorySidebar({ active, onChange }: { active: TabId; onChange: (id: TabId) => void }) {
+function CategorySidebar({
+  active, failuresByTab, windowDays, onChange,
+}: {
+  active: TabId;
+  failuresByTab: Record<TabId, number>;
+  windowDays: number;
+  onChange: (id: TabId) => void;
+}) {
   return (
     <>
       {/* Desktop / tablet — vertical list */}
       <nav className="hidden lg:block">
         <Card className="p-2">
+          <div className="px-2 pt-1 pb-2 text-[10.5px] font-bold uppercase tracking-wider" style={{ color: '#A0907D', letterSpacing: '0.06em' }}>
+            קטגוריות
+          </div>
           <ul className="space-y-1">
             {TABS.map(tab => {
               const isActive = active === tab.id;
+              const failures = failuresByTab[tab.id] || 0;
               return (
                 <li key={tab.id}>
                   <button
@@ -469,6 +549,15 @@ function CategorySidebar({ active, onChange }: { active: TabId; onChange: (id: T
                   >
                     <span aria-hidden className="text-[16px] leading-none w-5 text-center">{tab.icon}</span>
                     <span className="text-[12.5px] font-semibold leading-tight flex-1">{tab.label}</span>
+                    {failures > 0 && (
+                      <span
+                        title={`${failures} שגיאות ב-${windowDays} ימים האחרונים`}
+                        className="inline-flex items-center justify-center min-w-[20px] h-[20px] px-1.5 rounded-full text-[11px] font-bold tabular-nums"
+                        style={{ backgroundColor: '#A03C2C', color: '#FFFFFF', boxShadow: '0 0 0 2px #FFFFFF' }}
+                      >
+                        {failures}
+                      </span>
+                    )}
                   </button>
                 </li>
               );
@@ -482,6 +571,7 @@ function CategorySidebar({ active, onChange }: { active: TabId; onChange: (id: T
         <div className="flex gap-2 pb-1" style={{ minWidth: 'max-content' }}>
           {TABS.map(tab => {
             const isActive = active === tab.id;
+            const failures = failuresByTab[tab.id] || 0;
             return (
               <button
                 key={tab.id}
@@ -493,12 +583,105 @@ function CategorySidebar({ active, onChange }: { active: TabId; onChange: (id: T
               >
                 <span aria-hidden>{tab.icon}</span>
                 <span>{tab.label}</span>
+                {failures > 0 && (
+                  <span
+                    className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10.5px] font-bold tabular-nums mr-0.5"
+                    style={isActive
+                      ? { backgroundColor: '#FFFFFF', color: '#A03C2C' }
+                      : { backgroundColor: '#A03C2C', color: '#FFFFFF' }}
+                  >
+                    {failures}
+                  </span>
+                )}
               </button>
             );
           })}
         </div>
       </div>
     </>
+  );
+}
+
+// ── Failure hero banner ──────────────────────────────────────────────────────
+// Shown at the top of the page whenever there were any failures in the last
+// N days. The "highest-failures" button jumps the operator straight to that
+// category with status=failed pre-applied so the broken items are first
+// thing they see.
+
+function FailureBanner({
+  totalFailures, failuresByTab, windowDays, onJump,
+}: {
+  totalFailures: number;
+  failuresByTab: Record<TabId, number>;
+  windowDays: number;
+  onJump: (id: TabId) => void;
+}) {
+  // Top 3 categories with failures (descending count).
+  const top = useMemo(() => {
+    return TABS
+      .map(t => ({ tab: t, count: failuresByTab[t.id] || 0 }))
+      .filter(x => x.count > 0)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 3);
+  }, [failuresByTab]);
+
+  if (top.length === 0) return null;
+  const worst = top[0];
+
+  return (
+    <div
+      className="rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-3"
+      style={{
+        background: 'linear-gradient(135deg, #FBE9E7 0%, #FBF1EE 100%)',
+        border: '1.5px solid #F0C7BF',
+        boxShadow: '0 2px 8px rgba(160,60,44,0.10)',
+      }}
+    >
+      <div
+        aria-hidden
+        className="flex items-center justify-center rounded-full flex-shrink-0"
+        style={{
+          width: 40, height: 40,
+          backgroundColor: '#A03C2C',
+          color: '#FFFFFF',
+          fontSize: 20, fontWeight: 700, lineHeight: 1,
+        }}
+      >
+        ✗
+      </div>
+
+      <div className="flex-1 min-w-0">
+        <div className="text-[14px] font-bold" style={{ color: '#7A2C1F' }}>
+          {totalFailures} {totalFailures === 1 ? 'שגיאה' : 'שגיאות'} ב-{windowDays} הימים האחרונים
+        </div>
+        <div className="text-[12px] mt-0.5 flex flex-wrap items-center gap-1" style={{ color: '#7A2C1F' }}>
+          <span>הכי הרבה ב:</span>
+          {top.map((x, i) => (
+            <button
+              key={x.tab.id}
+              onClick={() => onJump(x.tab.id)}
+              className="inline-flex items-center gap-1 px-2 h-6 rounded-md text-[11.5px] font-semibold hover:underline"
+              style={{ backgroundColor: '#FFFFFF', color: '#A03C2C', border: '1px solid #F0C7BF' }}
+            >
+              <span aria-hidden>{x.tab.icon}</span>
+              <span>{x.tab.label}</span>
+              <span className="font-bold">({x.count})</span>
+              {i < top.length - 1 && <span aria-hidden style={{ color: '#D5A99E' }}>·</span>}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <button
+        onClick={() => onJump(worst.tab.id)}
+        className="inline-flex items-center justify-center px-4 h-9 rounded-lg text-[12.5px] font-bold text-white whitespace-nowrap transition-colors"
+        style={{ backgroundColor: '#A03C2C', boxShadow: '0 1px 3px rgba(160,60,44,0.30)' }}
+        onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#892F22'; }}
+        onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#A03C2C'; }}
+      >
+        בדקי את השגיאות ←
+      </button>
+    </div>
   );
 }
 
@@ -580,20 +763,29 @@ function LogCard({ row, icon, onOpen }: { row: ActivityLog; icon: string; onOpen
       onClick={onOpen}
       className="w-full text-right rounded-xl transition-shadow hover:shadow-md focus:outline-none focus-visible:ring-2"
       style={{
-        backgroundColor: '#FFFFFF',
-        border: `1px solid ${isError ? tone.border : '#EAE0D4'}`,
+        backgroundColor: isError ? '#FFFAF9' : '#FFFFFF',
+        border: isError
+          ? `2px solid ${tone.fg}`
+          : isWarn
+            ? `1.5px solid ${tone.border}`
+            : '1px solid #EAE0D4',
         boxShadow: isError
-          ? '0 1px 6px rgba(160,60,44,0.10)'
+          ? '0 2px 10px rgba(160,60,44,0.18)'
           : '0 1px 6px rgba(58,42,26,0.05)',
         overflow: 'hidden',
       }}
     >
       <div className="flex">
         {/* Status strip on the leading edge (right in RTL) — large color bar
-            so the eye picks up success/failure from across the screen. */}
+            so the eye picks up success/failure from across the screen.
+            Failed events get a thicker bar to draw attention immediately. */}
         <div
           aria-hidden
-          style={{ width: 6, backgroundColor: tone.fg, flex: '0 0 6px' }}
+          style={{
+            width: isError ? 10 : 6,
+            backgroundColor: tone.fg,
+            flex: `0 0 ${isError ? 10 : 6}px`,
+          }}
         />
 
         <div className="flex-1 p-4">
