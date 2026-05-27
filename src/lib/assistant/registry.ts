@@ -5,6 +5,7 @@
 import { createAdminClient } from '@/lib/supabase/server';
 import { fetchOrdersForReport, resolveRange as resolveReportRange } from '@/lib/orders-report-email';
 import { resolveEntity } from './entity-resolver';
+import { suggestFromCatalog, catalogGrouped } from './question-catalog';
 import type {
   AssistantResponse, Block, ClarifyOption, ListItem, OrderSummary,
   ParsedIntent, Range, Filters, Tone, UnknownHint,
@@ -1313,13 +1314,50 @@ async function dispatch(intent: ParsedIntent): Promise<AssistantResponse> {
     case 'top_products':              return actionTopProducts();
     case 'top_petit_fours':           return actionTopPetitFours();
     case 'new_customers':             return actionNewCustomers();
-    case 'unknown':
+    case 'help':                      return actionHelp();
+    case 'unknown': {
+      // Prefer catalog-driven suggestions when we have user text — those are
+      // scored by Hebrew-token overlap with what the user actually typed.
+      // Falls back to the hint-bucket suggestions when the input was too
+      // generic for any catalog phrase to share tokens with it.
+      const fromCatalog = intent.userText ? suggestFromCatalog(intent.userText, 5) : [];
+      const options: ClarifyOption[] = fromCatalog.length > 0
+        ? fromCatalog.map(s => ({ label: s.label, text: s.text }))
+        : suggestionsFor(intent.hint);
+      // Always offer the catalog browser as a final fallback so the operator
+      // can discover everything the assistant knows.
+      options.push({ label: 'מה אני יכולה לשאול אותך?', text: 'עזרה' });
       return {
         kind: 'clarify',
-        message: 'לא הבנתי. אולי אחת מאלה?',
-        options: suggestionsFor(intent.hint),
+        message: fromCatalog.length > 0
+          ? 'לא לגמרי בטוחה — אולי התכוונת לאחת מאלה?'
+          : 'לא הבנתי. אולי אחת מאלה?',
+        options,
       };
+    }
   }
+}
+
+// "מה אני יכולה לשאול אותך" — surfaces the full question catalog grouped
+// by category. The UI renders one list block per category, each holding the
+// labels from question-catalog.ts so the operator can browse + tap any
+// suggestion to fire it immediately.
+async function actionHelp(): Promise<AssistantResponse> {
+  const groups = catalogGrouped();
+  const blocks: Block[] = [
+    {
+      type: 'text',
+      text: 'הנה כל סוגי השאלות שאני יודעת לענות עליהן. לחצי על אחת כדי לשאול אותה.',
+    },
+  ];
+  for (const g of groups) {
+    blocks.push({
+      type: 'suggestions',
+      title: g.label,
+      items: g.entries.map(e => ({ label: e.label, text: e.phrases[0] || e.label })),
+    });
+  }
+  return { kind: 'answer', blocks };
 }
 
 export async function runIntent(intent: ParsedIntent): Promise<AssistantResponse> {

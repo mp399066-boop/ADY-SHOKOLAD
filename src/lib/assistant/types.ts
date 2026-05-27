@@ -172,4 +172,7 @@ export type ParsedIntent =
   | { type: 'top_petit_fours'; scope: CustomerActivityScope }
   // New customers created in the last 30 days.
   | { type: 'new_customers' }
-  | { type: 'unknown'; hint?: UnknownHint };
+  // "מה אני יכולה לשאול אותך" — surfaces the full question catalog
+  // grouped by category. Pure UI intent, no DB read.
+  | { type: 'help' }
+  | { type: 'unknown'; hint?: UnknownHint; userText?: string };

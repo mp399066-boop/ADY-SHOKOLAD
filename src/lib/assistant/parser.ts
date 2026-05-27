@@ -3,6 +3,7 @@
 // Supports follow-ups when the previous intent is provided.
 
 import type { ParsedIntent, Range, Filters, UnknownHint, ConversationContext } from './types';
+import { matchCatalog } from './question-catalog';
 
 // ───── Synonym groups ─────────────────────────────────────────────────────
 
@@ -352,6 +353,14 @@ export function parseIntent(
     if (fu) return fu;
   }
 
+  // 0. Catalog match — exact / substring phrasings from question-catalog.ts.
+  //    Runs before keyword routing so the catalog acts as a fast,
+  //    authoritative "knowledge base" of recognised questions. Factory
+  //    entries can return null to defer to keyword parsing (e.g. when they
+  //    matched the trigger but couldn't extract the parameter).
+  const fromCatalog = matchCatalog(text);
+  if (fromCatalog) return fromCatalog;
+
   const hasLowStock   = includesAny(text, SYN_LOW_STOCK);
   const hasReport     = includesAny(text, SYN_REPORT);
   const hasOrders     = includesAny(text, SYN_ORDERS);
@@ -494,12 +503,23 @@ export function parseIntent(
     if (subject.length >= 2) return { type: 'stock_query', query: subject };
   }
 
-  // 10. Smart unknown — pick the most useful suggestion bucket
+  // Help intent — "what can I ask you" / "תני לי דוגמאות"
+  if (
+    text === 'עזרה' || text === 'help' ||
+    text.includes('מה אני יכולה לשאול') || text.includes('מה אפשר לשאול') ||
+    text.includes('דוגמאות לשאלות') || text.includes('תני לי דוגמאות')
+  ) {
+    return { type: 'help' };
+  }
+
+  // 10. Smart unknown — pick the most useful suggestion bucket. Carry the
+  //     normalized user text along so the registry can pull catalog
+  //     suggestions whose tokens overlap with what the user typed.
   let hint: UnknownHint;
   if (hasReport)             hint = 'report';
   else if (hasPetitFour)     hint = 'petit_four';
   else if (hasPackage)       hint = 'package';
   else if (hasOrders)        hint = 'orders';
   else if (hasStockHint)     hint = 'stock';
-  return { type: 'unknown', hint };
+  return { type: 'unknown', hint, userText: text };
 }

@@ -45,7 +45,7 @@ const MAX_RECENT       = 3;
 const STARTER_CHIPS: string[] = [
   'תני לי סיכום של היום',
   'מה ההכנסות החודש?',
-  'מי הלקוחות הכי פעילים?',
+  'מה אני יכולה לשאול אותך?',
 ];
 
 interface Snapshot {
