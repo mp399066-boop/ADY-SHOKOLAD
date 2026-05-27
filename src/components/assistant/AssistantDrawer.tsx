@@ -253,10 +253,17 @@ export default function AssistantDrawer() {
             style={{ backgroundColor: 'rgba(0,0,0,0.18)' }}
           />
           <aside
-            className="fixed top-0 z-50 flex flex-col"
+            className="fixed z-50 flex flex-col"
             style={{
+              top: 0,
+              bottom: 0,
               right: 0,
-              height: '100%',
+              // Pin both top and bottom (instead of top + height:100%) so the
+              // drawer always fills the visible viewport. height:100% can
+              // resolve to document height and push the input below the
+              // browser/Windows chrome on long conversations.
+              height: '100dvh',
+              maxHeight: '100dvh',
               width: '380px',
               maxWidth: '100vw',
               backgroundColor: '#FFFFFF',
@@ -265,10 +272,11 @@ export default function AssistantDrawer() {
               direction: 'rtl',
             }}
           >
-            {/* Header */}
+            {/* Header — never shrinks; the input form below relies on the
+                middle flex-1 area being the only thing that gives up space. */}
             <header
               className="flex items-center justify-between px-4"
-              style={{ height: '54px', borderBottom: '1px solid #EAE0D4', backgroundColor: '#FDFAF5' }}
+              style={{ height: '54px', flexShrink: 0, borderBottom: '1px solid #EAE0D4', backgroundColor: '#FDFAF5' }}
             >
               <div>
                 <div style={{ fontSize: '14px', fontWeight: 700, color: '#2B1A10' }}>עוזרת מערכת</div>
@@ -294,8 +302,14 @@ export default function AssistantDrawer() {
               </div>
             </header>
 
-            {/* Messages */}
-            <div ref={scrollRef} className="flex-1 overflow-y-auto" style={{ padding: '14px', backgroundColor: '#F8F6F2' }}>
+            {/* Messages — the only flexible region; minHeight:0 lets it
+                actually shrink so overflow scrolling kicks in instead of
+                pushing the input form past the viewport bottom. */}
+            <div
+              ref={scrollRef}
+              className="flex-1 overflow-y-auto"
+              style={{ padding: '14px', backgroundColor: '#F8F6F2', minHeight: 0 }}
+            >
               {messages.length === 0 && <EmptyState onPick={send} recent={recent} />}
               {messages.map((m, i) => (
                 <div key={i} style={{ marginBottom: '12px' }}>
@@ -305,8 +319,9 @@ export default function AssistantDrawer() {
               {pending && <PendingBubble />}
             </div>
 
-            {/* Input */}
-            <form onSubmit={onSubmit} style={{ padding: '12px', borderTop: '1px solid #EAE0D4', backgroundColor: '#FFFFFF' }}>
+            {/* Input — pinned to the bottom; flexShrink:0 guards against the
+                messages area expanding into it on long conversations. */}
+            <form onSubmit={onSubmit} style={{ padding: '12px', flexShrink: 0, borderTop: '1px solid #EAE0D4', backgroundColor: '#FFFFFF' }}>
               <div className="flex gap-2">
                 <input
                   ref={inputRef}
