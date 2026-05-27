@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Tabs } from '@/components/ui/Tabs';
@@ -294,6 +295,17 @@ export default function ProductsPage() {
               <IconExport className="w-3.5 h-3.5" />
               ייצוא לאקסל
             </button>
+            {/* Direct shortcut to the finished-products price catalog
+                (/products/prices). The same catalog used to be reachable
+                only from /import?tab=price, which made it hard to find. */}
+            <Link
+              href="/products/prices"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl border transition-all duration-200 mr-auto"
+              style={{ borderColor: '#C9A46A', backgroundColor: '#FAF5EC', color: '#5C3410' }}
+            >
+              <span aria-hidden>💰</span>
+              מחירון מוגמרים
+            </Link>
           </div>
 
           {loading ? (
