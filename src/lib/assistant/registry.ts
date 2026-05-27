@@ -99,6 +99,27 @@ function followUpsFor(intent: ParsedIntent): ClarifyOption[] {
         { label: 'ממתין לתשלום',          text: 'כמה כסף עדיין ממתין לתשלום?' },
         { label: 'מה במלאי נמוך?',         text: 'מה במלאי נמוך?' },
       ];
+    case 'system_errors':
+      return [
+        { label: 'תני סיכום של היום',     text: 'תני לי סיכום של היום' },
+        { label: 'מה במלאי נמוך?',         text: 'מה במלאי נמוך?' },
+      ];
+    case 'top_products':
+      return [
+        { label: 'הפטיפורים הכי נמכרים',  text: 'איזה פטיפור הכי פופולרי?' },
+        { label: 'הלקוחות הכי פעילים',    text: 'מי הלקוחות הכי פעילים?' },
+        { label: 'הכנסות החודש',          text: 'מה ההכנסות החודש?' },
+      ];
+    case 'top_petit_fours':
+      return [
+        { label: 'המוצרים הכי נמכרים',    text: 'איזה מוצרים הכי נמכרים?' },
+        { label: 'מה במלאי נמוך?',         text: 'מה במלאי נמוך?' },
+      ];
+    case 'new_customers':
+      return [
+        { label: 'הלקוחות הכי פעילים',    text: 'מי הלקוחות הכי פעילים?' },
+        { label: 'הכנסות החודש',          text: 'מה ההכנסות החודש?' },
+      ];
     case 'download_orders_report':
     case 'send_orders_report':
     case 'request_report_action': {
@@ -1001,6 +1022,260 @@ async function actionDailySummary(): Promise<AssistantResponse> {
   return { kind: 'answer', blocks };
 }
 
+// ── New (May 2026 expansion) — system errors, top products / petit-fours,
+//     new customers. All read-only. ───────────────────────────────────────
+
+const SYSTEM_ERRORS_WINDOW_DAYS = 7;
+
+async function actionSystemErrors(): Promise<AssistantResponse> {
+  const supabase = createAdminClient();
+  const since = new Date(Date.now() - SYSTEM_ERRORS_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
+
+  const { data, error, count } = await supabase
+    .from('system_activity_logs')
+    .select('title, description, error_message, created_at, module, service_key, entity_label, entity_type', { count: 'exact' })
+    .eq('status', 'failed')
+    .gte('created_at', since)
+    .order('created_at', { ascending: false })
+    .limit(15);
+  if (error) throw new Error(error.message);
+
+  type Row = {
+    title: string; description: string | null; error_message: string | null;
+    created_at: string; module: string; service_key: string | null;
+    entity_label: string | null; entity_type: string | null;
+  };
+  const rows = (data || []) as Row[];
+
+  if (rows.length === 0) {
+    return {
+      kind: 'answer',
+      blocks: [{ type: 'text', text: '🟢 הכל עובד תקין! לא היו שגיאות ב-7 הימים האחרונים.' }],
+    };
+  }
+
+  const total = count ?? rows.length;
+  const items: ListItem[] = rows.map(r => {
+    const when = fmtDateHe(r.created_at);
+    const subParts: string[] = [];
+    if (r.module) subParts.push(r.module);
+    if (r.entity_label) subParts.push(r.entity_label);
+    const sub = subParts.join(' · ');
+    return {
+      label:    r.title,
+      value:    when,
+      sublabel: r.error_message
+        ? `${sub ? sub + ' — ' : ''}${r.error_message.slice(0, 90)}`
+        : (sub || (r.description ? r.description.slice(0, 90) : null) || undefined),
+      tone:     'bad',
+      emoji:    '✗',
+    };
+  });
+
+  const blocks: Block[] = [
+    {
+      type:  'stat',
+      label: `שגיאות ב-${SYSTEM_ERRORS_WINDOW_DAYS} הימים האחרונים`,
+      value: String(total),
+      emoji: '⚠',
+      tone:  'bad',
+    },
+    {
+      type:  'list',
+      title: rows.length < total ? `מציגה ${rows.length} אחרונות מתוך ${total}` : 'השגיאות האחרונות',
+      items,
+    },
+    {
+      type:  'insight',
+      text:  'לפרטים מלאים — היכנסי להגדרות → לוגים',
+      tone:  'neutral',
+      emoji: '🔎',
+    },
+  ];
+  return { kind: 'answer', blocks };
+}
+
+// Best-selling regular products (line items where סוג_שורה != 'מארז').
+// We aggregate quantity sold per product across orders in the scope window.
+async function actionTopProducts(): Promise<AssistantResponse> {
+  const supabase = createAdminClient();
+  const since = startOfMonthISO(); // current calendar month
+
+  // Step 1: order ids in window (excluding cancelled / draft).
+  const { data: orderRows, error: ordersErr } = await supabase
+    .from('הזמנות')
+    .select('id')
+    .gte('תאריך_הזמנה', since)
+    .neq('סטטוס_הזמנה', 'בוטלה')
+    .neq('סטטוס_הזמנה', 'טיוטה');
+  if (ordersErr) throw new Error(ordersErr.message);
+  const orderIds = ((orderRows || []) as Array<{ id: string }>).map(r => r.id);
+
+  if (orderIds.length === 0) {
+    return { kind: 'answer', blocks: [{ type: 'text', text: 'אין הזמנות בחודש הנוכחי 📭' }] };
+  }
+
+  // Step 2: line items for those orders, only regular products (not packages).
+  // Limit defensively — even very busy months should fit well under 2k items.
+  const { data: itemRows, error: itemsErr } = await supabase
+    .from('מוצרים_בהזמנה')
+    .select('כמות, סוג_שורה, מוצרים_למכירה(שם_מוצר)')
+    .in('הזמנה_id', orderIds)
+    .limit(2000);
+  if (itemsErr) throw new Error(itemsErr.message);
+
+  type ItemRow = {
+    כמות: number | null;
+    סוג_שורה: string | null;
+    מוצרים_למכירה: { שם_מוצר?: string | null } | null;
+  };
+  const tally = new Map<string, number>();
+  for (const row of ((itemRows || []) as unknown as ItemRow[])) {
+    if (row.סוג_שורה === 'מארז') continue; // packages handled separately
+    const name = row.מוצרים_למכירה?.שם_מוצר?.trim();
+    if (!name) continue;
+    tally.set(name, (tally.get(name) || 0) + Number(row.כמות || 0));
+  }
+  const top = Array.from(tally.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10);
+
+  if (top.length === 0) {
+    return { kind: 'answer', blocks: [{ type: 'text', text: 'אין נתוני מכירות מוצרים לחודש הנוכחי 📭' }] };
+  }
+
+  const items: ListItem[] = top.map(([name, qty], i) => ({
+    label:    name,
+    value:    `${qty} יח'`,
+    sublabel: i === 0 ? 'המוביל החודש' : undefined,
+    tone:     i === 0 ? 'good' : 'neutral',
+    emoji:    i === 0 ? '🏆' : '🍫',
+  }));
+
+  return {
+    kind: 'answer',
+    blocks: [
+      { type: 'list', title: 'המוצרים הכי נמכרים החודש', items },
+      { type: 'insight', text: `המוצר המוביל: ${top[0][0]} (${top[0][1]} יח')`, tone: 'good', emoji: '🏆' },
+    ],
+  };
+}
+
+// Best-selling petit-four flavours by quantity in the current month.
+async function actionTopPetitFours(): Promise<AssistantResponse> {
+  const supabase = createAdminClient();
+  const since = startOfMonthISO();
+
+  const { data: orderRows, error: ordersErr } = await supabase
+    .from('הזמנות')
+    .select('id')
+    .gte('תאריך_הזמנה', since)
+    .neq('סטטוס_הזמנה', 'בוטלה')
+    .neq('סטטוס_הזמנה', 'טיוטה');
+  if (ordersErr) throw new Error(ordersErr.message);
+  const orderIds = ((orderRows || []) as Array<{ id: string }>).map(r => r.id);
+
+  if (orderIds.length === 0) {
+    return { kind: 'answer', blocks: [{ type: 'text', text: 'אין הזמנות בחודש הנוכחי 📭' }] };
+  }
+
+  // Find line items in those orders, then their petit-four selections.
+  const { data: itemRows, error: itemsErr } = await supabase
+    .from('מוצרים_בהזמנה')
+    .select('id')
+    .in('הזמנה_id', orderIds)
+    .eq('סוג_שורה', 'מארז');
+  if (itemsErr) throw new Error(itemsErr.message);
+  const itemIds = ((itemRows || []) as Array<{ id: string }>).map(r => r.id);
+
+  if (itemIds.length === 0) {
+    return { kind: 'answer', blocks: [{ type: 'text', text: 'לא נמכרו מארזי פטיפורים החודש 📭' }] };
+  }
+
+  const { data: selRows, error: selErr } = await supabase
+    .from('בחירת_פטיפורים_בהזמנה')
+    .select('כמות, סוגי_פטיפורים(שם_פטיפור)')
+    .in('שורת_הזמנה_id', itemIds)
+    .limit(5000);
+  if (selErr) throw new Error(selErr.message);
+
+  type SelRow = { כמות: number | null; סוגי_פטיפורים: { שם_פטיפור?: string | null } | null };
+  const tally = new Map<string, number>();
+  for (const r of ((selRows || []) as unknown as SelRow[])) {
+    const name = r.סוגי_פטיפורים?.שם_פטיפור?.trim();
+    if (!name) continue;
+    tally.set(name, (tally.get(name) || 0) + Number(r.כמות || 0));
+  }
+  const top = Array.from(tally.entries()).sort((a, b) => b[1] - a[1]).slice(0, 10);
+
+  if (top.length === 0) {
+    return { kind: 'answer', blocks: [{ type: 'text', text: 'אין נתוני מכירות פטיפורים לחודש הנוכחי 📭' }] };
+  }
+
+  const items: ListItem[] = top.map(([name, qty], i) => ({
+    label: name,
+    value: `${qty} יח'`,
+    sublabel: i === 0 ? 'המוביל החודש' : undefined,
+    tone:  i === 0 ? 'good' : 'neutral',
+    emoji: i === 0 ? '🏆' : '🍬',
+  }));
+
+  return {
+    kind: 'answer',
+    blocks: [
+      { type: 'list', title: 'הפטיפורים הכי נמכרים החודש', items },
+      { type: 'insight', text: `הטעם המוביל: ${top[0][0]} (${top[0][1]} יח')`, tone: 'good', emoji: '🏆' },
+    ],
+  };
+}
+
+// New customers in the last 30 days.
+async function actionNewCustomers(): Promise<AssistantResponse> {
+  const supabase = createAdminClient();
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  const { data, error, count } = await supabase
+    .from('לקוחות')
+    .select('id, שם_פרטי, שם_משפחה, טלפון, אימייל, תאריך_יצירה, סוג_לקוח', { count: 'exact' })
+    .gte('תאריך_יצירה', since)
+    .order('תאריך_יצירה', { ascending: false })
+    .limit(20);
+  if (error) throw new Error(error.message);
+
+  type Row = {
+    id: string;
+    שם_פרטי: string | null; שם_משפחה: string | null;
+    טלפון: string | null; אימייל: string | null;
+    תאריך_יצירה: string | null; סוג_לקוח: string | null;
+  };
+  const rows = (data || []) as Row[];
+  const total = count ?? rows.length;
+
+  if (rows.length === 0) {
+    return { kind: 'answer', blocks: [{ type: 'text', text: 'לא נוספו לקוחות חדשים ב-30 הימים האחרונים 😊' }] };
+  }
+
+  const items: ListItem[] = rows.map(r => {
+    const name = `${r.שם_פרטי || ''} ${r.שם_משפחה || ''}`.trim() || 'ללא שם';
+    const sub = [r.טלפון, r.אימייל].filter(Boolean).join(' · ');
+    return {
+      label:    name,
+      value:    fmtDateHe(r.תאריך_יצירה),
+      sublabel: r.סוג_לקוח ? `${r.סוג_לקוח}${sub ? ' · ' + sub : ''}` : (sub || undefined),
+      tone:     'good',
+      emoji:    '✨',
+    };
+  });
+
+  return {
+    kind: 'answer',
+    blocks: [
+      { type: 'stat', label: 'לקוחות חדשים (30 ימים)', value: String(total), emoji: '✨', tone: 'good' },
+      { type: 'list', title: rows.length < total ? `מציגה ${rows.length} אחרונים מתוך ${total}` : 'הלקוחות החדשים', items },
+    ],
+  };
+}
+
 // Strip undefined/false flags so the JSON payload sent to the API stays
 // minimal. Returns undefined when no filter is active so the API receives
 // no `filters` key at all.
@@ -1034,6 +1309,10 @@ async function dispatch(intent: ParsedIntent): Promise<AssistantResponse> {
     case 'customer_lookup':           return actionCustomerLookup(intent.query);
     case 'deliveries_open':           return actionDeliveriesOpen();
     case 'daily_summary':             return actionDailySummary();
+    case 'system_errors':             return actionSystemErrors();
+    case 'top_products':              return actionTopProducts();
+    case 'top_petit_fours':           return actionTopPetitFours();
+    case 'new_customers':             return actionNewCustomers();
     case 'unknown':
       return {
         kind: 'clarify',

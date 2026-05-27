@@ -163,4 +163,13 @@ export type ParsedIntent =
   | { type: 'deliveries_open' }
   // Bundled snapshot — orders today + unpaid + low stock + active deliveries.
   | { type: 'daily_summary' }
+  // ── Additive intents (assistant expansion, May 2026) ─────────────────
+  // System failures in the last N days (taps system_activity_logs).
+  | { type: 'system_errors'; days?: number }
+  // Best-selling products by quantity sold in the given scope.
+  | { type: 'top_products'; scope: CustomerActivityScope }
+  // Best-selling petit-four flavours.
+  | { type: 'top_petit_fours'; scope: CustomerActivityScope }
+  // New customers created in the last 30 days.
+  | { type: 'new_customers' }
   | { type: 'unknown'; hint?: UnknownHint };

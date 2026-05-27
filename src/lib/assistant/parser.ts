@@ -92,6 +92,38 @@ const SYN_DAILY_SUMMARY = [
   'סיכום היום', 'תמונת מצב', 'מה המצב היום', 'איך נראה היום',
 ];
 
+// "יש שגיאות?" / "מה לא עובד" / "מה נכשל" / "תראי לי שגיאות"
+// Maps to system_errors which reads system_activity_logs.status='failed'.
+const SYN_SYSTEM_ERRORS = [
+  'יש שגיאות', 'שגיאות', 'מה לא עובד', 'מה נכשל', 'תקלות', 'תקלה',
+  'מה התקלות', 'באגים', 'באג',
+  'מה השתבש', 'איפה נכשל', 'שגיאות במערכת', 'תראי לי שגיאות',
+  'מה הבעיות', 'בעיות במערכת',
+];
+
+// "המוצרים הכי נמכרים" / "מה המוצר הכי פופולרי" / "טופ מוצרים"
+const SYN_TOP_PRODUCTS = [
+  'המוצרים הכי נמכרים', 'מוצרים הכי נמכרים',
+  'מה המוצר הכי פופולרי', 'המוצר הכי פופולרי', 'המוצר הכי נמכר',
+  'מוצרים פופולריים', 'איזה מוצרים נמכרים',
+  'טופ מוצרים', 'מוצרים מובילים', 'הכי נמכרים', 'הכי נמכר',
+];
+
+// "איזה פטיפור הכי פופולרי" / "המכירות של פטיפורים"
+const SYN_TOP_PETIT_FOURS = [
+  'איזה פטיפור הכי פופולרי', 'הפטיפור הכי פופולרי',
+  'איזה פטיפורים הכי נמכרים', 'הפטיפורים הכי נמכרים',
+  'מכירות פטיפורים', 'איזה פטיפור הכי', 'פטיפור פופולרי',
+  'מה הפטיפור הכי', 'איזה טעם הכי', 'איזה טעם פופולרי',
+];
+
+// "כמה לקוחות חדשים" / "מי הלקוחות החדשים" / "לקוחות חדשים החודש"
+const SYN_NEW_CUSTOMERS = [
+  'לקוחות חדשים', 'לקוחה חדשה', 'לקוח חדש',
+  'מי הלקוחות החדשים', 'כמה לקוחות חדשים',
+  'מי נרשם', 'הצטרפו לאחרונה', 'הצטרפה לאחרונה',
+];
+
 // Follow-up phrases — only meaningful when there's a lastIntent
 const FOLLOWUP_REPLACE = ['ומה עם', 'ומה ', 'מה לגבי', 'גם עם', 'וגם ', 'גם '];
 const FOLLOWUP_REFINE  = ['רק '];
@@ -368,6 +400,26 @@ export function parseIntent(
   // 1e. Active deliveries.
   if (includesAny(text, SYN_DELIVERIES_OPEN)) {
     return { type: 'deliveries_open' };
+  }
+
+  // 1f. System errors — taps the new לוגים pipeline. Checked before the
+  //     general "reports" branch so "שגיאות" / "תקלות" never get misread
+  //     as a request for a sales report.
+  if (includesAny(text, SYN_SYSTEM_ERRORS)) {
+    return { type: 'system_errors' };
+  }
+
+  // 1g. Top products / petit-fours / new customers — best-seller and growth
+  //     queries the operator was previously missing. Order matters: check
+  //     petit-fours BEFORE generic products so "איזה פטיפור הכי נמכר" wins.
+  if (includesAny(text, SYN_TOP_PETIT_FOURS)) {
+    return { type: 'top_petit_fours', scope: 'month' };
+  }
+  if (includesAny(text, SYN_TOP_PRODUCTS)) {
+    return { type: 'top_products', scope: 'month' };
+  }
+  if (includesAny(text, SYN_NEW_CUSTOMERS)) {
+    return { type: 'new_customers' };
   }
 
   // 2. Report intent

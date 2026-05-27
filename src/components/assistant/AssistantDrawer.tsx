@@ -24,7 +24,11 @@ function deriveContextFromIntent(intent: ParsedIntent): ConversationContext {
     case 'count_orders':              ctx.lastAction = 'count'; break;
     case 'find_orders':               ctx.lastAction = 'find'; break;
     case 'list_low_stock':
-    case 'list_petit_four_types':     ctx.lastAction = 'list'; break;
+    case 'list_petit_four_types':
+    case 'system_errors':
+    case 'top_products':
+    case 'top_petit_fours':
+    case 'new_customers':             ctx.lastAction = 'list'; break;
     case 'stock_query':               ctx.lastAction = 'stock_lookup'; break;
     case 'download_orders_report':    ctx.lastAction = 'report_download'; break;
     case 'send_orders_report':        ctx.lastAction = 'report_send'; break;
