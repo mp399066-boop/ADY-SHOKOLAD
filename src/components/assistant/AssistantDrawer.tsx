@@ -91,6 +91,10 @@ export default function AssistantDrawer() {
   const contextRef = useRef<{ ctx: ConversationContext; savedAt: number } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef  = useRef<HTMLInputElement>(null);
+  // Show a "scroll to bottom" affordance when the user has scrolled away
+  // from the latest message — defensive UX so the input is never more than
+  // one tap away even on very long conversations.
+  const [scrolledUp, setScrolledUp] = useState(false);
 
   useEffect(() => {
     try {
@@ -260,12 +264,12 @@ export default function AssistantDrawer() {
               top: 0,
               bottom: 0,
               right: 0,
-              // Pin both top and bottom (instead of top + height:100%) so the
-              // drawer always fills the visible viewport. height:100% can
-              // resolve to document height and push the input below the
-              // browser/Windows chrome on long conversations.
-              height: '100dvh',
-              maxHeight: '100dvh',
+              // No explicit height — top:0 + bottom:0 makes the browser
+              // compute height as exactly the visible viewport, which
+              // correctly accounts for the Windows taskbar / browser
+              // chrome on every desktop. Explicit `height: 100dvh` was
+              // unreliable when the browser viewport extended visually
+              // behind the taskbar.
               width: '380px',
               maxWidth: '100vw',
               backgroundColor: '#FFFFFF',
@@ -325,7 +329,13 @@ export default function AssistantDrawer() {
             <div
               ref={scrollRef}
               className="flex-1 overflow-y-auto"
-              style={{ padding: '14px', backgroundColor: '#F8F6F2', minHeight: 0 }}
+              style={{ padding: '14px', backgroundColor: '#F8F6F2', minHeight: 0, position: 'relative' }}
+              onScroll={() => {
+                const el = scrollRef.current;
+                if (!el) return;
+                const dist = el.scrollHeight - (el.scrollTop + el.clientHeight);
+                setScrolledUp(dist > 120);
+              }}
             >
               {messages.length === 0 && <EmptyState onPick={send} recent={recent} />}
               {messages.map((m, i) => (
@@ -335,6 +345,38 @@ export default function AssistantDrawer() {
               ))}
               {pending && <PendingBubble />}
             </div>
+
+            {/* Scroll-to-bottom affordance — appears when the operator has
+                scrolled away from the latest message. Sits above the input
+                form so the path to "type again" is always one tap. */}
+            {scrolledUp && (
+              <button
+                onClick={() => {
+                  const el = scrollRef.current;
+                  if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+                }}
+                aria-label="גלול למטה"
+                style={{
+                  position: 'absolute',
+                  bottom: '70px',
+                  left: '14px',
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '50%',
+                  backgroundColor: '#5C3410',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 12px rgba(58,42,26,0.25)',
+                  fontSize: '18px',
+                  lineHeight: 1,
+                  zIndex: 1,
+                }}
+                title="גלול לתחתית השיחה"
+              >
+                ↓
+              </button>
+            )}
 
             {/* Input — pinned to the bottom; flexShrink:0 guards against the
                 messages area expanding into it on long conversations. */}
