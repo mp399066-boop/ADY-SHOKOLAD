@@ -35,18 +35,23 @@ function deriveContextFromIntent(intent: ParsedIntent): ConversationContext {
 }
 const MAX_RECENT       = 3;
 
-// Categorized quick-actions for the empty state.
-// Includes the new business-data intents (revenue / customers / deliveries /
-// daily summary) so the operator discovers them without having to type the
-// exact phrase. Ordered top-to-bottom by usage frequency, not by feature age.
-const QUICK_ACTIONS: { title: string; chips: string[] }[] = [
-  { title: 'תמונת מצב', chips: ['תני לי סיכום של היום', 'כמה הזמנות פתוחות יש?'] },
-  { title: 'תשלומים',   chips: ['כמה הזמנות ממתינות לתשלום?', 'מה ההכנסות החודש?'] },
-  { title: 'משלוחים',   chips: ['אילו משלוחים עוד לא נמסרו?'] },
-  { title: 'לקוחות',    chips: ['מי הלקוחות הכי פעילים?'] },
-  { title: 'מלאי',      chips: ['מה חסר במלאי?', 'איזה סוגי פטיפורים קיימים?'] },
-  { title: 'דוחות',     chips: ['דוח הזמנות להיום', 'דוח הזמנות למחר'] },
+// Minimal starter strip — kept short on purpose. The welcome state's real
+// job is to show LIVE data via <LiveSnapshot/>; these are just for cases
+// where the snapshot loads to zeros across the board.
+const STARTER_CHIPS: string[] = [
+  'תני לי סיכום של היום',
+  'מה ההכנסות החודש?',
+  'מי הלקוחות הכי פעילים?',
 ];
+
+interface Snapshot {
+  open_orders:      number;
+  unpaid_orders:    number;
+  deliveries_today: number;
+  low_stock_count:  number;
+  errors_7d:        number;
+  generated_at:     string;
+}
 
 type Message =
   | { role: 'user'; text: string; ts: number }
@@ -343,11 +348,29 @@ export default function AssistantDrawer() {
 // ───── Sub-components ──────────────────────────────────────────────────────
 
 function EmptyState({ onPick, recent }: { onPick: (t: string) => void; recent: string[] }) {
+  const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  const [snapshotLoading, setSnapshotLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/assistant/snapshot')
+      .then(r => r.ok ? r.json() : null)
+      .then((data: Snapshot | null) => { if (!cancelled) setSnapshot(data); })
+      .catch(() => { if (!cancelled) setSnapshot(null); })
+      .finally(() => { if (!cancelled) setSnapshotLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
   return (
-    <div style={{ paddingTop: '8px' }}>
-      <div style={{ fontSize: '13px', color: '#8A7664', textAlign: 'center', marginBottom: '14px' }}>
-        על מה תרצי לשאול?
+    <div style={{ paddingTop: '4px' }}>
+      <div style={{ fontSize: '13px', color: '#3A2A1A', fontWeight: 600, marginBottom: '4px' }}>
+        בוקר טוב 👋
       </div>
+      <div style={{ fontSize: '12px', color: '#8A7664', marginBottom: '14px' }}>
+        הנה תמונת מצב מהירה. לחצי על כרטיס כדי לקבל פירוט מלא.
+      </div>
+
+      <LiveSnapshot snapshot={snapshot} loading={snapshotLoading} onPick={onPick} />
 
       {recent.length > 0 && (
         <Section title="חיפושים אחרונים">
@@ -359,13 +382,126 @@ function EmptyState({ onPick, recent }: { onPick: (t: string) => void; recent: s
         </Section>
       )}
 
-      {QUICK_ACTIONS.map(group => (
-        <Section key={group.title} title={group.title}>
-          {group.chips.map(s => (
-            <Chip key={s} onClick={() => onPick(s)}>{s}</Chip>
-          ))}
-        </Section>
-      ))}
+      <Section title="או שאלי משהו אחר">
+        {STARTER_CHIPS.map(s => (
+          <Chip key={s} onClick={() => onPick(s)}>{s}</Chip>
+        ))}
+      </Section>
+
+      <div style={{ fontSize: '11px', color: '#A0907D', textAlign: 'center', marginTop: '8px', lineHeight: 1.5 }}>
+        או פשוט הקלידי שאלה בעברית רגילה למטה
+      </div>
+    </div>
+  );
+}
+
+// ── Live snapshot tiles — shown as the welcome screen ────────────────────────
+// Each tile is a one-line stat with a clear color + count. Clicking the tile
+// dispatches a follow-up question to the assistant for the full breakdown,
+// so the operator stays inside the drawer instead of being thrown to a page.
+
+function LiveSnapshot({
+  snapshot, loading, onPick,
+}: {
+  snapshot: Snapshot | null;
+  loading: boolean;
+  onPick: (text: string) => void;
+}) {
+  if (loading) {
+    return (
+      <div style={{
+        padding: '14px',
+        marginBottom: '14px',
+        borderRadius: '10px',
+        backgroundColor: '#FAF7F0',
+        border: '1px solid #EAE0D4',
+        fontSize: '12px',
+        color: '#8A7664',
+        textAlign: 'center',
+      }}>
+        טוענת תמונת מצב...
+      </div>
+    );
+  }
+  if (!snapshot) return null;
+
+  type Tile = { icon: string; label: string; value: number; query: string; tone: 'good' | 'warn' | 'bad' | 'neutral' };
+  const tiles: Tile[] = [
+    {
+      icon: '🧾', label: 'הזמנות פתוחות', value: snapshot.open_orders,
+      query: 'תני לי סיכום של היום',
+      tone: snapshot.open_orders > 0 ? 'neutral' : 'good',
+    },
+    {
+      icon: '💳', label: 'ממתינות לתשלום', value: snapshot.unpaid_orders,
+      query: 'אילו הזמנות ממתינות לתשלום?',
+      tone: snapshot.unpaid_orders > 0 ? 'warn' : 'good',
+    },
+    {
+      icon: '🚚', label: 'משלוחים להיום', value: snapshot.deliveries_today,
+      query: 'אילו משלוחים יש להיום?',
+      tone: snapshot.deliveries_today > 0 ? 'neutral' : 'good',
+    },
+    {
+      icon: '📦', label: 'חוסר במלאי', value: snapshot.low_stock_count,
+      query: 'מה במלאי נמוך?',
+      tone: snapshot.low_stock_count > 0 ? 'warn' : 'good',
+    },
+    {
+      icon: '⚠', label: 'שגיאות (7 ימים)', value: snapshot.errors_7d,
+      query: 'אילו שגיאות היו במערכת לאחרונה?',
+      tone: snapshot.errors_7d > 0 ? 'bad' : 'good',
+    },
+  ];
+
+  const palette: Record<Tile['tone'], { bg: string; fg: string; border: string; valueFg: string }> = {
+    good:    { bg: '#F5F9F6', fg: '#5C6B5F', border: '#DFE8E1', valueFg: '#3A2A1A' },
+    warn:    { bg: '#FFF7E6', fg: '#7A5618', border: '#EDCF98', valueFg: '#7A5618' },
+    bad:     { bg: '#FBF1EE', fg: '#7A2C1F', border: '#F0C7BF', valueFg: '#A03C2C' },
+    neutral: { bg: '#FAF5EC', fg: '#5C4A38', border: '#EAE0D4', valueFg: '#3A2A1A' },
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '14px' }}>
+      {tiles.map(t => {
+        const c = palette[t.tone];
+        return (
+          <button
+            key={t.label}
+            onClick={() => onPick(t.query)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              padding: '10px 12px',
+              borderRadius: '10px',
+              backgroundColor: c.bg,
+              border: `1px solid ${c.border}`,
+              cursor: 'pointer',
+              direction: 'rtl',
+              fontFamily: 'inherit',
+              transition: 'transform 100ms, box-shadow 100ms',
+              textAlign: 'right',
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 2px 6px rgba(58,42,26,0.08)'; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.boxShadow = 'none'; }}
+          >
+            <span aria-hidden style={{ fontSize: '18px', lineHeight: 1, width: '22px', textAlign: 'center' }}>{t.icon}</span>
+            <span style={{ flex: 1, fontSize: '12.5px', color: c.fg, fontWeight: 600 }}>{t.label}</span>
+            <span style={{
+              fontSize: '16px',
+              fontWeight: 700,
+              color: c.valueFg,
+              minWidth: '28px',
+              textAlign: 'center',
+              fontVariantNumeric: 'tabular-nums',
+            }}>
+              {t.value}
+            </span>
+            <span style={{ fontSize: '12px', color: c.fg, opacity: 0.7 }}>←</span>
+          </button>
+        );
+      })}
     </div>
   );
 }
