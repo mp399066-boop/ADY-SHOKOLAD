@@ -8,7 +8,7 @@ import { resolveEntity } from './entity-resolver';
 import { suggestFromCatalog, catalogGrouped } from './question-catalog';
 import type {
   AssistantResponse, Block, ClarifyOption, ListItem, OrderSummary,
-  ParsedIntent, Range, Filters, Tone, UnknownHint,
+  ParsedIntent, Range, Filters, Tone, UnknownHint, ChitchatMood,
 } from './types';
 
 const DEFAULT_SUGGESTIONS: ClarifyOption[] = [
@@ -1315,6 +1315,7 @@ async function dispatch(intent: ParsedIntent): Promise<AssistantResponse> {
     case 'top_petit_fours':           return actionTopPetitFours();
     case 'new_customers':             return actionNewCustomers();
     case 'help':                      return actionHelp();
+    case 'chitchat':                  return actionChitchat(intent.mood);
     case 'unknown': {
       // Prefer catalog-driven suggestions when we have user text — those are
       // scored by Hebrew-token overlap with what the user actually typed.
@@ -1336,6 +1337,87 @@ async function dispatch(intent: ParsedIntent): Promise<AssistantResponse> {
       };
     }
   }
+}
+
+// Conversational glue. Returns a warm one-liner instead of robotically
+// replying "לא הבנתי" to common social utterances. Picks one of several
+// variations at random so repeats don't feel canned. Also offers a couple
+// of natural follow-ups for moods where it makes sense (greeting,
+// how_are_you, praise) so the operator has somewhere to go next without
+// having to start from scratch.
+async function actionChitchat(mood: ChitchatMood): Promise<AssistantResponse> {
+  const replies: Record<ChitchatMood, string[]> = {
+    thanks: [
+      'בכיף 😊',
+      'אין על מה, תמיד לשירותך',
+      'שמחה לעזור 🤍',
+      'בשמחה, פה בשבילך',
+    ],
+    praise: [
+      'תודה רבה 🥰 שמחה שעזרתי',
+      'איזה כיף לשמוע 🙏',
+      'תודה לך! מעריכה את זה',
+      'אהבתי, תודה ❤️',
+    ],
+    agree: [
+      'מעולה ✨',
+      'בכיף, ממשיכות הלאה',
+      'אוקיי, מה הלאה?',
+    ],
+    disagree: [
+      'בסדר גמור, נסי לנסח אחרת ואני אנסה שוב',
+      'אוקיי. אולי תרצי לראות מה אני יודעת לענות? כתבי "עזרה"',
+    ],
+    greeting: [
+      'היי! 👋 איך אני יכולה לעזור היום?',
+      'שלום! 😊 על מה תרצי לדעת?',
+      'היי, ברוכה הבאה. תרצי תמונת מצב של היום?',
+    ],
+    farewell: [
+      'להתראות! 👋 אני פה כשתצטרכי',
+      'ביי, יום מתוק! 🍫',
+      'נתראה, בהצלחה עם ההזמנות',
+    ],
+    how_are_you: [
+      'מצוין, תודה ששאלת 💛 ואצלך?',
+      'הכל טוב, מוכנה לעזור. על מה נדבר?',
+      'תודה! פה ובמלוא הכוננות. מה רצית לשאול?',
+    ],
+    apology: [
+      'אין על מה, הכל בסדר 🙂',
+      'לא קרה כלום, בואי ננסה שוב',
+    ],
+  };
+
+  const arr = replies[mood];
+  const choice = arr[Math.floor(Math.random() * arr.length)];
+
+  const blocks: Block[] = [{ type: 'text', text: choice }];
+
+  // Soft follow-ups only for moods where they feel natural.
+  if (mood === 'greeting' || mood === 'how_are_you') {
+    blocks.push({
+      type: 'suggestions',
+      title: 'אפשרויות מהירות',
+      items: [
+        { label: 'תני סיכום של היום',     text: 'תני לי סיכום של היום' },
+        { label: 'הכנסות החודש',          text: 'מה ההכנסות החודש?' },
+        { label: 'מה אני יכולה לשאול?',   text: 'עזרה' },
+      ],
+    });
+  }
+  if (mood === 'praise' || mood === 'thanks') {
+    blocks.push({
+      type: 'suggestions',
+      title: 'עוד משהו?',
+      items: [
+        { label: 'תני סיכום של היום',     text: 'תני לי סיכום של היום' },
+        { label: 'משלוחים פתוחים',        text: 'אילו משלוחים עוד לא נמסרו?' },
+      ],
+    });
+  }
+
+  return { kind: 'answer', blocks };
 }
 
 // "מה אני יכולה לשאול אותך" — surfaces the full question catalog grouped

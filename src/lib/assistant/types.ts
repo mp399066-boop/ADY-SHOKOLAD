@@ -175,4 +175,18 @@ export type ParsedIntent =
   // "מה אני יכולה לשאול אותך" — surfaces the full question catalog
   // grouped by category. Pure UI intent, no DB read.
   | { type: 'help' }
+  // Conversational fillers — "תודה" / "מצוין" / "היי" / "כן" / "לא".
+  // No DB read; returns a warm Hebrew response so the assistant doesn't
+  // robotically reply "לא הבנתי" to common social utterances.
+  | { type: 'chitchat'; mood: ChitchatMood }
   | { type: 'unknown'; hint?: UnknownHint; userText?: string };
+
+export type ChitchatMood =
+  | 'thanks'      // תודה / תודה רבה
+  | 'praise'      // מצוין / יפה / כל הכבוד
+  | 'agree'       // כן / נכון / בטח
+  | 'disagree'    // לא / לא נכון
+  | 'greeting'    // היי / שלום / בוקר טוב
+  | 'farewell'    // ביי / להתראות
+  | 'how_are_you' // מה שלומך / מה נשמע
+  | 'apology';    // סליחה / סורי

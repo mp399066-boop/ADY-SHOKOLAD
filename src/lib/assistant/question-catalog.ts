@@ -30,7 +30,11 @@ export type CatalogCategory =
   | 'reports'
   | 'system'
   | 'production'
-  | 'summary';
+  | 'summary'
+  // chitchat is intentionally hidden from the public help view (catalogGrouped
+  // skips it) — these phrases are just conversational glue, not "questions
+  // the operator wants answers to".
+  | 'chitchat';
 
 export const CATEGORY_LABEL_HE: Record<CatalogCategory, string> = {
   orders:     'הזמנות',
@@ -43,6 +47,7 @@ export const CATEGORY_LABEL_HE: Record<CatalogCategory, string> = {
   system:     'תקלות מערכת',
   production: 'ייצור / יומיומי',
   summary:    'תמונת מצב',
+  chitchat:   'שיחה',
 };
 
 export interface CatalogEntry {
@@ -268,6 +273,62 @@ export const QUESTION_CATALOG: CatalogEntry[] = [
     category: 'system',
     label: 'יש שגיאות במערכת?',
   },
+
+  // ── Chitchat — conversational glue. Catches short social utterances so
+  //     the assistant doesn't robotically reply "לא הבנתי" to "תודה" /
+  //     "מצוין" / "היי". Each entry maps to a chitchat mood; registry picks
+  //     one of several warm Hebrew replies at random. ───────────────────
+  {
+    phrases: ['תודה', 'תודה רבה', 'תודה לך', 'תודה רבה לך', 'thanks', 'thank you'],
+    intent: { type: 'chitchat', mood: 'thanks' },
+    category: 'chitchat',
+    label: 'תודה',
+  },
+  {
+    phrases: [
+      'מצוין', 'מצויין', 'יפה', 'יופי', 'כל הכבוד', 'אחלה', 'מעולה',
+      'אהבתי', 'נהדר', 'אדיר', 'סבבה', 'מושלם', 'פשוט מעולה',
+    ],
+    intent: { type: 'chitchat', mood: 'praise' },
+    category: 'chitchat',
+    label: 'מצוין',
+  },
+  {
+    phrases: ['כן', 'נכון', 'בטח', 'אוקיי', 'בסדר', 'אוקי', 'אישור'],
+    intent: { type: 'chitchat', mood: 'agree' },
+    category: 'chitchat',
+    label: 'כן',
+  },
+  {
+    phrases: ['לא', 'לא נכון', 'לא תודה', 'לא צריך'],
+    intent: { type: 'chitchat', mood: 'disagree' },
+    category: 'chitchat',
+    label: 'לא',
+  },
+  {
+    phrases: ['היי', 'שלום', 'הי', 'בוקר טוב', 'ערב טוב', 'צהריים טובים', 'לילה טוב', 'הלו'],
+    intent: { type: 'chitchat', mood: 'greeting' },
+    category: 'chitchat',
+    label: 'שלום',
+  },
+  {
+    phrases: ['ביי', 'להתראות', 'נתראה', 'תודה ביי', 'סיימנו'],
+    intent: { type: 'chitchat', mood: 'farewell' },
+    category: 'chitchat',
+    label: 'ביי',
+  },
+  {
+    phrases: ['מה שלומך', 'מה נשמע', 'איך הולך', 'הכל בסדר'],
+    intent: { type: 'chitchat', mood: 'how_are_you' },
+    category: 'chitchat',
+    label: 'מה שלומך',
+  },
+  {
+    phrases: ['סליחה', 'סורי', 'סלחי', 'התנצלות'],
+    intent: { type: 'chitchat', mood: 'apology' },
+    category: 'chitchat',
+    label: 'סליחה',
+  },
 ];
 
 // Phrase normalisation must mirror parser.ts:normalize() so a match here is
@@ -326,6 +387,10 @@ export function suggestFromCatalog(
   const scored: Scored[] = [];
 
   for (const entry of QUESTION_CATALOG) {
+    // Skip chitchat entries — "תודה" isn't a useful "did you mean" suggestion
+    // for an unknown query.
+    if (entry.category === 'chitchat') continue;
+
     let bestScore = 0;
     let bestPhrase = entry.phrases[0] || entry.label;
     for (const phrase of entry.phrases) {
@@ -348,6 +413,8 @@ export function suggestFromCatalog(
 // Grouped catalog for the "what can you ask me?" help view. Order categories
 // by likely usage frequency so the operator sees orders/summary first.
 export function catalogGrouped(): { category: CatalogCategory; label: string; entries: CatalogEntry[] }[] {
+  // chitchat is intentionally omitted — "תודה" / "היי" aren't browseable
+  // help entries, they're conversational glue.
   const order: CatalogCategory[] = [
     'summary', 'orders', 'revenue', 'customers',
     'products', 'inventory', 'deliveries', 'production', 'reports', 'system',

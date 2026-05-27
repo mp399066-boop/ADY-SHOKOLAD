@@ -28,7 +28,9 @@ function deriveContextFromIntent(intent: ParsedIntent): ConversationContext {
     case 'system_errors':
     case 'top_products':
     case 'top_petit_fours':
-    case 'new_customers':             ctx.lastAction = 'list'; break;
+    case 'new_customers':
+    case 'help':                      ctx.lastAction = 'list'; break;
+    case 'chitchat':                  /* no action label — pure social glue */ break;
     case 'stock_query':               ctx.lastAction = 'stock_lookup'; break;
     case 'download_orders_report':    ctx.lastAction = 'report_download'; break;
     case 'send_orders_report':        ctx.lastAction = 'report_send'; break;
@@ -280,7 +282,22 @@ export default function AssistantDrawer() {
             >
               <div>
                 <div style={{ fontSize: '14px', fontWeight: 700, color: '#2B1A10' }}>עוזרת מערכת</div>
-                <div style={{ fontSize: '11px', color: '#8E7D6A' }}>שאלי שאלה תפעולית</div>
+                <div style={{ fontSize: '11px', color: '#8E7D6A', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {messages.length > 0 || contextRef.current
+                    ? <>
+                        <span
+                          aria-hidden
+                          style={{
+                            display: 'inline-block',
+                            width: 6, height: 6, borderRadius: '50%',
+                            backgroundColor: '#4F9B6E',
+                            boxShadow: '0 0 0 2px #E5F2EA',
+                          }}
+                        />
+                        <span>זוכרת את השיחה הזו</span>
+                      </>
+                    : <span>שאלי שאלה תפעולית</span>}
+                </div>
               </div>
               <div className="flex items-center gap-1">
                 {messages.length > 0 && (
