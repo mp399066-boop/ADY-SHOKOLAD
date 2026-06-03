@@ -9,6 +9,7 @@ import { KitchenInventoryPanel } from './KitchenInventoryPanel';
 import { KitchenPrepBoard } from './KitchenPrepBoard';
 import { KitchenQuickActions } from './KitchenQuickActions';
 import { KitchenTaskRow } from './KitchenTaskRow';
+import { KitchenTeamChat } from './KitchenTeamChat';
 import { C } from './theme';
 import { RawMaterialsSummaryPanel } from '@/components/inventory/RawMaterialsSummaryPanel';
 
@@ -233,6 +234,9 @@ export function KitchenView({
         <p className="text-[10.5px] font-semibold mb-2 px-0.5" style={{ color: C.textMuted }}>פעולות מהירות</p>
         <KitchenQuickActions onNavigate={onNavigate} onProduction={onProduction} />
       </div>
+
+      {/* Floating internal team chat — kitchen workers ↔ Adi/manager */}
+      <KitchenTeamChat />
 
     </div>
   );
