@@ -18,90 +18,116 @@ a client-side `fetch` interceptor (`src/lib/demo/intercept.ts`) answers **all**
 - **Any endpoint not explicitly mocked** → empty `{data:[]}` (default-deny), so
   no real data can leak into the demo.
 
-The interceptor is installed at module-load (before any page fetches), and the
-real `fetch` is restored for everything that isn't an `/api/*` call. Nothing in
-auth, Supabase policies, WooCommerce, SendGrid, or Morning/Green Invoice is
-touched.
+The only non-faked data on screen is the business logo + business name in the
+top bar (read directly from `business_settings`) — that's the shop's own brand,
+which is what you want in a marketing video. The top bar never shows the
+logged-in user's email/name/avatar.
+
+Nothing in auth, Supabase policies, WooCommerce, SendGrid, or Morning/Green
+Invoice is touched.
 
 ---
 
 ## Using demo mode manually (no Playwright needed)
 
 1. Log in to the app as usual.
-2. Add `?demo=1` to any dashboard URL, e.g.:
-   ```
-   http://localhost:3000/dashboard?demo=1
-   ```
+2. Add `?demo=1` to any dashboard URL, e.g. `http://localhost:3000/dashboard?demo=1`.
 3. A **"מצב הדגמה — נתוני דמו בלבד"** badge appears bottom-left. Demo mode now
-   stays on for the whole browser tab (persisted in `sessionStorage`).
-4. Walk the flow: Dashboard → לקוחות → רבקה כהן → הזמנה DEMO-1001 → שינוי סטטוס
-   ל"בהכנה" → מלאי → משלוחים.
-5. To exit: click **יציאה** on the badge, or open any page with `?demo=0`, or
-   close the tab.
+   stays on for the whole browser tab.
+4. Add `&recording=1` to also **hide the badge** (for a clean recording):
+   `http://localhost:3000/dashboard?demo=1&recording=1`.
+5. To exit: click **יציאה** on the badge, open any page with `?demo=0`, or close
+   the tab.
 
-### Suggested demo entities (already in the dataset)
+### Demo entities already in the dataset
 - Customer: **רבקה כהן** · 050-0000000 · demo@example.com · סוג: חוזר
 - Order: **DEMO-1001** — מארז פטיפורים 16, עוגת שוקולד אישית, קינוחי כוסות (×2)
 - Products, inventory, deliveries, dashboard numbers — all fake.
 
 ---
 
-## Recording the video with Playwright
+## Producing the video automatically (Playwright)
 
-Login is **Google OAuth only**, so the recorder reuses a saved authenticated
-session instead of automating login.
+> **The one manual step:** login is **Google OAuth only**, which can't be
+> automated. You log in **once** in a browser window; the session is saved and
+> every future recording is fully automatic (zero clicks).
 
-### One-time setup
-
+### 0. One-time install (already done in this repo, but for a fresh clone)
 ```bash
-# 1. Install Playwright (dev only)
-npm i -D @playwright/test
+npm install
 npx playwright install chromium
-
-# 2. Start the app
-npm run dev      # http://localhost:3000
-
-# 3. Save an authenticated session (opens a browser; log in with Google,
-#    land on the dashboard, then close the window):
-npx playwright codegen http://localhost:3000/login --save-storage=tests/.auth/state.json
 ```
 
-`tests/.auth/state.json` holds your login cookies. It is git-ignored — never
-commit it.
-
-### Record
-
+### 1. Start the app
 ```bash
-npx playwright test --config=playwright.config.ts
+npm run dev          # http://localhost:3000
 ```
 
-- Desktop viewport **1440×900**, with readable pauses between actions.
-- The flow drives demo mode (`?demo=1`) end-to-end, so the recording shows only
-  fake data.
-
-### Where the video is saved
-
-Playwright writes the `.webm` recording under:
-
-```
-tests/demo-output/<test-name>/video.webm
-```
-
-(Exact subfolder is printed in the test output.) Re-encode to MP4 if needed:
-
+### 2. One-time login (opens a browser — sign in with Google, land on dashboard)
 ```bash
-ffmpeg -i tests/demo-output/**/video.webm demo.mp4
+npm run demo:login
+```
+This saves `tests/.auth/state.json` (git-ignored — never committed). Re-run it
+only if the session expires.
+
+### 3. Record + produce the file
+```bash
+npm run demo:video
+```
+This records the walkthrough (1440×900, paced for readability, badge hidden) and
+then finalizes the output.
+
+---
+
+## Where the video is saved
+
+```
+demo-video/crm-demo.webm     ← always produced
+demo-video/crm-demo.mp4      ← also produced if ffmpeg is installed
+```
+
+(Raw per-run artifacts live under `demo-video/raw/`.)
+
+### Convert WebM → MP4 (if you don't have an MP4 yet)
+The finalize step auto-converts when `ffmpeg` is on your PATH. If it isn't:
+```bash
+# Windows:
+winget install Gyan.FFmpeg      # then restart the terminal
+# then:
+npm run demo:finalize            # re-runs the copy + conversion
+# or convert manually:
+ffmpeg -i demo-video/crm-demo.webm -c:v libx264 -pix_fmt yuv420p -movflags +faststart -an demo-video/crm-demo.mp4
+```
+
+### Open the file
+`demo-video/crm-demo.webm` plays in Chrome/Edge/VLC. `crm-demo.mp4` plays
+everywhere and is what you upload to a website.
+
+---
+
+## Regenerate later
+```bash
+npm run dev            # if not already running
+npm run demo:video     # re-records + re-finalizes (login is reused)
 ```
 
 ---
 
-## Files added
+## Recorded flow
+Dashboard → לקוחות → רבקה כהן (profile) → order DEMO-1001 (products + total) →
+status → **בהכנה** → מלאי → משלוחים → back to a clean dashboard.
+
+---
+
+## Files
 
 | File | Purpose |
 | --- | --- |
 | `src/lib/demo/data.ts` | Fake dataset (customers, products, orders, inventory, stats). |
 | `src/lib/demo/intercept.ts` | Client-side `fetch` interceptor + demo on/off helpers. |
-| `src/components/demo/DemoBadge.tsx` | Installs the interceptor + shows the demo badge. |
-| `src/app/(dashboard)/layout.tsx` | Mounts `<DemoBadge/>` (one line). |
-| `playwright.config.ts` | Recording config (viewport, video, auth state). |
+| `src/components/demo/DemoBadge.tsx` | Installs the interceptor + shows/hides the demo badge (`recording=1` hides it). |
+| `src/app/(dashboard)/layout.tsx` | Mounts `<DemoBadge/>`. |
+| `playwright.config.ts` | Recording config — `setup` (login) + `demo-chromium` (record) projects. |
+| `tests/auth.setup.ts` | One-time interactive login → `tests/.auth/state.json`. |
 | `tests/demo-video.spec.ts` | The recorded walkthrough. |
+| `scripts/finalize-demo-video.mjs` | Copies the recording to `demo-video/` + converts to MP4 via ffmpeg. |

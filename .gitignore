@@ -11,5 +11,6 @@ tsconfig.tsbuildinfo
 # Playwright demo recording — local auth session + video output
 tests/.auth/
 tests/demo-output/
+demo-video/
 test-results/
 playwright-report/

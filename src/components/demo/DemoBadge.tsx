@@ -15,13 +15,22 @@ installDemoInterceptor();
 
 export default function DemoBadge() {
   const [active, setActive] = useState(false);
+  const [hidden, setHidden] = useState(false);
 
   useEffect(() => {
     installDemoInterceptor(); // idempotent — covers fast-refresh / re-mounts
     setActive(isDemoActive());
+    // ?recording=1 keeps demo mode ON but hides the badge so it never appears
+    // in the marketing video. Persisted per-tab so it survives navigations.
+    try {
+      const param = new URL(window.location.href).searchParams.get('recording');
+      if (param === '1') sessionStorage.setItem('adi_demo_recording', '1');
+      if (param === '0') sessionStorage.removeItem('adi_demo_recording');
+      setHidden(sessionStorage.getItem('adi_demo_recording') === '1');
+    } catch { /* ignore */ }
   }, []);
 
-  if (!active) return null;
+  if (!active || hidden) return null;
 
   return (
     <div
