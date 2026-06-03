@@ -201,6 +201,72 @@ export const DEMO_DASHBOARD_STATS: DashboardStats = {
   revenueToday: 3680,
 };
 
+// ─── Finance analytics overview ──────────────────────────────────────────────
+// Shape mirrors FinanceOverviewData in dashboard/components/AnalyticsTabs.tsx.
+// The Analytics tabs read topCustomers[0] / highValueOrders[0] / busiestCity[0]
+// without a shape guard, so every array here MUST exist (matching the real API)
+// or the dashboard crashes with "reading '0'".
+
+interface DemoFinOrderRow {
+  id: string; orderNumber: string; customerName: string; amount: number;
+  orderStatus: string; date: string | null; paymentMethod: string | null;
+}
+
+function finRow(o: Order): DemoFinOrderRow {
+  const c = DEMO_CUSTOMERS.find(x => x.id === o.לקוח_id);
+  return {
+    id: o.id, orderNumber: o.מספר_הזמנה,
+    customerName: c ? `${c.שם_פרטי} ${c.שם_משפחה}` : (o.שם_מקבל || '—'),
+    amount: o.סך_הכל_לתשלום ?? 0, orderStatus: o.סטטוס_הזמנה,
+    date: o.תאריך_אספקה, paymentMethod: o.אופן_תשלום ?? null,
+  };
+}
+
+function dmLabel(iso: string): string {
+  const [, m, d] = iso.split('-');
+  return `${d}/${m}`;
+}
+
+const _paidOrders = DEMO_ORDERS.filter(o => o.סטטוס_תשלום === 'שולם');
+const _openOrders = DEMO_ORDERS.filter(o => o.סטטוס_תשלום === 'ממתין' || o.סטטוס_תשלום === 'חלקי');
+
+const _dailyChart = [6, 5, 4, 3, 2, 1, 0].map((off, i) => {
+  const iso = israelISO(-off);
+  return { key: iso, label: dmLabel(iso), amount: [300, 520, 410, 680, 250, 900, 680][i] };
+});
+
+const _now = new Date();
+const _monthlyChart = Array.from({ length: 6 }, (_, i) => {
+  const d = new Date(_now.getFullYear(), _now.getMonth() - (5 - i), 1);
+  const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  return { key, label: key.slice(2), amount: [8200, 9100, 7600, 11200, 9800, 14200][i] };
+});
+
+export const DEMO_FINANCE_OVERVIEW = {
+  kpis: {
+    today:  { total: 680,    count: 2  },
+    week:   { total: 3680,   count: 12 },
+    month:  { total: 14200,  count: 48 },
+    year:   { total: 168000, count: 540 },
+    unpaid: { total: 1240,   count: 3  },
+  },
+  dailyChart:   _dailyChart,
+  monthlyChart: _monthlyChart,
+  byPaymentMethod: [
+    { method: 'כרטיס אשראי', count: 6, amount: 2480 },
+    { method: 'bit',         count: 3, amount: 720 },
+    { method: 'מזומן',       count: 2, amount: 480 },
+  ],
+  topCustomers: [
+    { id: 'demo-cust-1', name: 'רבקה כהן',     amount: 1820, count: 4 },
+    { id: 'demo-cust-3', name: 'מרים פרידמן',  amount: 1260, count: 3 },
+    { id: 'demo-cust-4', name: 'חנה רוזנברג',  amount: 740,  count: 2 },
+  ],
+  highValueOrders: [...DEMO_ORDERS].sort((a, b) => (b.סך_הכל_לתשלום ?? 0) - (a.סך_הכל_לתשלום ?? 0)).map(finRow),
+  recentPaid:      _paidOrders.map(finRow),
+  openOrders:      _openOrders.map(finRow),
+};
+
 // ─── Mutable in-memory store ─────────────────────────────────────────────────
 // Status changes in the demo (e.g. "בהכנה") mutate this copy so the UI reflects
 // the change on refresh. It lives only in the browser tab and is rebuilt on

@@ -18,6 +18,7 @@
 
 import {
   getDemoStore, DEMO_PRIMARY_ORDER_ID, DEMO_PRIMARY_ORDER_ITEMS,
+  DEMO_FINANCE_OVERVIEW,
 } from './data';
 
 const FLAG_KEY = 'adi_demo';
@@ -218,6 +219,10 @@ async function route(input: RequestInfo | URL, init?: RequestInit): Promise<Resp
     }
     return json({ data: list, count: list.length });
   }
+
+  // Finance analytics — the dashboard Analytics tabs read array[0] off this
+  // response without a shape guard, so it must return the full object shape.
+  if (path === '/api/analytics/finance/overview') return json(DEMO_FINANCE_OVERVIEW);
 
   if (path === '/api/inventory') return json({ data: s.rawMaterials });
   if (path === '/api/products') return json({ data: s.products });
