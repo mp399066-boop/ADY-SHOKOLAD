@@ -15,6 +15,8 @@ import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { BulkActionBar } from '@/components/ui/BulkActionBar';
 import { MovementsTab } from '@/components/inventory/MovementsTab';
 import { RawMaterialsSummaryPanel } from '@/components/inventory/RawMaterialsSummaryPanel';
+import { DuplicateReviewModal } from '@/components/inventory/DuplicateReviewModal';
+import { AliasEditor } from '@/components/inventory/AliasEditor';
 import { exportToCsv } from '@/lib/exportCsv';
 import { formatCurrency } from '@/lib/utils';
 import toast from 'react-hot-toast';
@@ -68,6 +70,15 @@ export default function InventoryPage() {
 
   // Recipe popover
   const [recipePopover, setRecipePopover] = useState<{ materialId: string; top: number; left: number } | null>(null);
+
+  // Duplicate-detection review modal
+  const [showDuplicates, setShowDuplicates] = useState(false);
+
+  // New-material "may already exist" warning. Holds possible matches found
+  // when saving a NEW raw material; null when no warning pending.
+  type MaterialMatch = { id: string; name: string; quantity: number; unit: string };
+  const [matchWarning, setMatchWarning] = useState<MaterialMatch[] | null>(null);
+  const [checkingMatch, setCheckingMatch] = useState(false);
 
   const currentSel = tab === 'raw' ? selRaw : tab === 'products' ? selProducts : selPF;
   const setCurrentSel = (fn: (prev: Set<string>) => Set<string>) => {
@@ -320,6 +331,7 @@ export default function InventoryPage() {
   };
 
   const openAdd = () => {
+    setMatchWarning(null);
     setEditItem({
       שם_חומר_גלם: '', כמות_במלאי: 0, יחידת_מידה: 'ק"ג',
       סף_מלאי_נמוך: 0, סף_מלאי_קריטי: 0, מחיר_ליחידה: 0, הערות: '',
@@ -328,21 +340,61 @@ export default function InventoryPage() {
   };
 
   const openEdit = (item: RawMaterial) => {
+    setMatchWarning(null);
     setEditItem(item);
     setShowModal(true);
   };
 
-  const handleSave = async () => {
+  const handleSave = async (forceNew = false) => {
     if (!editItem?.שם_חומר_גלם) { toast.error('שם חומר גלם הוא שדה חובה'); return; }
+    const isEdit = !!(editItem as RawMaterial).id;
+
+    // For a NEW material, check whether a similar name/alias already exists.
+    // If so, surface the warning and let the user decide — don't save yet.
+    if (!isEdit && !forceNew) {
+      setCheckingMatch(true);
+      try {
+        const r = await fetch(`/api/inventory/match?name=${encodeURIComponent(editItem.שם_חומר_גלם.trim())}`);
+        const j = await r.json();
+        if (Array.isArray(j.matches) && j.matches.length > 0) {
+          setMatchWarning(j.matches as MaterialMatch[]);
+          return;
+        }
+      } catch { /* match check is best-effort — fall through to save */ }
+      finally { setCheckingMatch(false); }
+    }
+
     setSaving(true);
     try {
-      const isEdit = !!(editItem as RawMaterial).id;
       const url = isEdit ? `/api/inventory/${(editItem as RawMaterial).id}` : '/api/inventory';
       const method = isEdit ? 'PATCH' : 'POST';
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(editItem) });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
       toast.success('נשמר בהצלחה');
+      setMatchWarning(null);
+      setShowModal(false);
+      fetchInventory();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'שגיאה');
+    } finally { setSaving(false); }
+  };
+
+  // "חברי לחומר קיים" — add the typed name as an alias of the chosen existing
+  // material instead of creating a new row. No new material, no qty change.
+  const handleLinkToExisting = async (matchId: string) => {
+    if (!editItem?.שם_חומר_גלם) return;
+    setSaving(true);
+    try {
+      const res = await fetch('/api/inventory/aliases', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ raw_material_id: matchId, alias: editItem.שם_חומר_גלם.trim() }),
+      });
+      const json = await res.json();
+      if (!res.ok && res.status !== 409) throw new Error(json?.error || 'שגיאה');
+      toast.success('השם חובר לחומר הקיים כשם חלופי');
+      setMatchWarning(null);
       setShowModal(false);
       fetchInventory();
     } catch (err: unknown) {
@@ -489,6 +541,13 @@ export default function InventoryPage() {
                 >
                   <IconExport className="w-3.5 h-3.5" />
                   ייצוא לאקסל
+                </button>
+                <button
+                  onClick={() => setShowDuplicates(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-xl border bg-white hover:bg-[#FAF7F2] transition-all duration-200"
+                  style={{ borderColor: '#D8CCBA', color: '#8B5E34' }}
+                >
+                  בדיקת כפילויות בחומרי גלם
                 </button>
                 <div className="mr-auto">
                   <Button size="sm" onClick={openAdd}>+ חומר גלם חדש</Button>
@@ -1077,12 +1136,59 @@ export default function InventoryPage() {
             );
           })()}
 
+          {/* שמות חלופיים — edit mode only (needs an existing material id) */}
+          {editItem && (editItem as RawMaterial).id && (
+            <AliasEditor materialId={(editItem as RawMaterial).id} />
+          )}
+
+          {/* "ייתכן שחומר הגלם הזה כבר קיים" — shown for a NEW material whose
+              name resembles existing materials/aliases. User decides. */}
+          {matchWarning && matchWarning.length > 0 && (
+            <div className="rounded-lg border p-3" style={{ borderColor: '#E7D2A6', backgroundColor: '#FBF6EC' }}>
+              <p className="text-xs font-semibold mb-2" style={{ color: '#8B5E34' }}>
+                ייתכן שחומר הגלם הזה כבר קיים במערכת
+              </p>
+              <div className="space-y-1.5 mb-3">
+                {matchWarning.map(m => (
+                  <div key={m.id} className="flex items-center justify-between gap-2 text-xs">
+                    <span style={{ color: '#2B1A10' }}>{m.name} <span style={{ color: '#9B7A5A' }}>({m.quantity} {m.unit})</span></span>
+                    <button
+                      type="button"
+                      onClick={() => handleLinkToExisting(m.id)}
+                      disabled={saving}
+                      className="px-2.5 py-1 rounded-lg font-semibold disabled:opacity-50"
+                      style={{ backgroundColor: '#476D53', color: '#FFF' }}
+                    >
+                      חברי לחומר קיים
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => handleSave(true)}
+                disabled={saving}
+                className="text-xs px-3 py-1.5 rounded-lg border bg-white disabled:opacity-50"
+                style={{ borderColor: '#DDD0BC', color: '#8A735F' }}
+              >
+                שמרי כחומר חדש
+              </button>
+            </div>
+          )}
+
           <div className="flex gap-3 justify-end pt-2">
             <Button variant="outline" onClick={() => setShowModal(false)}>ביטול</Button>
-            <Button onClick={handleSave} loading={saving}>שמור</Button>
+            <Button onClick={() => handleSave()} loading={saving || checkingMatch}>שמור</Button>
           </div>
         </div>
       </Modal>
+
+      {/* Duplicate detection review */}
+      <DuplicateReviewModal
+        open={showDuplicates}
+        onClose={() => setShowDuplicates(false)}
+        onChanged={fetchInventory}
+      />
 
       {/* Bulk action bar */}
       <BulkActionBar
