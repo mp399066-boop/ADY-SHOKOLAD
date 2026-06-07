@@ -76,7 +76,7 @@ export default function InventoryPage() {
 
   // New-material "may already exist" warning. Holds possible matches found
   // when saving a NEW raw material; null when no warning pending.
-  type MaterialMatch = { id: string; name: string; quantity: number; unit: string };
+  type MaterialMatch = { id: string; name: string; quantity: number; unit: string; linkedTo?: string | null };
   const [matchWarning, setMatchWarning] = useState<MaterialMatch[] | null>(null);
   const [checkingMatch, setCheckingMatch] = useState(false);
 
@@ -436,6 +436,24 @@ export default function InventoryPage() {
     [suppliers],
   );
 
+  // קיבוץ כפילויות מאושרות: parentName לכל שורה מחוברת, ורשימת השמות המחוברים לכל חומר ראשי
+  const { parentNameById, linkedNamesById } = useMemo(() => {
+    const byId = new Map(materials.map(m => [m.id, m]));
+    const parentName = new Map<string, string>();
+    const linked = new Map<string, string[]>();
+    for (const m of materials) {
+      const pid = m.parent_raw_material_id;
+      if (!pid || pid === m.id) continue;
+      const parent = byId.get(pid);
+      if (!parent) continue;
+      parentName.set(m.id, parent.שם_חומר_גלם);
+      const arr = linked.get(pid) ?? [];
+      arr.push(m.שם_חומר_גלם);
+      linked.set(pid, arr);
+    }
+    return { parentNameById: parentName, linkedNamesById: linked };
+  }, [materials]);
+
   // Maps materialId → { count, names, details } built from live recipe list.
   // Used by the table column and the edit-modal section.
   const materialRecipeMap = useMemo(() => {
@@ -605,7 +623,19 @@ export default function InventoryPage() {
                                 onClick={e => e.stopPropagation()}
                               />
                             </td>
-                            <td className="px-4 py-3 font-medium text-xs" style={{ color: '#2B1A10' }}>{m.שם_חומר_גלם}</td>
+                            <td className="px-4 py-3 font-medium text-xs" style={{ color: '#2B1A10' }}>
+                              {m.שם_חומר_גלם}
+                              {parentNameById.has(m.id) && (
+                                <div className="mt-0.5 text-[10px] font-normal" style={{ color: '#9B7A5A' }}>
+                                  מחובר אל: {parentNameById.get(m.id)} · כמות קיימת: {m.כמות_במלאי} {m.יחידת_מידה}
+                                </div>
+                              )}
+                              {linkedNamesById.has(m.id) && (
+                                <div className="mt-0.5 text-[10px] font-normal" style={{ color: '#8B5E34' }}>
+                                  שמות מחוברים: {linkedNamesById.get(m.id)!.join(', ')}
+                                </div>
+                              )}
+                            </td>
                             <td className="px-4 py-3">
                               <span
                                 className="text-xs font-semibold"
@@ -1159,7 +1189,10 @@ export default function InventoryPage() {
               <div className="space-y-1.5 mb-3">
                 {matchWarning.map(m => (
                   <div key={m.id} className="flex items-center justify-between gap-2 text-xs">
-                    <span style={{ color: '#2B1A10' }}>{m.name} <span style={{ color: '#9B7A5A' }}>({m.quantity} {m.unit})</span></span>
+                    <span style={{ color: '#2B1A10' }}>
+                      {m.name} <span style={{ color: '#9B7A5A' }}>({m.quantity} {m.unit})</span>
+                      {m.linkedTo && <span style={{ color: '#8B5E34' }}> — כבר מחובר אל {m.linkedTo}</span>}
+                    </span>
                     <button
                       type="button"
                       onClick={() => handleLinkToExisting(m.id)}

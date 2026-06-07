@@ -308,6 +308,8 @@ export interface RawMaterial {
   כמות_להזמנה: number | null;
   יחידת_קניה: string | null;
   הערות_רכש: string | null;
+  // קישור כפילות — migration 047: חומר כפול מצביע אל החומר הראשי
+  parent_raw_material_id?: string | null;
   תאריך_יצירה: string;
   תאריך_עדכון: string;
 }

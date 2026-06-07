@@ -55,6 +55,16 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     }
   }
 
+  // Real parent link: the duplicate row now points to the main material so the
+  // inventory groups them. Row, quantity and recipes are untouched.
+  if (suggestion.duplicate_raw_material_id !== suggestion.primary_raw_material_id) {
+    const { error: lErr } = await supabase
+      .from('מלאי_חומרי_גלם')
+      .update({ parent_raw_material_id: suggestion.primary_raw_material_id })
+      .eq('id', suggestion.duplicate_raw_material_id);
+    if (lErr) return NextResponse.json({ error: lErr.message }, { status: 500 });
+  }
+
   const { error: uErr } = await supabase
     .from('raw_material_duplicate_suggestions')
     .update({ status: 'approved' })
