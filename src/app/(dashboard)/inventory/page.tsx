@@ -682,9 +682,19 @@ export default function InventoryPage() {
                               })()}
                             </td>
                             <td className="px-4 py-3">
-                              <div className="flex items-center gap-0.5">
+                              <div className="flex items-center gap-2">
                                 <ActionBtn title="עריכה" onClick={() => openEdit(m)} icon={<IconEdit className="w-4 h-4" />} />
-                                <ActionBtn title="מחיקת חומר גלם" variant="danger" onClick={() => setConfirmMaterial({ id: m.id, name: m.שם_חומר_גלם })} icon={<IconTrash className="w-4 h-4" />} />
+                                {/* Visible (non-hover, non-tooltip-only) delete button */}
+                                <button
+                                  type="button"
+                                  title="מחיקת חומר גלם"
+                                  onClick={e => { e.stopPropagation(); setConfirmMaterial({ id: m.id, name: m.שם_חומר_גלם }); }}
+                                  className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg border whitespace-nowrap transition-colors hover:bg-red-50"
+                                  style={{ borderColor: '#E0B4AE', color: '#B91C1C', backgroundColor: '#FFF' }}
+                                >
+                                  <IconTrash className="w-3.5 h-3.5" />
+                                  מחיקת חומר גלם
+                                </button>
                               </div>
                             </td>
                           </tr>
