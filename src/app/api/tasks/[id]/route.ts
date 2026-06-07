@@ -12,9 +12,22 @@ export async function PATCH(
   if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
   const body = await req.json();
+
+  if ('שם_משימה' in body && !String(body.שם_משימה ?? '').trim())
+    return NextResponse.json({ error: 'שם משימה הוא שדה חובה' }, { status: 400 });
+
+  // Empty strings from the edit form must become NULL for FK/date/time columns,
+  // otherwise Postgres rejects '' as an invalid uuid/date/time (create already
+  // does this; edit didn't, which broke saving). Only touch keys actually sent
+  // so partial updates (e.g. status-only) keep working.
+  const update = { ...body };
+  for (const key of ['עובד_id', 'הזמנה_id', 'תאריך_יעד', 'שעת_יעד']) {
+    if (key in update && (update[key] === '' || update[key] === undefined)) update[key] = null;
+  }
+
   const { data, error } = await supabase
     .from('משימות_עובדים')
-    .update({ ...body, תאריך_עדכון: new Date().toISOString() })
+    .update({ ...update, תאריך_עדכון: new Date().toISOString() })
     .eq('id', params.id)
     .select('*, עובדים(id, שם_עובד, תפקיד), הזמנות(id, מספר_הזמנה)')
     .single();
