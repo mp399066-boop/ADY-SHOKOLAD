@@ -45,6 +45,11 @@ export default function InventoryPage() {
   const [savingStock, setSavingStock] = useState(false);
   const [confirmMaterial, setConfirmMaterial] = useState<{ id: string; name: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
+  // Manual "replace raw material" — move usages of a duplicate onto a chosen material.
+  const [replaceMaterial, setReplaceMaterial] = useState<{ id: string; name: string } | null>(null);
+  const [replaceTargetId, setReplaceTargetId] = useState<string>('');
+  const [replaceSearch, setReplaceSearch] = useState('');
+  const [replacing, setReplacing] = useState(false);
   // Separate confirm state for finished-product deletes — keeps the raw-material
   // delete flow untouched and lets us show a product-specific confirm message.
   const [confirmProduct, setConfirmProduct] = useState<{ id: string; name: string } | null>(null);
@@ -254,6 +259,34 @@ export default function InventoryPage() {
       fetchInventory();
     } catch { toast.error('שגיאה במחיקה'); }
     finally { setDeleting(false); }
+  };
+
+  const openReplace = (m: RawMaterial) => {
+    setReplaceMaterial({ id: m.id, name: m.שם_חומר_גלם });
+    setReplaceTargetId('');
+    setReplaceSearch('');
+  };
+
+  const handleReplaceMaterial = async () => {
+    if (!replaceMaterial || !replaceTargetId) return;
+    setReplacing(true);
+    try {
+      const res = await fetch(`/api/inventory/${replaceMaterial.id}/replace`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetId: replaceTargetId }),
+      });
+      const json = await res.json();
+      if (!res.ok) { toast.error(json.error || 'שגיאה בהחלפה'); return; }
+      toast.success('השימושים הועברו בהצלחה. עכשיו אפשר למחוק את חומר הגלם המיותר.');
+      const dup = replaceMaterial;
+      setReplaceMaterial(null);
+      fetchInventory();
+      fetchRecipes();
+      // Offer to delete the now-unused duplicate (uses the existing safe delete).
+      setConfirmMaterial(dup);
+    } catch { toast.error('שגיאה בהחלפה'); }
+    finally { setReplacing(false); }
   };
 
   const handleDeleteProduct = async (id: string) => {
@@ -684,6 +717,16 @@ export default function InventoryPage() {
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-2">
                                 <ActionBtn title="עריכה" onClick={() => openEdit(m)} icon={<IconEdit className="w-4 h-4" />} />
+                                {/* Replace a duplicate's usages with another material */}
+                                <button
+                                  type="button"
+                                  title="החלפה בחומר אחר"
+                                  onClick={e => { e.stopPropagation(); openReplace(m); }}
+                                  className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg border whitespace-nowrap transition-colors hover:bg-amber-50"
+                                  style={{ borderColor: '#D8CCBA', color: '#8B5E34', backgroundColor: '#FFF' }}
+                                >
+                                  החלפה בחומר אחר
+                                </button>
                                 {/* Visible (non-hover, non-tooltip-only) delete button */}
                                 <button
                                   type="button"
@@ -1090,6 +1133,60 @@ export default function InventoryPage() {
         onConfirm={() => handleDeleteMaterial(confirmMaterial!.id)}
         loading={deleting}
       />
+
+      {/* Replace raw material modal */}
+      <Modal open={!!replaceMaterial} onClose={() => setReplaceMaterial(null)} title="החלפת חומר גלם" size="sm">
+        {replaceMaterial && (() => {
+          const candidates = materials
+            .filter(m => m.id !== replaceMaterial.id)
+            .filter(m => !replaceSearch || m.שם_חומר_גלם.includes(replaceSearch));
+          return (
+            <div className="space-y-4">
+              <p className="text-sm" style={{ color: '#2B1A10' }}>
+                בחרי לאיזה חומר גלם להעביר את השימושים של <strong>{replaceMaterial.name}</strong>
+              </p>
+              <div className="rounded-lg border p-3 text-xs" style={{ borderColor: '#F1E2C3', backgroundColor: '#FFFBEB', color: '#8A735F' }}>
+                המערכת תעביר מתכונים/מסמכים שמשתמשים בחומר הזה לחומר הנבחר. הכמויות לא יימחקו ללא אישור.
+              </div>
+              <input
+                type="text"
+                placeholder="חיפוש חומר גלם..."
+                value={replaceSearch}
+                onChange={e => setReplaceSearch(e.target.value)}
+                className="w-full px-3 py-2 text-sm rounded-lg border bg-white focus:outline-none focus:ring-2 focus:ring-amber-100"
+                style={{ borderColor: '#DDD0BC', color: '#2B1A10' }}
+              />
+              <div className="max-h-56 overflow-y-auto rounded-lg border" style={{ borderColor: '#EDE0CE' }}>
+                {candidates.length === 0 ? (
+                  <p className="px-3 py-4 text-xs text-center" style={{ color: '#9B7A5A' }}>לא נמצאו חומרי גלם</p>
+                ) : (
+                  candidates.map(m => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => setReplaceTargetId(m.id)}
+                      className="w-full text-right px-3 py-2 text-xs border-b last:border-b-0 transition-colors hover:bg-amber-50"
+                      style={{
+                        borderColor: '#F5ECD8',
+                        backgroundColor: replaceTargetId === m.id ? '#FEF3DD' : '#FFF',
+                        color: '#2B1A10',
+                        fontWeight: replaceTargetId === m.id ? 700 : 400,
+                      }}
+                    >
+                      {m.שם_חומר_גלם}
+                      <span style={{ color: '#9B7A5A' }}> · {m.כמות_במלאי} {m.יחידת_מידה}</span>
+                    </button>
+                  ))
+                )}
+              </div>
+              <div className="flex gap-3 justify-end pt-1">
+                <Button variant="outline" onClick={() => setReplaceMaterial(null)}>ביטול</Button>
+                <Button onClick={handleReplaceMaterial} loading={replacing} disabled={!replaceTargetId}>החליפי</Button>
+              </div>
+            </div>
+          );
+        })()}
+      </Modal>
 
       {/* Product delete confirm */}
       <ConfirmModal
