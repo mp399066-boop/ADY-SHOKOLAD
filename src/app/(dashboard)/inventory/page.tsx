@@ -470,24 +470,6 @@ export default function InventoryPage() {
     [suppliers],
   );
 
-  // קיבוץ כפילויות מאושרות: parentName לכל שורה מחוברת, ורשימת השמות המחוברים לכל חומר ראשי
-  const { parentNameById, linkedNamesById } = useMemo(() => {
-    const byId = new Map(materials.map(m => [m.id, m]));
-    const parentName = new Map<string, string>();
-    const linked = new Map<string, string[]>();
-    for (const m of materials) {
-      const pid = m.parent_raw_material_id;
-      if (!pid || pid === m.id) continue;
-      const parent = byId.get(pid);
-      if (!parent) continue;
-      parentName.set(m.id, parent.שם_חומר_גלם);
-      const arr = linked.get(pid) ?? [];
-      arr.push(m.שם_חומר_גלם);
-      linked.set(pid, arr);
-    }
-    return { parentNameById: parentName, linkedNamesById: linked };
-  }, [materials]);
-
   // Maps materialId → { count, names, details } built from live recipe list.
   // Used by the table column and the edit-modal section.
   const materialRecipeMap = useMemo(() => {
@@ -533,19 +515,19 @@ export default function InventoryPage() {
 
   return (
     <div className="space-y-4">
-      {/* בדיקת כפילויות בחומרי גלם — גלוי מיד בראש העמוד, ללא צורך בגלילה */}
-      <div className="flex flex-wrap items-center gap-3 rounded-xl border p-4"
-        style={{ backgroundColor: '#FFFBEB', borderColor: '#F1E2C3' }}>
+      {/* הסבר זרימת ניקוי כפילויות + כפתור איתור משני */}
+      <div className="rounded-xl border p-4 space-y-3"
+        style={{ backgroundColor: '#FDFAF6', borderColor: '#EAE0D4' }}>
+        <p className="text-sm" style={{ color: '#6B4A2D' }}>
+          כדי לנקות כפילויות: קודם מעבירים שימושים לחומר הגלם הראשי, ואז מוחקים את החומר המיותר. המערכת תחסום מחיקה אם החומר עדיין בשימוש במתכונים או במסמכים.
+        </p>
         <button
           onClick={() => setShowDuplicates(true)}
-          className="px-4 py-2 text-sm font-bold rounded-xl text-white shadow-sm hover:opacity-90 transition-all duration-200"
-          style={{ backgroundColor: '#8B5E34' }}
+          className="px-3 py-1.5 text-xs font-medium rounded-xl border bg-white hover:bg-[#FAF7F2] transition-all duration-200"
+          style={{ borderColor: '#D8CCBA', color: '#8B5E34' }}
         >
-          בדיקת כפילויות בחומרי גלם
+          איתור כפילויות מוצעות
         </button>
-        <p className="text-xs" style={{ color: '#8A735F' }}>
-          המערכת תציג חשודים לכפילויות — שום דבר לא יאוחד בלי אישור שלך.
-        </p>
       </div>
 
       {/* Critical alert banner */}
@@ -659,16 +641,6 @@ export default function InventoryPage() {
                             </td>
                             <td className="px-4 py-3 font-medium text-xs" style={{ color: '#2B1A10' }}>
                               {m.שם_חומר_גלם}
-                              {parentNameById.has(m.id) && (
-                                <div className="mt-0.5 text-[10px] font-normal" style={{ color: '#9B7A5A' }}>
-                                  מחובר אל: {parentNameById.get(m.id)} · כמות קיימת: {m.כמות_במלאי} {m.יחידת_מידה}
-                                </div>
-                              )}
-                              {linkedNamesById.has(m.id) && (
-                                <div className="mt-0.5 text-[10px] font-normal" style={{ color: '#8B5E34' }}>
-                                  שמות מחוברים: {linkedNamesById.get(m.id)!.join(', ')}
-                                </div>
-                              )}
                             </td>
                             <td className="px-4 py-3">
                               <span
@@ -720,12 +692,12 @@ export default function InventoryPage() {
                                 {/* Replace a duplicate's usages with another material */}
                                 <button
                                   type="button"
-                                  title="החלפה בחומר אחר"
+                                  title="החליפי בחומר ראשי"
                                   onClick={e => { e.stopPropagation(); openReplace(m); }}
                                   className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg border whitespace-nowrap transition-colors hover:bg-amber-50"
                                   style={{ borderColor: '#D8CCBA', color: '#8B5E34', backgroundColor: '#FFF' }}
                                 >
-                                  החלפה בחומר אחר
+                                  החליפי בחומר ראשי
                                 </button>
                                 {/* Visible (non-hover, non-tooltip-only) delete button */}
                                 <button
@@ -1305,7 +1277,6 @@ export default function InventoryPage() {
                   <div key={m.id} className="flex items-center justify-between gap-2 text-xs">
                     <span style={{ color: '#2B1A10' }}>
                       {m.name} <span style={{ color: '#9B7A5A' }}>({m.quantity} {m.unit})</span>
-                      {m.linkedTo && <span style={{ color: '#8B5E34' }}> — כבר מחובר אל {m.linkedTo}</span>}
                     </span>
                     <button
                       type="button"
