@@ -481,6 +481,21 @@ export default function InventoryPage() {
 
   return (
     <div className="space-y-4">
+      {/* בדיקת כפילויות בחומרי גלם — גלוי מיד בראש העמוד, ללא צורך בגלילה */}
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border p-4"
+        style={{ backgroundColor: '#FFFBEB', borderColor: '#F1E2C3' }}>
+        <button
+          onClick={() => setShowDuplicates(true)}
+          className="px-4 py-2 text-sm font-bold rounded-xl text-white shadow-sm hover:opacity-90 transition-all duration-200"
+          style={{ backgroundColor: '#8B5E34' }}
+        >
+          בדיקת כפילויות בחומרי גלם
+        </button>
+        <p className="text-xs" style={{ color: '#8A735F' }}>
+          המערכת תציג חשודים לכפילויות — שום דבר לא יאוחד בלי אישור שלך.
+        </p>
+      </div>
+
       {/* Critical alert banner */}
       {criticals.length > 0 && (
         <div className="flex items-start gap-3 rounded-xl p-4 border" style={{ backgroundColor: '#FEF2F2', borderColor: '#FECACA' }}>
@@ -541,13 +556,6 @@ export default function InventoryPage() {
                 >
                   <IconExport className="w-3.5 h-3.5" />
                   ייצוא לאקסל
-                </button>
-                <button
-                  onClick={() => setShowDuplicates(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-xl border bg-white hover:bg-[#FAF7F2] transition-all duration-200"
-                  style={{ borderColor: '#D8CCBA', color: '#8B5E34' }}
-                >
-                  בדיקת כפילויות בחומרי גלם
                 </button>
                 <div className="mr-auto">
                   <Button size="sm" onClick={openAdd}>+ חומר גלם חדש</Button>
