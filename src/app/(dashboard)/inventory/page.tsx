@@ -43,7 +43,7 @@ export default function InventoryPage() {
   const [editStockId, setEditStockId] = useState<string | null>(null);
   const [editStockQty, setEditStockQty] = useState(0);
   const [savingStock, setSavingStock] = useState(false);
-  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [confirmMaterial, setConfirmMaterial] = useState<{ id: string; name: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
   // Separate confirm state for finished-product deletes — keeps the raw-material
   // delete flow untouched and lets us show a product-specific confirm message.
@@ -244,12 +244,13 @@ export default function InventoryPage() {
       const res = await fetch(`/api/inventory/${id}`, { method: 'DELETE' });
       const json = await res.json();
       if (!res.ok) {
-        const isFK = (json.error || '').includes('foreign key') || (json.error || '').includes('violates');
-        toast.error(isFK ? 'לא ניתן למחוק כי קיימות רשומות מקושרות' : (json.error || 'שגיאה במחיקה'));
+        // The server returns a clear Hebrew message (and counts) when the
+        // material is still in use — show it as-is.
+        toast.error(json.error || 'שגיאה במחיקה');
         return;
       }
-      toast.success('נמחק בהצלחה');
-      setConfirmId(null);
+      toast.success('חומר הגלם נמחק');
+      setConfirmMaterial(null);
       fetchInventory();
     } catch { toast.error('שגיאה במחיקה'); }
     finally { setDeleting(false); }
@@ -683,7 +684,7 @@ export default function InventoryPage() {
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-0.5">
                                 <ActionBtn title="עריכה" onClick={() => openEdit(m)} icon={<IconEdit className="w-4 h-4" />} />
-                                <ActionBtn title="מחיקה" variant="danger" onClick={() => setConfirmId(m.id)} icon={<IconTrash className="w-4 h-4" />} />
+                                <ActionBtn title="מחיקת חומר גלם" variant="danger" onClick={() => setConfirmMaterial({ id: m.id, name: m.שם_חומר_גלם })} icon={<IconTrash className="w-4 h-4" />} />
                               </div>
                             </td>
                           </tr>
@@ -1068,9 +1069,15 @@ export default function InventoryPage() {
 
       {/* Single delete confirm */}
       <ConfirmModal
-        open={!!confirmId}
-        onClose={() => setConfirmId(null)}
-        onConfirm={() => handleDeleteMaterial(confirmId!)}
+        open={!!confirmMaterial}
+        title="מחיקת חומר גלם"
+        description={confirmMaterial
+          ? `האם למחוק את ${confirmMaterial.name}? פעולה זו תמחק את חומר הגלם מרשימת המלאי.`
+          : ''}
+        confirmLabel="מחקי"
+        cancelLabel="בטלי"
+        onClose={() => setConfirmMaterial(null)}
+        onConfirm={() => handleDeleteMaterial(confirmMaterial!.id)}
         loading={deleting}
       />
 
