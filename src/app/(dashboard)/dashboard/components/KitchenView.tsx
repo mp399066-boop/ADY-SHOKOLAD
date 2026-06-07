@@ -9,7 +9,6 @@ import { KitchenInventoryPanel } from './KitchenInventoryPanel';
 import { KitchenPrepBoard } from './KitchenPrepBoard';
 import { KitchenQuickActions } from './KitchenQuickActions';
 import { KitchenTaskRow } from './KitchenTaskRow';
-import { KitchenTeamChat } from './KitchenTeamChat';
 import { C } from './theme';
 import { RawMaterialsSummaryPanel } from '@/components/inventory/RawMaterialsSummaryPanel';
 
@@ -235,8 +234,7 @@ export function KitchenView({
         <KitchenQuickActions onNavigate={onNavigate} onProduction={onProduction} />
       </div>
 
-      {/* Floating internal team chat — kitchen workers ↔ Adi/manager */}
-      <KitchenTeamChat />
+      {/* הצ'אט מותקן גלובלית ב-(dashboard)/layout.tsx — לא להוסיף כאן כדי למנוע כפל כפתורים */}
 
     </div>
   );

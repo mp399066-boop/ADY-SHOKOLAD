@@ -4,6 +4,7 @@ import NavBar from '@/components/layout/NavBar';
 import AssistantDrawer from '@/components/assistant/AssistantDrawer';
 import GlobalSearch from '@/components/search/GlobalSearch';
 import DemoBadge from '@/components/demo/DemoBadge';
+import { KitchenTeamChat } from './dashboard/components/KitchenTeamChat';
 import { Toaster } from 'react-hot-toast';
 
 export default function DashboardLayout({
@@ -23,6 +24,9 @@ export default function DashboardLayout({
       <GlobalSearch />
       <AssistantDrawer />
       <DemoBadge />
+
+      {/* צ'אט צוות פנימי — גלובלי לכל מסכי ה-CRM אחרי התחברות */}
+      <KitchenTeamChat />
 
       <Toaster
         position="bottom-left"
