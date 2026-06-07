@@ -1,13 +1,22 @@
 export const dynamic = 'force-dynamic';
 
-// אישור / דחייה של הצעת כפילות.
-//   action='approve' → יוצר alias מהשם של החומר הכפול אל החומר הראשי,
-//                      ומסמן את ההצעה approved. לא מוחק, לא ממזג כמויות.
+// אישור / דחייה / מיזוג של הצעת כפילות.
+//   action='approve' → יוצר alias + קישור הורה. לא מוחק, לא ממזג כמויות.
 //   action='reject'  → מסמן rejected בלבד.
+//   action='merge'   → מיזוג אטומי (RPC): מעביר הפניות + כמויות בטוחות אל הראשי
+//                      ומוחק את הכפול. נכשל בבטחה אם יחידות לא תואמות.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
+
+// מיפוי שגיאות RPC להודעות בטוחות למשתמש.
+const MERGE_ERRORS: Record<string, string> = {
+  MERGE_UNIT_MISMATCH:        'יחידות המלאי אינן תואמות — דורש בדיקה ידנית. לא בוצע מיזוג.',
+  MERGE_RECIPE_UNIT_MISMATCH: 'אותו חומר מופיע במתכון ביחידות שונות — דורש בדיקה ידנית. לא בוצע מיזוג.',
+  MERGE_NOT_FOUND:            'אחד החומרים לא נמצא.',
+  MERGE_SAME:                 'לא ניתן למזג חומר עם עצמו.',
+};
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const auth = await requireManagementUser();
@@ -16,8 +25,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const body = await req.json().catch(() => ({}));
   const action = body?.action;
-  if (action !== 'approve' && action !== 'reject') {
-    return NextResponse.json({ error: 'action חייב להיות approve או reject' }, { status: 400 });
+  if (action !== 'approve' && action !== 'reject' && action !== 'merge') {
+    return NextResponse.json({ error: 'action חייב להיות approve / reject / merge' }, { status: 400 });
   }
 
   const { data: suggestion, error: sErr } = await supabase
@@ -26,6 +35,20 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     .eq('id', params.id)
     .single();
   if (sErr || !suggestion) return NextResponse.json({ error: 'הצעה לא נמצאה' }, { status: 404 });
+
+  if (action === 'merge') {
+    const { data, error } = await supabase.rpc('merge_raw_material', {
+      p_main: suggestion.primary_raw_material_id,
+      p_duplicate: suggestion.duplicate_raw_material_id,
+    });
+    if (error) {
+      const key = Object.keys(MERGE_ERRORS).find(k => (error.message || '').includes(k));
+      if (key) return NextResponse.json({ error: MERGE_ERRORS[key], needsManualReview: key.includes('UNIT') }, { status: 409 });
+      console.error('merge_raw_material failed', { suggestion: params.id, code: error.code });
+      return NextResponse.json({ error: 'המיזוג נכשל. לא שונה דבר.' }, { status: 500 });
+    }
+    return NextResponse.json({ success: true, status: 'merged', ...(data as object) });
+  }
 
   if (action === 'reject') {
     const { error } = await supabase

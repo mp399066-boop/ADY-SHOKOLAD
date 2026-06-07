@@ -17,12 +17,14 @@ interface MaterialRow {
   יחידת_מידה: string;
 }
 
-// Builds the enriched suggestion list (pending only) for the review UI.
-async function listPending(supabase: ReturnType<typeof createAdminClient>) {
+// Builds the enriched suggestion list for the review UI.
+// status='pending' → new suggestions; status='approved' → already linked, still
+// mergeable (backfill) since the link-only approve kept both rows.
+async function listByStatus(supabase: ReturnType<typeof createAdminClient>, status: 'pending' | 'approved') {
   const { data: suggestions, error } = await supabase
     .from('raw_material_duplicate_suggestions')
     .select('id, primary_raw_material_id, duplicate_raw_material_id, reason, status, created_at')
-    .eq('status', 'pending')
+    .eq('status', status)
     .order('created_at', { ascending: false });
   if (error) throw new Error(error.message);
 
@@ -53,7 +55,11 @@ export async function GET() {
   if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
   try {
-    return NextResponse.json({ data: await listPending(supabase) });
+    const [data, linked] = await Promise.all([
+      listByStatus(supabase, 'pending'),
+      listByStatus(supabase, 'approved'),
+    ]);
+    return NextResponse.json({ data, linked });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : 'שגיאה' }, { status: 500 });
   }
@@ -107,7 +113,11 @@ export async function POST() {
   }
 
   try {
-    return NextResponse.json({ data: await listPending(supabase), scanned: materials.length });
+    const [data, linked] = await Promise.all([
+      listByStatus(supabase, 'pending'),
+      listByStatus(supabase, 'approved'),
+    ]);
+    return NextResponse.json({ data, linked, scanned: materials.length });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : 'שגיאה' }, { status: 500 });
   }
