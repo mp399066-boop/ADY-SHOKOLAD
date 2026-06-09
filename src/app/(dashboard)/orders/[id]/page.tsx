@@ -1080,6 +1080,20 @@ export default function OrderDetailPage() {
   const _payplusTotalPaid = (order.תשלומים || []).reduce((s, p) => s + (p.סכום || 0), 0);
   const payplusBalance = +Math.max(0, liveDisplayTotal - _payplusTotalPaid).toFixed(2);
 
+  // Safe, non-secret debug for the static PayPlus link (operators only — this
+  // whole page is behind management auth). Helps verify the link baked into the
+  // live build matches Vercel env, and whether the URL carries a request token.
+  const payplusDebug = (() => {
+    if (!PAYPLUS_STATIC_LINK) return { set: false, host: '', suffix: '', hasQuery: false };
+    try {
+      const u = new URL(PAYPLUS_STATIC_LINK);
+      const seg = u.pathname.replace(/\/+$/, '').split('/').pop() || '';
+      return { set: true, host: u.host, suffix: seg.slice(-6), hasQuery: u.search.length > 0 };
+    } catch {
+      return { set: true, host: 'INVALID_URL', suffix: '', hasQuery: false };
+    }
+  })();
+
   return (
     <div dir="rtl" className="max-w-6xl mx-auto space-y-5">
       {/* ════════ HEADER BAR ════════ */}
@@ -1772,6 +1786,13 @@ export default function OrderDetailPage() {
                       >
                         {copiedAmount ? '✓ הועתק' : `סכום: ₪${payplusBalance.toFixed(2)}`}
                       </button>
+                    </div>
+                    {/* Operator-only debug (no secrets) — verify the live link
+                        matches Vercel env after redeploy. */}
+                    <div className="pt-1.5 mt-0.5 text-[10px] leading-4" dir="ltr" style={{ color: '#8FA897', borderTop: '1px dashed #CFE6D6' }}>
+                      <div>src: NEXT_PUBLIC_PAYPLUS_STATIC_PAYMENT_LINK</div>
+                      <div>host: {payplusDebug.host} · uid…{payplusDebug.suffix} · query: {payplusDebug.hasQuery ? 'yes ⚠' : 'none'}</div>
+                      <div>api button: {PAYPLUS_API_ENABLED ? 'enabled' : 'disabled'}</div>
                     </div>
                   </div>
                 ) : (
