@@ -21,6 +21,22 @@ const PAYPLUS_API_KEY    = process.env.PAYPLUS_API_KEY;
 const PAYPLUS_SECRET_KEY = process.env.PAYPLUS_SECRET_KEY;
 const PAYPLUS_PAGE_UID   = process.env.PAYPLUS_PAGE_UID;
 
+// Payment-page validity window, sent as `expiry_datetime` (a STRING number of
+// MINUTES) on generateLink. CRITICAL: if we do NOT send this, PayPlus falls
+// back to the payment-page (PAGE_UID) setting, whose default is only ~30
+// minutes — which is exactly what produced the customer-facing
+// "תוקף דף התשלום פג" ("payment page expired") error. Sending an explicit,
+// generous window overrides that short page default.
+// Tune without a code change via PAYPLUS_LINK_EXPIRY_MINUTES; defaults to 7 days.
+const DEFAULT_LINK_EXPIRY_MINUTES = 7 * 24 * 60; // 10080 minutes
+
+function resolveExpiryMinutes(): number {
+  const raw = process.env.PAYPLUS_LINK_EXPIRY_MINUTES;
+  const n   = Number(raw);
+  if (raw && Number.isFinite(n) && Number.isInteger(n) && n > 0) return n;
+  return DEFAULT_LINK_EXPIRY_MINUTES;
+}
+
 export type PayPlusConfigStatus = { ok: boolean; missing: string[] };
 
 /** Which PayPlus env vars are present vs missing — never reveals the values. */
@@ -40,7 +56,7 @@ export type PayPlusCustomer = {
 };
 
 export type PayPlusLinkResult =
-  | { ok: true;  payment_url: string; page_request_uid: string | null; host: string }
+  | { ok: true;  payment_url: string; page_request_uid: string | null; host: string; expiryMinutes: number }
   | { ok: false; error: string; httpStatus?: number; code?: number | string | null };
 
 /**
@@ -58,7 +74,8 @@ export async function createPayPlusPaymentLink(args: {
     return { ok: false, error: `חסרים משתני סביבה של PayPlus: ${cfg.missing.join(', ')}` };
   }
 
-  const endpoint = `${PAYPLUS_API_URL}/api/v1.0/PaymentPages/generateLink`;
+  const endpoint      = `${PAYPLUS_API_URL}/api/v1.0/PaymentPages/generateLink`;
+  const expiryMinutes = resolveExpiryMinutes();
 
   const body: Record<string, unknown> = {
     payment_page_uid: PAYPLUS_PAGE_UID,
@@ -66,6 +83,9 @@ export async function createPayPlusPaymentLink(args: {
     amount:           args.amount,
     currency_code:    'ILS',
     more_info:        args.orderNumber || '',
+    // STRING minutes — overrides the short payment-page default so the link
+    // does not expire prematurely. See DEFAULT_LINK_EXPIRY_MINUTES above.
+    expiry_datetime:  String(expiryMinutes),
   };
 
   const cust = args.customer;
@@ -80,9 +100,10 @@ export async function createPayPlusPaymentLink(args: {
   // Safe context only — no secrets.
   console.log('[PayPlus] → generateLink', {
     endpoint,
-    order:        args.orderNumber,
-    amount:       args.amount,
-    page_uid_set: Boolean(PAYPLUS_PAGE_UID),
+    order:           args.orderNumber,
+    amount:          args.amount,
+    expiry_minutes:  expiryMinutes,
+    page_uid_set:    Boolean(PAYPLUS_PAGE_UID),
   });
 
   let res: Response;
@@ -143,6 +164,7 @@ export async function createPayPlusPaymentLink(args: {
     order:            args.orderNumber,
     host,
     page_request_uid: data.page_request_uid || null,
+    expiry_minutes:   expiryMinutes,
   });
 
   return {
@@ -150,5 +172,6 @@ export async function createPayPlusPaymentLink(args: {
     payment_url:      data.payment_page_link,
     page_request_uid: data.page_request_uid || null,
     host,
+    expiryMinutes,
   };
 }

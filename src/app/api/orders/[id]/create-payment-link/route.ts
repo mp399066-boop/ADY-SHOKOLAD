@@ -138,13 +138,20 @@ export async function POST(
     }
 
     const payment_url = result.payment_url;
+    const createdAt   = new Date().toISOString();
 
-    // Explicit provider/host/order logging so Vercel logs show exactly which
-    // provider generated the link and which domain the customer will hit.
+    // Explicit logging so Vercel logs show exactly what was generated. Every
+    // call creates a FRESH PayPlus link — we never reuse a previously saved
+    // קישור_תשלום — so `reused` is always false by design.
     console.log(
-      '[PayPlus payment-link] success — provider: PayPlus-direct | host:', result.host,
+      '[PayPlus payment-link] success — provider: PayPlus-direct',
+      '| reused:', false,
+      '| host:', result.host,
       '| order:', orderId, '| order_number:', order.מספר_הזמנה,
+      '| amount:', amount,
       '| page_request_uid:', result.page_request_uid,
+      '| expiry_minutes:', result.expiryMinutes,
+      '| created_at:', createdAt,
       '| payment_url:', payment_url,
     );
 
@@ -177,9 +184,12 @@ export async function POST(
       description:  `נוצר קישור תשלום ישיר ב-PayPlus עבור הזמנה ${order.מספר_הזמנה || orderId}`,
       metadata: {
         provider:         'PayPlus',
+        reused:           false,
         host:             result.host,
         crm_amount:       amount,
         page_request_uid: result.page_request_uid,
+        expiry_minutes:   result.expiryMinutes,
+        created_at:       createdAt,
       },
       serviceKey: 'payplus_payments',
       request: req,
@@ -188,10 +198,13 @@ export async function POST(
     return NextResponse.json({
       ok: true,
       provider:         'PayPlus',
+      reused:           false,
       payment_url,
       host:             result.host,
       page_request_uid: result.page_request_uid,
       crm_amount:       amount,
+      expiry_minutes:   result.expiryMinutes,
+      created_at:       createdAt,
     });
   } catch (err) {
     console.error('[PayPlus payment-link] unexpected error:', err);
