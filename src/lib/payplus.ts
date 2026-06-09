@@ -25,10 +25,13 @@ const PAYPLUS_PAGE_UID   = process.env.PAYPLUS_PAGE_UID;
 // MINUTES) on generateLink. CRITICAL: if we do NOT send this, PayPlus falls
 // back to the payment-page (PAGE_UID) setting, whose default is only ~30
 // minutes — which is exactly what produced the customer-facing
-// "תוקף דף התשלום פג" ("payment page expired") error. Sending an explicit,
-// generous window overrides that short page default.
-// Tune without a code change via PAYPLUS_LINK_EXPIRY_MINUTES; defaults to 7 days.
-const DEFAULT_LINK_EXPIRY_MINUTES = 7 * 24 * 60; // 10080 minutes
+// "תוקף דף התשלום פג" ("payment page expired") error. Sending an explicit
+// window overrides that short page default.
+//
+// This is the MAX time allowed BEFORE payment — it is not permission to reuse
+// the link. Each generated link is a one-time payment request (see route).
+// Tune without a code change via PAYPLUS_LINK_EXPIRY_MINUTES; defaults to 24h.
+const DEFAULT_LINK_EXPIRY_MINUTES = 24 * 60; // 1440 minutes (24 hours)
 
 function resolveExpiryMinutes(): number {
   const raw = process.env.PAYPLUS_LINK_EXPIRY_MINUTES;
