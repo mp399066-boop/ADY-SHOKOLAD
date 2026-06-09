@@ -127,6 +127,18 @@ export async function createPayPlusPaymentLink(args: {
   let host = '';
   try { host = new URL(data.payment_page_link).host; } catch { /* leave blank */ }
 
+  // Safety: this CRM flow is PayPlus-direct ONLY. The link MUST be a direct
+  // PayPlus host. Reject any WooCommerce/WordPress (adipatifur.co.il) or other
+  // host outright — never save/return a non-PayPlus payment URL.
+  if (host !== 'payments.payplus.co.il') {
+    console.error('[PayPlus] rejected non-PayPlus payment host:', host, '| link:', data.payment_page_link);
+    return {
+      ok: false,
+      error: `קישור התשלום שהוחזר אינו ב-PayPlus (host: ${host || 'לא ידוע'}). הזרימה מאשרת רק payments.payplus.co.il.`,
+      httpStatus: res.status,
+    };
+  }
+
   console.log('[PayPlus] ✓ payment link created', {
     order:            args.orderNumber,
     host,

@@ -15,7 +15,6 @@ import { formatDate, formatCurrency } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import type { Order, OrderItem, Customer, Product, Package, PetitFourType, Employee, WorkTask } from '@/types/database';
 import { DeliveryTypeCards } from '@/components/orders/DeliveryTypeCards';
-import { PayPlusModal } from '@/components/orders/PayPlusModal';
 
 // ─── Interfaces ────────────────────────────────────────────────────────────────
 
@@ -283,7 +282,10 @@ export default function OrderDetailPage() {
   const [orderTasks, setOrderTasks]         = useState<WorkTask[]>([]);
   const [taskEmployees, setTaskEmployees]   = useState<Employee[]>([]);
   const [showAddTaskModal, setShowAddTaskModal] = useState(false);
-  const [showPayPlusModal, setShowPayPlusModal] = useState(false);
+  // Direct PayPlus payment link (PayPlus-direct only — no WooCommerce).
+  const [creatingPayplusLink, setCreatingPayplusLink] = useState(false);
+  const [payplusLink, setPayplusLink]                 = useState<string | null>(null);
+  const [payplusLinkCopied, setPayplusLinkCopied]     = useState(false);
   const [sendingSummaryEmail, setSendingSummaryEmail] = useState(false);
   const [newTaskTitle, setNewTaskTitle]     = useState('');
   const [newTaskEmpId, setNewTaskEmpId]     = useState('');
@@ -339,6 +341,41 @@ export default function OrderDetailPage() {
       return false;
     } finally {
       setIssuingDocType(null);
+    }
+  };
+
+  // Create a DIRECT PayPlus payment link for this order. POSTs to
+  // /api/orders/[id]/create-payment-link, which calls the PayPlus API and
+  // saves a payments.payplus.co.il URL to תשלומים.קישור_תשלום. No WooCommerce.
+  const handleCreatePayPlusLink = async () => {
+    if (!order) return;
+    setCreatingPayplusLink(true);
+    try {
+      const res  = await fetch(`/api/orders/${order.id}/create-payment-link`, { method: 'POST' });
+      const json = await res.json().catch(() => ({} as Record<string, unknown>));
+      if (!res.ok || !json.ok || typeof json.payment_url !== 'string') {
+        toast.error((json as { error?: string }).error || 'שגיאה ביצירת קישור PayPlus');
+        return;
+      }
+      const url = json.payment_url as string;
+      // Safety guard: this flow accepts ONLY a direct PayPlus host. Reject any
+      // WooCommerce/WordPress (adipatifur.co.il) or other link outright.
+      let host = '';
+      try { host = new URL(url).host; } catch { /* leave blank */ }
+      if (host !== 'payments.payplus.co.il') {
+        console.error('[create-payment-link UI] rejected non-PayPlus host:', host, '| url:', url);
+        toast.error(`קישור לא תקין — מצופה payments.payplus.co.il אך התקבל ${host || 'לא ידוע'}`);
+        return;
+      }
+      setPayplusLink(url);
+      setPayplusLinkCopied(false);
+      toast.success('נוצר קישור PayPlus');
+      loadOrder();
+    } catch (err) {
+      console.error('[create-payment-link UI] failed:', err);
+      toast.error('שגיאה ברשת — לא ניתן ליצור קישור PayPlus');
+    } finally {
+      setCreatingPayplusLink(false);
     }
   };
 
@@ -1668,14 +1705,46 @@ export default function OrderDetailPage() {
               })}
             </div>
             {payplusBalance > 0.01 && (
-              <button
-                type="button"
-                onClick={() => setShowPayPlusModal(true)}
-                className="mt-2 w-full px-3 py-2 rounded-lg text-xs font-semibold transition-colors"
-                style={{ backgroundColor: '#166534', color: '#FFFFFF' }}
-              >
-                פתח תשלום PayPlus
-              </button>
+              <div className="mt-2 space-y-2">
+                <button
+                  type="button"
+                  onClick={handleCreatePayPlusLink}
+                  disabled={creatingPayplusLink}
+                  className="w-full px-3 py-2 rounded-lg text-xs font-semibold transition-colors disabled:opacity-60"
+                  style={{ backgroundColor: '#166534', color: '#FFFFFF' }}
+                >
+                  {creatingPayplusLink ? 'יוצר קישור…' : 'צור קישור PayPlus'}
+                </button>
+
+                {payplusLink && (
+                  <div className="rounded-lg p-2.5 space-y-2" style={{ backgroundColor: '#F0F7F2', border: '1px solid #BFE3CC' }}>
+                    <p className="text-[11px] font-medium break-all" dir="ltr" style={{ color: '#166534' }}>{payplusLink}</p>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(payplusLink)
+                            .then(() => { setPayplusLinkCopied(true); setTimeout(() => setPayplusLinkCopied(false), 2000); })
+                            .catch(() => {});
+                        }}
+                        className="flex-1 py-1.5 rounded-md text-xs font-semibold"
+                        style={{ backgroundColor: payplusLinkCopied ? '#D1FAE5' : '#FFFFFF', color: '#166534', border: '1px solid #BFE3CC' }}
+                      >
+                        {payplusLinkCopied ? '✓ הועתק' : 'העתק קישור'}
+                      </button>
+                      <a
+                        href={payplusLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-1 py-1.5 rounded-md text-xs font-semibold text-center"
+                        style={{ backgroundColor: '#166534', color: '#FFFFFF' }}
+                      >
+                        פתח קישור
+                      </a>
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
           </Card>
 
@@ -2607,15 +2676,6 @@ export default function OrderDetailPage() {
             </div>
           </div>
         </div>
-      )}
-
-      {showPayPlusModal && (
-        <PayPlusModal
-          amount={payplusBalance}
-          orderNumber={order.מספר_הזמנה}
-          customerName={custFullName}
-          onClose={() => setShowPayPlusModal(false)}
-        />
       )}
 
       {/* ══════════════════════════════════════════════════════════════════════
