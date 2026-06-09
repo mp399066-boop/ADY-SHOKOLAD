@@ -105,6 +105,15 @@ const PAYMENT_PILL: Record<string, string> = {
   'בוטל':  'bg-rose-100 text-rose-700 ring-1 ring-rose-300',
 };
 
+// Static (non-API) PayPlus payment page — a fixed 0/open-amount link where the
+// customer fills in name, phone, order number and amount manually. Used while
+// the PayPlus REST API is not yet enabled for the account.
+const PAYPLUS_STATIC_LINK = process.env.NEXT_PUBLIC_PAYPLUS_STATIC_PAYMENT_LINK ?? '';
+// The API-generated per-order link button is hidden by default because the
+// account currently lacks REST API permission (generateLink returns 422). Set
+// NEXT_PUBLIC_PAYPLUS_API_ENABLED=true once PayPlus enables API access.
+const PAYPLUS_API_ENABLED = process.env.NEXT_PUBLIC_PAYPLUS_API_ENABLED === 'true';
+
 
 // ─── Small field helpers ───────────────────────────────────────────────────────
 
@@ -286,6 +295,9 @@ export default function OrderDetailPage() {
   const [creatingPayplusLink, setCreatingPayplusLink] = useState(false);
   const [payplusLink, setPayplusLink]                 = useState<string | null>(null);
   const [payplusLinkCopied, setPayplusLinkCopied]     = useState(false);
+  // Static PayPlus page — copy helpers for manual entry.
+  const [copiedOrderNum, setCopiedOrderNum]           = useState(false);
+  const [copiedAmount, setCopiedAmount]               = useState(false);
   const [sendingSummaryEmail, setSendingSummaryEmail] = useState(false);
   const [newTaskTitle, setNewTaskTitle]     = useState('');
   const [newTaskEmpId, setNewTaskEmpId]     = useState('');
@@ -1706,43 +1718,98 @@ export default function OrderDetailPage() {
             </div>
             {payplusBalance > 0.01 && (
               <div className="mt-2 space-y-2">
-                <button
-                  type="button"
-                  onClick={handleCreatePayPlusLink}
-                  disabled={creatingPayplusLink}
-                  className="w-full px-3 py-2 rounded-lg text-xs font-semibold transition-colors disabled:opacity-60"
-                  style={{ backgroundColor: '#166534', color: '#FFFFFF' }}
-                >
-                  {creatingPayplusLink ? 'יוצר קישור…' : 'צור קישור PayPlus'}
-                </button>
-
-                {payplusLink && (
+                {/* Static (non-API) PayPlus payment page — temporary flow while
+                    the PayPlus REST API is not yet enabled for the account. */}
+                {PAYPLUS_STATIC_LINK ? (
                   <div className="rounded-lg p-2.5 space-y-2" style={{ backgroundColor: '#F0F7F2', border: '1px solid #BFE3CC' }}>
-                    <p className="text-[11px] font-medium break-all" dir="ltr" style={{ color: '#166534' }}>{payplusLink}</p>
+                    <a
+                      href={PAYPLUS_STATIC_LINK}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block w-full px-3 py-2 rounded-lg text-xs font-semibold text-center"
+                      style={{ backgroundColor: '#166534', color: '#FFFFFF' }}
+                    >
+                      פתח דף תשלום PayPlus
+                    </a>
+                    <p className="text-[11px] leading-5" style={{ color: '#4B6B54' }}>
+                      לתשלום בדף PayPlus. יש למלא שם, טלפון, מספר הזמנה וסכום לתשלום.
+                    </p>
                     <div className="flex gap-2">
                       <button
                         type="button"
                         onClick={() => {
-                          navigator.clipboard.writeText(payplusLink)
-                            .then(() => { setPayplusLinkCopied(true); setTimeout(() => setPayplusLinkCopied(false), 2000); })
+                          navigator.clipboard.writeText(String(order.מספר_הזמנה ?? ''))
+                            .then(() => { setCopiedOrderNum(true); setTimeout(() => setCopiedOrderNum(false), 2000); })
                             .catch(() => {});
                         }}
-                        className="flex-1 py-1.5 rounded-md text-xs font-semibold"
-                        style={{ backgroundColor: payplusLinkCopied ? '#D1FAE5' : '#FFFFFF', color: '#166534', border: '1px solid #BFE3CC' }}
+                        className="flex-1 py-1.5 rounded-md text-[11px] font-semibold"
+                        style={{ backgroundColor: copiedOrderNum ? '#D1FAE5' : '#FFFFFF', color: '#166534', border: '1px solid #BFE3CC' }}
                       >
-                        {payplusLinkCopied ? '✓ הועתק' : 'העתק קישור'}
+                        {copiedOrderNum ? '✓ הועתק' : `מס׳ הזמנה: ${order.מספר_הזמנה ?? ''}`}
                       </button>
-                      <a
-                        href={payplusLink}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex-1 py-1.5 rounded-md text-xs font-semibold text-center"
-                        style={{ backgroundColor: '#166534', color: '#FFFFFF' }}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(payplusBalance.toFixed(2))
+                            .then(() => { setCopiedAmount(true); setTimeout(() => setCopiedAmount(false), 2000); })
+                            .catch(() => {});
+                        }}
+                        className="flex-1 py-1.5 rounded-md text-[11px] font-semibold"
+                        style={{ backgroundColor: copiedAmount ? '#D1FAE5' : '#FFFFFF', color: '#166534', border: '1px solid #BFE3CC' }}
                       >
-                        פתח קישור
-                      </a>
+                        {copiedAmount ? '✓ הועתק' : `סכום: ₪${payplusBalance.toFixed(2)}`}
+                      </button>
                     </div>
                   </div>
+                ) : (
+                  <p className="text-[11px] text-center px-2 py-2 rounded-lg" style={{ backgroundColor: '#FEF9C3', color: '#92400E', border: '1px solid #FDE68A' }}>
+                    קישור PayPlus לא מוגדר — הוסף NEXT_PUBLIC_PAYPLUS_STATIC_PAYMENT_LINK בהגדרות הסביבה.
+                  </p>
+                )}
+
+                {/* API-generated per-order link — hidden until PayPlus enables
+                    REST API access (NEXT_PUBLIC_PAYPLUS_API_ENABLED=true). */}
+                {PAYPLUS_API_ENABLED && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleCreatePayPlusLink}
+                      disabled={creatingPayplusLink}
+                      className="w-full px-3 py-2 rounded-lg text-xs font-semibold transition-colors disabled:opacity-60"
+                      style={{ backgroundColor: '#0E5E33', color: '#FFFFFF' }}
+                    >
+                      {creatingPayplusLink ? 'יוצר קישור…' : 'צור קישור PayPlus (API)'}
+                    </button>
+
+                    {payplusLink && (
+                      <div className="rounded-lg p-2.5 space-y-2" style={{ backgroundColor: '#F0F7F2', border: '1px solid #BFE3CC' }}>
+                        <p className="text-[11px] font-medium break-all" dir="ltr" style={{ color: '#166534' }}>{payplusLink}</p>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(payplusLink)
+                                .then(() => { setPayplusLinkCopied(true); setTimeout(() => setPayplusLinkCopied(false), 2000); })
+                                .catch(() => {});
+                            }}
+                            className="flex-1 py-1.5 rounded-md text-xs font-semibold"
+                            style={{ backgroundColor: payplusLinkCopied ? '#D1FAE5' : '#FFFFFF', color: '#166534', border: '1px solid #BFE3CC' }}
+                          >
+                            {payplusLinkCopied ? '✓ הועתק' : 'העתק קישור'}
+                          </button>
+                          <a
+                            href={payplusLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex-1 py-1.5 rounded-md text-xs font-semibold text-center"
+                            style={{ backgroundColor: '#166534', color: '#FFFFFF' }}
+                          >
+                            פתח קישור
+                          </a>
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             )}
