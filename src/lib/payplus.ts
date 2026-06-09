@@ -143,9 +143,15 @@ export async function createPayPlusPaymentLink(args: {
 
   if (!res.ok || results.status !== 'success' || !data.payment_page_link) {
     const code = results.code ?? null;
-    const desc = results.description || `HTTP ${res.status}`;
-    console.error('[PayPlus] generateLink failed — HTTP:', res.status, '| code:', code, '| desc:', desc);
-    return { ok: false, error: `PayPlus דחה את הבקשה: ${desc}`, httpStatus: res.status, code };
+    // PayPlus reports account/validation errors in a top-level `message` field
+    // (e.g. HTTP 422 "THIS COMPANY DONT HAVE THE PERMISSION TO USE THE API" when
+    // the company isn't entitled to the REST API). Success bodies instead carry
+    // results.description. Surface whichever is present so the real reason shows
+    // up in logs and the operator's toast — not a generic "HTTP 422".
+    const topMessage = typeof json.message === 'string' ? json.message : '';
+    const ppMessage  = topMessage || results.description || `HTTP ${res.status}`;
+    console.error('[PayPlus] generateLink failed — HTTP:', res.status, '| code:', code, '| message:', ppMessage);
+    return { ok: false, error: `PayPlus דחה את הבקשה: ${ppMessage}`, httpStatus: res.status, code };
   }
 
   let host = '';
