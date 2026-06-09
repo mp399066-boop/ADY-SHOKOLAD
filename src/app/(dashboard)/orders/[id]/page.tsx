@@ -582,6 +582,19 @@ export default function OrderDetailPage() {
 
   useEffect(() => { loadOrder(); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Safe debug: confirm exactly which static PayPlus link is baked into THIS
+  // build (NEXT_PUBLIC_ vars are inlined at build time). Logs host + last 6 of
+  // the UID only — no secret. After a redeploy, check this to verify the live
+  // link matches the current Vercel env value.
+  useEffect(() => {
+    if (!PAYPLUS_STATIC_LINK) { console.log('[PayPlus static] env NEXT_PUBLIC_PAYPLUS_STATIC_PAYMENT_LINK is NOT set'); return; }
+    try {
+      const u   = new URL(PAYPLUS_STATIC_LINK);
+      const seg = u.pathname.replace(/\/+$/, '').split('/').pop() || '';
+      console.log('[PayPlus static] host:', u.host, '| link suffix:', seg.slice(-6), '| api_button_enabled:', PAYPLUS_API_ENABLED);
+    } catch { console.log('[PayPlus static] env value is not a valid URL'); }
+  }, []);
+
   // ── Load tasks + employees for this order (once per order id) ──────────────
 
   useEffect(() => {
