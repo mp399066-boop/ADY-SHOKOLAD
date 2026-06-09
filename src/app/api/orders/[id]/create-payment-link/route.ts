@@ -2,35 +2,35 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { logActivity, userActor } from '@/lib/activity-log';
+import { createPayPlusPaymentLink, payplusConfigStatus } from '@/lib/payplus';
 
-// CRM → WooCommerce payment-link bridge.
+// CRM → PayPlus DIRECT payment-link flow.
 //
-// We do NOT call the PayPlus API. WooCommerce on the public site
-// (adipatifur.co.il) already has the PayPlus plugin wired in. The cleanest
-// way to take payment is to mirror the CRM order into WooCommerce as a
-// pending order and open the order's `payment_url` (the
-// /checkout/order-pay/ID/?key=wc_order_xxx URL). The customer's browser
-// then runs through the PayPlus form via the WooCommerce checkout.
+// This route creates a DIRECT PayPlus hosted payment-page link for a CRM
+// order using the PayPlus REST API (PaymentPages/generateLink). The customer
+// is sent straight to PayPlus (payments.payplus.co.il) — NOT through a
+// WooCommerce /checkout/order-pay/ URL on adipatifur.co.il.
 //
 // What this route DOES:
 //   1. Reads the CRM order + customer.
-//   2. POSTs to ${WOOCOMMERCE_SITE_URL}/wp-json/wc/v3/orders with
-//      Basic auth (consumer key + secret), status='pending', billing
-//      from the CRM customer, a single line_item carrying the order
-//      total, and meta tying the WC order back to the CRM order id.
-//   3. Returns the WooCommerce payment_url to the client.
-//   4. Records the channel + the URL on the CRM side
-//      (אופן_תשלום='WooCommerce', a 'ממתין' תשלומים row).
+//   2. Calls PayPlus generateLink with the CRM-computed total (source of truth).
+//   3. Returns the direct PayPlus payment_page_link to the client.
+//   4. Records the channel + URL on the CRM side
+//      (אופן_תשלום='PayPlus', a 'ממתין' תשלומים row carrying the PayPlus link
+//       and the page_request_uid for reconciliation).
 //
 // What this route does NOT do (intentional):
-//   - mark הזמנות.סטטוס_תשלום as שולם (operator confirms manually)
-//   - issue invoices/receipts via Morning
+//   - mark הזמנות.סטטוס_תשלום as שולם (operator confirms manually on the
+//     order card — same as before)
+//   - issue invoices/receipts
 //   - deduct inventory
-//   - send PayPlus credentials anywhere
-
-const WC_URL    = (process.env.WOOCOMMERCE_SITE_URL || '').replace(/\/+$/, '');
-const WC_KEY    = process.env.WOOCOMMERCE_CONSUMER_KEY;
-const WC_SECRET = process.env.WOOCOMMERCE_CONSUMER_SECRET;
+//
+// NOTE on status updates: because the customer now pays PayPlus directly (no
+// WooCommerce order is created for CRM-initiated links), the WooCommerce
+// webhook will NOT fire for these payments, so the CRM order is not
+// auto-flipped to שולם here — confirmation stays MANUAL. The WooCommerce
+// webhook (/api/webhooks/woocommerce-order) is left untouched and still
+// handles true website orders + their PayPlus-via-WooCommerce payments.
 
 export async function POST(
   req: NextRequest,
@@ -39,29 +39,28 @@ export async function POST(
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
 
-  try {
-    console.log('[WC payment-link] route called', { orderId: params.id });
-    console.log('[WC payment-link] env exists', {
-      siteUrl:        Boolean(WC_URL),
-      consumerKey:    Boolean(WC_KEY),
-      consumerSecret: Boolean(WC_SECRET),
-    });
+  const orderId = params.id;
 
-    if (!WC_URL || !WC_KEY || !WC_SECRET) {
-      const missing = [
-        !WC_URL    && 'WOOCOMMERCE_SITE_URL',
-        !WC_KEY    && 'WOOCOMMERCE_CONSUMER_KEY',
-        !WC_SECRET && 'WOOCOMMERCE_CONSUMER_SECRET',
-      ].filter(Boolean).join(', ');
-      console.error('[WC payment-link] aborting — missing env vars:', missing);
+  try {
+    console.log('[PayPlus payment-link] route called', { orderId, provider: 'PayPlus-direct' });
+
+    // Presence-only check — never logs the secret values themselves.
+    const cfg = payplusConfigStatus();
+    console.log('[PayPlus payment-link] env exists', {
+      apiKey:  Boolean(process.env.PAYPLUS_API_KEY),
+      secret:  Boolean(process.env.PAYPLUS_SECRET_KEY),
+      pageUid: Boolean(process.env.PAYPLUS_PAGE_UID),
+      apiUrl:  Boolean(process.env.PAYPLUS_API_URL),
+    });
+    if (!cfg.ok) {
+      console.error('[PayPlus payment-link] aborting — missing env vars:', cfg.missing.join(', '));
       return NextResponse.json(
-        { error: `חסרים משתני סביבה ב-Vercel: ${missing}. הגדירו אותם ב-Vercel → Project Settings → Environment Variables ופרסו מחדש.` },
+        { error: `חסרים משתני סביבה של PayPlus ב-Vercel: ${cfg.missing.join(', ')}. הגדירו אותם ב-Vercel → Project Settings → Environment Variables ופרסו מחדש.` },
         { status: 500 },
       );
     }
 
     const supabase = createAdminClient();
-    const orderId  = params.id;
 
     const { data: order, error: orderErr } = await supabase
       .from('הזמנות')
@@ -70,18 +69,19 @@ export async function POST(
       .single();
 
     if (orderErr || !order) {
-      console.error('[WC payment-link] order not found:', orderErr?.message);
+      console.error('[PayPlus payment-link] order not found:', orderErr?.message);
       return NextResponse.json({ error: 'הזמנה לא נמצאה' }, { status: 404 });
     }
 
-    // Coerce amount — Supabase NUMERIC can return string, and WC's REST
-    // endpoint expects either a number or a numeric string for line totals.
+    // Coerce amount — Supabase NUMERIC can return a string. The CRM total is
+    // the only authority for the payable amount (VAT, discounts, delivery,
+    // tier pricing already baked in). PayPlus charges exactly this number.
     const rawAmount = order.סך_הכל_לתשלום;
     const amountNum = typeof rawAmount === 'number'
       ? rawAmount
       : Number(String(rawAmount ?? '').replace(/[^0-9.\-]/g, ''));
     const amount    = Number.isFinite(amountNum) ? Math.round(amountNum * 100) / 100 : 0;
-    console.log('[WC payment-link] amount — raw:', rawAmount, '| coerced:', amount);
+    console.log('[PayPlus payment-link] amount — raw:', rawAmount, '| coerced:', amount);
     if (amount <= 0) {
       return NextResponse.json(
         { error: `סכום ההזמנה חייב להיות גדול מ-0 (התקבל: ${JSON.stringify(rawAmount)})` },
@@ -95,131 +95,24 @@ export async function POST(
       טלפון?:   string | null;
       אימייל?:  string | null;
     } | null;
+    const customerName = `${(customer?.שם_פרטי || '').trim()} ${(customer?.שם_משפחה || '').trim()}`.trim();
 
-    // Billing block — WC's /orders endpoint only requires billing.email
-    // for guest orders if your store enforces it. Keep things minimal but
-    // honest; empty fields just go through as "".
-    const billing = {
-      first_name: (customer?.שם_פרטי  || '').trim(),
-      last_name:  (customer?.שם_משפחה || '').trim(),
-      email:      (customer?.אימייל   || '').trim(),
-      phone:      (customer?.טלפון    || '').trim(),
-    };
-
-    // ──────────────────────────────────────────────────────────────────────
-    // SOURCE-OF-TRUTH RULE: the CRM is the only authority for the payable
-    // amount. `amount` already includes VAT, discounts, delivery fees, and
-    // customer-tier pricing — all computed by the CRM and stored on
-    // הזמנות.סך_הכל_לתשלום. WooCommerce must NOT recompute any of these.
-    //
-    // To prevent WC from touching the total we:
-    //   • carry the amount via fee_lines (no product → no product-side tax
-    //     rules apply) with tax_status='none' and explicit zero tax fields
-    //   • DO NOT send any coupon_lines (so WC can't apply discounts)
-    //   • DO NOT enable WC's tax-calculation flags on the order
-    //   • Mirror the same tax_status='none' on the line_items fallback
-    //
-    // Optional fallback: if WOOCOMMERCE_PAYMENT_PRODUCT_ID is set, we use
-    // a real WC product line_item instead. Useful if the storefront has
-    // plugins that enforce a product on every order. Same tax-disabling
-    // rules apply on this path.
-    // ──────────────────────────────────────────────────────────────────────
-    const paymentProductId = Number(process.env.WOOCOMMERCE_PAYMENT_PRODUCT_ID || 0);
-    const amountStr = amount.toFixed(2);
-
-    const wcBody: Record<string, unknown> = {
-      status:               'pending',
-      set_paid:             false,
-      currency:             'ILS',
-      payment_method:       'payplus-payment-gateway',
-      payment_method_title: 'PayPlus',
-      billing,
-      // No coupons, no discounts — explicit zeros tell WC not to compute.
-      discount_total:    '0.00',
-      discount_tax:      '0.00',
-      shipping_total:    '0.00',
-      shipping_tax:      '0.00',
-      meta_data: [
-        { key: 'crm_order_id',     value: orderId },
-        { key: 'crm_order_number', value: String(order.מספר_הזמנה || '') },
-        // Explicit flag — the WC webhook uses this (alongside crm_order_id)
-        // to know "this is a payment shell for an existing CRM order, do
-        // NOT create a new הזמנות row". crm_order_id alone is enough, but
-        // the explicit flag makes the intent obvious to anyone reading
-        // the WC order in the WP admin.
-        { key: 'crm_payment_only', value: 'true' },
-        // Audit marker — anyone inspecting the WC order can see exactly
-        // which CRM-computed total we shipped. Useful when reconciling.
-        { key: 'crm_total_charged', value: amountStr },
-      ],
-    };
-
-    if (paymentProductId > 0) {
-      wcBody.line_items = [
-        {
-          product_id: paymentProductId,
-          quantity:   1,
-          subtotal:     amountStr,
-          total:        amountStr,
-          subtotal_tax: '0.00',
-          total_tax:    '0.00',
-          tax_status:  'none',
-          tax_class:   '',
-        },
-      ];
-    } else {
-      wcBody.fee_lines = [
-        {
-          name:        `תשלום עבור הזמנה ${order.מספר_הזמנה || orderId}`,
-          total:        amountStr,
-          total_tax:   '0.00',
-          tax_status:  'none',
-          tax_class:   '',
-        },
-      ];
-    }
-
-    const wcEndpoint = `${WC_URL}/wp-json/wc/v3/orders`;
-    const basicAuth  = Buffer.from(`${WC_KEY}:${WC_SECRET}`).toString('base64');
-
-    console.log('[WC payment-link] → URL:', wcEndpoint);
-    console.log('[WC payment-link] → body:', wcBody);
-
-    const wcRes = await fetch(wcEndpoint, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Basic ${basicAuth}`,
-        'Content-Type':  'application/json',
-        'Accept':        'application/json',
+    // ── Create the direct PayPlus payment-page link ───────────────────────────
+    const result = await createPayPlusPaymentLink({
+      amount,
+      orderNumber: String(order.מספר_הזמנה || orderId),
+      customer: {
+        name:  customerName,
+        email: customer?.אימייל ?? null,
+        phone: customer?.טלפון  ?? null,
       },
-      body: JSON.stringify(wcBody),
     });
 
-    const wcRawText = await wcRes.text();
-    console.log('[WC payment-link] response status', wcRes.status);
-    console.log('[WC payment-link] response body', wcRawText);
-
-    let wcJson: Record<string, unknown>;
-    try {
-      wcJson = JSON.parse(wcRawText);
-    } catch {
-      console.error('[WC payment-link] non-JSON response');
-      return NextResponse.json(
-        { error: `WooCommerce החזיר תגובה לא תקינה (HTTP ${wcRes.status}). בדקי שכתובת האתר נכונה ושה-REST API פעיל.` },
-        { status: 502 },
+    if (!result.ok) {
+      console.error(
+        '[PayPlus payment-link] PayPlus rejected — provider: PayPlus-direct | http:',
+        result.httpStatus ?? null, '| code:', result.code ?? null, '| error:', result.error,
       );
-    }
-
-    if (!wcRes.ok) {
-      const wcCode    = wcJson.code    as string | undefined;
-      const wcMessage = (wcJson.message as string | undefined)
-                     || wcCode
-                     || `HTTP ${wcRes.status}`;
-      // Map a known WC error code to a more actionable Hebrew message.
-      const friendly = wcCode === 'woocommerce_rest_required_product_reference'
-        ? 'WooCommerce דורש product_id/sku עבור line_items. יש להגדיר WOOCOMMERCE_PAYMENT_PRODUCT_ID או להשאיר את fee_lines פעיל.'
-        : `WooCommerce דחה את הבקשה (HTTP ${wcRes.status}): ${wcMessage}`;
-      console.error('[WC payment-link] rejected — status', wcRes.status, '| code:', wcCode, '| msg:', wcMessage);
       void logActivity({
         actor:        userActor(auth),
         module:       'finance',
@@ -228,97 +121,65 @@ export async function POST(
         entityType:   'order',
         entityId:     String(orderId),
         entityLabel:  order.מספר_הזמנה ? String(order.מספר_הזמנה) : null,
-        title:        'יצירת קישור תשלום נדחתה ע"י WooCommerce',
-        description:  friendly,
-        errorMessage: `HTTP ${wcRes.status}${wcCode ? ' · ' + wcCode : ''} · ${wcMessage}`,
-        metadata:     { channel: 'WooCommerce', wc_http_status: wcRes.status, wc_code: wcCode ?? null },
+        title:        'יצירת קישור תשלום נכשלה',
+        description:  result.error,
+        errorMessage: `PayPlus${result.httpStatus ? ' · HTTP ' + result.httpStatus : ''}${result.code != null ? ' · code ' + result.code : ''}`,
+        metadata:     { provider: 'PayPlus', http_status: result.httpStatus ?? null, code: result.code ?? null },
         serviceKey:   'payplus_payments',
         request:      req,
       });
       return NextResponse.json(
         {
-          error: friendly,
-          debug: {
-            wc_http_status: wcRes.status,
-            wc_code:        wcCode ?? null,
-            wc_body:        wcRawText.slice(0, 1500),
-          },
+          error: result.error,
+          debug: { provider: 'PayPlus', http_status: result.httpStatus ?? null, code: result.code ?? null },
         },
         { status: 502 },
       );
     }
 
-    // Success path. WC returns `payment_url` directly on the order object —
-    // it's the full /checkout/order-pay/ID/?pay_for_order=true&key=... URL
-    // that the customer would normally hit from their account.
-    const payment_url = wcJson.payment_url as string | undefined;
-    const wcOrderId   = wcJson.id          as number | string | undefined;
-    const wcOrderKey  = wcJson.order_key   as string | undefined;
-    const wcTotal     = wcJson.total       as string | number | undefined;
+    const payment_url = result.payment_url;
 
-    // CRM-vs-WC total cross-check. If WC returned a total that doesn't match
-    // what we sent, some store-level setting (taxes, fees, plugins) is
-    // mutating the amount silently — the customer would be charged the
-    // wrong number. We log loudly so it shows up in Vercel function logs;
-    // the operator can then audit the WC side. We DO NOT block the flow
-    // on a mismatch (would leave the customer with no way to pay), but we
-    // do attach a `total_mismatch` field to the response so the UI can
-    // surface a warning later if we want.
-    const wcTotalNum    = typeof wcTotal === 'number' ? wcTotal : Number(String(wcTotal ?? '').replace(/[^0-9.\-]/g, ''));
-    const totalMismatch = Number.isFinite(wcTotalNum) && Math.abs(wcTotalNum - amount) > 0.005;
-    if (totalMismatch) {
-      console.error(
-        '[WC payment-link] ⚠ TOTAL MISMATCH — CRM amount:', amount,
-        '| WC returned total:', wcTotal,
-        '| order:', orderId,
-        '| wc_id:', wcOrderId,
-        '— check WooCommerce tax / fee plugins; the customer may be charged the wrong amount.',
-      );
-    } else {
-      console.log('[WC payment-link] success — wc id:', wcOrderId, '| total matches CRM:', amount, '| payment_url:', payment_url);
-    }
+    // Explicit provider/host/order logging so Vercel logs show exactly which
+    // provider generated the link and which domain the customer will hit.
+    console.log(
+      '[PayPlus payment-link] success — provider: PayPlus-direct | host:', result.host,
+      '| order:', orderId, '| order_number:', order.מספר_הזמנה,
+      '| page_request_uid:', result.page_request_uid,
+      '| payment_url:', payment_url,
+    );
 
-    if (!payment_url) {
-      return NextResponse.json(
-        { error: 'WooCommerce לא החזיר payment_url. בדקי שהפלאגין PayPlus מחובר באתר.' },
-        { status: 502 },
-      );
-    }
-
-    // Stamp the CRM side: mark the channel and persist the per-order
-    // payment row with the URL. סטטוס_תשלום on the order itself stays as
-    // it was — we never auto-flip to 'שולם' here.
+    // Stamp the CRM side: channel + a 'ממתין' payment row carrying the direct
+    // PayPlus URL. סטטוס_תשלום on the order stays as-is (manual confirmation).
     await supabase
       .from('הזמנות')
-      .update({ אופן_תשלום: 'WooCommerce', תאריך_עדכון: new Date().toISOString() })
+      .update({ אופן_תשלום: 'PayPlus', תאריך_עדכון: new Date().toISOString() })
       .eq('id', orderId);
 
     await supabase.from('תשלומים').insert({
       הזמנה_id:     orderId,
       סכום:         amount,
-      אמצעי_תשלום:  'WooCommerce',
+      אמצעי_תשלום:  'PayPlus',
       סטטוס_תשלום:  'ממתין',
       תאריך_תשלום:  new Date().toISOString(),
       קישור_תשלום:  payment_url,
-      הערות:        wcOrderId ? `wc_order_id:${wcOrderId}${wcOrderKey ? ` · key:${wcOrderKey}` : ''}` : null,
+      הערות:        result.page_request_uid ? `payplus_page_request_uid:${result.page_request_uid}` : null,
     });
 
     void logActivity({
       actor:        userActor(auth),
       module:       'finance',
       action:       'payment_link_created',
-      status:       totalMismatch ? 'warning' : 'success',
+      status:       'success',
       entityType:   'order',
       entityId:     String(orderId),
       entityLabel:  order.מספר_הזמנה ? String(order.מספר_הזמנה) : null,
       title:        'נוצר קישור תשלום',
-      description:  `נוצר קישור תשלום ב-WooCommerce עבור הזמנה ${order.מספר_הזמנה || orderId}`,
+      description:  `נוצר קישור תשלום ישיר ב-PayPlus עבור הזמנה ${order.מספר_הזמנה || orderId}`,
       metadata: {
-        channel:        'WooCommerce',
-        wc_order_id:    wcOrderId ?? null,
-        crm_amount:     amount,
-        wc_total:       wcTotal ?? null,
-        total_mismatch: totalMismatch || null,
+        provider:         'PayPlus',
+        host:             result.host,
+        crm_amount:       amount,
+        page_request_uid: result.page_request_uid,
       },
       serviceKey: 'payplus_payments',
       request: req,
@@ -326,23 +187,23 @@ export async function POST(
 
     return NextResponse.json({
       ok: true,
+      provider:         'PayPlus',
       payment_url,
-      wc_order_id: wcOrderId,
-      crm_amount:  amount,
-      wc_total:    wcTotal ?? null,
-      ...(totalMismatch ? { total_mismatch: true } : {}),
+      host:             result.host,
+      page_request_uid: result.page_request_uid,
+      crm_amount:       amount,
     });
   } catch (err) {
-    console.error('[WC payment-link] unexpected error:', err);
+    console.error('[PayPlus payment-link] unexpected error:', err);
     void logActivity({
       actor:        userActor(auth),
       module:       'finance',
       action:       'payment_link_failed',
       status:       'failed',
       entityType:   'order',
-      entityId:     String(params.id),
+      entityId:     String(orderId),
       title:        'יצירת קישור תשלום נכשלה',
-      description:  'אירעה שגיאה בלתי צפויה ביצירת קישור התשלום מול WooCommerce',
+      description:  'אירעה שגיאה בלתי צפויה ביצירת קישור התשלום מול PayPlus',
       errorMessage: err instanceof Error ? err.message : String(err),
       serviceKey:   'payplus_payments',
       request:      req,
