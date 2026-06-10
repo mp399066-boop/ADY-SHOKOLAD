@@ -2959,24 +2959,32 @@ function FinancialActionsBar({
               </span>
             </button>
 
-            {/* Send-invoice-to-customer — sits with the issuance actions so it's
-                obvious. Active button only when a sendable document exists;
-                otherwise subtle guidance (no error-prone active button). */}
-            {canSendInvoice ? (
-              <button
-                onClick={onSendInvoice}
-                disabled={busy || sendingInvoice}
-                className="w-full text-right rounded-xl px-4 py-2.5 text-[12.5px] font-semibold flex items-center gap-2 transition-colors disabled:opacity-60"
-                style={{ backgroundColor: '#8B5E34', color: '#fff', cursor: busy || sendingInvoice ? 'not-allowed' : 'pointer' }}
-              >
-                <Icon name="mail" />
-                <span>{sendingInvoice ? 'שולח...' : 'שלח חשבונית ללקוח'}</span>
-              </button>
-            ) : (
-              <p className="text-[11.5px] leading-snug px-1" style={{ color: '#9B8468' }}>
-                שליחת חשבונית תתאפשר לאחר הפקת חשבונית עם קישור.
-              </p>
-            )}
+            {/* Send-invoice-to-customer — always shown, sits with the issuance
+                actions so it's obvious. Active only when a sendable document
+                exists; otherwise rendered disabled with an explanatory label so
+                clicking can't trigger a pointless error. */}
+            <button
+              onClick={onSendInvoice}
+              disabled={!canSendInvoice || busy || sendingInvoice}
+              title={canSendInvoice ? undefined : 'יש להפיק חשבונית עם קישור לפני שליחה ללקוח'}
+              className="w-full text-right rounded-xl px-4 py-2.5 text-[12.5px] font-semibold flex items-center gap-2 transition-colors"
+              style={{
+                backgroundColor: canSendInvoice ? '#8B5E34' : '#F2ECE3',
+                color:           canSendInvoice ? '#fff' : '#9B8468',
+                border:          canSendInvoice ? undefined : '1px dashed #D8C7AE',
+                cursor:          !canSendInvoice || busy || sendingInvoice ? 'not-allowed' : 'pointer',
+                opacity:         (busy || sendingInvoice) && canSendInvoice ? 0.6 : 1,
+              }}
+            >
+              <Icon name="mail" />
+              <span>
+                {!canSendInvoice
+                  ? 'לא ניתן לשלוח — לא הופקה חשבונית עם קישור'
+                  : sendingInvoice
+                    ? 'שולח...'
+                    : 'שלח חשבונית ללקוח'}
+              </span>
+            </button>
           </div>
         </div>
       </div>
