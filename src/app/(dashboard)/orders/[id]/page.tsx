@@ -181,6 +181,7 @@ function Icon({ name, className = 'w-4 h-4' }: { name: string; className?: strin
     case 'check':    return <svg {...props}><path d="m5 13 4 4 10-10"/></svg>;
     case 'plus':     return <svg {...props}><path d="M12 5v14M5 12h14"/></svg>;
     case 'arrow':    return <svg {...props}><path d="m15 6-6 6 6 6"/></svg>;
+    case 'download': return <svg {...props}><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>;
     default:         return null;
   }
 }
@@ -300,6 +301,7 @@ export default function OrderDetailPage() {
   const [copiedAmount, setCopiedAmount]               = useState(false);
   const [sendingSummaryEmail, setSendingSummaryEmail] = useState(false);
   const [sendingInvoiceEmail, setSendingInvoiceEmail] = useState(false);
+  const [downloadingInvoice, setDownloadingInvoice]   = useState(false);
   const [newTaskTitle, setNewTaskTitle]     = useState('');
   const [newTaskEmpId, setNewTaskEmpId]     = useState('');
   const [newTaskDate, setNewTaskDate]       = useState('');
@@ -601,6 +603,36 @@ export default function OrderDetailPage() {
       toast.error(err instanceof Error ? err.message : 'שגיאה בשליחת החשבונית');
     } finally {
       setSendingInvoiceEmail(false);
+    }
+  };
+
+  // Download the issued invoice PDF (the same document the "send" action uses).
+  // Streams the PDF from the server and triggers a browser download; does NOT
+  // generate a new document.
+  const downloadInvoice = async () => {
+    setDownloadingInvoice(true);
+    try {
+      const res = await fetch(`/api/orders/${id}/invoice-pdf`);
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json.error || 'שגיאה בהורדת החשבונית');
+      }
+      const blob = await res.blob();
+      const cd = res.headers.get('Content-Disposition') || '';
+      const match = cd.match(/filename="?([^"]+)"?/);
+      const filename = match?.[1] || 'invoice.pdf';
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'שגיאה בהורדת החשבונית');
+    } finally {
+      setDownloadingInvoice(false);
     }
   };
 
@@ -1259,6 +1291,8 @@ export default function OrderDetailPage() {
               canSendInvoice={hasSendableInvoice}
               sendingInvoice={sendingInvoiceEmail}
               onSendInvoice={sendInvoiceToCustomer}
+              downloadingInvoice={downloadingInvoice}
+              onDownloadInvoice={downloadInvoice}
             />
             <FinancialDocumentsList invoices={allInvoices} />
           </>
@@ -2850,6 +2884,8 @@ function FinancialActionsBar({
   canSendInvoice,
   sendingInvoice,
   onSendInvoice,
+  downloadingInvoice,
+  onDownloadInvoice,
 }: {
   invoiceReceiptLoading: boolean;
   taxInvoiceLoading: boolean;
@@ -2860,12 +2896,14 @@ function FinancialActionsBar({
   onIssueTaxInvoice: () => void;
   onIssueReceipt: () => void;
   onMarkManualMorning: () => void;
-  // Manual "send invoice to customer" — only actionable once an issued
-  // document with a stored link exists. When false we show subtle guidance
-  // instead of an active button (which would only error).
+  // Manual "send invoice to customer" / "download invoice" — only actionable
+  // once an issued document with a stored link exists. When false both buttons
+  // render disabled with an explanatory label (no error-prone active button).
   canSendInvoice: boolean;
   sendingInvoice: boolean;
   onSendInvoice: () => void;
+  downloadingInvoice: boolean;
+  onDownloadInvoice: () => void;
 }) {
   return (
     <Card style={{ paddingTop: 18, paddingBottom: 18 }}>
@@ -2962,33 +3000,51 @@ function FinancialActionsBar({
         </div>
       </div>
 
-      {/* ── Send invoice to customer — full-width footer row of the financial
+      {/* ── Send / download invoice — full-width footer row of the financial
           documents card, so it's prominent and clearly part of this area.
           Always rendered; active only when a sendable document exists,
           otherwise disabled with an explanatory label (no error-prone click). */}
       <div className="mt-4 pt-4" style={{ borderTop: '1px solid #EFE3D2' }}>
-        <button
-          onClick={onSendInvoice}
-          disabled={!canSendInvoice || busy || sendingInvoice}
-          title={canSendInvoice ? undefined : 'יש להפיק חשבונית עם קישור לפני שליחה ללקוח'}
-          className="w-full rounded-xl px-4 py-3 text-[13.5px] font-bold flex items-center justify-center gap-2 transition-colors"
-          style={{
-            backgroundColor: canSendInvoice ? '#8B5E34' : '#F2ECE3',
-            color:           canSendInvoice ? '#fff' : '#9B8468',
-            border:          canSendInvoice ? undefined : '1px dashed #D8C7AE',
-            cursor:          !canSendInvoice || busy || sendingInvoice ? 'not-allowed' : 'pointer',
-            opacity:         (busy || sendingInvoice) && canSendInvoice ? 0.6 : 1,
-          }}
-        >
-          <Icon name="mail" />
-          <span>
-            {!canSendInvoice
-              ? 'לא ניתן לשלוח — לא הופקה חשבונית עם קישור'
-              : sendingInvoice
-                ? 'שולח חשבונית...'
-                : 'שלח חשבונית ללקוח'}
-          </span>
-        </button>
+        <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2.5">
+          <button
+            onClick={onSendInvoice}
+            disabled={!canSendInvoice || busy || sendingInvoice}
+            title={canSendInvoice ? undefined : 'יש להפיק חשבונית עם קישור לפני שליחה ללקוח'}
+            className="w-full rounded-xl px-4 py-3 text-[13.5px] font-bold flex items-center justify-center gap-2 transition-colors"
+            style={{
+              backgroundColor: canSendInvoice ? '#8B5E34' : '#F2ECE3',
+              color:           canSendInvoice ? '#fff' : '#9B8468',
+              border:          canSendInvoice ? undefined : '1px dashed #D8C7AE',
+              cursor:          !canSendInvoice || busy || sendingInvoice ? 'not-allowed' : 'pointer',
+              opacity:         (busy || sendingInvoice) && canSendInvoice ? 0.6 : 1,
+            }}
+          >
+            <Icon name="mail" />
+            <span>
+              {!canSendInvoice
+                ? 'לא ניתן לשלוח — לא הופקה חשבונית עם קישור'
+                : sendingInvoice
+                  ? 'שולח חשבונית...'
+                  : 'שלח חשבונית ללקוח'}
+            </span>
+          </button>
+          <button
+            onClick={onDownloadInvoice}
+            disabled={!canSendInvoice || downloadingInvoice}
+            title={canSendInvoice ? 'הורד את קובץ ה-PDF של החשבונית' : 'יש להפיק חשבונית עם קישור כדי להוריד'}
+            className="rounded-xl px-4 py-3 text-[13.5px] font-bold flex items-center justify-center gap-2 transition-colors whitespace-nowrap"
+            style={{
+              backgroundColor: '#FFFDF8',
+              color:           canSendInvoice ? '#7A4A27' : '#B7A488',
+              border:          `1px solid ${canSendInvoice ? '#D8C2A0' : '#E7DBC8'}`,
+              cursor:          !canSendInvoice || downloadingInvoice ? 'not-allowed' : 'pointer',
+              opacity:         !canSendInvoice ? 0.6 : downloadingInvoice ? 0.7 : 1,
+            }}
+          >
+            <Icon name="download" />
+            <span>{downloadingInvoice ? 'מוריד...' : 'הורד חשבונית'}</span>
+          </button>
+        </div>
       </div>
     </Card>
   );
