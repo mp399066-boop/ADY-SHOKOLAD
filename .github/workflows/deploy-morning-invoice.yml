@@ -1,0 +1,24 @@
+# Manual-only deploy of the create-morning-invoice Supabase Edge Function.
+# Does NOT run on push — only when you trigger it from the Actions tab.
+# Auth uses the GitHub Secret SUPABASE_ACCESS_TOKEN (never hardcoded).
+name: Deploy Edge Function — create-morning-invoice
+
+on:
+  workflow_dispatch: {}   # manual trigger only
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      PROJECT_REF: yfxonqkcgkmmsnebilzx   # public project ref (not a secret)
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Deploy create-morning-invoice
+        run: supabase functions deploy create-morning-invoice --project-ref "$PROJECT_REF"

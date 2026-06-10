@@ -10,7 +10,8 @@
     "demo:login": "playwright test --project=setup --config=playwright.config.ts",
     "demo:record": "playwright test --project=demo-chromium --config=playwright.config.ts",
     "demo:finalize": "node scripts/finalize-demo-video.mjs",
-    "demo:video": "npm run demo:record && npm run demo:finalize"
+    "demo:video": "npm run demo:record && npm run demo:finalize",
+    "deploy:invoice-fn": "npx supabase@latest functions deploy create-morning-invoice --project-ref yfxonqkcgkmmsnebilzx"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
