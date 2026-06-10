@@ -12,6 +12,7 @@ import type { BusinessSettings } from '@/types/database';
 const SETTINGS_TABS_BASE = [
   { href: '/settings',                label: 'הגדרות עסק',      adminOnly: false },
   { href: '/settings/lists',          label: 'רשימות ניהול',    adminOnly: false },
+  { href: '/settings/defaults',       label: 'ברירות מחדל',     adminOnly: false },
   { href: '/settings/users',          label: 'משתמשים והרשאות', adminOnly: false },
   { href: '/settings/system-control', label: 'לוגים',             adminOnly: true  },
 ] as const;

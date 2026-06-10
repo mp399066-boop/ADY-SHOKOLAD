@@ -19,6 +19,7 @@ import { DuplicateReviewModal } from '@/components/inventory/DuplicateReviewModa
 import { AliasEditor } from '@/components/inventory/AliasEditor';
 import { exportToCsv } from '@/lib/exportCsv';
 import { useOptionList } from '@/hooks/useOptionList';
+import { useSystemConfig } from '@/hooks/useSystemConfig';
 import { formatCurrency } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import type { RawMaterial, Product, PetitFourType } from '@/types/database';
@@ -41,6 +42,7 @@ export default function InventoryPage() {
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState<Partial<RawMaterial> | null>(null);
   const { values: unitOptions } = useOptionList('units_of_measure', editItem?.יחידת_מידה ?? null);
+  const { config } = useSystemConfig();
   const [saving, setSaving] = useState(false);
   const [editStockId, setEditStockId] = useState<string | null>(null);
   const [editStockQty, setEditStockQty] = useState(0);
@@ -369,8 +371,11 @@ export default function InventoryPage() {
   const openAdd = () => {
     setMatchWarning(null);
     setEditItem({
-      שם_חומר_גלם: '', כמות_במלאי: 0, יחידת_מידה: 'ק"ג',
-      סף_מלאי_נמוך: 0, סף_מלאי_קריטי: 0, מחיר_ליחידה: 0, הערות: '',
+      שם_חומר_גלם: '', כמות_במלאי: 0,
+      יחידת_מידה: config.default_unit_of_measure || 'ק"ג',
+      סף_מלאי_נמוך: Number(config.default_low_stock_threshold) || 0,
+      סף_מלאי_קריטי: Number(config.default_critical_stock_threshold) || 0,
+      מחיר_ליחידה: 0, הערות: '',
     });
     setShowModal(true);
   };

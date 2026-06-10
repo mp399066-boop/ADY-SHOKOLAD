@@ -29,6 +29,7 @@ import {
 const SETTINGS_TABS = [
   { href: '/settings',                label: 'הגדרות עסק'      },
   { href: '/settings/lists',          label: 'רשימות ניהול'    },
+  { href: '/settings/defaults',       label: 'ברירות מחדל'     },
   { href: '/settings/users',          label: 'משתמשים והרשאות' },
   { href: '/settings/system-control', label: 'לוגים'            },
 ];

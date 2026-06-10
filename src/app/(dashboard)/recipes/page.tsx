@@ -10,6 +10,8 @@ import { Input, Select, Textarea } from '@/components/ui/Input';
 import { Combobox } from '@/components/ui/Combobox';
 import toast from 'react-hot-toast';
 import { exportToCsv } from '@/lib/exportCsv';
+import { useOptionList } from '@/hooks/useOptionList';
+import { useSystemConfig } from '@/hooks/useSystemConfig';
 import { IconExport, IconTrash } from '@/components/icons';
 import { ActionBtn } from '@/components/ui/RowActions';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
@@ -43,6 +45,10 @@ export default function RecipesPage() {
     שם_מתכון: string; מוצר_id: string; כמות_תוצר: number; הערות: string;
     רכיבים: { חומר_גלם_id: string; כמות_נדרשת: number; יחידת_מידה: string }[];
   }>({ שם_מתכון: '', מוצר_id: '', כמות_תוצר: 1, הערות: '', רכיבים: [] });
+
+  // Managed units list (with hardcoded fallback) + default unit for new rows.
+  const { values: unitOptions } = useOptionList('units_of_measure');
+  const { config } = useSystemConfig();
 
   // ── Auto-link recipes → products (preview + confirm) ─────────────────────
   type AutoLinkSafe    = { recipeId: string; recipeName: string; productId: string; productName: string; matchType: 'exact' | 'contains' };
@@ -205,7 +211,7 @@ export default function RecipesPage() {
   const addIngredient = () => {
     setRecipeForm(prev => ({
       ...prev,
-      רכיבים: [...prev.רכיבים, { חומר_גלם_id: '', כמות_נדרשת: 0, יחידת_מידה: 'ק"ג' }],
+      רכיבים: [...prev.רכיבים, { חומר_גלם_id: '', כמות_נדרשת: 0, יחידת_מידה: config.default_unit_of_measure || 'ק"ג' }],
     }));
   };
 
@@ -606,9 +612,13 @@ export default function RecipesPage() {
                   onChange={e => updateIngredient(idx, 'כמות_נדרשת', Number(e.target.value))}
                   min={0} step={0.001} placeholder="כמות" />
                 <div className="flex items-center gap-1">
-                  <Input value={ing.יחידת_מידה}
-                    onChange={e => updateIngredient(idx, 'יחידת_מידה', e.target.value)}
-                    placeholder="יחידה" />
+                  <Select value={ing.יחידת_מידה}
+                    onChange={e => updateIngredient(idx, 'יחידת_מידה', e.target.value)}>
+                    {(ing.יחידת_מידה && !unitOptions.includes(ing.יחידת_מידה)
+                      ? [...unitOptions, ing.יחידת_מידה]
+                      : unitOptions
+                    ).map(u => <option key={u} value={u}>{u}</option>)}
+                  </Select>
                   <button type="button"
                     onClick={() => setRecipeForm(p => ({ ...p, רכיבים: p.רכיבים.filter((_, i) => i !== idx) }))}
                     className="text-red-500 flex-shrink-0 text-lg leading-none">×</button>

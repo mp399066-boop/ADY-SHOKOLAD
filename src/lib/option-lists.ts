@@ -75,6 +75,31 @@ export const OPTION_LISTS: OptionListDef[] = [
       { table: 'רכיבי_מתכון', column: 'יחידת_מידה' },
     ],
   },
+  // ── Text presets (Phase 2) ────────────────────────────────────────────────
+  // Content-only quick-pick snippets. They are NOT stored as enums on any
+  // record, so there is no usage table and nothing to seed — they start empty
+  // and the operator fills them in.
+  {
+    key: 'blessing_presets',
+    label: 'ברכות מוכנות',
+    description: 'נוסחי ברכה לבחירה מהירה (תוכן בלבד).',
+    defaults: [],
+    usage: [],
+  },
+  {
+    key: 'order_note_presets',
+    label: 'הערות הזמנה מוכנות',
+    description: 'הערות נפוצות להזמנה לבחירה מהירה (תוכן בלבד).',
+    defaults: [],
+    usage: [],
+  },
+  {
+    key: 'delivery_instruction_presets',
+    label: 'הוראות משלוח מוכנות',
+    description: 'הוראות משלוח נפוצות לבחירה מהירה (תוכן בלבד).',
+    defaults: [],
+    usage: [],
+  },
 ];
 
 export const OPTION_LIST_KEYS = OPTION_LISTS.map((l) => l.key);

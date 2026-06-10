@@ -1,17 +1,19 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input, Select, Textarea } from '@/components/ui/Input';
 import { useOptionList } from '@/hooks/useOptionList';
+import { useSystemConfig } from '@/hooks/useSystemConfig';
 import toast from 'react-hot-toast';
 
 export default function NewCustomerPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const { values: customerSources } = useOptionList('customer_sources');
+  const { config, loading: configLoading } = useSystemConfig();
   const [form, setForm] = useState({
     שם_פרטי: '',
     שם_משפחה: '',
@@ -27,6 +29,16 @@ export default function NewCustomerPage() {
     עיר: '',
     הערות_כתובת: '',
   });
+
+  // Apply the configured default customer source once, only if the user hasn't
+  // already picked one. Falls back silently to empty if config is unavailable.
+  const defaultSourceApplied = useRef(false);
+  useEffect(() => {
+    if (defaultSourceApplied.current || configLoading) return;
+    defaultSourceApplied.current = true;
+    const def = config.default_customer_source;
+    if (def) setForm(prev => (prev.מקור_הגעה ? prev : { ...prev, מקור_הגעה: def }));
+  }, [configLoading, config]);
 
   const set = (field: string, value: string | number) => setForm(prev => ({ ...prev, [field]: value }));
 
