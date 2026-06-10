@@ -7,6 +7,7 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input, Select, Textarea } from '@/components/ui/Input';
 import { useOptionList } from '@/hooks/useOptionList';
+import { useSystemConfig } from '@/hooks/useSystemConfig';
 import { Combobox } from '@/components/ui/Combobox';
 import { normalizeSearchText } from '@/lib/normalize';
 import { sumPetitFours, getCapacityInfo } from '@/lib/packageCapacity';
@@ -155,6 +156,7 @@ export default function NewOrderPage() {
   const [orderSource, setOrderSource] = useState('');
   const { values: paymentMethods } = useOptionList('payment_methods', paymentMethod);
   const { values: orderSources } = useOptionList('order_sources', orderSource);
+  const { config: systemConfig, loading: systemConfigLoading } = useSystemConfig();
   const [orderType, setOrderType] = useState<'רגיל' | 'סאטמר'>('רגיל');
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
   const [packageItems, setPackageItems] = useState<PackageItem[]>([]);
@@ -164,6 +166,27 @@ export default function NewOrderPage() {
   const searchParams = useSearchParams();
   const draftIdParam = searchParams.get('draft');
   const draftOrderIdRef = useRef<string | null>(draftIdParam);
+
+  // Apply Phase-2 safe defaults once, on a fresh order only. Never overrides a
+  // draft being loaded (its own prefill owns these fields) nor a value the user
+  // already changed — we only fill fields still at their hardcoded initial.
+  // Falls back silently to the hardcoded initials if config is unavailable.
+  const orderDefaultsAppliedRef = useRef(false);
+  useEffect(() => {
+    if (orderDefaultsAppliedRef.current || systemConfigLoading) return;
+    orderDefaultsAppliedRef.current = true;
+    if (draftIdParam) return;
+    if (systemConfig.default_payment_method) {
+      setPaymentMethod(prev => (prev === 'מזומן' ? systemConfig.default_payment_method : prev));
+    }
+    if (systemConfig.default_order_source) {
+      setOrderSource(prev => (prev === '' ? systemConfig.default_order_source : prev));
+    }
+    const fee = Number(systemConfig.default_delivery_fee);
+    if (Number.isFinite(fee) && fee > 0) {
+      setDeliveryFee(prev => (prev === 0 ? fee : prev));
+    }
+  }, [systemConfigLoading, systemConfig, draftIdParam]);
 
   // Auto-save
   const autoSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
