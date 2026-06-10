@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { logActivity, userActor } from '@/lib/activity-log';
 import { sendInvoiceEmail, isInternalEmail } from '@/lib/email';
+import { fetchMorningInvoicePdf } from '@/lib/morning-pdf';
 
 // Manual "שלח חשבונית ללקוח" — emails an ALREADY-issued Morning document to the
 // customer using the stored document link. This does NOT create a new invoice;
@@ -95,6 +96,39 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const docLabel = DOC_LABELS[invoice.סוג_מסמך || ''] || 'חשבונית';
   const invoiceNumber = prettyDocNumber(invoice.מספר_חשבונית);
 
+  // Fetch the actual PDF from Morning so it can be attached. We intentionally
+  // hard-fail if the PDF can't be produced — the whole point of this action is
+  // to deliver the document itself, not just a link.
+  let pdf: { base64: string; filename: string };
+  try {
+    const { buffer, filename } = await fetchMorningInvoicePdf(
+      invoice.קישור_חשבונית as string,
+      invoiceNumber,
+    );
+    pdf = { base64: buffer.toString('base64'), filename };
+  } catch (err: unknown) {
+    console.error('[send-invoice] PDF fetch failed:', err);
+    void logActivity({
+      actor:        userActor(auth),
+      module:       'finance',
+      action:       'invoice_email_failed',
+      status:       'failed',
+      entityType:   'order',
+      entityId:     String(params.id),
+      entityLabel:  invoiceNumber ? `#${invoiceNumber}` : ((o['מספר_הזמנה'] as string) || null),
+      title:        'שליחת חשבונית ללקוחה נכשלה',
+      description:  'הפקת ה-PDF של החשבונית נכשלה',
+      errorMessage: err instanceof Error ? err.message : String(err),
+      metadata:     { to, invoice_id: invoice.id, invoice_number: invoiceNumber, stage: 'pdf_fetch' },
+      serviceKey:   'customer_order_emails',
+      request:      req,
+    });
+    return NextResponse.json(
+      { error: 'לא ניתן להפיק כעת קובץ PDF של החשבונית. נסה שוב מאוחר יותר.' },
+      { status: 502 },
+    );
+  }
+
   try {
     await sendInvoiceEmail(to, customerName, {
       customerId:    o['לקוח_id'] as string,
@@ -103,6 +137,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       invoiceNumber,
       invoiceUrl:    invoice.קישור_חשבונית as string,
       documentLabel: docLabel,
+      pdfAttachment: pdf,
     });
 
     void logActivity({
@@ -114,13 +149,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       entityId:    String(params.id),
       entityLabel: invoiceNumber ? `#${invoiceNumber}` : ((o['מספר_הזמנה'] as string) || null),
       title:       'נשלחה חשבונית ללקוחה',
-      description: `${docLabel} נשלחה ל-${to}`,
-      metadata:    { to, invoice_id: invoice.id, invoice_number: invoiceNumber, document_type: invoice.סוג_מסמך },
+      description: `${docLabel} (PDF מצורף) נשלחה ל-${to}`,
+      metadata:    { to, invoice_id: invoice.id, invoice_number: invoiceNumber, document_type: invoice.סוג_מסמך, attached_pdf: true },
       serviceKey:  'customer_order_emails',
       request:     req,
     });
 
-    return NextResponse.json({ message: `החשבונית נשלחה בהצלחה ל-${to}` });
+    return NextResponse.json({ message: `החשבונית (PDF) נשלחה בהצלחה ל-${to}` });
   } catch (err: unknown) {
     console.error('[send-invoice] sendInvoiceEmail failed:', err);
     void logActivity({

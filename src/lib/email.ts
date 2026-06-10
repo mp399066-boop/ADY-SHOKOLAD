@@ -577,6 +577,9 @@ export interface InvoiceEmailContext {
   invoiceNumber?: string | null;
   invoiceUrl: string;
   documentLabel?: string | null; // e.g. "חשבונית מס קבלה"
+  // Optional PDF of the document, attached to the email. When present the body
+  // notes the attachment; the view link is still included as a fallback.
+  pdfAttachment?: { base64: string; filename: string };
 }
 
 function buildInvoiceHtml(
@@ -586,9 +589,10 @@ function buildInvoiceHtml(
   logoUrl?: string,
 ): string {
   const greeting = customerName ? `שלום ${customerName},` : 'שלום,';
+  const hasPdf = !!ctx.pdfAttachment;
   const orderLine = ctx.orderNumber
-    ? `מצורף קישור ל${docLabel} עבור הזמנה מספר ${ctx.orderNumber}.`
-    : `מצורף קישור ל${docLabel} שלך.`;
+    ? `${hasPdf ? `מצורפת ${docLabel} (PDF)` : `מצורף קישור ל${docLabel}`} עבור הזמנה מספר ${ctx.orderNumber}.`
+    : `${hasPdf ? `מצורפת ${docLabel} (PDF).` : `מצורף קישור ל${docLabel} שלך.`}`;
   const numberLine = ctx.invoiceNumber
     ? `<p style="margin:0 0 16px;color:#5A4632;font-size:14px">מספר מסמך: <strong>${ctx.invoiceNumber}</strong></p>`
     : '';
@@ -625,12 +629,13 @@ function buildInvoiceText(
   ctx: InvoiceEmailContext,
   docLabel: string,
 ): string {
+  const hasPdf = !!ctx.pdfAttachment;
   return [
     customerName ? `שלום ${customerName},` : 'שלום,',
     '',
     ctx.orderNumber
-      ? `מצורף קישור ל${docLabel} עבור הזמנה מספר ${ctx.orderNumber}.`
-      : `מצורף קישור ל${docLabel} שלך.`,
+      ? `${hasPdf ? `מצורפת ${docLabel} (PDF)` : `מצורף קישור ל${docLabel}`} עבור הזמנה מספר ${ctx.orderNumber}.`
+      : `${hasPdf ? `מצורפת ${docLabel} (PDF).` : `מצורף קישור ל${docLabel} שלך.`}`,
     ctx.invoiceNumber ? `מספר מסמך: ${ctx.invoiceNumber}` : '',
     '',
     `צפייה ב${docLabel}: ${ctx.invoiceUrl}`,
@@ -672,8 +677,16 @@ export async function sendInvoiceEmail(
   try {
     // Customer-facing invoice email — replies route to the admin inbox.
     const replyTo = EMAIL_ADDR;
-    console.log('[email-replyto] path: sendInvoiceEmail | replyTo:', replyTo);
-    const [response] = await sgMail.send({ to, from, subject, html, text, replyTo });
+    console.log('[email-replyto] path: sendInvoiceEmail | replyTo:', replyTo, '| pdf:', !!ctx.pdfAttachment);
+    const attachments = ctx.pdfAttachment
+      ? [{
+          content:     ctx.pdfAttachment.base64,
+          filename:    ctx.pdfAttachment.filename,
+          type:        'application/pdf',
+          disposition: 'attachment',
+        }]
+      : undefined;
+    const [response] = await sgMail.send({ to, from, subject, html, text, replyTo, ...(attachments ? { attachments } : {}) });
     messageId = response?.headers?.['x-message-id'] as string | undefined;
   } catch (err) {
     sendError = err instanceof Error ? err.message : String(err);
