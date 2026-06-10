@@ -123,8 +123,14 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       serviceKey:   'customer_order_emails',
       request:      req,
     });
+    const m = err instanceof Error ? err.message : String(err);
+    const isConfig = m.includes('אינו מוגדר');
     return NextResponse.json(
-      { error: 'לא ניתן להפיק כעת קובץ PDF של החשבונית. נסה שוב מאוחר יותר.' },
+      {
+        error: isConfig
+          ? 'שירות מורנינג אינו מוגדר בשרת (חסרים MORNING_API_ID / MORNING_API_SECRET במשתני הסביבה).'
+          : 'לא ניתן להפיק כעת קובץ PDF של החשבונית. נסה שוב מאוחר יותר.',
+      },
       { status: 502 },
     );
   }
