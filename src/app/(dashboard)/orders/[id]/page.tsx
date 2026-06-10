@@ -2958,35 +2958,37 @@ function FinancialActionsBar({
                   : 'סמן שהופקה ידנית במורנינג'}
               </span>
             </button>
-
-            {/* Send-invoice-to-customer — always shown, sits with the issuance
-                actions so it's obvious. Active only when a sendable document
-                exists; otherwise rendered disabled with an explanatory label so
-                clicking can't trigger a pointless error. */}
-            <button
-              onClick={onSendInvoice}
-              disabled={!canSendInvoice || busy || sendingInvoice}
-              title={canSendInvoice ? undefined : 'יש להפיק חשבונית עם קישור לפני שליחה ללקוח'}
-              className="w-full text-right rounded-xl px-4 py-2.5 text-[12.5px] font-semibold flex items-center gap-2 transition-colors"
-              style={{
-                backgroundColor: canSendInvoice ? '#8B5E34' : '#F2ECE3',
-                color:           canSendInvoice ? '#fff' : '#9B8468',
-                border:          canSendInvoice ? undefined : '1px dashed #D8C7AE',
-                cursor:          !canSendInvoice || busy || sendingInvoice ? 'not-allowed' : 'pointer',
-                opacity:         (busy || sendingInvoice) && canSendInvoice ? 0.6 : 1,
-              }}
-            >
-              <Icon name="mail" />
-              <span>
-                {!canSendInvoice
-                  ? 'לא ניתן לשלוח — לא הופקה חשבונית עם קישור'
-                  : sendingInvoice
-                    ? 'שולח...'
-                    : 'שלח חשבונית ללקוח'}
-              </span>
-            </button>
           </div>
         </div>
+      </div>
+
+      {/* ── Send invoice to customer — full-width footer row of the financial
+          documents card, so it's prominent and clearly part of this area.
+          Always rendered; active only when a sendable document exists,
+          otherwise disabled with an explanatory label (no error-prone click). */}
+      <div className="mt-4 pt-4" style={{ borderTop: '1px solid #EFE3D2' }}>
+        <button
+          onClick={onSendInvoice}
+          disabled={!canSendInvoice || busy || sendingInvoice}
+          title={canSendInvoice ? undefined : 'יש להפיק חשבונית עם קישור לפני שליחה ללקוח'}
+          className="w-full rounded-xl px-4 py-3 text-[13.5px] font-bold flex items-center justify-center gap-2 transition-colors"
+          style={{
+            backgroundColor: canSendInvoice ? '#8B5E34' : '#F2ECE3',
+            color:           canSendInvoice ? '#fff' : '#9B8468',
+            border:          canSendInvoice ? undefined : '1px dashed #D8C7AE',
+            cursor:          !canSendInvoice || busy || sendingInvoice ? 'not-allowed' : 'pointer',
+            opacity:         (busy || sendingInvoice) && canSendInvoice ? 0.6 : 1,
+          }}
+        >
+          <Icon name="mail" />
+          <span>
+            {!canSendInvoice
+              ? 'לא ניתן לשלוח — לא הופקה חשבונית עם קישור'
+              : sendingInvoice
+                ? 'שולח חשבונית...'
+                : 'שלח חשבונית ללקוח'}
+          </span>
+        </button>
       </div>
     </Card>
   );
