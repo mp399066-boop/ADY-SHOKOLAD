@@ -419,6 +419,32 @@ export function isInternalEmail(email: string): boolean {
   return email.trim().toLowerCase() === EMAIL_ADDR.toLowerCase();
 }
 
+// Server-side rendering of the customer-facing order summary email — used
+// by the preview endpoint so the operator can review the exact HTML that
+// would be sent before confirming. Mirrors the subject/html/text logic
+// inside sendOrderEmail one-for-one so preview === sent.
+export async function renderOrderEmail(
+  customerName: string,
+  orderData: OrderEmailData,
+): Promise<{ subject: string; html: string; text: string }> {
+  const subject = orderData.isUpdate
+    ? `עדכון הזמנה ${orderData.orderNumber} — ${BUSINESS}`
+    : `סיכום הזמנה ${orderData.orderNumber} — ${BUSINESS}`;
+
+  let logoUrl: string | undefined;
+  try {
+    const supabase = createAdminClient();
+    const { data: biz } = await supabase.from('business_settings').select('logo_url').single();
+    if (biz?.logo_url) logoUrl = biz.logo_url;
+  } catch { /* logo is optional — silently skip */ }
+
+  return {
+    subject,
+    html: buildHtml(customerName, orderData, logoUrl),
+    text: buildText(customerName, orderData),
+  };
+}
+
 export interface EmailContext {
   customerId: string;
   orderId?: string;
@@ -531,5 +557,146 @@ export async function sendOrderEmail(
         metadata:     { subject, message_id: messageId || null },
       });
     } catch { /* ignore */ }
+  }
+}
+
+// ─── Invoice (manual send) email ──────────────────────────────────────────
+// Used by the "שלח חשבונית ללקוח" button on the order page to email an invoice
+// that was ALREADY issued in Morning. This is the recovery path for the case
+// where the customer had no email when the document was created, so Morning's
+// document record carried no recipient and the invoice was never delivered.
+//
+// It does NOT create a new document — it only emails the existing Morning
+// document link. Throws on a SendGrid failure so the API route can surface a
+// Hebrew error to the operator.
+
+export interface InvoiceEmailContext {
+  customerId: string;
+  orderId: string;
+  orderNumber?: string | null;
+  invoiceNumber?: string | null;
+  invoiceUrl: string;
+  documentLabel?: string | null; // e.g. "חשבונית מס קבלה"
+}
+
+function buildInvoiceHtml(
+  customerName: string,
+  ctx: InvoiceEmailContext,
+  docLabel: string,
+  logoUrl?: string,
+): string {
+  const greeting = customerName ? `שלום ${customerName},` : 'שלום,';
+  const orderLine = ctx.orderNumber
+    ? `מצורף קישור ל${docLabel} עבור הזמנה מספר ${ctx.orderNumber}.`
+    : `מצורף קישור ל${docLabel} שלך.`;
+  const numberLine = ctx.invoiceNumber
+    ? `<p style="margin:0 0 16px;color:#5A4632;font-size:14px">מספר מסמך: <strong>${ctx.invoiceNumber}</strong></p>`
+    : '';
+  const logo = logoUrl
+    ? `<img src="${logoUrl}" alt="${BUSINESS}" style="max-height:64px;margin-bottom:12px" />`
+    : `<h2 style="margin:0 0 4px;color:#8B5E34">${BUSINESS}</h2>`;
+
+  return `<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<body style="margin:0;background:#F7F1E8;font-family:Arial,Helvetica,sans-serif;direction:rtl;text-align:right">
+  <div style="max-width:560px;margin:0 auto;padding:24px">
+    <div style="background:#FFFDF8;border:1px solid #EADBC4;border-radius:14px;padding:28px;text-align:center">
+      ${logo}
+      <p style="margin:18px 0 6px;color:#2B1A10;font-size:16px;font-weight:bold;text-align:right">${greeting}</p>
+      <p style="margin:0 0 16px;color:#4A3A2A;font-size:14px;line-height:1.6;text-align:right">${orderLine}</p>
+      ${numberLine}
+      <a href="${ctx.invoiceUrl}" target="_blank" rel="noopener noreferrer"
+         style="display:inline-block;margin:8px 0 18px;padding:12px 28px;background:#8B5E34;color:#fff;border-radius:10px;font-size:15px;font-weight:bold;text-decoration:none">
+        צפייה ב${docLabel}
+      </a>
+      <p style="margin:14px 0 0;color:#8A735F;font-size:12px;line-height:1.6;text-align:right">
+        אם הקישור אינו נפתח, ניתן להעתיק אותו לדפדפן:<br />
+        <span style="color:#8B5E34;word-break:break-all">${ctx.invoiceUrl}</span>
+      </p>
+    </div>
+    <p style="margin:16px 4px 0;color:#9B7A5A;font-size:12px;text-align:center">${BUSINESS} · ${EMAIL_ADDR}</p>
+  </div>
+</body>
+</html>`;
+}
+
+function buildInvoiceText(
+  customerName: string,
+  ctx: InvoiceEmailContext,
+  docLabel: string,
+): string {
+  return [
+    customerName ? `שלום ${customerName},` : 'שלום,',
+    '',
+    ctx.orderNumber
+      ? `מצורף קישור ל${docLabel} עבור הזמנה מספר ${ctx.orderNumber}.`
+      : `מצורף קישור ל${docLabel} שלך.`,
+    ctx.invoiceNumber ? `מספר מסמך: ${ctx.invoiceNumber}` : '',
+    '',
+    `צפייה ב${docLabel}: ${ctx.invoiceUrl}`,
+    '',
+    BUSINESS,
+    EMAIL_ADDR,
+  ].filter(l => l !== '').join('\n');
+}
+
+export async function sendInvoiceEmail(
+  to: string,
+  customerName: string,
+  ctx: InvoiceEmailContext,
+): Promise<void> {
+  const apiKey = process.env.SENDGRID_API_KEY;
+  const from = process.env.FROM_EMAIL;
+  if (!apiKey || !from) throw new Error('שירות המייל אינו מוגדר במערכת');
+
+  sgMail.setApiKey(apiKey);
+
+  const docLabel = ctx.documentLabel || 'חשבונית';
+  const subject = ctx.invoiceNumber
+    ? `${docLabel} ${ctx.invoiceNumber} — ${BUSINESS}`
+    : `${docLabel} — ${BUSINESS}`;
+
+  let logoUrl: string | undefined;
+  try {
+    const supabase = createAdminClient();
+    const { data: biz } = await supabase.from('business_settings').select('logo_url').single();
+    if (biz?.logo_url) logoUrl = biz.logo_url;
+  } catch { /* logo is optional — silently skip */ }
+
+  const html = buildInvoiceHtml(customerName, ctx, docLabel, logoUrl);
+  const text = buildInvoiceText(customerName, ctx, docLabel);
+
+  let messageId: string | undefined;
+  let sendError: string | undefined;
+
+  try {
+    // Customer-facing invoice email — replies route to the admin inbox.
+    const replyTo = EMAIL_ADDR;
+    console.log('[email-replyto] path: sendInvoiceEmail | replyTo:', replyTo);
+    const [response] = await sgMail.send({ to, from, subject, html, text, replyTo });
+    messageId = response?.headers?.['x-message-id'] as string | undefined;
+  } catch (err) {
+    sendError = err instanceof Error ? err.message : String(err);
+    throw err;
+  } finally {
+    try {
+      const supabase = createAdminClient();
+      await supabase.from('תיעוד_תקשורת').insert({
+        לקוח_id: ctx.customerId,
+        הזמנה_id: ctx.orderId || null,
+        סוג: 'מייל',
+        כיוון: 'יוצא',
+        נושא: subject,
+        תוכן: text.slice(0, 500),
+        אל: to,
+        מ: from,
+        סטטוס: sendError ? 'נכשל' : 'נשלח',
+        מזהה_הודעה: messageId || null,
+        הודעת_שגיאה: sendError || null,
+        תאריך: new Date().toISOString(),
+      });
+    } catch (logErr) {
+      console.error('[email] failed to log invoice communication:', logErr);
+    }
   }
 }

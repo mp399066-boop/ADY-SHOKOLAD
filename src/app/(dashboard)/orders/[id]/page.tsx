@@ -299,6 +299,7 @@ export default function OrderDetailPage() {
   const [copiedOrderNum, setCopiedOrderNum]           = useState(false);
   const [copiedAmount, setCopiedAmount]               = useState(false);
   const [sendingSummaryEmail, setSendingSummaryEmail] = useState(false);
+  const [sendingInvoiceEmail, setSendingInvoiceEmail] = useState(false);
   const [newTaskTitle, setNewTaskTitle]     = useState('');
   const [newTaskEmpId, setNewTaskEmpId]     = useState('');
   const [newTaskDate, setNewTaskDate]       = useState('');
@@ -577,6 +578,29 @@ export default function OrderDetailPage() {
       toast.error(err instanceof Error ? err.message : 'שגיאה בשליחה');
     } finally {
       setSendingSummaryEmail(false);
+    }
+  };
+
+  // Manually email an already-issued invoice to the customer. Used when the
+  // customer had no email at the time the document was created (so it was never
+  // delivered). Does NOT generate a new document — the server resends the
+  // existing Morning document link.
+  const sendInvoiceToCustomer = async () => {
+    // Instant, exact-worded feedback when no email is on file — skip the request.
+    if (!order?.לקוחות?.אימייל?.trim()) {
+      toast.error('לא קיים מייל ללקוחה. יש לעדכן מייל בכרטיס הלקוחה ואז לשלוח שוב.');
+      return;
+    }
+    setSendingInvoiceEmail(true);
+    try {
+      const res = await fetch(`/api/orders/${id}/send-invoice`, { method: 'POST' });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'שגיאה בשליחת החשבונית');
+      toast.success(json.message || 'החשבונית נשלחה ללקוחה');
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'שגיאה בשליחת החשבונית');
+    } finally {
+      setSendingInvoiceEmail(false);
     }
   };
 
@@ -1205,6 +1229,9 @@ export default function OrderDetailPage() {
       {(() => {
         const allInvoices = (order.חשבוניות ?? []) as InvRow[];
         const hasManualMorning = allInvoices.some(i => i.מקור === 'manual_morning');
+        // The manual "send invoice to customer" action is only meaningful once
+        // a document with a link exists for the order.
+        const hasSendableInvoice = allInvoices.some(i => !!i.קישור_חשבונית);
         const manualWarning = hasManualMorning
           ? 'הזמנה זו סומנה כהופקה ידנית במורנינג. הפקה נוספת דרך המערכת עלולה ליצור כפילות. להמשיך בכל זאת?'
           : null;
@@ -1231,6 +1258,23 @@ export default function OrderDetailPage() {
               onMarkManualMorning={() => setShowManualMorningModal(true)}
             />
             <FinancialDocumentsList invoices={allInvoices} />
+            {/* Manually (re)send an already-issued invoice to the customer.
+                Available only once a document with a link exists. Used when the
+                customer had no email at invoice-generation time. */}
+            {hasSendableInvoice && (
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={sendInvoiceToCustomer}
+                  disabled={sendingInvoiceEmail}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold transition disabled:opacity-60"
+                  style={{ backgroundColor: '#8B5E34', color: '#fff' }}
+                >
+                  <Icon name="mail" />
+                  {sendingInvoiceEmail ? 'שולח...' : 'שלח חשבונית ללקוח'}
+                </button>
+              </div>
+            )}
           </>
         );
       })()}
