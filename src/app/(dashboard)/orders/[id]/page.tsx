@@ -1256,25 +1256,11 @@ export default function OrderDetailPage() {
                 setPreviewDocType('tax_invoice');
               }}
               onMarkManualMorning={() => setShowManualMorningModal(true)}
+              canSendInvoice={hasSendableInvoice}
+              sendingInvoice={sendingInvoiceEmail}
+              onSendInvoice={sendInvoiceToCustomer}
             />
             <FinancialDocumentsList invoices={allInvoices} />
-            {/* Manually (re)send an already-issued invoice to the customer.
-                Available only once a document with a link exists. Used when the
-                customer had no email at invoice-generation time. */}
-            {hasSendableInvoice && (
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  onClick={sendInvoiceToCustomer}
-                  disabled={sendingInvoiceEmail}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold transition disabled:opacity-60"
-                  style={{ backgroundColor: '#8B5E34', color: '#fff' }}
-                >
-                  <Icon name="mail" />
-                  {sendingInvoiceEmail ? 'שולח...' : 'שלח חשבונית ללקוח'}
-                </button>
-              </div>
-            )}
           </>
         );
       })()}
@@ -2861,6 +2847,9 @@ function FinancialActionsBar({
   onIssueTaxInvoice,
   onIssueReceipt,
   onMarkManualMorning,
+  canSendInvoice,
+  sendingInvoice,
+  onSendInvoice,
 }: {
   invoiceReceiptLoading: boolean;
   taxInvoiceLoading: boolean;
@@ -2871,6 +2860,12 @@ function FinancialActionsBar({
   onIssueTaxInvoice: () => void;
   onIssueReceipt: () => void;
   onMarkManualMorning: () => void;
+  // Manual "send invoice to customer" — only actionable once an issued
+  // document with a stored link exists. When false we show subtle guidance
+  // instead of an active button (which would only error).
+  canSendInvoice: boolean;
+  sendingInvoice: boolean;
+  onSendInvoice: () => void;
 }) {
   return (
     <Card style={{ paddingTop: 18, paddingBottom: 18 }}>
@@ -2963,6 +2958,25 @@ function FinancialActionsBar({
                   : 'סמן שהופקה ידנית במורנינג'}
               </span>
             </button>
+
+            {/* Send-invoice-to-customer — sits with the issuance actions so it's
+                obvious. Active button only when a sendable document exists;
+                otherwise subtle guidance (no error-prone active button). */}
+            {canSendInvoice ? (
+              <button
+                onClick={onSendInvoice}
+                disabled={busy || sendingInvoice}
+                className="w-full text-right rounded-xl px-4 py-2.5 text-[12.5px] font-semibold flex items-center gap-2 transition-colors disabled:opacity-60"
+                style={{ backgroundColor: '#8B5E34', color: '#fff', cursor: busy || sendingInvoice ? 'not-allowed' : 'pointer' }}
+              >
+                <Icon name="mail" />
+                <span>{sendingInvoice ? 'שולח...' : 'שלח חשבונית ללקוח'}</span>
+              </button>
+            ) : (
+              <p className="text-[11.5px] leading-snug px-1" style={{ color: '#9B8468' }}>
+                שליחת חשבונית תתאפשר לאחר הפקת חשבונית עם קישור.
+              </p>
+            )}
           </div>
         </div>
       </div>
