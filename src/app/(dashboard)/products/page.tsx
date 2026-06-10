@@ -10,6 +10,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Modal } from '@/components/ui/Modal';
 import { Input, Select, Textarea } from '@/components/ui/Input';
 import { exportToCsv } from '@/lib/exportCsv';
+import { useOptionList } from '@/hooks/useOptionList';
 import { IconExport, IconEdit, IconTrash } from '@/components/icons';
 import { ActionBtn } from '@/components/ui/RowActions';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
@@ -30,6 +31,7 @@ export default function ProductsPage() {
   const [editMode, setEditMode] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<Record<string, string | number | boolean>>({});
+  const { values: productCategories } = useOptionList('product_categories', String(form.קטגוריית_מוצר || 'אחר'));
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; type: Tab } | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -597,6 +599,13 @@ export default function ProductsPage() {
               >
                 <option value="מוצר רגיל">מוצר רגיל</option>
                 <option value="מארז פטיפורים">מארז פטיפורים</option>
+              </Select>
+              <Select
+                label="קטגוריה"
+                value={String(form.קטגוריית_מוצר || 'אחר')}
+                onChange={e => setForm(p => ({ ...p, קטגוריית_מוצר: e.target.value }))}
+              >
+                {productCategories.map(c => <option key={c} value={c}>{c}</option>)}
               </Select>
               <Textarea
                 label="תיאור"

@@ -5,11 +5,13 @@ import { useRouter } from 'next/navigation';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input, Select, Textarea } from '@/components/ui/Input';
+import { useOptionList } from '@/hooks/useOptionList';
 import toast from 'react-hot-toast';
 
 export default function NewCustomerPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const { values: customerSources } = useOptionList('customer_sources');
   const [form, setForm] = useState({
     שם_פרטי: '',
     שם_משפחה: '',
@@ -63,7 +65,7 @@ export default function NewCustomerPage() {
           </Select>
           <Select label="מקור הגעה" value={form.מקור_הגעה} onChange={e => set('מקור_הגעה', e.target.value)}>
             <option value="">-</option>
-            {['המלצה', 'אינסטגרם', 'פייסבוק', 'WhatsApp', 'גוגל', 'אחר'].map(s => <option key={s} value={s}>{s}</option>)}
+            {customerSources.map(s => <option key={s} value={s}>{s}</option>)}
           </Select>
           <Input label="אחוז הנחה (%)" type="number" value={form.אחוז_הנחה} onChange={e => set('אחוז_הנחה', Number(e.target.value))} min={0} max={100} step={0.5} />
           <Input label="עיר" value={form.עיר} onChange={e => set('עיר', e.target.value)} />

@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input, Select, Textarea } from '@/components/ui/Input';
+import { useOptionList } from '@/hooks/useOptionList';
 import { Combobox } from '@/components/ui/Combobox';
 import { normalizeSearchText } from '@/lib/normalize';
 import { sumPetitFours, getCapacityInfo } from '@/lib/packageCapacity';
@@ -152,6 +153,8 @@ export default function NewOrderPage() {
   const [discountType, setDiscountType] = useState<'ללא' | 'אחוז' | 'סכום'>('ללא');
   const [discountValue, setDiscountValue] = useState(0);
   const [orderSource, setOrderSource] = useState('');
+  const { values: paymentMethods } = useOptionList('payment_methods', paymentMethod);
+  const { values: orderSources } = useOptionList('order_sources', orderSource);
   const [orderType, setOrderType] = useState<'רגיל' | 'סאטמר'>('רגיל');
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
   const [packageItems, setPackageItems] = useState<PackageItem[]>([]);
@@ -931,7 +934,7 @@ export default function NewOrderPage() {
                 onChange={e => setOrderSource(e.target.value)}
               >
                 <option value="">—</option>
-                {['טלפון', 'WhatsApp', 'אינסטגרם', 'פייסבוק', 'אתר', 'הפניה', 'אחר'].map(s => (
+                {orderSources.map(s => (
                   <option key={s} value={s}>{s}</option>
                 ))}
               </Select>
@@ -1451,7 +1454,7 @@ export default function NewOrderPage() {
                 value={paymentMethod}
                 onChange={e => setPaymentMethod(e.target.value)}
               >
-                {['מזומן', 'כרטיס אשראי', 'העברה בנקאית', 'bit', 'PayBox', 'PayPal', 'אחר'].map(m => (
+                {paymentMethods.map(m => (
                   <option key={m} value={m}>{m}</option>
                 ))}
               </Select>

@@ -18,6 +18,7 @@ import { RawMaterialsSummaryPanel } from '@/components/inventory/RawMaterialsSum
 import { DuplicateReviewModal } from '@/components/inventory/DuplicateReviewModal';
 import { AliasEditor } from '@/components/inventory/AliasEditor';
 import { exportToCsv } from '@/lib/exportCsv';
+import { useOptionList } from '@/hooks/useOptionList';
 import { formatCurrency } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import type { RawMaterial, Product, PetitFourType } from '@/types/database';
@@ -39,6 +40,7 @@ export default function InventoryPage() {
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState<Partial<RawMaterial> | null>(null);
+  const { values: unitOptions } = useOptionList('units_of_measure', editItem?.יחידת_מידה ?? null);
   const [saving, setSaving] = useState(false);
   const [editStockId, setEditStockId] = useState<string | null>(null);
   const [editStockQty, setEditStockQty] = useState(0);
@@ -1229,7 +1231,7 @@ export default function InventoryPage() {
           <div className="grid grid-cols-2 gap-3">
             <Input label="כמות במלאי" type="number" value={editItem?.כמות_במלאי ?? 0} onChange={e => setEditItem(p => ({ ...p, כמות_במלאי: Number(e.target.value) }))} min={0} step={0.01} />
             <Select label="יחידת מידה" value={editItem?.יחידת_מידה || 'ק"ג'} onChange={e => setEditItem(p => ({ ...p, יחידת_מידה: e.target.value }))}>
-              {['ק"ג', 'גרם', 'ליטר', 'מ"ל', 'יח׳', 'כף', 'כוס'].map(u => <option key={u} value={u}>{u}</option>)}
+              {unitOptions.map(u => <option key={u} value={u}>{u}</option>)}
             </Select>
             <Input label="סף מלאי נמוך" type="number" value={editItem?.סף_מלאי_נמוך ?? 0} onChange={e => setEditItem(p => ({ ...p, סף_מלאי_נמוך: Number(e.target.value) }))} min={0} step={0.01} />
             <Input label="סף מלאי קריטי" type="number" value={editItem?.סף_מלאי_קריטי ?? 0} onChange={e => setEditItem(p => ({ ...p, סף_מלאי_קריטי: Number(e.target.value) }))} min={0} step={0.01} />
