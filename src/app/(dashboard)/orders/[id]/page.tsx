@@ -610,31 +610,11 @@ export default function OrderDetailPage() {
   // Download the issued invoice PDF (the same document the "send" action uses).
   // Streams the PDF from the server and triggers a browser download; does NOT
   // generate a new document.
-  const downloadInvoice = async () => {
-    setDownloadingInvoice(true);
-    try {
-      const res = await fetch(`/api/orders/${id}/invoice-pdf`);
-      if (!res.ok) {
-        const json = await res.json().catch(() => ({}));
-        throw new Error(json.error || 'שגיאה בהורדת החשבונית');
-      }
-      const blob = await res.blob();
-      const cd = res.headers.get('Content-Disposition') || '';
-      const match = cd.match(/filename="?([^"]+)"?/);
-      const filename = match?.[1] || 'invoice.pdf';
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'שגיאה בהורדת החשבונית');
-    } finally {
-      setDownloadingInvoice(false);
-    }
+  const downloadInvoice = () => {
+    // Direct browser navigation to the streaming endpoint — the server returns
+    // the PDF as an attachment, so the browser handles the download itself.
+    // (No fetch/blob: that path failed behind content-filtering proxies.)
+    window.location.href = `/api/orders/${id}/invoice-pdf`;
   };
 
   // ── Delete order ─────────────────────────────────────────────────────────
