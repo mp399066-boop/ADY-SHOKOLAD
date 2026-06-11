@@ -3404,8 +3404,19 @@ function InvoicePreviewModal({
   const subtotal = order.סכום_לפני_הנחה ?? 0;
   const discount = order.סכום_הנחה ?? 0;
   const shipping = order.דמי_משלוח ?? 0;
-  const vatAmt   = +(total * IL_VAT / (1 + IL_VAT)).toFixed(2);
-  const exclVat  = +(total - vatAmt).toFixed(2);
+  // `סך_הכל_לתשלום` semantics mirror the order screen (isBusinessForVat above):
+  //   • Business (not Satmar): it is the NET — VAT is added on top, final
+  //     payable = total × 1.18. The Morning EF does the same.
+  //   • Private / Satmar: it is already the final GROSS — VAT is extracted
+  //     from it for display only.
+  const isBusinessForVat =
+    (order.סוג_הזמנה as string | undefined) !== 'סאטמר' &&
+    (cust?.סוג_לקוח === 'עסקי' ||
+     cust?.סוג_לקוח === 'עסקי - קבוע' ||
+     cust?.סוג_לקוח === 'עסקי - כמות');
+  const exclVat  = isBusinessForVat ? total : +(total - total * IL_VAT / (1 + IL_VAT)).toFixed(2);
+  const vatAmt   = isBusinessForVat ? +(total * IL_VAT).toFixed(2) : +(total * IL_VAT / (1 + IL_VAT)).toFixed(2);
+  const finalPayable = isBusinessForVat ? +(total * (1 + IL_VAT)).toFixed(2) : total;
 
   const handleIssue = async () => {
     if (!canSubmit) return;
@@ -3534,8 +3545,8 @@ function InvoicePreviewModal({
               </div>
               <div className="flex justify-between text-[13px] font-bold pt-1.5"
                 style={{ borderTop: '2px solid #EDE0CE' }}>
-                <span style={{ color: '#2B1A10' }}>סה״כ לתשלום</span>
-                <span style={{ color: '#8B5E34' }}>{formatCurrency(total)}</span>
+                <span style={{ color: '#2B1A10' }}>{isBusinessForVat ? 'סה״כ כולל מע״מ' : 'סה״כ לתשלום'}</span>
+                <span style={{ color: '#8B5E34' }}>{formatCurrency(finalPayable)}</span>
               </div>
             </div>
           </PreviewSec>
