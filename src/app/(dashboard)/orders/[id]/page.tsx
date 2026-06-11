@@ -614,7 +614,7 @@ export default function OrderDetailPage() {
     // Direct browser navigation to the streaming endpoint — the server returns
     // the PDF as an attachment, so the browser handles the download itself.
     // (No fetch/blob: that path failed behind content-filtering proxies.)
-    window.location.href = `/api/orders/${id}/invoice-pdf`;
+    window.location.href = `/api/orders/${id}/invoice.pdf`;
   };
 
   // ── Delete order ─────────────────────────────────────────────────────────
