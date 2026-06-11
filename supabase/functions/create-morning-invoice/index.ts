@@ -285,7 +285,7 @@ serve(async (req: Request) => {
       .from('הזמנות')
       .select(`
         id, מספר_הזמנה, לקוח_id, סך_הכל_לתשלום, סכום_לפני_הנחה, סכום_הנחה,
-        סוג_הנחה, ערך_הנחה, אופן_תשלום, דמי_משלוח, זיכוי_בשימוש,
+        סוג_הנחה, ערך_הנחה, אופן_תשלום, דמי_משלוח, זיכוי_בשימוש, סוג_הזמנה,
         לקוחות (שם_פרטי, שם_משפחה, אימייל, טלפון, סוג_לקוח)
       `)
       .eq('id', orderId)
@@ -315,7 +315,13 @@ serve(async (req: Request) => {
 
     type CustomerRow = { שם_פרטי: string; שם_משפחה: string; אימייל: string | null; טלפון: string | null; סוג_לקוח: string | null };
     const customer = order.לקוחות as CustomerRow;
-    const isBusiness = BUSINESS_TYPES.has(customer.סוג_לקוח ?? '');
+    // Mirror the order screen / invoice preview `isBusinessForVat`: VAT is
+    // added on top ONLY for business customers AND non-Satmar orders. Satmar
+    // orders never add VAT regardless of customer type, so סך_הכל_לתשלום stays
+    // the final amount as-is (vatType:0, taken as gross).
+    const isBusiness =
+      (order.סוג_הזמנה as string | undefined) !== 'סאטמר' &&
+      BUSINESS_TYPES.has(customer.סוג_לקוח ?? '');
 
     // ── Final payable — the single source of truth ───────────────────────
     // `order.סך_הכל_לתשלום` is stored WITHOUT VAT-grossing: it is
@@ -621,7 +627,7 @@ serve(async (req: Request) => {
     // (JSON.stringify with indent) was getting split by Supabase's Logflare
     // pipeline so the dashboard search "[invoice-debug]" missed everything
     // after the first line. No null/2 pretty-print below.
-    console.log('[invoice-debug] VERSION: business-vat-net-gross-v19');
+    console.log('[invoice-debug] VERSION: business-vat-net-gross-satmar-guard-v20');
     console.log('[invoice-debug] order:', order.מספר_הזמנה, '| document type:', documentType, '| morningType:', morningDocType);
     console.log('[invoice-debug] client:', JSON.stringify({
       id: order.לקוח_id,
