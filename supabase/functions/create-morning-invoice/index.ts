@@ -323,6 +323,20 @@ serve(async (req: Request) => {
       (order.סוג_הזמנה as string | undefined) !== 'סאטמר' &&
       BUSINESS_TYPES.has(customer.סוג_לקוח ?? '');
 
+    // ── Morning vatType values (GreenInvoice IncomeVatType) ───────────────
+    // IncomeVatType: 0 = DEFAULT (VAT ADDED on top, per the business' VAT
+    // registration), 1 = INCLUDED (price already contains VAT — extracted &
+    // shown, total unchanged), 2 = EXEMPT (no VAT). DocumentVatType 1 means
+    // the WHOLE document is EXEMPT — NOT "add VAT" — which is why business
+    // invoices previously showed 0 VAT. So:
+    //   • Business non-Satmar: send raw NET prices with line vatType 0
+    //     (DEFAULT) → Morning adds 18% → gross = net × 1.18.
+    //   • Private / Satmar: send gross prices with line vatType 1 (INCLUDED)
+    //     → Morning extracts VAT for display, total stays = סך_הכל_לתשלום.
+    // Document-level vatType is always 0 (DEFAULT) — per-line vatType decides
+    // each line's treatment.
+    const lineVatType: 0 | 1 = isBusiness ? 0 : 1;
+
     // ── Final payable — the single source of truth ───────────────────────
     // `order.סך_הכל_לתשלום` is stored WITHOUT VAT-grossing: it is
     // `subtotal − discount + shipping − credit` (see orders create-full /
@@ -357,7 +371,7 @@ serve(async (req: Request) => {
     // customer's invoice). Each row in מוצרים_בהזמנה → one line on the
     // invoice with its original quantity. Manual / custom items keep their
     // operator-given name. Morning rounding drift is reconciled below.
-    type IncomeLine = { description: string; quantity: number; price: number; vatType: 1 };
+    type IncomeLine = { description: string; quantity: number; price: number; vatType: 0 | 1 };
     const incomeLines: IncomeLine[] = [];
 
     const rawItems = (items ?? []) as Array<Record<string, unknown>>;
@@ -383,7 +397,7 @@ serve(async (req: Request) => {
       const unit = Number(item.מחיר_ליחידה ?? 0) || 0;
       // Raw CRM price — no toNet. Document-level vatType decides Morning's
       // interpretation (see header rationale).
-      incomeLines.push({ description, quantity: qty, price: unit, vatType: 1 });
+      incomeLines.push({ description, quantity: qty, price: unit, vatType: lineVatType });
     }
 
     // ── Delivery fee — separate income line ──────────────────────────────
@@ -403,7 +417,7 @@ serve(async (req: Request) => {
         description: 'דמי משלוח',
         quantity: 1,
         price: deliveryAmount,
-        vatType: 1,
+        vatType: lineVatType,
       });
       deliveryHandling = `separate "דמי משלוח" line @ ${deliveryAmount}`;
     } else {
@@ -429,7 +443,7 @@ serve(async (req: Request) => {
         description: 'סך הכל לחיוב',
         quantity: 1,
         price: crmDisplayedTotal,
-        vatType: 1,
+        vatType: lineVatType,
       });
     } else if (debugMorningMode === 'single_net_income_line') {
       // ONE line at CRM_net = CRM_gross / 1.18 (rounded to 2 decimals).
@@ -441,7 +455,7 @@ serve(async (req: Request) => {
         description: 'סך הכל לחיוב (לפני מע"מ)',
         quantity: 1,
         price: netCents / 100,
-        vatType: 1,
+        vatType: lineVatType,
       });
     }
 
@@ -457,10 +471,10 @@ serve(async (req: Request) => {
     if (!inSingleLineMode && order.סוג_הנחה === 'אחוז' && discValue > 0) {
       const netBeforeDiscount = incomeLines.reduce((sum, l) => sum + l.price * l.quantity, 0);
       const discNet = Math.round(netBeforeDiscount * discValue / 100 * 100) / 100;
-      incomeLines.push({ description: `הנחה ${discValue}%`, quantity: 1, price: -discNet, vatType: 1 });
+      incomeLines.push({ description: `הנחה ${discValue}%`, quantity: 1, price: -discNet, vatType: lineVatType });
     } else if (!inSingleLineMode && order.סוג_הנחה === 'סכום' && discValue > 0) {
       // Raw CRM discount amount — same units as item prices (no toNet).
-      incomeLines.push({ description: 'הנחה', quantity: 1, price: -discValue, vatType: 1 });
+      incomeLines.push({ description: 'הנחה', quantity: 1, price: -discValue, vatType: lineVatType });
     }
 
     // Customer credit usage — already baked into סך_הכל_לתשלום at order time.
@@ -469,7 +483,7 @@ serve(async (req: Request) => {
     const creditUsed = Number((order as Record<string, unknown>).זיכוי_בשימוש ?? 0);
     if (!inSingleLineMode && creditUsed > 0) {
       // Raw CRM credit amount — same units as item prices (no toNet).
-      incomeLines.push({ description: 'זיכוי לקוחה', quantity: 1, price: -creditUsed, vatType: 1 });
+      incomeLines.push({ description: 'זיכוי לקוחה', quantity: 1, price: -creditUsed, vatType: lineVatType });
     }
 
     // ── Reconcile line sum to crmDisplayedCents ───────────────────────────
@@ -509,7 +523,7 @@ serve(async (req: Request) => {
         description: 'עיגול',
         quantity: 1,
         price: correctionCents / 100,
-        vatType: 1,
+        vatType: lineVatType,
       });
     }
 
@@ -531,7 +545,7 @@ serve(async (req: Request) => {
     const paymentAmount = finalPayableCents / 100;
     const mismatchCents = finalGrossCents - finalPayableCents;
     const totalCorrectionGrossCents = correctionCents !== 0
-      ? morningGrossCents([{ description: 'עיגול', quantity: 1, price: correctionCents / 100, vatType: 1 }])
+      ? morningGrossCents([{ description: 'עיגול', quantity: 1, price: correctionCents / 100, vatType: lineVatType }])
       : 0;
 
     // Per-line snapshot for the debug log (informational only).
@@ -627,7 +641,7 @@ serve(async (req: Request) => {
     // (JSON.stringify with indent) was getting split by Supabase's Logflare
     // pipeline so the dashboard search "[invoice-debug]" missed everything
     // after the first line. No null/2 pretty-print below.
-    console.log('[invoice-debug] VERSION: business-vat-net-gross-satmar-guard-v20');
+    console.log('[invoice-debug] VERSION: business-vat-taxable-vattype-fix-v21');
     console.log('[invoice-debug] order:', order.מספר_הזמנה, '| document type:', documentType, '| morningType:', morningDocType);
     console.log('[invoice-debug] client:', JSON.stringify({
       id: order.לקוח_id,
@@ -671,14 +685,13 @@ serve(async (req: Request) => {
       date: new Date().toISOString().slice(0, 10),
       lang: 'he',
       currency: 'ILS',
-      // documentBody.vatType = isBusiness ? 1 : 0 (restored from pre-48a811a1
-      // — the form that issued invoices 60057..60073 successfully).
-      //   • Business (vatType:1): line.price is pre-VAT; Morning ADDS 18%.
-      //   • Retail   (vatType:0): line.price is VAT-INCLUSIVE; taken as-is.
-      // Customer type does NOT change the final invoice total (paymentAmount
-      // is always crmDisplayedTotal); it only changes how Morning interprets
-      // line prices.
-      vatType: isBusiness ? 1 : 0,
+      // DocumentVatType.DEFAULT (0) — the document is taxable per the
+      // business' VAT registration. It must NOT be 1 (DocumentVatType.EXEMPT
+      // = whole document VAT-free), which is what previously zeroed the VAT
+      // on business invoices. Per-line `vatType` (lineVatType) decides each
+      // line: business → 0 (DEFAULT, VAT added on net), private/Satmar → 1
+      // (INCLUDED, VAT extracted from gross, total unchanged).
+      vatType: 0,
       client: {
         name: `${customer.שם_פרטי} ${customer.שם_משפחה}`,
         ...(customer.אימייל ? { emails: [customer.אימייל] } : {}),
@@ -1081,7 +1094,7 @@ serve(async (req: Request) => {
             description: 'סך הכל הזמנה',
             quantity: 1,
             price: fallbackLineCents / 100,
-            vatType: 1,
+            vatType: lineVatType,
           },
         ],
         // Keep documentBody.payment as-is. Same payment object (same type,
