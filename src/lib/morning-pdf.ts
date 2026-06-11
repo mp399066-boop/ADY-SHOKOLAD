@@ -136,9 +136,11 @@ export async function fetchMorningInvoicePdf(
     throw e;
   }
 
-  const pdfRes = await fetch(parsed.toString(), {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  // The url.origin/he link from GET /documents/{id} is a *signed* download URL
+  // — auth is carried in its query token. Sending an extra Authorization header
+  // makes Morning serve an HTML viewer page instead of the PDF bytes, so we
+  // fetch it WITHOUT the Bearer header.
+  const pdfRes = await fetch(parsed.toString());
 
   // Safe diagnostic on the actual PDF fetch (no signed URLs / query params).
   const contentType = pdfRes.headers.get('content-type') ?? 'none';
