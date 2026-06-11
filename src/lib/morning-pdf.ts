@@ -107,22 +107,34 @@ export async function fetchMorningInvoicePdf(
   const doc = await docRes.json();
   const downloadUrl: string | undefined = doc?.url?.origin ?? doc?.url?.he;
   // Safe diagnostic (no secrets/signed URLs/query params) — pinpoints why the
-  // download URL is missing/rejected before the PDF fetch.
-  {
-    const urlField = doc?.url?.origin ? 'url.origin' : doc?.url?.he ? 'url.he' : 'none';
-    let host = 'none';
-    if (downloadUrl) { try { host = new URL(downloadUrl).hostname; } catch { host = 'unparseable'; } }
-    console.log('[invoice-pdf] doc lookup',
-      '| status:', docRes.status,
-      '| docKeys:', JSON.stringify(Object.keys(doc ?? {})),
-      '| urlKeys:', JSON.stringify(Object.keys(doc?.url ?? {})),
-      '| chosenField:', urlField,
-      '| host:', host,
-    );
-  }
-  if (!downloadUrl) throw new Error('תגובת מורנינג אינה כוללת קישור הורדה למסמך');
+  // download URL is missing/rejected before the PDF fetch. Attached to any
+  // error thrown below so the route can surface it in the JSON response.
+  const chosenField = doc?.url?.origin ? 'url.origin' : doc?.url?.he ? 'url.he' : 'none';
+  let host = 'none';
+  if (downloadUrl) { try { host = new URL(downloadUrl).hostname; } catch { host = 'unparseable'; } }
+  const diag = {
+    status: docRes.status,
+    docKeys: Object.keys(doc ?? {}),
+    urlKeys: Object.keys(doc?.url ?? {}),
+    chosenField,
+    host,
+  };
+  console.error('[invoice-pdf] doc lookup', JSON.stringify(diag));
 
-  const parsed = assertMorningHost(downloadUrl);
+  if (!downloadUrl) {
+    const e = new Error('תגובת מורנינג אינה כוללת קישור הורדה למסמך') as Error & { diag?: unknown };
+    e.diag = diag;
+    throw e;
+  }
+
+  let parsed: URL;
+  try {
+    parsed = assertMorningHost(downloadUrl);
+  } catch (err) {
+    const e = (err instanceof Error ? err : new Error(String(err))) as Error & { diag?: unknown };
+    e.diag = diag;
+    throw e;
+  }
 
   const pdfRes = await fetch(parsed.toString(), {
     headers: { Authorization: `Bearer ${token}` },

@@ -73,11 +73,14 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     console.error('[invoice-pdf] PDF fetch failed:', err);
     const m = err instanceof Error ? err.message : String(err);
     const isConfig = m.includes('אינו מוגדר');
+    // Temporary: safe diagnostic (no secrets/URLs/params) to pinpoint root cause.
+    const diag = (err as { diag?: unknown })?.diag;
     return NextResponse.json(
       {
         error: isConfig
           ? 'שירות מורנינג אינו מוגדר בשרת (חסרים MORNING_API_ID / MORNING_API_SECRET במשתני הסביבה).'
           : 'לא ניתן להפיק כעת קובץ PDF של החשבונית. נסה שוב מאוחר יותר.',
+        ...(diag ? { diag } : {}),
       },
       { status: 502 },
     );
