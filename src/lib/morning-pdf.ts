@@ -139,9 +139,32 @@ export async function fetchMorningInvoicePdf(
   const pdfRes = await fetch(parsed.toString(), {
     headers: { Authorization: `Bearer ${token}` },
   });
+
+  // Safe diagnostic on the actual PDF fetch (no signed URLs / query params).
+  const contentType = pdfRes.headers.get('content-type') ?? 'none';
+  let redirectedHost = 'none';
+  try { redirectedHost = new URL(pdfRes.url).hostname; } catch { /* ignore */ }
+  const fetchDiag = {
+    ...diag,
+    pdfStatus: pdfRes.status,
+    contentType,
+    redirected: pdfRes.redirected,
+    redirectedHost,
+  };
+  console.error('[invoice-pdf] pdf fetch', JSON.stringify(fetchDiag));
+
   if (!pdfRes.ok) {
-    const body = await pdfRes.text().catch(() => '');
-    throw new Error(`Morning PDF download failed ${pdfRes.status}: ${body.slice(0, 200)}`);
+    const e = new Error(`Morning PDF download failed ${pdfRes.status}`) as Error & { diag?: unknown };
+    e.diag = fetchDiag;
+    throw e;
+  }
+  // Morning's url.origin/he may resolve to an HTML viewer page rather than the
+  // PDF bytes. Treat a non-PDF content-type as a failure so it surfaces in the
+  // diagnostic instead of streaming an HTML "PDF" the browser can't open.
+  if (!contentType.toLowerCase().includes('pdf')) {
+    const e = new Error(`Morning download returned non-PDF content-type: ${contentType}`) as Error & { diag?: unknown };
+    e.diag = fetchDiag;
+    throw e;
   }
 
   const buffer = Buffer.from(await pdfRes.arrayBuffer());
