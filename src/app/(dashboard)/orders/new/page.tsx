@@ -166,6 +166,10 @@ export default function NewOrderPage() {
   const searchParams = useSearchParams();
   const draftIdParam = searchParams.get('draft');
   const draftOrderIdRef = useRef<string | null>(draftIdParam);
+  // Prefill support — when opened from a customer profile (?customerId=…) on a
+  // fresh (non-draft) order, the form preselects that customer. Ignored while
+  // loading a draft so the draft's own customer is never overwritten.
+  const customerIdParam = searchParams.get('customerId');
 
   // Apply Phase-2 safe defaults once, on a fresh order only. Never overrides a
   // draft being loaded (its own prefill owns these fields) nor a value the user
@@ -215,6 +219,13 @@ export default function NewOrderPage() {
       ? fetch(`/api/orders/${draftIdParam}`).then(r => r.json())
       : Promise.resolve(null);
 
+    // Fetch the linked customer directly so it's guaranteed available even if it
+    // falls outside the first page of the customer list (limit=200). Skipped when
+    // loading a draft — the draft owns its customer.
+    const linkedCustomerFetch = (customerIdParam && !draftIdParam)
+      ? fetch(`/api/customers/${customerIdParam}`).then(r => r.json()).catch(() => null)
+      : Promise.resolve(null);
+
     Promise.all([
       fetch('/api/customers?limit=200').then(r => r.json()),
       fetch('/api/products?active=true').then(r => r.json()),
@@ -222,15 +233,30 @@ export default function NewOrderPage() {
       fetch('/api/packages').then(r => r.json()),
       fetch('/api/prices').then(r => r.json()),
       draftFetch,
-    ]).then(([c, p, pf, pkg, prices, draftResp]) => {
+      linkedCustomerFetch,
+    ]).then(([c, p, pf, pkg, prices, draftResp, linkedCustomerResp]) => {
       const allProducts = p.data || [];
-      setCustomers(c.data || []);
+      let customerList: Customer[] = c.data || [];
+      // Merge the linked customer in if the list page didn't already include it.
+      const linkedCustomer = linkedCustomerResp?.data as Customer | undefined;
+      if (linkedCustomer?.id && !customerList.some(x => x.id === linkedCustomer.id)) {
+        customerList = [linkedCustomer, ...customerList];
+      }
+      setCustomers(customerList);
       setProducts(allProducts);
       setPetitFourTypes(pf.data || []);
       setPackages(pkg.data || []);
       setPriceList(prices.data || []);
 
-      // Pre-fill form from draft order
+      // Pre-fill form from draft order.
+      // NOTE: draftOrderIdRef is seeded from the ?draft= URL param at init, so
+      // if that order is no longer a draft (e.g. it was already finalized to
+      // 'חדשה'), submit would still POST to finalize-draft and the server would
+      // reject with "הזמנה זו אינה טיוטה". Clear the ref in that case so the
+      // form falls back to create-full (a fresh order) instead.
+      if (draftResp?.data && draftResp.data.סטטוס_הזמנה !== 'טיוטה') {
+        draftOrderIdRef.current = null;
+      }
       if (draftResp?.data && draftResp.data.סטטוס_הזמנה === 'טיוטה') {
         const o = draftResp.data;
         draftOrderIdRef.current = o.id;
@@ -309,6 +335,24 @@ export default function NewOrderPage() {
             };
           });
         setCustomItems(customItemRows);
+      }
+
+      // Prefill from a customer profile link on a fresh (non-draft) order. The
+      // recipient autofill effect fills name/phone/address from this customer
+      // once selectedCustomer + customers are set; here we only set the customer
+      // selection plus the discount/barter defaults that handleCustomerChange
+      // would normally apply. linkedCustomer is only populated when there's no
+      // draft, so this never overwrites a draft being loaded.
+      if (linkedCustomer?.id) {
+        setSelectedCustomer(linkedCustomer.id);
+        const pct = Number(linkedCustomer.אחוז_הנחה ?? 0);
+        if (pct > 0) {
+          setDiscountType('אחוז');
+          setDiscountValue(pct);
+        }
+        if (linkedCustomer.סוג_לקוח === 'בארטר') {
+          setPaymentStatus('בארטר');
+        }
       }
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps

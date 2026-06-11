@@ -561,7 +561,7 @@ export default function CustomerDetailPage() {
                 מייל
               </a>
             )}
-            <Link href="/orders/new">
+            <Link href={`/orders/new?customerId=${id}`}>
               <button
                 className="h-9 px-4 rounded-lg flex items-center gap-1.5 font-medium transition-all"
                 style={{ backgroundColor: '#8B5E34', color: '#fff', fontSize: '13px' }}
@@ -814,7 +814,7 @@ export default function CustomerDetailPage() {
               title="הזמנות אחרונות"
               subtitle={`${customer.הזמנות.length} הזמנות בסך הכל`}
               action={
-                <Link href="/orders/new">
+                <Link href={`/orders/new?customerId=${id}`}>
                   <Button size="sm" variant="outline">
                     <IconPlus className="w-3.5 h-3.5" />
                     הזמנה
@@ -828,7 +828,7 @@ export default function CustomerDetailPage() {
                 title="אין הזמנות עדיין"
                 text="לחיצה על 'הזמנה' תפתח הזמנה חדשה עבור לקוח זה"
                 action={
-                  <Link href="/orders/new">
+                  <Link href={`/orders/new?customerId=${id}`}>
                     <Button size="sm">
                       <IconPlus className="w-3.5 h-3.5" />
                       הזמנה חדשה
