@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { StatusBadge, UrgentBadge } from '@/components/ui/StatusBadge';
 import { PageLoading } from '@/components/ui/LoadingSpinner';
 import { Combobox } from '@/components/ui/Combobox';
+import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { normalizeSearchText } from '@/lib/normalize';
 import { getOrderItemContentKey } from '@/lib/order-items-key';
 import { sumPetitFours, getCapacityInfo } from '@/lib/packageCapacity';
@@ -636,6 +637,34 @@ export default function OrderDetailPage() {
     }
   };
 
+  // ── Delete order ─────────────────────────────────────────────────────────
+  // Safe delete from the detail page. Reuses the existing DELETE
+  // /api/orders/[id] endpoint, which enforces the invoice guard server-side
+  // (a 409 with a Hebrew message when a document was already issued). The
+  // confirm modal shows the order number; on success we redirect to /orders.
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDeleteOrder = async () => {
+    if (!order) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/orders/${order.id}`, { method: 'DELETE' });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(json.error || 'שגיאה במחיקת ההזמנה');
+        return;
+      }
+      toast.success('ההזמנה נמחקה');
+      setShowDeleteConfirm(false);
+      router.push('/orders');
+    } catch {
+      toast.error('שגיאה ברשת — לא ניתן למחוק את ההזמנה');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   useEffect(() => { loadOrder(); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Safe debug: confirm exactly which static PayPlus link is baked into THIS
@@ -1220,7 +1249,7 @@ export default function OrderDetailPage() {
               <p className="text-[10px] mt-1" style={{ color: '#9B7A5A' }}>כולל מע״מ</p>
             )}
           </div>
-          <div className="self-center">
+          <div className="self-center flex items-center gap-2">
             {order.סטטוס_הזמנה === 'טיוטה' ? (
               <Link
                 href={`/orders/new?draft=${order.id}`}
@@ -1239,6 +1268,17 @@ export default function OrderDetailPage() {
                 <Icon name="edit" className="w-3.5 h-3.5" /> עריכת הזמנה
               </button>
             )}
+            <button
+              type="button"
+              onClick={() => setShowDeleteConfirm(true)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium rounded-full transition-colors hover:bg-rose-50"
+              style={{ border: '1px solid #E7B7B0', color: '#B91C1C' }}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" aria-hidden>
+                <path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13M10 11v6M14 11v6" />
+              </svg>
+              מחיקת הזמנה
+            </button>
           </div>
         </div>
       </header>
@@ -2009,6 +2049,21 @@ export default function OrderDetailPage() {
           </Card>
         </aside>
       </div>
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          Delete-order confirm — the order number is spelled out so there is no
+          ambiguity about which order is being removed. The invoice guard is
+          enforced server-side; a 409 surfaces here as a toast.
+          ══════════════════════════════════════════════════════════════════════ */}
+      <ConfirmModal
+        open={showDeleteConfirm}
+        title="מחיקת הזמנה"
+        description={`האם למחוק את ההזמנה ${order.מספר_הזמנה}? פעולה זו אינה ניתנת לביטול.`}
+        confirmLabel="מחק הזמנה"
+        loading={deleting}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={handleDeleteOrder}
+      />
 
       {/* ══════════════════════════════════════════════════════════════════════
           Edit Modal
