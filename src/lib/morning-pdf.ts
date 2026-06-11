@@ -106,6 +106,20 @@ export async function fetchMorningInvoicePdf(
   }
   const doc = await docRes.json();
   const downloadUrl: string | undefined = doc?.url?.origin ?? doc?.url?.he;
+  // Safe diagnostic (no secrets/signed URLs/query params) — pinpoints why the
+  // download URL is missing/rejected before the PDF fetch.
+  {
+    const urlField = doc?.url?.origin ? 'url.origin' : doc?.url?.he ? 'url.he' : 'none';
+    let host = 'none';
+    if (downloadUrl) { try { host = new URL(downloadUrl).hostname; } catch { host = 'unparseable'; } }
+    console.log('[invoice-pdf] doc lookup',
+      '| status:', docRes.status,
+      '| docKeys:', JSON.stringify(Object.keys(doc ?? {})),
+      '| urlKeys:', JSON.stringify(Object.keys(doc?.url ?? {})),
+      '| chosenField:', urlField,
+      '| host:', host,
+    );
+  }
   if (!downloadUrl) throw new Error('תגובת מורנינג אינה כוללת קישור הורדה למסמך');
 
   const parsed = assertMorningHost(downloadUrl);
