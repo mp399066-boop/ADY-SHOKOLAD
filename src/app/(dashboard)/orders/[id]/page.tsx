@@ -13,6 +13,7 @@ import { normalizeSearchText } from '@/lib/normalize';
 import { getOrderItemContentKey } from '@/lib/order-items-key';
 import { sumPetitFours, getCapacityInfo } from '@/lib/packageCapacity';
 import { formatDate, formatCurrency } from '@/lib/utils';
+import { downloadOrderSummaryPng } from '@/lib/order-summary-png';
 import toast from 'react-hot-toast';
 import type { Order, OrderItem, Customer, Product, Package, PetitFourType, Employee, WorkTask } from '@/types/database';
 import { DeliveryTypeCards } from '@/components/orders/DeliveryTypeCards';
@@ -615,6 +616,78 @@ export default function OrderDetailPage() {
     // the PDF as an attachment, so the browser handles the download itself.
     // (No fetch/blob: that path failed behind content-filtering proxies.)
     window.location.href = `/api/orders/${id}/invoice.pdf`;
+  };
+
+  // ── Download order summary as a WhatsApp-ready PNG ─────────────────────────
+  // Generated entirely in the browser (no Supabase write, no new dependency).
+  // Uses only data already shown on this page; empty fields are skipped.
+  const [downloadingSummary, setDownloadingSummary] = useState(false);
+
+  const handleDownloadSummary = async () => {
+    if (!order) return;
+    setDownloadingSummary(true);
+    try {
+      const custName = `${order.לקוחות?.שם_פרטי || ''} ${order.לקוחות?.שם_משפחה || ''}`.trim();
+      // Mirror the page's VAT-inclusive headline total for business customers.
+      const VAT_RATE = 0.18;
+      const isBiz =
+        (order.סוג_הזמנה as string | undefined) !== 'סאטמר' &&
+        (order.לקוחות?.סוג_לקוח === 'עסקי' ||
+         order.לקוחות?.סוג_לקוח === 'עסקי - קבוע' ||
+         order.לקוחות?.סוג_לקוח === 'עסקי - כמות');
+      const baseTotalForImg = order.סך_הכל_לתשלום || 0;
+      const totalForImg = isBiz ? +(baseTotalForImg * (1 + VAT_RATE)).toFixed(2) : baseTotalForImg;
+      const isDelivery = order.סוג_אספקה === 'משלוח';
+      const address = isDelivery
+        ? [order.כתובת_מקבל_ההזמנה, order.עיר].filter(Boolean).join(', ')
+        : '';
+
+      // Item display name — mirrors the on-page items list logic.
+      const items = (order.מוצרים_בהזמנה || []).map(item => {
+        const isPackage = item.סוג_שורה === 'מארז';
+        const isCustom = item.סוג_שורה === 'מוצר_ידני' || item.סוג_שורה === 'תוספת_תשלום';
+        let name: string;
+        if (isPackage) {
+          const pkg = packages.find(p => p.גודל_מארז === item.גודל_מארז);
+          const base = pkg?.שם_מארז || 'מארז פטיפורים';
+          const size = item.גודל_מארז ?? pkg?.גודל_מארז ?? '?';
+          name = `${base} · ${size} יח׳`;
+        } else if (isCustom) {
+          name = item.שם_פריט_מותאם || 'פריט ידני';
+        } else {
+          const linked = (item as OrderItem & { מוצרים_למכירה?: { שם_מוצר: string } }).מוצרים_למכירה?.שם_מוצר;
+          const note = item.הערות_לשורה ?? '';
+          const wcMatch = note.match(/^מוצר מהאתר:\s*(.+?)(?:\s*\(SKU\b|$)/);
+          name = linked || (wcMatch ? wcMatch[1].trim() : 'מוצר לא מזוהה');
+        }
+        const sub = (item.בחירת_פטיפורים_בהזמנה || [])
+          .map(sel => `${sel.סוגי_פטיפורים?.שם_פטיפור || ''} ×${sel.כמות}`.trim())
+          .filter(Boolean);
+        return { name, qty: item.כמות, lineTotal: item.סהכ ?? 0, sub };
+      });
+
+      await downloadOrderSummaryPng({
+        orderNumber: order.מספר_הזמנה,
+        customerName: custName || undefined,
+        deliveryType: order.סוג_אספקה || undefined,
+        deliveryDate: order.תאריך_אספקה ? formatDate(order.תאריך_אספקה) : undefined,
+        deliveryTime: order.שעת_אספקה || undefined,
+        deliveryFlexible: order.delivery_time_flexible ?? false,
+        address: address || undefined,
+        items,
+        notes: order.הערות_להזמנה || undefined,
+        discount: (order.סכום_הנחה || 0) > 0 ? order.סכום_הנחה ?? undefined : undefined,
+        discountLabel: order.סוג_הנחה === 'אחוז' ? `הנחה (${order.ערך_הנחה}%)` : 'הנחה',
+        deliveryFee: (order.דמי_משלוח || 0) > 0 ? order.דמי_משלוח ?? undefined : undefined,
+        total: totalForImg,
+      });
+      toast.success('סיכום ההזמנה הורד');
+    } catch (err) {
+      console.error('[order-summary-png] failed:', err);
+      toast.error('שגיאה ביצירת סיכום ההזמנה');
+    } finally {
+      setDownloadingSummary(false);
+    }
   };
 
   // ── Delete order ─────────────────────────────────────────────────────────
@@ -1229,7 +1302,7 @@ export default function OrderDetailPage() {
               <p className="text-[10px] mt-1" style={{ color: '#9B7A5A' }}>כולל מע״מ</p>
             )}
           </div>
-          <div className="self-center flex items-center gap-2">
+          <div className="self-center flex flex-wrap items-center justify-end gap-2">
             {order.סטטוס_הזמנה === 'טיוטה' ? (
               <Link
                 href={`/orders/new?draft=${order.id}`}
@@ -1248,6 +1321,17 @@ export default function OrderDetailPage() {
                 <Icon name="edit" className="w-3.5 h-3.5" /> עריכת הזמנה
               </button>
             )}
+            <button
+              type="button"
+              onClick={handleDownloadSummary}
+              disabled={downloadingSummary}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium rounded-full transition-colors hover:bg-amber-50 disabled:opacity-60"
+              style={{ border: '1px solid #C6A77D', color: '#8B5E34' }}
+              title="הורדת סיכום הזמנה כתמונה לשיתוף בוואטסאפ"
+            >
+              <Icon name="download" className="w-3.5 h-3.5" />
+              {downloadingSummary ? 'מכין...' : 'הורדת סיכום הזמנה'}
+            </button>
             <button
               type="button"
               onClick={() => setShowDeleteConfirm(true)}
