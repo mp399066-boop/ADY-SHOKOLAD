@@ -627,64 +627,22 @@ export default function OrderDetailPage() {
     if (!order) return;
     setDownloadingSummary(true);
     try {
-      const custName = `${order.לקוחות?.שם_פרטי || ''} ${order.לקוחות?.שם_משפחה || ''}`.trim();
-      // Mirror the page's VAT-inclusive headline total for business customers.
-      const VAT_RATE = 0.18;
-      const isBiz =
-        (order.סוג_הזמנה as string | undefined) !== 'סאטמר' &&
-        (order.לקוחות?.סוג_לקוח === 'עסקי' ||
-         order.לקוחות?.סוג_לקוח === 'עסקי - קבוע' ||
-         order.לקוחות?.סוג_לקוח === 'עסקי - כמות');
-      const baseTotalForImg = order.סך_הכל_לתשלום || 0;
-      const totalForImg = isBiz ? +(baseTotalForImg * (1 + VAT_RATE)).toFixed(2) : baseTotalForImg;
-      const isDelivery = order.סוג_אספקה === 'משלוח';
-      const address = isDelivery
-        ? [order.כתובת_מקבל_ההזמנה, order.עיר].filter(Boolean).join(', ')
-        : '';
-
-      // Item display name — mirrors the on-page items list logic.
-      const items = (order.מוצרים_בהזמנה || []).map(item => {
-        const isPackage = item.סוג_שורה === 'מארז';
-        const isCustom = item.סוג_שורה === 'מוצר_ידני' || item.סוג_שורה === 'תוספת_תשלום';
-        let name: string;
-        if (isPackage) {
-          const pkg = packages.find(p => p.גודל_מארז === item.גודל_מארז);
-          const base = pkg?.שם_מארז || 'מארז פטיפורים';
-          const size = item.גודל_מארז ?? pkg?.גודל_מארז ?? '?';
-          name = `${base} · ${size} יח׳`;
-        } else if (isCustom) {
-          name = item.שם_פריט_מותאם || 'פריט ידני';
-        } else {
-          const linked = (item as OrderItem & { מוצרים_למכירה?: { שם_מוצר: string } }).מוצרים_למכירה?.שם_מוצר;
-          const note = item.הערות_לשורה ?? '';
-          const wcMatch = note.match(/^מוצר מהאתר:\s*(.+?)(?:\s*\(SKU\b|$)/);
-          name = linked || (wcMatch ? wcMatch[1].trim() : 'מוצר לא מזוהה');
-        }
-        const sub = (item.בחירת_פטיפורים_בהזמנה || [])
-          .map(sel => `${sel.סוגי_פטיפורים?.שם_פטיפור || ''} ×${sel.כמות}`.trim())
-          .filter(Boolean);
-        return { name, qty: item.כמות, lineTotal: item.סהכ ?? 0, sub };
-      });
-
+      // Fetch the exact email-summary HTML (same template the customer email
+      // uses) and rasterise it to a PNG in the browser — so the WhatsApp image
+      // looks identical to the email.
+      const res = await fetch(`/api/orders/${order.id}/summary-image`);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.html) {
+        throw new Error(json.error || 'שגיאה בהכנת הסיכום');
+      }
       await downloadOrderSummaryPng({
-        orderNumber: order.מספר_הזמנה,
-        customerName: custName || undefined,
-        deliveryType: order.סוג_אספקה || undefined,
-        deliveryDate: order.תאריך_אספקה ? formatDate(order.תאריך_אספקה) : undefined,
-        deliveryTime: order.שעת_אספקה || undefined,
-        deliveryFlexible: order.delivery_time_flexible ?? false,
-        address: address || undefined,
-        items,
-        notes: order.הערות_להזמנה || undefined,
-        discount: (order.סכום_הנחה || 0) > 0 ? order.סכום_הנחה ?? undefined : undefined,
-        discountLabel: order.סוג_הנחה === 'אחוז' ? `הנחה (${order.ערך_הנחה}%)` : 'הנחה',
-        deliveryFee: (order.דמי_משלוח || 0) > 0 ? order.דמי_משלוח ?? undefined : undefined,
-        total: totalForImg,
+        html: json.html as string,
+        orderNumber: (json.orderNumber as string) || order.מספר_הזמנה,
       });
       toast.success('סיכום ההזמנה הורד');
     } catch (err) {
       console.error('[order-summary-png] failed:', err);
-      toast.error('שגיאה ביצירת סיכום ההזמנה');
+      toast.error(err instanceof Error ? err.message : 'שגיאה ביצירת סיכום ההזמנה');
     } finally {
       setDownloadingSummary(false);
     }
