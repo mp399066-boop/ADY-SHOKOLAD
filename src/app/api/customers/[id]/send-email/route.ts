@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { logActivity, userActor } from '@/lib/activity-log';
-import sgMail from '@sendgrid/mail';
+import { sendEmail } from '@/lib/email-transport';
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const auth = await requireManagementUser();
@@ -16,28 +16,27 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (!content?.trim()) return NextResponse.json({ error: 'תוכן חובה' }, { status: 400 });
   if (!to?.trim()) return NextResponse.json({ error: 'כתובת נמען חובה' }, { status: 400 });
 
-  const apiKey = process.env.SENDGRID_API_KEY;
   const from = process.env.FROM_EMAIL;
 
   let status = 'נשלח';
   let errorMsg: string | undefined;
   let messageId: string | undefined;
 
-  if (apiKey && from) {
+  if (process.env.RESEND_API_KEY && from) {
     try {
-      sgMail.setApiKey(apiKey);
       // Customer-facing path — replies route to the admin inbox.
       const replyTo = 'adi548419927@gmail.com';
       console.log('[email-replyto] path: customers-send-email | replyTo:', replyTo);
-      const [response] = await sgMail.send({
+      const { messageId: mid } = await sendEmail({
         to,
         from,
+        fromName: 'עדי תכשיט שוקולד',
         subject: subject || 'הודעה מעדי תכשיט שוקולד',
         html: `<html dir="rtl"><body style="font-family:Arial,Helvetica,sans-serif;direction:rtl;text-align:right;padding:24px;color:#2B1A10">${content.replace(/\n/g, '<br>')}<br><br><p style="color:#9B7A5A;font-size:12px;border-top:1px solid #eee;padding-top:12px">עדי תכשיט שוקולד | adi548419927@gmail.com</p></body></html>`,
         text: `${content}\n\nעדי תכשיט שוקולד | adi548419927@gmail.com`,
         replyTo,
       });
-      messageId = response?.headers?.['x-message-id'] as string | undefined;
+      messageId = mid ?? undefined;
     } catch (err) {
       status = 'נכשל';
       errorMsg = err instanceof Error ? err.message : String(err);

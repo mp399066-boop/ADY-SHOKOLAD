@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { logActivity, userActor } from '@/lib/activity-log';
-import sgMail from '@sendgrid/mail';
+import { sendEmail } from '@/lib/email-transport';
 import { randomBytes } from 'crypto';
 import {
   buildCourierWhatsAppMessage,
@@ -131,44 +131,35 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const textContent = buildCourierWhatsAppMessage({ ...details, deliveryUpdateUrl: link });
   const htmlContent = buildCourierDeliveryEmailHtml({ ...details, deliveryUpdateUrl: confirmLink });
 
-  // 7. Send via SendGrid
-  const apiKey = process.env.SENDGRID_API_KEY;
+  // 7. Send via Resend
   const from = process.env.FROM_EMAIL;
 
-  console.log('[send-courier-email] ENV check — SENDGRID_API_KEY:', apiKey ? `set (${apiKey.slice(0, 6)}...)` : 'MISSING');
+  console.log('[send-courier-email] ENV check — RESEND_API_KEY:', process.env.RESEND_API_KEY ? 'set' : 'MISSING');
   console.log('[send-courier-email] ENV check — FROM_EMAIL:', from || 'MISSING');
   console.log('[send-courier-email] to:', courier.אימייל_שליח?.slice(0, 4) + '***', '| subject:', subject);
 
-  if (!apiKey || !from) {
+  if (!process.env.RESEND_API_KEY || !from) {
     console.error('[send-courier-email] aborting — missing ENV vars');
-    return NextResponse.json({ error: 'שירות המייל אינו מוגדר בשרת (חסר SENDGRID_API_KEY או FROM_EMAIL)' }, { status: 503 });
+    return NextResponse.json({ error: 'שירות המייל אינו מוגדר בשרת (חסר RESEND_API_KEY או FROM_EMAIL)' }, { status: 503 });
   }
 
   try {
-    sgMail.setApiKey(apiKey);
     // Employee/staff path — replies go to the staff inbox.
     const replyTo = 'adi8st@gmail.com';
     console.log('[email-replyto] path: send-courier-email | replyTo:', replyTo);
-    const [sgResponse] = await sgMail.send({
+    await sendEmail({
       to:      courier.אימייל_שליח,
       from,
+      fromName: 'עדי תכשיט שוקולד',
       subject,
       html:    htmlContent,
       text:    textContent,
       replyTo,
     });
-    console.log('[send-courier-email] SendGrid response status:', sgResponse.statusCode);
+    console.log('[send-courier-email] sent via Resend');
   } catch (err: unknown) {
-    let msg = err instanceof Error ? err.message : String(err);
-    // SendGrid errors carry a response body with the real reason
-    if (err && typeof err === 'object' && 'response' in err) {
-      const sgErr = err as { response?: { statusCode?: number; body?: unknown } };
-      const body = sgErr.response?.body;
-      console.error('[send-courier-email] SendGrid error:', sgErr.response?.statusCode, JSON.stringify(body));
-      msg += ` | ${JSON.stringify(body)}`;
-    } else {
-      console.error('[send-courier-email] SendGrid error:', msg);
-    }
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[send-courier-email] Resend error:', msg);
     void logActivity({
       actor:        userActor(auth),
       module:       'deliveries',

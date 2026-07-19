@@ -1,4 +1,4 @@
-import sgMail from '@sendgrid/mail';
+import { sendEmail } from '@/lib/email-transport';
 import { createAdminClient } from '@/lib/supabase/server';
 import { getOrderItemContentKey } from '@/lib/order-items-key';
 
@@ -456,9 +456,8 @@ export async function sendOrderEmail(
   orderData?: OrderEmailData,
   context?: EmailContext,
 ): Promise<void> {
-  const apiKey = process.env.SENDGRID_API_KEY;
   const from = process.env.FROM_EMAIL;
-  if (!apiKey || !from) return;
+  if (!process.env.RESEND_API_KEY || !from) return;
 
   // System-control center kill-switch. The admin can pause customer order
   // confirmations from the UI. Skipped runs are logged so the panel shows
@@ -479,8 +478,6 @@ export async function sendOrderEmail(
       return;
     }
   } catch { /* gate is observability — never block the email on a gate-check failure */ }
-
-  sgMail.setApiKey(apiKey);
 
   const subject = orderData
     ? orderData.isUpdate
@@ -511,8 +508,8 @@ export async function sendOrderEmail(
     // route to the admin inbox monitored by the owner.
     const replyTo = 'adi548419927@gmail.com';
     console.log('[email-replyto] path: sendOrderEmail | replyTo:', replyTo);
-    const [response] = await sgMail.send({ to, from, subject, html, text, replyTo });
-    messageId = response?.headers?.['x-message-id'] as string | undefined;
+    const { messageId: mid } = await sendEmail({ to, from, fromName: BUSINESS, subject, html, text, replyTo });
+    messageId = mid ?? undefined;
   } catch (err) {
     sendError = err instanceof Error ? err.message : String(err);
     throw err;
@@ -650,11 +647,8 @@ export async function sendInvoiceEmail(
   customerName: string,
   ctx: InvoiceEmailContext,
 ): Promise<void> {
-  const apiKey = process.env.SENDGRID_API_KEY;
   const from = process.env.FROM_EMAIL;
-  if (!apiKey || !from) throw new Error('שירות המייל אינו מוגדר במערכת');
-
-  sgMail.setApiKey(apiKey);
+  if (!process.env.RESEND_API_KEY || !from) throw new Error('שירות המייל אינו מוגדר במערכת');
 
   const docLabel = ctx.documentLabel || 'חשבונית';
   const subject = ctx.invoiceNumber
@@ -679,15 +673,10 @@ export async function sendInvoiceEmail(
     const replyTo = EMAIL_ADDR;
     console.log('[email-replyto] path: sendInvoiceEmail | replyTo:', replyTo, '| pdf:', !!ctx.pdfAttachment);
     const attachments = ctx.pdfAttachment
-      ? [{
-          content:     ctx.pdfAttachment.base64,
-          filename:    ctx.pdfAttachment.filename,
-          type:        'application/pdf',
-          disposition: 'attachment',
-        }]
+      ? [{ filename: ctx.pdfAttachment.filename, base64: ctx.pdfAttachment.base64 }]
       : undefined;
-    const [response] = await sgMail.send({ to, from, subject, html, text, replyTo, ...(attachments ? { attachments } : {}) });
-    messageId = response?.headers?.['x-message-id'] as string | undefined;
+    const { messageId: mid } = await sendEmail({ to, from, fromName: BUSINESS, subject, html, text, replyTo, ...(attachments ? { attachments } : {}) });
+    messageId = mid ?? undefined;
   } catch (err) {
     sendError = err instanceof Error ? err.message : String(err);
     throw err;

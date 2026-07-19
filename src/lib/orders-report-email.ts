@@ -2,7 +2,7 @@
 // Sending the employee email creates signed action links; preview/download
 // remain read-only and never create invoices or change statuses.
 
-import sgMail from '@sendgrid/mail';
+import { sendEmail } from '@/lib/email-transport';
 import { createAdminClient } from '@/lib/supabase/server';
 import { createEmployeeReportActionLinks, type EmployeeReportActionLinks } from '@/lib/employee-report-actions';
 
@@ -497,19 +497,18 @@ export async function sendOrdersReport(
     includeEmployeeActions: true,
   });
 
-  const apiKey = process.env.SENDGRID_API_KEY;
   const from = process.env.FROM_EMAIL;
-  if (!apiKey || !from) {
-    throw new Error('שירות המייל אינו מוגדר בשרת (חסר SENDGRID_API_KEY או FROM_EMAIL)');
+  if (!process.env.RESEND_API_KEY || !from) {
+    throw new Error('שירות המייל אינו מוגדר בשרת (חסר RESEND_API_KEY או FROM_EMAIL)');
   }
 
-  sgMail.setApiKey(apiKey);
   // Employee daily-orders report — replies go to the staff inbox.
   const replyTo = 'adi8st@gmail.com';
   console.log('[email-replyto] path: sendOrdersReport | replyTo:', replyTo);
-  await sgMail.send({
+  await sendEmail({
     to: recipientEmail,
-    from: { email: from, name: BUSINESS },
+    from,
+    fromName: BUSINESS,
     subject,
     html,
     replyTo,

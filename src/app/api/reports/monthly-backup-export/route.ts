@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
-import sgMail from '@sendgrid/mail';
+import { sendEmail } from '@/lib/email-transport';
 import * as XLSX from 'xlsx';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser } from '@/lib/auth/requireAuthorizedUser';
@@ -335,10 +335,9 @@ export async function GET(req: NextRequest) {
   const xlsxBase64 = Buffer.from(xlsxBuffer).toString('base64');
 
   // ── Build email + send ────────────────────────────────────────────────
-  const apiKey = process.env.SENDGRID_API_KEY;
   const from   = process.env.FROM_EMAIL;
-  if (!apiKey || !from) {
-    console.error('[backup-export] SENDGRID_API_KEY or FROM_EMAIL not set');
+  if (!process.env.RESEND_API_KEY || !from) {
+    console.error('[backup-export] RESEND_API_KEY or FROM_EMAIL not set');
     return NextResponse.json({ error: 'email service not configured' }, { status: 500 });
   }
 
@@ -369,23 +368,18 @@ export async function GET(req: NextRequest) {
   </div>
 </body></html>`;
 
-  sgMail.setApiKey(apiKey);
   const replyTo = 'adi548419927@gmail.com';
   console.log('[email-replyto] path: monthly-backup-export | replyTo:', replyTo);
 
   try {
-    await sgMail.send({
+    await sendEmail({
       to: recipient,
       from,
+      fromName: 'עדי תכשיט שוקולד',
       subject,
       html,
       replyTo,
-      attachments: [{
-        content:     xlsxBase64,
-        filename:    fileName,
-        type:        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        disposition: 'attachment',
-      }],
+      attachments: [{ filename: fileName, base64: xlsxBase64 }],
     });
     console.log(`[backup-export] success | month: ${year}-${mmStr} | orders: ${orders.length} | items: ${items.length} | customers: ${customers.length} | payments: ${payments.length} | deliveries: ${deliveries.length} | invoices: ${invoices.length} | recipient: ${recipientLogSafe}`);
     return NextResponse.json({

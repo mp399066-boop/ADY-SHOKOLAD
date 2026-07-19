@@ -1,4 +1,4 @@
-import sgMail from '@sendgrid/mail';
+import { sendEmail } from '@/lib/email-transport';
 import { createAdminClient } from '@/lib/supabase/server';
 import { logActivity, SYSTEM_ACTOR } from '@/lib/activity-log';
 
@@ -342,10 +342,9 @@ export interface AdminAlertOptions {
 // Public entry point — fetches everything and sends. Idempotent at the
 // caller's discretion (we don't dedupe — caller decides when to invoke).
 export async function sendAdminNewOrderAlert(orderId: string, options: AdminAlertOptions = {}): Promise<void> {
-  const apiKey = process.env.SENDGRID_API_KEY;
   const from = process.env.FROM_EMAIL;
-  if (!apiKey || !from) {
-    console.warn('[admin-alert] SENDGRID_API_KEY or FROM_EMAIL missing — skipping');
+  if (!process.env.RESEND_API_KEY || !from) {
+    console.warn('[admin-alert] RESEND_API_KEY or FROM_EMAIL missing — skipping');
     return;
   }
 
@@ -463,14 +462,14 @@ export async function sendAdminNewOrderAlert(orderId: string, options: AdminAler
     ? `🛍️ הזמנה חדשה מהאתר #${args.orderNumber} — ${customerName}`
     : `הזמנה חדשה ${args.orderNumber} — ${customerName}`;
 
-  sgMail.setApiKey(apiKey);
   try {
     // Internal admin/staff alert — replies route to the staff inbox.
     const replyTo = 'adi8st@gmail.com';
     console.log('[email-replyto] path: sendAdminNewOrderAlert | replyTo:', replyTo);
-    await sgMail.send({
+    await sendEmail({
       to: ADMIN_TO,
       from,
+      fromName: BUSINESS,
       subject,
       text: buildText(args),
       html: buildHtml(args),
