@@ -806,13 +806,20 @@ export default function CustomerDetailPage() {
           )}
         </Card>
 
-        {/* right: orders */}
+        {/* right: orders — all orders belonging to this customer, sorted
+            newest-first by the API (order by תאריך_יצירה desc, filtered by
+            לקוח_id). Includes historical / completed / archived orders — no
+            status filtering here, so the archive and every other existing
+            screen keep working unchanged since this is a read-only view
+            sourced from the same table. All orders render at once inside a
+            fixed-height scroll container (sticky header) instead of a
+            "show more" click, per user request. */}
         <div className="lg:col-span-2 space-y-6">
           <Card>
             <SectionHeader
               icon={<ICart className="w-4 h-4" />}
-              title="הזמנות אחרונות"
-              subtitle={`${customer.הזמנות.length} הזמנות בסך הכל`}
+              title="הזמנות"
+              subtitle={`${customer.הזמנות.length} הזמנות בסך הכל, כולל הזמנות שהושלמו וארכיון`}
               action={
                 <Link href={`/orders/new?customerId=${id}`}>
                   <Button size="sm" variant="outline">
@@ -837,15 +844,15 @@ export default function CustomerDetailPage() {
                 }
               />
             ) : (
-              <div className="overflow-x-auto -mx-1">
-                <table className="w-full">
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid #F0EAE0' }}>
-                      {['מספר הזמנה', 'תאריך אספקה', 'סכום', 'סטטוס', ''].map(h => (
+              <div className="overflow-x-auto overflow-y-auto -mx-1" style={{ maxHeight: '420px' }}>
+                <table className="w-full border-collapse">
+                  <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
+                    <tr style={{ borderBottom: '1px solid #F0EAE0', backgroundColor: '#fff' }}>
+                      {['מספר הזמנה', 'תאריך', 'סכום', 'סטטוס', ''].map(h => (
                         <th
                           key={h}
                           className="px-3 py-2.5 text-right text-xs font-medium uppercase tracking-wide"
-                          style={{ color: '#8A7664' }}
+                          style={{ color: '#8A7664', backgroundColor: '#fff' }}
                         >
                           {h}
                         </th>
@@ -853,7 +860,7 @@ export default function CustomerDetailPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {customer.הזמנות.slice(0, 8).map(o => (
+                    {customer.הזמנות.map(o => (
                       <tr
                         key={o.id}
                         className="transition-colors cursor-pointer border-b"
@@ -866,7 +873,7 @@ export default function CustomerDetailPage() {
                           {o.מספר_הזמנה}
                         </td>
                         <td className="px-3 py-3 text-xs" style={{ color: '#5C4A38' }}>
-                          {o.תאריך_אספקה ? formatDate(o.תאריך_אספקה) : <span style={{ color: '#C6B8A8' }}>—</span>}
+                          {o.תאריך_אספקה ? formatDate(o.תאריך_אספקה) : formatDate(o.תאריך_יצירה)}
                         </td>
                         <td className="px-3 py-3 font-semibold text-xs" style={{ color: '#3A2A1A' }}>
                           {formatCurrency(o.סך_הכל_לתשלום)}
