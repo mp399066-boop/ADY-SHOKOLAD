@@ -633,6 +633,14 @@ interface FinanceOverviewData {
     year:   FinKpi;
     unpaid: FinKpi;
   };
+  // Shipping fees (דמי משלוח) already excluded from the kpis above, over the
+  // same periods — shown alongside them so the exclusion is visible/checkable.
+  shipping: {
+    today: FinKpi;
+    week:  FinKpi;
+    month: FinKpi;
+    year:  FinKpi;
+  };
   dailyChart:      Array<{ key: string; label: string; amount: number }>;
   monthlyChart:    Array<{ key: string; label: string; amount: number }>;
   byPaymentMethod: Array<{ method: string; count: number; amount: number }>;
@@ -645,7 +653,7 @@ interface FinanceOverviewData {
 // ── Finance sub-components ────────────────────────────────────────────────────
 
 function FinKpiCard({
-  label, amount, count, countLabel, accent, accentBg, onClick,
+  label, amount, count, countLabel, accent, accentBg, onClick, shipping,
 }: {
   label: string;
   amount: number;
@@ -654,6 +662,9 @@ function FinKpiCard({
   accent: string;
   accentBg: string;
   onClick?: () => void;
+  // Shipping fees already excluded from `amount` above — shown as a small
+  // proof line so it's visible (not just claimed) that revenue excludes it.
+  shipping?: number;
 }) {
   const base = (
     <>
@@ -670,6 +681,11 @@ function FinKpiCard({
             {count}
           </span>
           {' '}{countLabel ?? 'הזמנות'}
+        </p>
+      )}
+      {typeof shipping === 'number' && shipping > 0 && (
+        <p className="text-[9px] font-medium tabular-nums" style={{ color: C.textMuted }}>
+          לא כולל {formatCurrency(shipping)} משלוח
         </p>
       )}
     </>
@@ -974,22 +990,22 @@ function FinanceTab({ onNavigate }: { onNavigate: (path: string) => void }) {
         <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-2">
           <FinKpiCard
             label="הכנסות היום" amount={data.kpis.today.total} count={data.kpis.today.count}
-            accent={C.brand} accentBg={C.brandSoft}
+            accent={C.brand} accentBg={C.brandSoft} shipping={data.shipping.today.total}
             onClick={() => openKpiDrill('היום', data.kpis.today, o => o.date === todayKey)}
           />
           <FinKpiCard
             label="השבוע" amount={data.kpis.week.total} count={data.kpis.week.count}
-            accent={C.brand} accentBg={C.brandSoft}
+            accent={C.brand} accentBg={C.brandSoft} shipping={data.shipping.week.total}
             onClick={() => openKpiDrill('השבוע', data.kpis.week, o => !!o.date && o.date >= weekFrom && o.date <= todayKey)}
           />
           <FinKpiCard
             label="החודש" amount={data.kpis.month.total} count={data.kpis.month.count}
-            accent={C.gold} accentBg={C.goldSoft}
+            accent={C.gold} accentBg={C.goldSoft} shipping={data.shipping.month.total}
             onClick={() => openKpiDrill('החודש', data.kpis.month, o => !!o.date && o.date >= monthFrom && o.date <= todayKey)}
           />
           <FinKpiCard
             label="השנה" amount={data.kpis.year.total} count={data.kpis.year.count}
-            accent={C.gold} accentBg={C.goldSoft}
+            accent={C.gold} accentBg={C.goldSoft} shipping={data.shipping.year.total}
             onClick={() => openKpiDrill('השנה', data.kpis.year, o => !!o.date && o.date >= yearFrom && o.date <= todayKey)}
           />
           <FinKpiCard

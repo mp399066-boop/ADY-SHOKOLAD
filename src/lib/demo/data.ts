@@ -255,6 +255,14 @@ export const DEMO_FINANCE_OVERVIEW = {
     year:   { total: 168000, count: 540 },
     unpaid: { total: 1240,   count: 3  },
   },
+  // Shipping fees already excluded from the kpis above — shown separately so
+  // the "excludes shipping" claim is visible/verifiable in the demo too.
+  shipping: {
+    today: { total: 30,   count: 1  },
+    week:  { total: 180,  count: 5  },
+    month: { total: 640,  count: 20 },
+    year:  { total: 7200, count: 230 },
+  },
   dailyChart:   _dailyChart,
   monthlyChart: _monthlyChart,
   byPaymentMethod: [

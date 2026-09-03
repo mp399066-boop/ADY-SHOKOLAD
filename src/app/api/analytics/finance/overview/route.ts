@@ -64,6 +64,7 @@ async function fetchAllPaged<T = PaidRow>(
 // not revenue, so every amount computed from a row goes through this.
 const netAmount = (r: PaidRow) =>
   ((r['סך_הכל_לתשלום'] as number) ?? 0) - ((r['דמי_משלוח'] as number) ?? 0);
+const shippingAmount = (r: PaidRow) => (r['דמי_משלוח'] as number) ?? 0;
 
 const getKpi = (rows: PaidRow[], fromDate: string, toDate: string) => {
   const r = rows.filter(o => {
@@ -74,6 +75,17 @@ const getKpi = (rows: PaidRow[], fromDate: string, toDate: string) => {
     total: r.reduce((s, o) => s + netAmount(o), 0),
     count: r.length,
   };
+};
+
+// Shipping totals mirror the revenue KPI periods so the finance tab can show
+// "excluded from revenue" alongside each figure — visible proof the totals
+// above are net of shipping rather than a silent, unverifiable subtraction.
+const getShippingKpi = (rows: PaidRow[], fromDate: string, toDate: string) => {
+  const r = rows.filter(o => {
+    const d = o['תאריך_אספקה'] as string | null;
+    return d && d >= fromDate && d <= toDate;
+  });
+  return { total: r.reduce((s, o) => s + shippingAmount(o), 0), count: r.length };
 };
 
 const toOrderRow = (r: PaidRow) => {
@@ -143,6 +155,15 @@ export async function GET() {
         total: unpaid.reduce((s, o) => s + netAmount(o), 0),
         count: unpaidCount ?? 0,
       },
+    };
+
+    // Shipping fees excluded from the revenue KPIs above, over the same
+    // periods — shown alongside them in the UI so the exclusion is visible.
+    const shipping = {
+      today: getShippingKpi(paid, today,     today),
+      week:  getShippingKpi(paid, weekFrom,  today),
+      month: getShippingKpi(paid, monthFrom, today),
+      year:  getShippingKpi(paid, yearFrom,  today),
     };
 
     // Daily chart — last 30 days
@@ -220,6 +241,7 @@ export async function GET() {
 
     return NextResponse.json({
       kpis,
+      shipping,
       dailyChart,
       monthlyChart,
       byPaymentMethod,
