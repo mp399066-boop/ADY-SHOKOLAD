@@ -60,13 +60,18 @@ async function fetchAllPaged<T = PaidRow>(
   return all;
 }
 
+// Financial figures exclude shipping (דמי_משלוח) — it's a pass-through cost,
+// not revenue, so every amount computed from a row goes through this.
+const netAmount = (r: PaidRow) =>
+  ((r['סך_הכל_לתשלום'] as number) ?? 0) - ((r['דמי_משלוח'] as number) ?? 0);
+
 const getKpi = (rows: PaidRow[], fromDate: string, toDate: string) => {
   const r = rows.filter(o => {
     const d = o['תאריך_אספקה'] as string | null;
     return d && d >= fromDate && d <= toDate;
   });
   return {
-    total: r.reduce((s, o) => s + ((o['סך_הכל_לתשלום'] as number) ?? 0), 0),
+    total: r.reduce((s, o) => s + netAmount(o), 0),
     count: r.length,
   };
 };
@@ -77,7 +82,7 @@ const toOrderRow = (r: PaidRow) => {
     id:            r['id'] as string,
     orderNumber:   r['מספר_הזמנה'] as string,
     customerName:  c ? `${c.שם_פרטי} ${c.שם_משפחה}`.trim() : '—',
-    amount:        (r['סך_הכל_לתשלום'] as number | null) ?? 0,
+    amount:        netAmount(r),
     orderStatus:   (r['סטטוס_הזמנה'] as string | null) ?? '',
     date:          r['תאריך_אספקה'] as string | null,
     paymentMethod: (r['אופן_תשלום'] as string | null) ?? null,
@@ -105,7 +110,7 @@ export async function GET() {
       fetchAllPaged<PaidRow>((from, to) =>
         supabase
           .from('הזמנות')
-          .select('id, מספר_הזמנה, לקוח_id, סך_הכל_לתשלום, אופן_תשלום, סטטוס_הזמנה, תאריך_אספקה, לקוחות(שם_פרטי, שם_משפחה)')
+          .select('id, מספר_הזמנה, לקוח_id, סך_הכל_לתשלום, דמי_משלוח, אופן_תשלום, סטטוס_הזמנה, תאריך_אספקה, לקוחות(שם_פרטי, שם_משפחה)')
           .eq('סטטוס_תשלום', 'שולם')
           .gte('תאריך_אספקה', from365)
           .lte('תאריך_אספקה', today)
@@ -116,7 +121,7 @@ export async function GET() {
       fetchAllPaged<PaidRow>((from, to) =>
         supabase
           .from('הזמנות')
-          .select('id, מספר_הזמנה, לקוח_id, סך_הכל_לתשלום, סטטוס_הזמנה, תאריך_אספקה, לקוחות(שם_פרטי, שם_משפחה)')
+          .select('id, מספר_הזמנה, לקוח_id, סך_הכל_לתשלום, דמי_משלוח, סטטוס_הזמנה, תאריך_אספקה, לקוחות(שם_פרטי, שם_משפחה)')
           .in('סטטוס_תשלום', ['ממתין', 'חלקי'])
           .neq('סטטוס_הזמנה', 'בוטלה')
           .neq('סטטוס_הזמנה', 'טיוטה')
@@ -135,7 +140,7 @@ export async function GET() {
       month:  getKpi(paid, monthFrom, today),
       year:   getKpi(paid, yearFrom,  today),
       unpaid: {
-        total: unpaid.reduce((s, o) => s + ((o['סך_הכל_לתשלום'] as number) ?? 0), 0),
+        total: unpaid.reduce((s, o) => s + netAmount(o), 0),
         count: unpaidCount ?? 0,
       },
     };
@@ -145,7 +150,7 @@ export async function GET() {
     for (let i = 0; i < 30; i++) dailyMap.set(addDaysISO(today, -29 + i), 0);
     for (const r of paid) {
       const d = r['תאריך_אספקה'] as string | null;
-      if (d && dailyMap.has(d)) dailyMap.set(d, (dailyMap.get(d) ?? 0) + ((r['סך_הכל_לתשלום'] as number) ?? 0));
+      if (d && dailyMap.has(d)) dailyMap.set(d, (dailyMap.get(d) ?? 0) + netAmount(r));
     }
     const dailyChart = Array.from(dailyMap.entries()).map(([key, amount]) => ({
       key, label: key.slice(5).replace('-', '/'), amount,
@@ -160,7 +165,7 @@ export async function GET() {
       const d = r['תאריך_אספקה'] as string | null;
       if (d) {
         const mk = d.slice(0, 7);
-        if (monthlyMap.has(mk)) monthlyMap.set(mk, (monthlyMap.get(mk) ?? 0) + ((r['סך_הכל_לתשלום'] as number) ?? 0));
+        if (monthlyMap.has(mk)) monthlyMap.set(mk, (monthlyMap.get(mk) ?? 0) + netAmount(r));
       }
     }
     const monthlyChart = monthKeys.map(key => ({
@@ -176,7 +181,7 @@ export async function GET() {
     for (const r of paid30) {
       const method = (r['אופן_תשלום'] as string | null) || 'לא צוין';
       const prev = methodMap.get(method) ?? { count: 0, amount: 0 };
-      methodMap.set(method, { count: prev.count + 1, amount: prev.amount + ((r['סך_הכל_לתשלום'] as number) ?? 0) });
+      methodMap.set(method, { count: prev.count + 1, amount: prev.amount + netAmount(r) });
     }
     const byPaymentMethod = Array.from(methodMap.entries())
       .map(([method, v]) => ({ method, ...v }))
@@ -189,7 +194,7 @@ export async function GET() {
       const c   = r['לקוחות'] as { שם_פרטי: string; שם_משפחה: string } | null;
       const name = c ? `${c.שם_פרטי} ${c.שם_משפחה}`.trim() : '—';
       const prev = custMap.get(cid) ?? { name, amount: 0, count: 0 };
-      custMap.set(cid, { name, amount: prev.amount + ((r['סך_הכל_לתשלום'] as number) ?? 0), count: prev.count + 1 });
+      custMap.set(cid, { name, amount: prev.amount + netAmount(r), count: prev.count + 1 });
     }
     const topCustomers = Array.from(custMap.entries())
       .map(([id, v]) => ({ id, ...v }))
@@ -198,15 +203,20 @@ export async function GET() {
 
     // High-value paid orders — top 8 by amount, last 12 months
     const highValueOrders = [...paid]
-      .sort((a, b) => ((b['סך_הכל_לתשלום'] as number) ?? 0) - ((a['סך_הכל_לתשלום'] as number) ?? 0))
+      .sort((a, b) => netAmount(b) - netAmount(a))
       .slice(0, 8)
       .map(toOrderRow);
 
     // Recently paid — top 12 sorted by date desc (already sorted)
     const recentPaid = paid.slice(0, 12).map(toOrderRow);
 
-    // Open orders for collection — top 12 by amount desc (already sorted)
-    const openOrders = unpaid.slice(0, 12).map(toOrderRow);
+    // Open orders for collection — top 12 by net amount desc. The query
+    // sorts by gross סך_הכל_לתשלום, so re-sort here to match the net amounts
+    // actually displayed (shipping fees can otherwise shuffle the order).
+    const openOrders = [...unpaid]
+      .sort((a, b) => netAmount(b) - netAmount(a))
+      .slice(0, 12)
+      .map(toOrderRow);
 
     return NextResponse.json({
       kpis,
