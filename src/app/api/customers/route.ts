@@ -58,6 +58,7 @@ export async function POST(req: NextRequest) {
     שם_משפחה: body.שם_משפחה || '',
     טלפון: body.טלפון || null,
     אימייל: body.אימייל || null,
+    מספר_זהות: typeof body.מספר_זהות === 'string' && body.מספר_זהות.trim() ? body.מספר_זהות.trim() : null,
     סוג_לקוח: body.סוג_לקוח || 'פרטי',
     סטטוס_לקוח: body.סטטוס_לקוח || 'פעיל',
     מקור_הגעה: body.מקור_הגעה || null,

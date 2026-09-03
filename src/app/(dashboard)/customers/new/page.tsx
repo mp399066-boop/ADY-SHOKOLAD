@@ -19,6 +19,7 @@ export default function NewCustomerPage() {
     שם_משפחה: '',
     טלפון: '',
     אימייל: '',
+    מספר_זהות: '',
     סוג_לקוח: 'פרטי',
     מקור_הגעה: '',
     אחוז_הנחה: 0,
@@ -72,6 +73,7 @@ export default function NewCustomerPage() {
           <Input label="שם משפחה" value={form.שם_משפחה} onChange={e => set('שם_משפחה', e.target.value)} />
           <Input label="טלפון" type="tel" value={form.טלפון} onChange={e => set('טלפון', e.target.value)} />
           <Input label="אימייל" type="email" value={form.אימייל} onChange={e => set('אימייל', e.target.value)} />
+          <Input label="מספר זהות" value={form.מספר_זהות} onChange={e => set('מספר_זהות', e.target.value)} />
           <Select label="סוג לקוח" value={form.סוג_לקוח} onChange={e => set('סוג_לקוח', e.target.value)}>
             {['פרטי', 'חוזר', 'עסקי - קבוע', 'עסקי - כמות', 'בארטר'].map(t => <option key={t} value={t}>{t}</option>)}
           </Select>

@@ -151,6 +151,8 @@ export interface Customer {
   כתובת: string | null;
   עיר: string | null;
   הערות_כתובת: string | null;
+  // ID number — added in migration 051. Optional everywhere.
+  מספר_זהות: string | null;
   תאריך_יצירה: string;
   תאריך_עדכון: string;
 }

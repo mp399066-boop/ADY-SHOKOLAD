@@ -323,6 +323,7 @@ export default function CustomerDetailPage() {
         שם_משפחה:    editForm.שם_משפחה,
         טלפון:       editForm.טלפון,
         אימייל:      editForm.אימייל,
+        מספר_זהות:   editForm.מספר_זהות?.trim() || null,
         סוג_לקוח:    editForm.סוג_לקוח,
         סטטוס_לקוח:  editForm.סטטוס_לקוח,
         מקור_הגעה:   editForm.מקור_הגעה,
@@ -453,6 +454,7 @@ export default function CustomerDetailPage() {
             <Input label="שם משפחה"    value={editForm.שם_משפחה || ''} onChange={e => setEditForm(p => ({ ...p, שם_משפחה: e.target.value }))} />
             <Input label="טלפון"       value={editForm.טלפון    || ''} onChange={e => setEditForm(p => ({ ...p, טלפון:    e.target.value }))} />
             <Input label="אימייל"      value={editForm.אימייל   || ''} onChange={e => setEditForm(p => ({ ...p, אימייל:   e.target.value }))} />
+            <Input label="מספר זהות"   value={editForm.מספר_זהות || ''} onChange={e => setEditForm(p => ({ ...p, מספר_זהות: e.target.value }))} />
             <Select label="סוג לקוח"   value={editForm.סוג_לקוח || 'פרטי'} onChange={e => setEditForm(p => ({ ...p, סוג_לקוח: e.target.value as Customer['סוג_לקוח'] }))}>
               {(['פרטי', 'חוזר', 'עסקי - קבוע', 'עסקי - כמות', 'בארטר'] as const).map(t => <option key={t} value={t}>{t}</option>)}
             </Select>
@@ -775,6 +777,7 @@ export default function CustomerDetailPage() {
               { label: 'סטטוס',       value: customer.סטטוס_לקוח || '—',                         pill: !!customer.סטטוס_לקוח },
               { label: 'הנחה קבועה',  value: customer.אחוז_הנחה ? `${customer.אחוז_הנחה}%` : '—', icon: <ITag className="w-3 h-3 inline ml-1" /> },
               { label: 'מקור',        value: customer.מקור_הגעה || '—' },
+              { label: 'מספר זהות',   value: customer.מספר_זהות || '—' },
               { label: 'מזהה לקוח',   value: customer.id,                                         mono: true  },
             ].map(row => (
               <div key={row.label} className="flex items-center justify-between py-2.5" style={{ borderColor: '#F0EAE0' }}>
