@@ -89,6 +89,9 @@ const bodySchema = z.object({
   // require this literal exactly; missing/wrong value = 400.
   paymentMethodSource: z.literal('manual_modal').optional(),
   force: z.boolean().optional(),
+  // Optional free-text notes typed in the issuance modal — forwarded to the
+  // EF as `invoice_notes` and printed on the Morning document (remarks).
+  invoiceNotes: z.string().max(1000).optional(),
 });
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
@@ -104,7 +107,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({ error: parsed.error.errors[0]?.message || 'נתונים לא תקינים' }, { status: 400 });
   }
 
-  const { documentType, paymentMethod, paymentMethodSource, force } = parsed.data;
+  const { documentType, paymentMethod, paymentMethodSource, force, invoiceNotes } = parsed.data;
   const orderId = params.id;
 
   // ── CONTROL CENTER GATE ────────────────────────────────────────────────
@@ -221,6 +224,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         // without this exact value will be rejected at the EF layer too —
         // belt-and-suspenders against a future caller that bypasses this route.
         payment_method_source: paymentMethodSource ?? undefined,
+        invoice_notes: invoiceNotes?.trim() || undefined,
         force: !!force,
         record: { הזמנה_id: orderId },
         old_record: {},

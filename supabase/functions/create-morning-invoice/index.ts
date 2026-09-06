@@ -239,6 +239,12 @@ serve(async (req: Request) => {
         ? payload.payment_method_source.trim()
         : null;
     const force: boolean = payload.force === true;
+    // Optional free-text notes typed in the issuance modal — printed on the
+    // document via Morning's `remarks` field. Additive: absent = no remarks.
+    const invoiceNotes: string | null =
+      typeof payload.invoice_notes === 'string' && payload.invoice_notes.trim()
+        ? payload.invoice_notes.trim().slice(0, 1000)
+        : null;
 
     console.log('[PAYMENT EF] document_type:', documentType);
     console.log('[PAYMENT EF] payload.type:', payload.type);
@@ -286,7 +292,7 @@ serve(async (req: Request) => {
       .select(`
         id, מספר_הזמנה, לקוח_id, סך_הכל_לתשלום, סכום_לפני_הנחה, סכום_הנחה,
         סוג_הנחה, ערך_הנחה, אופן_תשלום, דמי_משלוח, זיכוי_בשימוש, סוג_הזמנה,
-        לקוחות (שם_פרטי, שם_משפחה, אימייל, טלפון, סוג_לקוח)
+        לקוחות (שם_פרטי, שם_משפחה, אימייל, טלפון, סוג_לקוח, מספר_זהות)
       `)
       .eq('id', orderId)
       .single();
@@ -313,7 +319,7 @@ serve(async (req: Request) => {
 
     const token = await getMorningToken(morningApiId, morningApiSecret);
 
-    type CustomerRow = { שם_פרטי: string; שם_משפחה: string; אימייל: string | null; טלפון: string | null; סוג_לקוח: string | null };
+    type CustomerRow = { שם_פרטי: string; שם_משפחה: string; אימייל: string | null; טלפון: string | null; סוג_לקוח: string | null; מספר_זהות: string | null };
     const customer = order.לקוחות as CustomerRow;
     // Mirror the order screen / invoice preview `isBusinessForVat`: VAT is
     // added on top ONLY for business customers AND non-Satmar orders. Satmar
@@ -696,12 +702,17 @@ serve(async (req: Request) => {
         name: `${customer.שם_פרטי} ${customer.שם_משפחה}`,
         ...(customer.אימייל ? { emails: [customer.אימייל] } : {}),
         ...(customer.טלפון ? { phone: customer.טלפון } : {}),
+        // Customer ID number (ת.ז / ח.פ, migration 051) — Morning prints the
+        // client taxId on the document. Additive: omitted when not set.
+        ...(customer.מספר_זהות?.trim() ? { taxId: customer.מספר_זהות.trim() } : {}),
       },
       // Each order item appears exactly ONCE with its original quantity. No
       // qty-flattening — that caused visually-duplicated lines on the
       // customer's invoice. A small "עיגול" net line was added above (if
       // needed) to reconcile Morning's per-line rounding with the CRM total.
       income: incomeLines,
+      // Free-text notes from the issuance modal — printed on the document.
+      ...(invoiceNotes ? { remarks: invoiceNotes } : {}),
     };
 
     // Receipt + invoice_receipt include a payment section; tax_invoice does

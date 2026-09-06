@@ -320,6 +320,7 @@ export default function OrderDetailPage() {
     documentType: 'tax_invoice' | 'receipt' | 'invoice_receipt',
     paymentMethod: string | undefined,
     force: boolean,
+    invoiceNotes?: string,
   ): Promise<boolean> => {
     if (!order) return false;
     setIssuingDocType(documentType);
@@ -337,7 +338,10 @@ export default function OrderDetailPage() {
         // PAYMENT_DOCS (receipt + invoice_receipt) require the explicit
         // `manual_modal` source. tax_invoice doesn't need it but we send
         // it anyway for shape consistency — the API ignores it on that type.
-        body: JSON.stringify({ documentType, paymentMethod, paymentMethodSource: 'manual_modal', force }),
+        body: JSON.stringify({
+          documentType, paymentMethod, paymentMethodSource: 'manual_modal', force,
+          ...(invoiceNotes?.trim() ? { invoiceNotes: invoiceNotes.trim() } : {}),
+        }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -2931,8 +2935,8 @@ export default function OrderDetailPage() {
           documentType={previewDocType}
           loading={issuingDoc}
           onClose={() => setPreviewDocType(null)}
-          onIssue={async (paymentMethod, force) => {
-            const ok = await issueDocument(previewDocType, paymentMethod, force);
+          onIssue={async (paymentMethod, force, invoiceNotes) => {
+            const ok = await issueDocument(previewDocType, paymentMethod, force, invoiceNotes);
             if (ok) setPreviewDocType(null);
           }}
         />
@@ -3458,10 +3462,12 @@ function InvoicePreviewModal({
   documentType: 'tax_invoice' | 'receipt' | 'invoice_receipt';
   loading: boolean;
   onClose: () => void;
-  onIssue: (paymentMethod: string | undefined, force: boolean) => void | Promise<void>;
+  onIssue: (paymentMethod: string | undefined, force: boolean, invoiceNotes?: string) => void | Promise<void>;
 }) {
   const [payMethod, setPayMethod]     = useState<string>('');
   const [customMethod, setCustomMethod] = useState<string>('');
+  // Optional free-text notes printed on the Morning document (remarks).
+  const [invoiceNotes, setInvoiceNotes] = useState<string>('');
 
   const needsPayment    = documentType === 'receipt' || documentType === 'invoice_receipt';
   const effectiveMethod = payMethod === 'אחר' ? customMethod.trim() : payMethod;
@@ -3497,7 +3503,7 @@ function InvoicePreviewModal({
 
   const handleIssue = async () => {
     if (!canSubmit) return;
-    await onIssue(needsPayment ? effectiveMethod : undefined, duplicate);
+    await onIssue(needsPayment ? effectiveMethod : undefined, duplicate, invoiceNotes.trim() || undefined);
   };
 
   return (
@@ -3549,6 +3555,7 @@ function InvoicePreviewModal({
                 <PreviewRow label="שם"     value={custName} />
                 {cust?.טלפון  && <PreviewRow label="טלפון"  value={cust.טלפון} />}
                 {cust?.אימייל && <PreviewRow label="אימייל" value={cust.אימייל} />}
+                {cust?.מספר_זהות && <PreviewRow label="מספר זהות" value={cust.מספר_זהות} />}
               </>
             ) : (
               <p className="text-[12px]" style={{ color: '#C05A3C' }}>לקוח לא מזוהה</p>
@@ -3677,6 +3684,19 @@ function InvoicePreviewModal({
               )}
             </PreviewSec>
           )}
+
+          {/* Invoice notes — free text printed on the Morning document */}
+          <PreviewSec title="הערות לחשבונית (אופציונלי)">
+            <textarea
+              value={invoiceNotes}
+              onChange={e => setInvoiceNotes(e.target.value)}
+              maxLength={1000}
+              rows={2}
+              placeholder="טקסט חופשי שיודפס על גבי המסמך..."
+              className="w-full px-3 py-2 text-[13px] rounded-lg border focus:outline-none focus:ring-2 resize-none"
+              style={{ borderColor: '#E8DED2', color: '#2B1A10', backgroundColor: '#FFFCF7' }}
+            />
+          </PreviewSec>
 
         </div>
 
