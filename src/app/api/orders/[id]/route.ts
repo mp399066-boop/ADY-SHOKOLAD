@@ -3,7 +3,7 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { sendSatmarSummaryEmail } from '@/lib/satmar-email';
 import { AUTO_CREATE_MORNING_DOCUMENTS } from '@/lib/morning';
-import { restoreOrderInventory, DEDUCT_INVENTORY_ON_ORDER_STATUS } from '@/lib/inventory-deduct';
+import { restoreOrderInventory, deductOrderInventory, DEDUCT_INVENTORY_ON_ORDER_STATUS } from '@/lib/inventory-deduct';
 import { logActivity, userActor } from '@/lib/activity-log';
 // deploy trigger
 
@@ -276,6 +276,28 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       console.log('[inventory] restore result:', JSON.stringify(result));
     } catch (err) {
       console.error('[inventory] restoreOrderInventory threw (continuing):', err instanceof Error ? err.message : err);
+    }
+  }
+
+  // ── INVENTORY RE-DEDUCT on un-cancel (בוטלה → active status) ───────────
+  // The cancel path above restored the stock; if the operator brings the
+  // order back to life, the stock must come out again. deductOrderInventory
+  // is idempotent via the net-ledger guard (net=0 after a restore, so it
+  // deducts; net>0 means it never restored and this is a no-op). Drafts are
+  // excluded — reviving a cancelled order into טיוטה must not deduct.
+  const ACTIVE_STATUSES_FOR_REDEDUCT = ['חדשה', 'בהכנה', 'מוכנה למשלוח', 'נשלחה', 'הושלמה בהצלחה'];
+  if (
+    prevOrderStatus === 'בוטלה'
+    && body.סטטוס_הזמנה
+    && ACTIVE_STATUSES_FOR_REDEDUCT.includes(body.סטטוס_הזמנה)
+    && orderType !== 'סאטמר'
+  ) {
+    console.log('[inventory] order un-cancelled — running deductOrderInventory. order:', params.id, '| new status:', body.סטטוס_הזמנה);
+    try {
+      const result = await deductOrderInventory(supabase, params.id);
+      console.log('[inventory] re-deduct result:', JSON.stringify(result));
+    } catch (err) {
+      console.error('[inventory] deductOrderInventory threw (continuing):', err instanceof Error ? err.message : err);
     }
   }
 

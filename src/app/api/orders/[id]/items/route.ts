@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
+import { reconcileOrderInventory } from '@/lib/inventory-deduct';
 
 // GET: return items for a single order (used by inline order expansion on the list page)
 export async function GET(_: NextRequest, { params }: { params: { id: string } }) {
@@ -283,6 +284,19 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   if (updateError) {
     console.error('[items PUT] failed to update order totals:', updateError);
     return NextResponse.json({ error: `עדכון סכומי הזמנה נכשל: ${updateError.message}` }, { status: 500 });
+  }
+
+  // ── Inventory reconciliation ─────────────────────────────────────────
+  // The items just changed — bring stock in line with the new quantities.
+  // The helper applies only the per-item delta vs. the ledger and gates
+  // itself on order status/type (drafts, cancelled and סאטמר are no-ops),
+  // so it's safe to call unconditionally. Non-fatal: the edit already
+  // succeeded and must not look failed over a stock-sync hiccup.
+  try {
+    const result = await reconcileOrderInventory(supabase, params.id);
+    console.log('[items PUT] inventory reconcile result:', JSON.stringify(result));
+  } catch (err) {
+    console.error('[items PUT] reconcileOrderInventory threw (continuing):', err instanceof Error ? err.message : err);
   }
 
   console.log('[items PUT] done — subtotal:', subtotal, 'discount:', discountAmt, 'total:', total);
