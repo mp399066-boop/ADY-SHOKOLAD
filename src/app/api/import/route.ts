@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
+import { recordStockMovement } from '@/lib/inventory-movements';
 
 const TABLE_MAP: Record<string, string> = {
   לקוחות: 'לקוחות',
@@ -229,19 +230,32 @@ export async function POST(req: NextRequest) {
 
       const { data: prod } = await supabase
         .from('מוצרים_למכירה')
-        .select('id')
+        .select('id, שם_מוצר, כמות_במלאי')
         .eq('שם_מוצר', name)
         .maybeSingle();
 
       if (!prod) { failed.push({ row: i + 1, error: `מוצר לא נמצא: "${name}"` }); continue; }
 
+      const before = Number(prod.כמות_במלאי) || 0;
       const { error: upErr } = await supabase
         .from('מוצרים_למכירה')
         .update({ כמות_במלאי: qty })
         .eq('id', prod.id);
 
-      if (upErr) failed.push({ row: i + 1, error: upErr.message });
-      else updated++;
+      if (upErr) { failed.push({ row: i + 1, error: upErr.message }); continue; }
+      updated++;
+      if (before !== qty) {
+        await recordStockMovement(supabase, {
+          itemKind: 'מוצר',
+          itemId: prod.id,
+          itemName: prod.שם_מוצר || name,
+          before,
+          after: qty,
+          sourceKind: 'ידני',
+          notes: 'עדכון מלאי מייבוא קובץ',
+          createdBy: auth.email,
+        });
+      }
     }
 
     return NextResponse.json({ data: { added: 0, updated, failed: failed.length, errors: failed } });

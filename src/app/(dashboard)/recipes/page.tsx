@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { PageLoading } from '@/components/ui/LoadingSpinner';
@@ -270,7 +270,14 @@ export default function RecipesPage() {
 
   // ── Production form helpers ─────────────────────────────────────────────
 
+  // A fresh id per opening of the production modal — stable across retries
+  // of the same submit (network error → operator clicks again) so the
+  // server recognizes a resubmission and never double-deducts raw
+  // materials / double-adds finished stock.
+  const productionRequestIdRef = useRef(`prod_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+
   function openProductionModal(recipeId?: string) {
+    productionRequestIdRef.current = `prod_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     setProductionForm({
       מתכון_id: recipeId || '',
       כמות_שיוצרה: 1,
@@ -327,7 +334,7 @@ export default function RecipesPage() {
       const res = await fetch('/api/production', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(productionForm),
+        body: JSON.stringify({ ...productionForm, clientRequestId: productionRequestIdRef.current }),
       });
       const json = await res.json();
       if (res.status === 422) {

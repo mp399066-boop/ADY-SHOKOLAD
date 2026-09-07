@@ -5,6 +5,22 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { recordStockMovement } from '@/lib/inventory-movements';
 
+// In-memory idempotency store — same pattern as /api/orders/create-full.
+// A kitchen tablet on a flaky connection can show a network error for a
+// request that actually succeeded server-side; the operator retries, and
+// without this guard the retry would deduct the same raw materials and add
+// the same finished stock a second time. maps clientRequestId → the
+// original response, replayed verbatim for 60s.
+const idempotencyCache = new Map<string, { responseBody: unknown; status: number; expiresAt: number }>();
+const IDEMPOTENCY_TTL_MS = 60_000;
+
+function pruneExpired() {
+  const now = Date.now();
+  idempotencyCache.forEach((entry, key) => {
+    if (entry.expiresAt < now) idempotencyCache.delete(key);
+  });
+}
+
 export async function GET() {
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
@@ -22,6 +38,16 @@ export async function POST(req: NextRequest) {
   if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
   const body = await req.json();
+
+  const clientRequestId: string | undefined = body.clientRequestId;
+  if (clientRequestId) {
+    pruneExpired();
+    const cached = idempotencyCache.get(clientRequestId);
+    if (cached) {
+      console.log('[production] DUPLICATE REQUEST detected — returning cached result for', clientRequestId);
+      return NextResponse.json({ ...(cached.responseBody as object), deduplicated: true }, { status: cached.status });
+    }
+  }
 
   if (!body.מתכון_id && !body.מוצר_id) {
     return NextResponse.json({ error: 'מתכון הוא שדה חובה' }, { status: 400 });
@@ -250,7 +276,12 @@ export async function POST(req: NextRequest) {
 
       const deduction = ing.כמות_נדרשת * multiplier;
       const before = Number(mat.כמות_במלאי) || 0;
-      const after = Math.max(0, before - deduction);
+      // No clamping at 0 (Sep 2026, matching the order-inventory policy):
+      // the pre-check above already blocks the common case, but a race
+      // between that check and this write (two production runs against the
+      // same raw material at once) must still show the true shortfall
+      // instead of silently rounding it away to zero.
+      const after = before - deduction;
 
       await supabase
         .from('מלאי_חומרי_גלם')
@@ -271,7 +302,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({
+  const responseBody = {
     data: production,
     finishedDelta: {
       targetType,
@@ -281,5 +312,9 @@ export async function POST(req: NextRequest) {
       after: finishedAfter,
       added: batches,
     },
-  }, { status: 201 });
+  };
+  if (clientRequestId) {
+    idempotencyCache.set(clientRequestId, { responseBody, status: 201, expiresAt: Date.now() + IDEMPOTENCY_TTL_MS });
+  }
+  return NextResponse.json(responseBody, { status: 201 });
 }

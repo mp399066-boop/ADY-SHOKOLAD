@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Modal } from '@/components/ui/Modal';
 import type { RawMaterial, Recipe } from '@/types/database';
@@ -32,6 +32,15 @@ export function ProductionRecipeModal({
   const [recipeId, setRecipeId] = useState('');
   const [quantity, setQuantity] = useState('1');
   const [submitting, setSubmitting] = useState(false);
+
+  // A fresh id per "opening" of the modal — stable across retries of the
+  // same submit (network error → operator clicks again) so the server can
+  // recognize a resubmission and never double-deduct. New id each time the
+  // modal opens for a new production entry.
+  const clientRequestIdRef = useRef(`prod_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+  useEffect(() => {
+    if (open) clientRequestIdRef.current = `prod_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  }, [open]);
 
   const selectedRecipe = useMemo(
     () => recipes.find(recipe => recipe.id === recipeId) ?? null,
@@ -81,6 +90,7 @@ export function ProductionRecipeModal({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          clientRequestId: clientRequestIdRef.current,
           מתכון_id: selectedRecipe.id,
           כמות_שיוצרה: amount,
           הערות: `ייצור לפי מתכון: ${selectedRecipe.שם_מתכון}`,
