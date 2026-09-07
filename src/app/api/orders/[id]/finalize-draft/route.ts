@@ -13,7 +13,12 @@ import {
   type EmailContext,
 } from '@/lib/email';
 import { logActivity, userActor } from '@/lib/activity-log';
-import { deductOrderInventory } from '@/lib/inventory-deduct';
+import {
+  deductOrderInventory,
+  checkOrderStockAvailability,
+  formatStockShortageMessage,
+  type StockAvailabilityItem,
+} from '@/lib/inventory-deduct';
 
 // Converts a draft order (status=טיוטה) to a real order (status=חדשה).
 // Replaces all items, creates delivery/payment records, sends emails.
@@ -40,6 +45,37 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const body = await req.json();
   const { הזמנה, משלוח, מוצרים = [], מארזי_פטיפורים = [], פריטים_ידניים = [] } = body;
+
+  // 0. Stock-availability guard — a draft becoming real is exactly the
+  // moment stock must be checked (the check was skipped at draft creation
+  // on purpose). Runs before any mutation. סאטמר orders and a
+  // control-center kill switch are handled inside the helper itself.
+  {
+    const stockItems: StockAvailabilityItem[] = [];
+    for (const item of מוצרים) {
+      if (item.מוצר_id) stockItems.push({ kind: 'מוצר', id: item.מוצר_id, qty: Number(item.כמות) || 1 });
+    }
+    for (const pkg of מארזי_פטיפורים) {
+      const pkgQty = Number(pkg.כמות) || 1;
+      for (const pf of pkg.פטיפורים || []) {
+        if (pf.פטיפור_id) stockItems.push({ kind: 'פטיפור', id: pf.פטיפור_id, qty: (Number(pf.כמות) || 1) * pkgQty });
+      }
+    }
+    if (stockItems.length > 0) {
+      const availability = await checkOrderStockAvailability(supabase, {
+        orderType: הזמנה?.סוג_הזמנה ?? existingOrder.סוג_הזמנה,
+        orderId: orderId,
+        items: stockItems,
+      });
+      if (!availability.ok) {
+        console.warn('[finalize-draft] BLOCKED — insufficient stock:', formatStockShortageMessage(availability.shortages));
+        return NextResponse.json(
+          { error: `אין מספיק מלאי: ${formatStockShortageMessage(availability.shortages)}`, shortages: availability.shortages },
+          { status: 422 },
+        );
+      }
+    }
+  }
 
   // 1. Recalculate totals
   let subtotal = 0;

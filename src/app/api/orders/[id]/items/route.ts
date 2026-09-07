@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
-import { reconcileOrderInventory } from '@/lib/inventory-deduct';
+import {
+  reconcileOrderInventory,
+  checkOrderStockAvailability,
+  formatStockShortageMessage,
+  type StockAvailabilityItem,
+} from '@/lib/inventory-deduct';
 
 // GET: return items for a single order (used by inline order expansion on the list page)
 export async function GET(_: NextRequest, { params }: { params: { id: string } }) {
@@ -130,6 +135,48 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       missing.forEach((id: string) => validProductIds.add(id));
     }
     console.log('[items PUT] valid product ids:', validProductIds.size, '/', incomingProductIds.length);
+  }
+
+  // 2b. Stock-availability guard — BEFORE any destructive write, same
+  // reasoning as the business-only check above. Reserved quantities this
+  // order already holds (ledger net) count back toward "available", so
+  // keeping a quantity unchanged never trips this even at 0 global stock —
+  // only a genuine increase does. Skipped for טיוטה/בוטלה orders (they
+  // don't hold stock either way) and inside the helper for סאטמר / the
+  // control-center kill switch.
+  {
+    const stockItems: StockAvailabilityItem[] = [];
+    for (const item of מוצרים) {
+      if (item.מוצר_id) stockItems.push({ kind: 'מוצר', id: item.מוצר_id, qty: Number(item.כמות) || 1 });
+    }
+    for (const pkg of מארזים) {
+      const pkgQty = Number(pkg.כמות) || 1;
+      for (const pf of pkg.פטיפורים || []) {
+        if (pf.פטיפור_id) stockItems.push({ kind: 'פטיפור', id: pf.פטיפור_id, qty: (Number(pf.כמות) || 1) * pkgQty });
+      }
+    }
+    if (stockItems.length > 0) {
+      const { data: orderRow } = await supabase
+        .from('הזמנות')
+        .select('סוג_הזמנה, סטטוס_הזמנה')
+        .eq('id', params.id)
+        .single();
+      const statusExemptsGuard = orderRow?.סטטוס_הזמנה === 'טיוטה' || orderRow?.סטטוס_הזמנה === 'בוטלה';
+      if (!statusExemptsGuard) {
+        const availability = await checkOrderStockAvailability(supabase, {
+          orderType: orderRow?.סוג_הזמנה ?? null,
+          orderId: params.id,
+          items: stockItems,
+        });
+        if (!availability.ok) {
+          console.warn('[items PUT] BLOCKED — insufficient stock:', formatStockShortageMessage(availability.shortages));
+          return NextResponse.json(
+            { error: `אין מספיק מלאי: ${formatStockShortageMessage(availability.shortages)}`, shortages: availability.shortages },
+            { status: 422 },
+          );
+        }
+      }
+    }
   }
 
   // 3. Validation passed — now perform the destructive replace-all.

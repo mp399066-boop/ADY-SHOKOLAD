@@ -615,3 +615,124 @@ export async function reconcileOrderInventory(
   });
   return { reconciled: true, adjustedItems: adjusted };
 }
+
+// ─── Public API — pre-commit availability guard ─────────────────────────────
+//
+// Owner policy (Sep 2026): a product/petit-four with insufficient stock
+// cannot be put on a real order at all — not "deduct anyway and go
+// negative". This is a distinct, opt-outable check from the deduction
+// above: deduction (and its reconcile counterpart) record what happened;
+// this guard decides whether the commit is allowed to happen in the first
+// place. Gated by its own control-center service (order_stock_guard) so it
+// can be switched off instantly if it misfires, without touching the
+// deduction policy.
+//
+// Call sites: create-full (non-draft only), finalize-draft, and
+// PUT /api/orders/[id]/items — all BEFORE any destructive write, so a
+// shortage never leaves a half-mutated order.
+
+export interface StockAvailabilityItem {
+  kind: 'מוצר' | 'פטיפור';
+  id:   string;
+  qty:  number;
+}
+
+export interface StockShortage {
+  kind:      'מוצר' | 'פטיפור';
+  id:        string;
+  name:      string;
+  requested: number;
+  available: number;
+}
+
+export type StockAvailabilityResult =
+  | { ok: true }
+  | { ok: false; shortages: StockShortage[] };
+
+/**
+ * Checks whether `items` (already aggregated per id — duplicates are
+ * summed defensively anyway) can be fully satisfied by current stock.
+ *
+ * `orderId`, when given, means the order may already hold a ledger
+ * reservation for some of these items (e.g. editing an order that was
+ * already deducted) — that reserved amount is added back to "available"
+ * so keeping the same quantity never trips the guard, only an actual
+ * increase beyond what's on hand does. Pass null for a brand-new order
+ * (nothing reserved yet).
+ *
+ * Fails open (returns ok:true) when: orderType is סאטמר (existing
+ * business rule — never gated by stock), the order_stock_guard service is
+ * OFF in the control center, or there are no items to check.
+ */
+export async function checkOrderStockAvailability(
+  supabase: AnySupabase,
+  args: {
+    orderType: string | null | undefined;
+    orderId:   string | null;
+    items:     StockAvailabilityItem[];
+  },
+): Promise<StockAvailabilityResult> {
+  if (args.orderType === 'סאטמר') return { ok: true };
+
+  const enabled = await isServiceEnabled(supabase, 'order_stock_guard');
+  if (!enabled) {
+    console.log('[inventory] stock-availability guard skipped — service "order_stock_guard" is OFF in control center.');
+    return { ok: true };
+  }
+
+  const desired = new Map<string, { kind: 'מוצר' | 'פטיפור'; qty: number }>();
+  for (const it of args.items) {
+    if (!it.id || !(it.qty > 0)) continue;
+    const cur = desired.get(it.id);
+    desired.set(it.id, { kind: it.kind, qty: (cur?.qty || 0) + it.qty });
+  }
+  if (desired.size === 0) return { ok: true };
+
+  let netByItem = new Map<string, number>();
+  if (args.orderId) {
+    const ledger = await loadOrderLedgerNet(supabase, args.orderId);
+    if (!ledger.fetchFailed) {
+      netByItem = new Map(Array.from(ledger.byItem.entries()).map(([id, info]) => [id, info.net]));
+    }
+  }
+
+  const productIds = Array.from(desired.entries()).filter(([, v]) => v.kind === 'מוצר').map(([id]) => id);
+  const pfIds      = Array.from(desired.entries()).filter(([, v]) => v.kind === 'פטיפור').map(([id]) => id);
+
+  const stockById = new Map<string, { name: string; stock: number }>();
+  if (productIds.length > 0) {
+    const { data } = await supabase.from('מוצרים_למכירה').select('id, שם_מוצר, כמות_במלאי').in('id', productIds);
+    for (const row of (data ?? []) as Array<{ id: string; שם_מוצר: string | null; כמות_במלאי: number | null }>) {
+      stockById.set(row.id, { name: row.שם_מוצר || '', stock: Number(row.כמות_במלאי) || 0 });
+    }
+  }
+  if (pfIds.length > 0) {
+    const { data } = await supabase.from('סוגי_פטיפורים').select('id, שם_פטיפור, כמות_במלאי').in('id', pfIds);
+    for (const row of (data ?? []) as Array<{ id: string; שם_פטיפור: string | null; כמות_במלאי: number | null }>) {
+      stockById.set(row.id, { name: row.שם_פטיפור || '', stock: Number(row.כמות_במלאי) || 0 });
+    }
+  }
+
+  const shortages: StockShortage[] = [];
+  for (const [id, want] of Array.from(desired.entries())) {
+    const catalog = stockById.get(id);
+    // Unknown / archived id — existing per-route validation already lets
+    // these through (e.g. editing an order that references a deleted
+    // product); nothing to check stock against, so don't block here.
+    if (!catalog) continue;
+    const alreadyReserved = netByItem.get(id) || 0;
+    const available = catalog.stock + alreadyReserved;
+    if (want.qty > available) {
+      shortages.push({ kind: want.kind, id, name: catalog.name, requested: want.qty, available });
+    }
+  }
+
+  return shortages.length === 0 ? { ok: true } : { ok: false, shortages };
+}
+
+/** Formats shortages into one Hebrew message for API error responses. */
+export function formatStockShortageMessage(shortages: StockShortage[]): string {
+  return shortages
+    .map(s => `${s.name || s.id}: התבקשו ${s.requested}, זמינים ${Math.max(0, s.available)}`)
+    .join(' · ');
+}

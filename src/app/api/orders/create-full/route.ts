@@ -14,7 +14,12 @@ import {
   type EmailContext,
 } from '@/lib/email';
 import { logActivity, userActor } from '@/lib/activity-log';
-import { deductOrderInventory } from '@/lib/inventory-deduct';
+import {
+  deductOrderInventory,
+  checkOrderStockAvailability,
+  formatStockShortageMessage,
+  type StockAvailabilityItem,
+} from '@/lib/inventory-deduct';
 
 // In-memory idempotency store — maps clientRequestId → { orderId, response, expiresAt }
 // Prevents duplicate orders when the client sends the same request more than once.
@@ -151,6 +156,8 @@ export async function POST(req: NextRequest) {
 
   console.log('[create-full] STEP 4: order inserted successfully', { orderId: order!.id, orderNumber: order!.מספר_הזמנה });
 
+  const isDraft = הזמנה?.סטטוס_הזמנה === 'טיוטה';
+
   // 4. Validate product IDs + business-only check
   const incomingProductIds = (מוצרים as Record<string, unknown>[])
     .map(i => i.מוצר_id as string)
@@ -195,6 +202,39 @@ export async function POST(req: NextRequest) {
   if (מוצרים.length > 0 && validProducts.length === 0) {
     await supabase.from('הזמנות').delete().eq('id', order!.id);
     return NextResponse.json({ error: 'לא נמצאו מוצרים תקינים להזמנה' }, { status: 400 });
+  }
+
+  // 4b. Stock-availability guard — real (non-draft) orders only. Drafts
+  // don't deduct stock and are allowed to be built before availability is
+  // confirmed; the check runs again at finalize-draft. סאטמר orders and a
+  // control-center kill switch are handled inside the helper itself.
+  if (!isDraft) {
+    const stockItems: StockAvailabilityItem[] = [];
+    for (const item of validProducts) {
+      const productId = item.מוצר_id as string | undefined;
+      if (productId) stockItems.push({ kind: 'מוצר', id: productId, qty: (item.כמות as number) || 1 });
+    }
+    for (const pkg of מארזי_פטיפורים) {
+      const pkgQty = Number(pkg.כמות) || 1;
+      for (const pf of pkg.פטיפורים || []) {
+        if (pf.פטיפור_id) stockItems.push({ kind: 'פטיפור', id: pf.פטיפור_id, qty: (Number(pf.כמות) || 1) * pkgQty });
+      }
+    }
+    if (stockItems.length > 0) {
+      const availability = await checkOrderStockAvailability(supabase, {
+        orderType: הזמנה?.סוג_הזמנה || 'רגיל',
+        orderId: null,
+        items: stockItems,
+      });
+      if (!availability.ok) {
+        await supabase.from('הזמנות').delete().eq('id', order!.id);
+        console.warn('[create-full] BLOCKED — insufficient stock:', formatStockShortageMessage(availability.shortages));
+        return NextResponse.json(
+          { error: `אין מספיק מלאי: ${formatStockShortageMessage(availability.shortages)}`, shortages: availability.shortages },
+          { status: 422 },
+        );
+      }
+    }
   }
 
   // 5. Create regular product lines (validated only)
@@ -297,8 +337,6 @@ export async function POST(req: NextRequest) {
       console.log('[create-full] credit deducted:', creditUsed, 'for customer', customerId, '| order:', order!.id);
     }
   }
-
-  const isDraft = הזמנה?.סטטוס_הזמנה === 'טיוטה';
 
   // 7. Create delivery record (skip for drafts).
   // Initial status MUST be 'ממתין' — a brand-new delivery has not yet been
