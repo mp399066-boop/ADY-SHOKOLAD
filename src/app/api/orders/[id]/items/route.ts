@@ -142,8 +142,9 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   // order already holds (ledger net) count back toward "available", so
   // keeping a quantity unchanged never trips this even at 0 global stock —
   // only a genuine increase does. Skipped for טיוטה/בוטלה orders (they
-  // don't hold stock either way) and inside the helper for סאטמר / the
-  // control-center kill switch.
+  // don't hold stock either way). Applies to סאטמר orders too (they still
+  // consume real stock even though they never deduct in the ledger) — a
+  // control-center kill switch is handled inside the helper.
   {
     const stockItems: StockAvailabilityItem[] = [];
     for (const item of מוצרים) {

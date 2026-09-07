@@ -660,20 +660,23 @@ export type StockAvailabilityResult =
  * increase beyond what's on hand does. Pass null for a brand-new order
  * (nothing reserved yet).
  *
- * Fails open (returns ok:true) when: orderType is סאטמר (existing
- * business rule — never gated by stock), the order_stock_guard service is
- * OFF in the control center, or there are no items to check.
+ * Unlike deduction/restoration, סאטמר orders are NOT exempt here (owner
+ * decision, Sep 2026) — they still consume real physical stock even
+ * though the ledger never books it for them, so they're checked against
+ * the same on-hand numbers as any other order. Only fails open when the
+ * order_stock_guard service is OFF in the control center, or there are no
+ * items to check.
  */
 export async function checkOrderStockAvailability(
   supabase: AnySupabase,
   args: {
+    // Kept in the signature for call-site symmetry with deduction/restore
+    // (which DO still special-case סאטמר) — intentionally unused here.
     orderType: string | null | undefined;
     orderId:   string | null;
     items:     StockAvailabilityItem[];
   },
 ): Promise<StockAvailabilityResult> {
-  if (args.orderType === 'סאטמר') return { ok: true };
-
   const enabled = await isServiceEnabled(supabase, 'order_stock_guard');
   if (!enabled) {
     console.log('[inventory] stock-availability guard skipped — service "order_stock_guard" is OFF in control center.');

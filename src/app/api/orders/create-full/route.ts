@@ -206,8 +206,10 @@ export async function POST(req: NextRequest) {
 
   // 4b. Stock-availability guard — real (non-draft) orders only. Drafts
   // don't deduct stock and are allowed to be built before availability is
-  // confirmed; the check runs again at finalize-draft. סאטמר orders and a
-  // control-center kill switch are handled inside the helper itself.
+  // confirmed; the check runs again at finalize-draft. Applies to סאטמר
+  // orders too (they still consume real stock even though they never
+  // deduct in the ledger). A control-center kill switch is handled inside
+  // the helper itself.
   if (!isDraft) {
     const stockItems: StockAvailabilityItem[] = [];
     for (const item of validProducts) {

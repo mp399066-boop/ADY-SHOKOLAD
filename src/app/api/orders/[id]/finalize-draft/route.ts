@@ -48,8 +48,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   // 0. Stock-availability guard — a draft becoming real is exactly the
   // moment stock must be checked (the check was skipped at draft creation
-  // on purpose). Runs before any mutation. סאטמר orders and a
-  // control-center kill switch are handled inside the helper itself.
+  // on purpose). Runs before any mutation. Applies to סאטמר orders too
+  // (they still consume real stock even though they never deduct in the
+  // ledger). A control-center kill switch is handled inside the helper.
   {
     const stockItems: StockAvailabilityItem[] = [];
     for (const item of מוצרים) {
