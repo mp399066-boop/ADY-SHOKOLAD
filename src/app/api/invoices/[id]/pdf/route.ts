@@ -75,11 +75,24 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
 
     console.log('[pdf-proxy] parsedUrlSource=', source);
     console.log('[pdf-proxy] downloadToken exists=', !!downloadToken);
-    console.log('[pdf-proxy] downloadUrl=', downloadUrl.slice(0, 120));
+
+    // SSRF guard: only fetch from the Morning/GreenInvoice host, and only
+    // over HTTPS. Anything else means the stored URL was tampered with —
+    // refuse rather than forward the Bearer token to an arbitrary host.
+    let parsedDownload: URL;
+    try {
+      parsedDownload = new URL(downloadUrl);
+    } catch {
+      return NextResponse.json({ error: 'Invalid invoice URL' }, { status: 400 });
+    }
+    if (parsedDownload.protocol !== 'https:' || parsedDownload.hostname !== 'api.greeninvoice.co.il') {
+      console.error('[pdf-proxy] refusing non-Morning host:', parsedDownload.hostname);
+      return NextResponse.json({ error: 'Invalid invoice URL' }, { status: 400 });
+    }
 
     const token = await getMorningToken();
 
-    const pdfRes = await fetch(downloadUrl, {
+    const pdfRes = await fetch(parsedDownload.toString(), {
       headers: { Authorization: `Bearer ${token}` },
     });
 
