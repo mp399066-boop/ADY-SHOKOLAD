@@ -95,7 +95,6 @@ export default function SettingsPage() {
       formData.append('file', file);
       formData.append('entity_type', 'business');
       formData.append('entity_id', settings?.id || 'default');
-      formData.append('bucket', 'brand-assets');
 
       const res = await fetch('/api/upload', { method: 'POST', body: formData });
       const json = await res.json();
