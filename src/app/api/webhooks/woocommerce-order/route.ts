@@ -1,5 +1,6 @@
 export const dynamic = 'force-dynamic';
 
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import { createAdminClient } from '@/lib/supabase/server';
 import { generateOrderNumber } from '@/lib/utils';
 import {
@@ -71,10 +72,41 @@ export async function GET() {
   return Response.json({ ok: true, route: 'woocommerce-order' });
 }
 
+// WooCommerce signs every webhook body with HMAC-SHA256, base64-encoded.
+// Header: X-WC-Webhook-Signature. Shared secret is configured in WC admin
+// (Settings → Advanced → Webhooks) and mirrored to WC_WEBHOOK_SECRET here.
+// Verifying this is the ONLY thing that distinguishes a real WC callback
+// from anyone on the internet POSTing crafted payloads to mark orders paid.
+function verifyWcSignature(rawBody: string, providedSig: string | null, secret: string): boolean {
+  if (!providedSig || !secret) return false;
+  try {
+    const expected = createHmac('sha256', secret).update(rawBody, 'utf8').digest('base64');
+    const a = Buffer.from(expected, 'utf8');
+    const b = Buffer.from(providedSig, 'utf8');
+    return a.length === b.length && timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const text = await req.text();
-    console.log('[wc-webhook] RAW BODY (first 1000):', text.slice(0, 1000));
+
+    // Signature gate — must run BEFORE any JSON parsing, DB writes, or logs
+    // that could echo attacker-controlled fields. Fail closed: if the env
+    // var is missing the route refuses every request, forcing the operator
+    // to configure the secret rather than silently accepting unsigned posts.
+    const secret = process.env.WC_WEBHOOK_SECRET ?? '';
+    if (!secret) {
+      console.error('[wc-webhook] WC_WEBHOOK_SECRET is not configured — rejecting');
+      return Response.json({ error: 'webhook not configured' }, { status: 503 });
+    }
+    const providedSig = req.headers.get('x-wc-webhook-signature');
+    if (!verifyWcSignature(text, providedSig, secret)) {
+      console.warn('[wc-webhook] invalid signature — rejecting (sig present:', !!providedSig, '| body bytes:', text.length, ')');
+      return Response.json({ error: 'invalid signature' }, { status: 401 });
+    }
 
     let wc: Record<string, unknown> = {};
     try {
