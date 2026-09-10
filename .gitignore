@@ -14,3 +14,6 @@ tests/demo-output/
 demo-video/
 test-results/
 playwright-report/
+
+# Supabase CLI local cache — contains pooler-url with the DB password
+supabase/.temp/
