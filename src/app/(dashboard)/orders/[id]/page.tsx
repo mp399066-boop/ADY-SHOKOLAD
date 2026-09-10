@@ -491,6 +491,11 @@ export default function OrderDetailPage() {
   type CourierOption = { id: string; שם_שליח: string; טלפון_שליח: string | null };
   const [courierOptions, setCourierOptions] = useState<CourierOption[]>([]);
   const [savingCourier, setSavingCourier]   = useState(false);
+  // Inline "new courier" form — lets the picker create a שליחים row without
+  // leaving the order. Creation goes through the existing POST /api/couriers.
+  const [showNewCourier, setShowNewCourier] = useState(false);
+  const [creatingCourier, setCreatingCourier] = useState(false);
+  const [newCourier, setNewCourier] = useState({ שם_שליח: '', טלפון_שליח: '', אימייל_שליח: '' });
 
   useEffect(() => {
     fetch('/api/couriers')
@@ -524,6 +529,46 @@ export default function OrderDetailPage() {
       toast.error(err instanceof Error ? err.message : 'שגיאה בשמירת שליח');
     } finally {
       setSavingCourier(false);
+    }
+  };
+
+  // Creates a new שליח from the order screen and immediately assigns it to
+  // this order's משלוחים row. Validation mirrors POST /api/couriers (name is
+  // required, plus at least one of phone/email) so the user gets the error
+  // before the round-trip; the server re-validates anyway.
+  const createCourierAndAssign = async () => {
+    const name  = newCourier.שם_שליח.trim();
+    const phone = newCourier.טלפון_שליח.trim();
+    const email = newCourier.אימייל_שליח.trim();
+    if (!name) { toast.error('יש להזין שם שליח'); return; }
+    if (!phone && !email) { toast.error('יש להזין טלפון או אימייל לשליח'); return; }
+
+    setCreatingCourier(true);
+    try {
+      const res = await fetch('/api/couriers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ שם_שליח: name, טלפון_שליח: phone, אימייל_שליח: email }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || 'שגיאה ביצירת שליח');
+
+      const created = json.data as Record<string, unknown> | undefined;
+      const createdId = String(created?.id ?? '');
+      if (!createdId) throw new Error('שגיאה ביצירת שליח');
+
+      setCourierOptions(prev => [
+        ...prev,
+        { id: createdId, שם_שליח: name, טלפון_שליח: phone || null },
+      ].sort((a, b) => a.שם_שליח.localeCompare(b.שם_שליח, 'he')));
+      setNewCourier({ שם_שליח: '', טלפון_שליח: '', אימייל_שליח: '' });
+      setShowNewCourier(false);
+      toast.success('שליח נוסף');
+      await assignCourier(createdId);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'שגיאה ביצירת שליח');
+    } finally {
+      setCreatingCourier(false);
     }
   };
 
@@ -1468,9 +1513,15 @@ export default function OrderDetailPage() {
                       <InfoField icon="truck" label="שליח">
                         <div className="flex flex-col gap-2 w-full">
                           <select
-                            value={order.משלוח?.courier_id ?? ''}
-                            onChange={e => assignCourier(e.target.value || null)}
-                            disabled={savingCourier}
+                            value={showNewCourier ? '__new__' : (order.משלוח?.courier_id ?? '')}
+                            onChange={e => {
+                              // The "__new__" sentinel opens the inline creation
+                              // form instead of assigning — no value is written.
+                              if (e.target.value === '__new__') { setShowNewCourier(true); return; }
+                              setShowNewCourier(false);
+                              assignCourier(e.target.value || null);
+                            }}
+                            disabled={savingCourier || creatingCourier}
                             className="text-[13px] h-9 px-2 rounded-lg border bg-white"
                             style={{ borderColor: '#E8DED2', color: '#2B1A10', minWidth: '12rem' }}
                           >
@@ -1478,7 +1529,67 @@ export default function OrderDetailPage() {
                             {courierOptions.map(c => (
                               <option key={c.id} value={c.id}>{c.שם_שליח}</option>
                             ))}
+                            <option value="__new__">➕ שליח חדש…</option>
                           </select>
+
+                          {showNewCourier && (
+                            <div
+                              className="flex flex-col gap-2 p-2.5 rounded-lg border"
+                              style={{ borderColor: '#E8DED2', backgroundColor: '#FDFBF8', minWidth: '12rem' }}
+                            >
+                              <span className="text-[12px] font-medium" style={{ color: '#4A2F1B' }}>הוספת שליח חדש</span>
+                              <input
+                                type="text"
+                                value={newCourier.שם_שליח}
+                                onChange={e => setNewCourier(p => ({ ...p, שם_שליח: e.target.value }))}
+                                placeholder="שם השליח *"
+                                className="text-[13px] h-9 px-2 rounded-lg border bg-white"
+                                style={{ borderColor: '#E8DED2', color: '#2B1A10' }}
+                              />
+                              <input
+                                type="tel"
+                                value={newCourier.טלפון_שליח}
+                                onChange={e => setNewCourier(p => ({ ...p, טלפון_שליח: e.target.value }))}
+                                placeholder="טלפון"
+                                dir="ltr"
+                                className="text-[13px] h-9 px-2 rounded-lg border bg-white text-right"
+                                style={{ borderColor: '#E8DED2', color: '#2B1A10' }}
+                              />
+                              <input
+                                type="email"
+                                value={newCourier.אימייל_שליח}
+                                onChange={e => setNewCourier(p => ({ ...p, אימייל_שליח: e.target.value }))}
+                                placeholder="אימייל"
+                                dir="ltr"
+                                className="text-[13px] h-9 px-2 rounded-lg border bg-white text-right"
+                                style={{ borderColor: '#E8DED2', color: '#2B1A10' }}
+                              />
+                              <span className="text-[11px]" style={{ color: '#6B4A2D' }}>חובה להזין טלפון או אימייל</span>
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  onClick={createCourierAndAssign}
+                                  disabled={creatingCourier || savingCourier}
+                                  className="text-[12.5px] font-medium h-9 px-3 rounded-lg text-white transition-colors disabled:opacity-60"
+                                  style={{ backgroundColor: '#8B5E3C' }}
+                                >
+                                  {creatingCourier ? 'שומר…' : 'שמור ושבץ'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setShowNewCourier(false);
+                                    setNewCourier({ שם_שליח: '', טלפון_שליח: '', אימייל_שליח: '' });
+                                  }}
+                                  disabled={creatingCourier}
+                                  className="text-[12.5px] h-9 px-3 rounded-lg border bg-white transition-colors disabled:opacity-60"
+                                  style={{ borderColor: '#E8DED2', color: '#4A2F1B' }}
+                                >
+                                  ביטול
+                                </button>
+                              </div>
+                            </div>
+                          )}
                           {order.משלוח?.שליחים && (
                             <div className="text-[12px]" style={{ color: '#4A2F1B' }}>
                               <span className="font-medium">{order.משלוח.שליחים.שם_שליח}</span>
