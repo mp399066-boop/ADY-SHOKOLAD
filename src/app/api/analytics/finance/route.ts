@@ -65,14 +65,15 @@ export async function GET(req: NextRequest) {
         .order('תאריך_אספקה', { ascending: false })
         .limit(200),
 
-      // Current unpaid (not range-filtered — outstanding balance is always current)
+      // Current unpaid (not range-filtered — outstanding balance is always
+      // current). Deliberately does NOT exclude 'הושלמה בהצלחה' — a completed
+      // order with a balance still owed is exactly the debt to collect.
       supabase
         .from('הזמנות')
         .select('סך_הכל_לתשלום, דמי_משלוח', { count: 'exact' })
         .in('סטטוס_תשלום', ['ממתין', 'חלקי'])
         .neq('סטטוס_הזמנה', 'בוטלה')
-        .neq('סטטוס_הזמנה', 'טיוטה')
-        .neq('סטטוס_הזמנה', 'הושלמה בהצלחה'),
+        .neq('סטטוס_הזמנה', 'טיוטה'),
 
       // All paid in last 30 days — for the daily chart (always 30-day window)
       supabase

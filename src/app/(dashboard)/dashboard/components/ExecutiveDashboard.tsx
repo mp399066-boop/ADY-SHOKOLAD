@@ -108,6 +108,8 @@ function KpiDrillModal({
   liveOrders,
   revenueOrders,
   revenueLoading,
+  unpaidRows,
+  unpaidLoading,
   deliveries,
   onClose,
   onNavigate,
@@ -116,6 +118,8 @@ function KpiDrillModal({
   liveOrders: TodayOrder[];
   revenueOrders: TodayOrder[];
   revenueLoading: boolean;
+  unpaidRows: TodayOrder[];
+  unpaidLoading: boolean;
   deliveries: Delivery[];
   onClose: () => void;
   onNavigate: (path: string) => void;
@@ -128,12 +132,10 @@ function KpiDrillModal({
     urgent:     'דחוף עכשיו',
   };
 
-  const unpaidOrders = liveOrders.filter(o =>
-    (o.סטטוס_תשלום === 'ממתין' || o.סטטוס_תשלום === 'חלקי') &&
-    o.סטטוס_הזמנה !== 'הושלמה בהצלחה' &&
-    o.סטטוס_הזמנה !== 'בוטלה' &&
-    o.סטטוס_הזמנה !== 'טיוטה'
-  );
+  // Server-fetched via the dedicated `unpaid` filter mode — see the fetch in
+  // the parent. NOT derived from liveOrders, which drops completed orders and
+  // would hide collectable debt the KPI above already counts.
+  const unpaidOrders = unpaidRows;
 
   const urgentOrders = liveOrders.filter(o =>
     o.הזמנה_דחופה &&
@@ -192,7 +194,11 @@ function KpiDrillModal({
         ))}
 
         {/* ── Unpaid ── */}
-        {kind === 'unpaid' && (unpaidOrders.length === 0 ? (
+        {kind === 'unpaid' && (unpaidLoading ? (
+          <div className="flex justify-center py-8">
+            <div className="w-5 h-5 rounded-full border-2 animate-spin" style={{ borderColor: C.borderSoft, borderTopColor: C.brand }} />
+          </div>
+        ) : unpaidOrders.length === 0 ? (
           <p className="text-[13px] text-center py-6" style={{ color: C.textMuted }}>אין הזמנות פתוחות לתשלום</p>
         ) : (
           <div className="space-y-1.5 max-h-[60vh] overflow-y-auto">
@@ -409,6 +415,29 @@ export function ExecutiveDashboard({
   const [modal, setModal] = useState<ModalKind | null>(null);
   const [revenueOrders, setRevenueOrders] = useState<TodayOrder[]>([]);
   const [revenueLoading, setRevenueLoading] = useState(false);
+  const [unpaidRows, setUnpaidRows] = useState<TodayOrder[]>([]);
+  const [unpaidLoading, setUnpaidLoading] = useState(false);
+
+  useEffect(() => {
+    if (modal !== 'unpaid') return;
+    setUnpaidLoading(true);
+    // Drilldown for "ממתין לתשלום". Same reasoning as the revenue drilldown
+    // below: fetch the dedicated `unpaid` filter mode instead of post-filtering
+    // liveOrders here. liveOrders excludes 'הושלמה בהצלחה' (correct for the
+    // "active pipeline" count it also feeds), but a completed order with an
+    // outstanding balance IS collectable debt and is counted by the KPI —
+    // filtering it out here produced a count-vs-modal mismatch.
+    fetch('/api/orders?filter=unpaid&limit=200')
+      .then(r => r.json())
+      .then(json => {
+        const rows = (json.data || []) as TodayOrder[];
+        // Safe drill log — card key + row count only. No PII.
+        console.log('[dashboard-drill] kind: unpaid | filter: unpaid | rows:', rows.length);
+        setUnpaidRows(rows);
+      })
+      .catch(() => {})
+      .finally(() => setUnpaidLoading(false));
+  }, [modal]);
 
   useEffect(() => {
     if (modal !== 'revenue') return;
@@ -568,6 +597,8 @@ export function ExecutiveDashboard({
           liveOrders={liveOrders}
           revenueOrders={revenueOrders}
           revenueLoading={revenueLoading}
+          unpaidRows={unpaidRows}
+          unpaidLoading={unpaidLoading}
           deliveries={todayDeliveries}
           onClose={() => setModal(null)}
           onNavigate={onNavigate}

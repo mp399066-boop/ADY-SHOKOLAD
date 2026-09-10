@@ -133,11 +133,13 @@ export async function GET() {
       fetchAllPaged<PaidRow>((from, to) =>
         supabase
           .from('הזמנות')
+          // Deliberately does NOT exclude 'הושלמה בהצלחה' — a completed order
+          // with a balance still owed is exactly the debt to collect, not
+          // something to hide once the job is done.
           .select('id, מספר_הזמנה, לקוח_id, סך_הכל_לתשלום, דמי_משלוח, סטטוס_הזמנה, תאריך_אספקה, לקוחות(שם_פרטי, שם_משפחה)')
           .in('סטטוס_תשלום', ['ממתין', 'חלקי'])
           .neq('סטטוס_הזמנה', 'בוטלה')
           .neq('סטטוס_הזמנה', 'טיוטה')
-          .neq('סטטוס_הזמנה', 'הושלמה בהצלחה')
           .order('סך_הכל_לתשלום', { ascending: false })
           .range(from, to),
       ),
@@ -164,6 +166,19 @@ export async function GET() {
       week:  getShippingKpi(paid, weekFrom,  today),
       month: getShippingKpi(paid, monthFrom, today),
       year:  getShippingKpi(paid, yearFrom,  today),
+    };
+
+    // Still-unpaid amounts over the SAME periods (by תאריך_אספקה). The revenue
+    // KPIs above count only orders marked שולם — without this companion figure
+    // an order delivered today but not yet paid is invisible in every
+    // period view, and the headline reads as if that money never existed.
+    // NOTE: there is no payment-date column on הזמנות, so both figures are
+    // dated by delivery date, not by when the money actually landed.
+    const pending = {
+      today: getKpi(unpaid, today,     today),
+      week:  getKpi(unpaid, weekFrom,  today),
+      month: getKpi(unpaid, monthFrom, today),
+      year:  getKpi(unpaid, yearFrom,  today),
     };
 
     // Daily chart — last 30 days
@@ -242,6 +257,7 @@ export async function GET() {
     return NextResponse.json({
       kpis,
       shipping,
+      pending,
       dailyChart,
       monthlyChart,
       byPaymentMethod,

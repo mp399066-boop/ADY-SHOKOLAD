@@ -793,14 +793,15 @@ async function actionRevenueQuery(scope: 'today' | 'week' | 'month' | 'pending')
   const today = todayInTZ();
 
   // ── Pending receivables — sum of unpaid + partial outside cancelled/draft.
+  // Deliberately does NOT exclude 'הושלמה בהצלחה' — a completed order with a
+  // balance still owed is exactly the debt to collect.
   if (scope === 'pending') {
     const { data, error } = await supabase
       .from('הזמנות')
       .select('סך_הכל_לתשלום')
       .in('סטטוס_תשלום', ['ממתין', 'חלקי'])
       .neq('סטטוס_הזמנה', 'בוטלה')
-      .neq('סטטוס_הזמנה', 'טיוטה')
-      .neq('סטטוס_הזמנה', 'הושלמה בהצלחה');
+      .neq('סטטוס_הזמנה', 'טיוטה');
     if (error) throw new Error(error.message);
     const rows = (data || []) as Record<string, unknown>[];
     const total = rows.reduce((s, r) => s + Number(r['סך_הכל_לתשלום'] || 0), 0);
@@ -1015,7 +1016,9 @@ async function actionDailySummary(): Promise<AssistantResponse> {
   ] = await Promise.all([
     supabase.from('הזמנות').select('*', { count: 'exact', head: true }).eq('תאריך_אספקה', today).neq('סטטוס_הזמנה', 'בוטלה').neq('סטטוס_הזמנה', 'טיוטה'),
     supabase.from('הזמנות').select('*', { count: 'exact', head: true }).eq('תאריך_אספקה', today).eq('הזמנה_דחופה', true).neq('סטטוס_הזמנה', 'בוטלה').neq('סטטוס_הזמנה', 'טיוטה'),
-    supabase.from('הזמנות').select('*', { count: 'exact', head: true }).in('סטטוס_תשלום', ['ממתין', 'חלקי']).neq('סטטוס_הזמנה', 'בוטלה').neq('סטטוס_הזמנה', 'טיוטה').neq('סטטוס_הזמנה', 'הושלמה בהצלחה'),
+    // Unpaid count — deliberately does NOT exclude 'הושלמה בהצלחה' — a
+    // completed order with a balance still owed is exactly the debt to collect.
+    supabase.from('הזמנות').select('*', { count: 'exact', head: true }).in('סטטוס_תשלום', ['ממתין', 'חלקי']).neq('סטטוס_הזמנה', 'בוטלה').neq('סטטוס_הזמנה', 'טיוטה'),
     supabase.from('הזמנות').select('סך_הכל_לתשלום').eq('תאריך_אספקה', today).eq('סטטוס_תשלום', 'שולם'),
     supabase.from('משלוחים').select('*', { count: 'exact', head: true }).eq('תאריך_משלוח', today).neq('סטטוס_משלוח', 'נמסר'),
     supabase.from('מלאי_חומרי_גלם').select('*', { count: 'exact', head: true }).in('סטטוס_מלאי', ['מלאי נמוך', 'קריטי', 'אזל מהמלאי']),

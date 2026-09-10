@@ -641,6 +641,14 @@ interface FinanceOverviewData {
     month: FinKpi;
     year:  FinKpi;
   };
+  // Money for the same periods that is delivered but NOT yet marked paid.
+  // Shown under each revenue figure so an unpaid order isn't invisible.
+  pending: {
+    today: FinKpi;
+    week:  FinKpi;
+    month: FinKpi;
+    year:  FinKpi;
+  };
   dailyChart:      Array<{ key: string; label: string; amount: number }>;
   monthlyChart:    Array<{ key: string; label: string; amount: number }>;
   byPaymentMethod: Array<{ method: string; count: number; amount: number }>;
@@ -653,7 +661,7 @@ interface FinanceOverviewData {
 // ── Finance sub-components ────────────────────────────────────────────────────
 
 function FinKpiCard({
-  label, amount, count, countLabel, accent, accentBg, onClick, shipping,
+  label, amount, count, countLabel, accent, accentBg, onClick, shipping, pending, pendingCount,
 }: {
   label: string;
   amount: number;
@@ -665,6 +673,11 @@ function FinKpiCard({
   // Shipping fees already excluded from `amount` above — shown as a small
   // proof line so it's visible (not just claimed) that revenue excludes it.
   shipping?: number;
+  // Delivered in this same period but not yet marked paid. `amount` counts
+  // only שולם orders, so without this line that money reads as if it never
+  // existed.
+  pending?: number;
+  pendingCount?: number;
 }) {
   const base = (
     <>
@@ -681,6 +694,12 @@ function FinKpiCard({
             {count}
           </span>
           {' '}{countLabel ?? 'הזמנות'}
+        </p>
+      )}
+      {typeof pending === 'number' && pending > 0 && (
+        <p className="text-[9.5px] font-semibold tabular-nums" style={{ color: C.amber }}>
+          + {formatCurrency(pending)} טרם שולם
+          {pendingCount ? ` (${pendingCount})` : ''}
         </p>
       )}
       {typeof shipping === 'number' && shipping > 0 && (
@@ -989,23 +1008,27 @@ function FinanceTab({ onNavigate }: { onNavigate: (path: string) => void }) {
         {/* ── Row 1: KPI cards ── */}
         <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-2">
           <FinKpiCard
-            label="הכנסות היום" amount={data.kpis.today.total} count={data.kpis.today.count}
+            label="נכנס היום" amount={data.kpis.today.total} count={data.kpis.today.count}
             accent={C.brand} accentBg={C.brandSoft} shipping={data.shipping.today.total}
+            pending={data.pending.today.total} pendingCount={data.pending.today.count}
             onClick={() => openKpiDrill('היום', data.kpis.today, o => o.date === todayKey)}
           />
           <FinKpiCard
-            label="השבוע" amount={data.kpis.week.total} count={data.kpis.week.count}
+            label="נכנס השבוע" amount={data.kpis.week.total} count={data.kpis.week.count}
             accent={C.brand} accentBg={C.brandSoft} shipping={data.shipping.week.total}
+            pending={data.pending.week.total} pendingCount={data.pending.week.count}
             onClick={() => openKpiDrill('השבוע', data.kpis.week, o => !!o.date && o.date >= weekFrom && o.date <= todayKey)}
           />
           <FinKpiCard
-            label="החודש" amount={data.kpis.month.total} count={data.kpis.month.count}
+            label="נכנס החודש" amount={data.kpis.month.total} count={data.kpis.month.count}
             accent={C.gold} accentBg={C.goldSoft} shipping={data.shipping.month.total}
+            pending={data.pending.month.total} pendingCount={data.pending.month.count}
             onClick={() => openKpiDrill('החודש', data.kpis.month, o => !!o.date && o.date >= monthFrom && o.date <= todayKey)}
           />
           <FinKpiCard
-            label="השנה" amount={data.kpis.year.total} count={data.kpis.year.count}
+            label="נכנס השנה" amount={data.kpis.year.total} count={data.kpis.year.count}
             accent={C.gold} accentBg={C.goldSoft} shipping={data.shipping.year.total}
+            pending={data.pending.year.total} pendingCount={data.pending.year.count}
             onClick={() => openKpiDrill('השנה', data.kpis.year, o => !!o.date && o.date >= yearFrom && o.date <= todayKey)}
           />
           <FinKpiCard
@@ -1231,7 +1254,17 @@ function FinanceTab({ onNavigate }: { onNavigate: (path: string) => void }) {
 
           {/* Open for collection */}
           <section className="rounded-xl p-4" style={CARD}>
-            <h2 className="text-[12px] font-bold mb-3" style={{ color: C.textSoft }}>פתוחות לגבייה</h2>
+            <div className="flex items-baseline justify-between mb-3">
+              <h2 className="text-[12px] font-bold" style={{ color: C.textSoft }}>פתוחות לגבייה</h2>
+              {/* The list below is capped at the 12 largest debts — say so, and
+                  give a way to reach the rest, otherwise a smaller unpaid order
+                  looks like it simply isn't tracked anywhere. */}
+              {data.kpis.unpaid.count > data.openOrders.length && (
+                <span className="text-[10px]" style={{ color: C.textMuted }}>
+                  {data.openOrders.length} מתוך {data.kpis.unpaid.count} הגדולות
+                </span>
+              )}
+            </div>
             <FinOrderList
               orders={data.openOrders}
               onNavigate={onNavigate}
@@ -1240,6 +1273,13 @@ function FinanceTab({ onNavigate }: { onNavigate: (path: string) => void }) {
               showStatus
               emptyText="אין חובות פתוחים"
             />
+            <Link
+              href="/orders?filter=unpaid"
+              className="mt-3 flex items-center justify-center text-[11px] font-semibold pt-2.5 transition-opacity hover:opacity-70"
+              style={{ color: C.brand, borderTop: `1px solid ${C.borderSoft}` }}
+            >
+              כל החובות הפתוחים ←
+            </Link>
           </section>
         </div>
 

@@ -93,6 +93,18 @@ export async function GET(req: NextRequest) {
         .eq('סטטוס_תשלום', 'שולם')
         .neq('סטטוס_הזמנה', 'בוטלה')
         .neq('סטטוס_הזמנה', 'טיוטה');
+    } else if (filter === 'unpaid') {
+      // ── Unpaid drilldown ─────────────────────────────────────────────────
+      // INTENTIONALLY does NOT exclude 'הושלמה בהצלחה' — a completed order
+      // with an outstanding balance is exactly the debt that needs
+      // collecting, not something to hide once the job is done. Still
+      // excludes drafts (not real orders) and cancelled (nothing to collect).
+      // Predicate must stay in lock-step with the dashboard's unpaid count
+      // (src/app/api/dashboard/route.ts) and the finance analytics routes.
+      query = query
+        .in('סטטוס_תשלום', ['ממתין', 'חלקי'])
+        .neq('סטטוס_הזמנה', 'בוטלה')
+        .neq('סטטוס_הזמנה', 'טיוטה');
     } else {
       // All other views: exclude completed / cancelled / drafts. Cancelled
       // orders belong in the archive, not in the active workflow tabs.
@@ -103,10 +115,6 @@ export async function GET(req: NextRequest) {
       if (filter === 'today') query = query.eq('תאריך_אספקה', today);
       else if (filter === 'tomorrow') query = query.eq('תאריך_אספקה', tomorrow);
       else if (filter === 'urgent') query = query.eq('הזמנה_דחופה', true);
-      // "Unpaid" = pay status in (ממתין, חלקי). Cancellation guard is no
-      // longer needed here — the default branch above already excludes it.
-      // Must stay in lock-step with the dashboard's unpaid count.
-      else if (filter === 'unpaid') query = query.in('סטטוס_תשלום', ['ממתין', 'חלקי']);
       else if (filter === 'preparation') query = query.eq('סטטוס_הזמנה', 'בהכנה');
       else if (filter === 'ready') query = query.eq('סטטוס_הזמנה', 'מוכנה למשלוח');
       else if (filter === 'shipped') query = query.eq('סטטוס_הזמנה', 'נשלחה');

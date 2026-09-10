@@ -263,6 +263,14 @@ export const DEMO_FINANCE_OVERVIEW = {
     month: { total: 640,  count: 20 },
     year:  { total: 7200, count: 230 },
   },
+  // Delivered in each period but not yet marked paid — shown under the
+  // matching revenue figure so unpaid money is never invisible.
+  pending: {
+    today: { total: 240,  count: 1 },
+    week:  { total: 620,  count: 2 },
+    month: { total: 1240, count: 3 },
+    year:  { total: 1240, count: 3 },
+  },
   dailyChart:   _dailyChart,
   monthlyChart: _monthlyChart,
   byPaymentMethod: [
