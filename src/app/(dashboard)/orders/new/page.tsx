@@ -46,12 +46,13 @@ interface RecipientDraft {
   עיר: string;
   הוראות_משלוח: string;
   ברכה_טקסט: string;
+  הערות: string;
 }
 
 function makeRecipient(): RecipientDraft {
   return {
     key: `r${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`,
-    שם_נמען: '', טלפון_נמען: '', כתובת: '', עיר: '', הוראות_משלוח: '', ברכה_טקסט: '',
+    שם_נמען: '', טלפון_נמען: '', כתובת: '', עיר: '', הוראות_משלוח: '', ברכה_טקסט: '', הערות: '',
   };
 }
 
@@ -110,6 +111,20 @@ function resolvePriceListEntry(
     return matching[0] ?? all[all.length - 1];
   }
   return priceList.find(pl => pl.מוצר_id === productId && pl.price_type === priceType);
+}
+
+/**
+ * Total quantity of one product across the whole order.
+ *
+ * A quantity price tier is a bracket on how much of a product the ORDER
+ * holds, not on how much sits on any one line. Multi-recipient orders are
+ * what make the difference visible: 30 boxes for 30 people are 30 lines of 1,
+ * and pricing each line on its own quantity would drop the order out of the
+ * bracket it actually qualifies for.
+ */
+function totalQtyForProduct(items: { מוצר_id: string; כמות: number }[], productId: string): number {
+  if (!productId) return 0;
+  return items.reduce((sum, i) => (i.מוצר_id === productId ? sum + (Number(i.כמות) || 0) : sum), 0);
 }
 
 function computeEffectivePriceType(
@@ -374,6 +389,7 @@ export default function NewOrderPage() {
           עיר: (r.עיר as string) || '',
           הוראות_משלוח: (r.הוראות_משלוח as string) || '',
           ברכה_טקסט: (r.ברכה_טקסט as string) || '',
+          הערות: (r.הערות as string) || '',
         }));
         if (draftRecipients.length > 0) {
           setRecipients(draftRecipients);
@@ -475,7 +491,7 @@ export default function NewOrderPage() {
       if (prev.length === 0) return prev;
       return prev.map(item => {
         if (!item.מוצר_id) return item;
-        const entry = resolvePriceListEntry(priceList, item.מוצר_id, effectivePriceType, item.כמות);
+        const entry = resolvePriceListEntry(priceList, item.מוצר_id, effectivePriceType, totalQtyForProduct(prev, item.מוצר_id));
         if (entry) {
           return { ...item, מחיר_ליחידה: entry.מחיר, סהכ: item.כמות * entry.מחיר, missingPrice: false };
         }
@@ -651,12 +667,15 @@ export default function NewOrderPage() {
     setOrderItems(prev => {
       const items = [...prev];
       const item = { ...items[idx], [field]: value };
+      // The order as it will be once this edit lands — quantity brackets are
+      // resolved against it, not against the single line being typed into.
+      const draft = items.map((row, i) => (i === idx ? item : row));
 
       if (field === 'מוצר_id') {
         const prod = products.find(p => p.id === value);
         if (prod) {
           item.שם_מוצר = prod.שם_מוצר;
-          const entry = resolvePriceListEntry(priceList, String(value), effectivePriceType, item.כמות);
+          const entry = resolvePriceListEntry(priceList, String(value), effectivePriceType, totalQtyForProduct(draft, String(value)));
           if (entry) {
             item.מחיר_ליחידה = entry.מחיר;
             item.missingPrice = false;
@@ -673,7 +692,7 @@ export default function NewOrderPage() {
       }
 
       if (field === 'כמות' && (effectivePriceType === 'business_quantity' || effectivePriceType === 'retail_quantity') && item.מוצר_id) {
-        const entry = resolvePriceListEntry(priceList, item.מוצר_id, effectivePriceType, Number(value));
+        const entry = resolvePriceListEntry(priceList, item.מוצר_id, effectivePriceType, totalQtyForProduct(draft, item.מוצר_id));
         if (entry) {
           item.מחיר_ליחידה = entry.מחיר;
           item.missingPrice = false;
@@ -684,6 +703,21 @@ export default function NewOrderPage() {
 
       item.סהכ = item.כמות * item.מחיר_ליחידה;
       items[idx] = item;
+
+      // Sibling lines of the same product ride the same bracket, so a change
+      // here can move them too. Rows carrying a manually typed price
+      // (missingPrice) are never overwritten.
+      if (effectivePriceType === 'business_quantity' || effectivePriceType === 'retail_quantity') {
+        const affected = new Set(
+          [prev[idx]?.מוצר_id, item.מוצר_id].filter((v): v is string => !!v),
+        );
+        return items.map((row, i) => {
+          if (i === idx || !row.מוצר_id || !affected.has(row.מוצר_id) || row.missingPrice) return row;
+          const entry = resolvePriceListEntry(priceList, row.מוצר_id, effectivePriceType, totalQtyForProduct(items, row.מוצר_id));
+          if (!entry || entry.מחיר === row.מחיר_ליחידה) return row;
+          return { ...row, מחיר_ליחידה: entry.מחיר, סהכ: (Number(row.כמות) || 0) * entry.מחיר };
+        });
+      }
       return items;
     });
   };
@@ -802,50 +836,70 @@ export default function NewOrderPage() {
     setCustomItems(clear);
   };
 
-  /** How many lines are currently assigned to one recipient. */
-  const recipientItemCount = (key: string) =>
-    [...orderItems, ...packageItems, ...customItems].filter(r => r.נמען_key === key).length;
+  // Lines pointing at no recipient (or at one that was removed). In
+  // multi-recipient mode they are surfaced in their own block instead of
+  // vanishing between the per-recipient lists.
+  const isAssigned = (key: string | undefined) => !!key && recipients.some(r => r.key === key);
+  const unassignedProducts = orderItems
+    .map((item, idx) => ({ item, idx }))
+    .filter(x => !isAssigned(x.item.נמען_key));
+  const unassignedPackages = packageItems
+    .map((pkg, idx) => ({ pkg, idx }))
+    .filter(x => !isAssigned(x.pkg.נמען_key));
+
+  // Adding straight into one recipient's block — the row is born assigned,
+  // so there is no "which person was this for again?" step.
+  const addProductItemFor = (key: string) => setOrderItems(prev => [...prev, {
+    מוצר_id: '', שם_מוצר: '', כמות: 1, מחיר_ליחידה: 0, סהכ: 0, הערות_לשורה: '', missingPrice: false,
+    נמען_key: key,
+  }]);
+
+  const addPackageItemFor = (key: string) => setPackageItems(prev => [...prev, {
+    מוצר_id: null, שם_מארז: '', גודל_מארז: 0, כמות: 1,
+    מחיר_ליחידה: 0, סהכ: 0, הערות_לשורה: '', פטיפורים: [],
+    נמען_key: key,
+  }]);
 
   /**
-   * "Everyone gets the same thing" — takes the lines currently assigned to the
-   * first recipient (or still unassigned) as the template and replaces the
-   * whole item list with one copy of that template per recipient.
+   * "שכפל לכולם" — when everyone gets the same thing, build one recipient's
+   * list and copy it onto all the others. Their existing lines are replaced
+   * (that is the point of the button); unassigned/order-wide lines are left
+   * alone.
    *
-   * Prices and quantities are per line, so ten recipients × one box each is
-   * ten rows of one — which is also what the quantity price tiers and the
-   * stock check need to see.
+   * Prices and quantities stay per line, so ten recipients × one box each is
+   * ten rows of one — which is what the quantity price tiers and the stock
+   * check need to see.
    */
-  const applyItemsToAllRecipients = () => {
-    if (recipients.length < 2) {
-      toast.error('יש להוסיף לפחות שני נמענים');
-      return;
-    }
-    const first = recipients[0].key;
-    const isTemplate = (r: { נמען_key?: string }) => !r.נמען_key || r.נמען_key === first;
-
-    const productTpl = orderItems.filter(isTemplate);
-    const packageTpl = packageItems.filter(isTemplate);
-    const customTpl  = customItems.filter(isTemplate);
-
-    if (productTpl.length === 0 && packageTpl.length === 0 && customTpl.length === 0) {
-      toast.error(`אין פריטים לשכפול — יש להזין קודם את הפריטים של ${recipients[0].שם_נמען.trim() || 'הנמען הראשון'}`);
+  const copyRecipientItemsToAll = (sourceKey: string) => {
+    const others = recipients.filter(r => r.key !== sourceKey);
+    if (others.length === 0) {
+      toast.error('יש להוסיף עוד נמענים כדי לשכפל אליהם');
       return;
     }
 
-    const assignedElsewhere =
-      orderItems.length + packageItems.length + customItems.length
-      - (productTpl.length + packageTpl.length + customTpl.length);
-    if (assignedElsewhere > 0 && !window.confirm(
-      `הפעולה תחליף את כל הפריטים בהזמנה — כל ${recipients.length} הנמענים יקבלו את אותם פריטים. להמשיך?`,
+    const srcProducts = orderItems.filter(i => i.נמען_key === sourceKey);
+    const srcPackages = packageItems.filter(i => i.נמען_key === sourceKey);
+    if (srcProducts.length === 0 && srcPackages.length === 0) {
+      toast.error('אין פריטים לשכפול אצל הנמען הזה');
+      return;
+    }
+
+    const targetsWithItems = others.filter(r =>
+      orderItems.some(i => i.נמען_key === r.key) || packageItems.some(i => i.נמען_key === r.key),
+    );
+    if (targetsWithItems.length > 0 && !window.confirm(
+      `הפריטים של ${targetsWithItems.length} נמענים אחרים יוחלפו. להמשיך?`,
     )) return;
 
-    const fanOut = <T extends { נמען_key?: string }>(tpl: T[]): T[] =>
-      recipients.flatMap(r => tpl.map(row => ({ ...row, נמען_key: r.key })));
+    const otherKeys = new Set(others.map(r => r.key));
+    const fanOut = <T extends { נמען_key?: string }>(prev: T[], src: T[]): T[] => [
+      ...prev.filter(row => !otherKeys.has(row.נמען_key || '')),
+      ...others.flatMap(r => src.map(row => ({ ...row, נמען_key: r.key }))),
+    ];
 
-    setOrderItems(fanOut(productTpl));
-    setPackageItems(fanOut(packageTpl));
-    setCustomItems(fanOut(customTpl));
-    toast.success(`הפריטים שוכפלו ל-${recipients.length} נמענים`);
+    setOrderItems(prev => fanOut(prev, srcProducts));
+    setPackageItems(prev => fanOut(prev, srcPackages));
+    toast.success(`הפריטים שוכפלו ל-${others.length} נמענים`);
   };
 
   const inferCategoryFromName = (name: string): string => {
@@ -926,6 +980,7 @@ export default function NewOrderPage() {
       עיר: r.עיר || null,
       הוראות_משלוח: r.הוראות_משלוח || null,
       ברכה_טקסט: r.ברכה_טקסט || null,
+      הערות: r.הערות || null,
     })),
     הזמנה: {
       סטטוס_הזמנה: status,
@@ -1096,6 +1151,367 @@ export default function NewOrderPage() {
     }
   };
 
+  // Section numbers shift with the shape of the form: איסוף עצמי has no
+  // delivery section, and a multi-recipient order folds products + packages
+  // into the recipients section instead of listing them separately.
+  const sectionNo: Record<string, number> = (() => {
+    const keys = ['customer', 'details'];
+    if (deliveryType === 'משלוח') keys.push('delivery');
+    if (recipientsActive) keys.push('recipients');
+    else keys.push('products', 'packages');
+    keys.push('custom', 'greeting', 'payment');
+    return Object.fromEntries(keys.map((k, i) => [k, i + 1]));
+  })();
+
+  // The three item-row renderers are shared by both layouts: the flat list
+  // used for a single-recipient order, and the per-recipient blocks that
+  // replace it when the order goes to several people. Same row, same
+  // handlers, same index into the flat state arrays — only grouping differs.
+  const renderProductRow = (item: OrderItem, idx: number) => {
+                  const retailEntry = effectivePriceType === 'retail_quantity' && item.מוצר_id
+                    ? priceList.find(pl => pl.מוצר_id === item.מוצר_id && pl.price_type === 'retail')
+                    : undefined;
+                  const showStrikethrough = !!retailEntry && retailEntry.מחיר !== item.מחיר_ליחידה && !item.missingPrice;
+                  return (
+                  <div
+                    key={idx}
+                    className="p-3 rounded-xl"
+                    style={{ backgroundColor: '#FAF7F0', border: item.missingPrice ? '1px solid #FBBF24' : undefined }}
+                  >
+                  <RecipientPicker
+                    recipients={activeRecipients}
+                    value={item.נמען_key || ''}
+                    onChange={v => updateProductItem(idx, 'נמען_key', v)}
+                  />
+                  <div className="grid grid-cols-12 gap-2 items-end">
+                    <div className="col-span-4">
+                      <Combobox
+                        label="מוצר"
+                        value={item.מוצר_id}
+                        onChange={v => updateProductItem(idx, 'מוצר_id', v)}
+                        options={(() => {
+                          // Show all active regular products that the customer is
+                          // allowed to purchase. We deliberately do NOT hide products
+                          // that lack a price-list entry for the active tier — those
+                          // still surface, with the existing missingPrice warning to
+                          // block save until a price exists. Hiding them silently
+                          // caused legitimate items (e.g. mini magnum) to be invisible
+                          // in the create form even though they were present in edit.
+                          const isBusinessCustomer = !!customerType && customerType.startsWith('עסקי');
+                          // searchText holds a Hebrew-normalized version of the
+                          // product name so the Combobox matches on stable text:
+                          // strips geresh ׳/' / gershayim ״/", asterisks, hyphens,
+                          // collapses whitespace, and applies NFC. Without this,
+                          // a query like "מג" can fail to find "מיני מג'" and
+                          // "מיני-מגנום" can fail to find "מיני מגנום".
+                          const visible = products
+                            .filter(p => p.פעיל && p.סוג_מוצר === 'מוצר רגיל')
+                            .filter(p => !p.לקוחות_עסקיים_בלבד || isBusinessCustomer);
+                          // Detect names that appear on more than one active row,
+                          // so we can attach a base-price hint (e.g. "₪14") to the
+                          // dropdown label and the user can pick the right one.
+                          // Catalog duplicates are a known data issue (e.g. two
+                          // "טארטלט פיצוחים" rows) — this surfaces them in the UI
+                          // without any DB change.
+                          const nameCounts = visible.reduce<Record<string, number>>((acc, p) => {
+                            const k = String(p.שם_מוצר ?? '').trim();
+                            acc[k] = (acc[k] || 0) + 1;
+                            return acc;
+                          }, {});
+                          return visible.map(p => {
+                            const k = String(p.שם_מוצר ?? '').trim();
+                            const isDup = (nameCounts[k] ?? 0) > 1;
+                            return {
+                              value: p.id,
+                              label: p.שם_מוצר,
+                              searchText: normalizeSearchText(p.שם_מוצר),
+                              hint: isDup ? `₪${(p.מחיר ?? 0).toFixed(2)}` : undefined,
+                            };
+                          });
+                        })()}
+                        placeholder="בחר..."
+                        searchPlaceholder="חיפוש מוצר..."
+                        emptyText="לא נמצאו מוצרים"
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <Input
+                        label="כמות"
+                        type="number"
+                        value={item.כמות}
+                        onChange={e => updateProductItem(idx, 'כמות', Number(e.target.value))}
+                        min={1}
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <Input
+                        label={isBusiness ? 'מחיר (לפני מע״מ)' : 'מחיר'}
+                        type="number"
+                        value={item.מחיר_ליחידה}
+                        onChange={e => updateProductItem(idx, 'מחיר_ליחידה', Number(e.target.value))}
+                        min={0}
+                        step={0.01}
+                        // Highlight the field when there's no price-list entry —
+                        // this is exactly where the user must type a manual price.
+                        className={item.missingPrice ? 'border-amber-400 focus:border-amber-500 focus:ring-amber-200 bg-amber-50' : undefined}
+                      />
+                    </div>
+                    <div className="col-span-3">
+                      <Input label="סה״כ" value={`₪${item.סהכ.toFixed(2)}`} readOnly />
+                    </div>
+                    <div className="col-span-1 flex items-end justify-center pb-1">
+                      <button
+                        type="button"
+                        onClick={() => removeProductItem(idx)}
+                        className="w-6 h-6 rounded-full flex items-center justify-center text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors text-lg leading-none"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </div>
+                  {showStrikethrough && retailEntry && (
+                    <div className="flex items-center gap-2 mt-1.5">
+                      <span className="text-xs px-1.5 py-0.5 rounded font-medium" style={{ backgroundColor: '#D5F0E3', color: '#1D6A3D' }}>מחיר אירוע</span>
+                      <span className="text-xs" style={{ color: '#9B7A5A', textDecoration: 'line-through' }}>₪{retailEntry.מחיר.toFixed(2)}</span>
+                      <span className="text-xs font-semibold" style={{ color: '#1D6A3D' }}>₪{item.מחיר_ליחידה.toFixed(2)}</span>
+                    </div>
+                  )}
+                  {item.missingPrice && (
+                    <p className="text-xs text-amber-700 mt-1.5">
+                      ⚠ אין מחיר במחירון הפעיל — ניתן להזין מחיר ידנית
+                    </p>
+                  )}
+                  </div>
+                  );
+  };
+
+  const renderPackageRow = (pkg: PackageItem, pkgIdx: number) => (
+                  <div
+                    key={pkgIdx}
+                    className="p-4 rounded-xl border"
+                    style={{ borderColor: '#DDD0BC', backgroundColor: '#FAF7F0' }}
+                  >
+                    <RecipientPicker
+                      recipients={activeRecipients}
+                      value={pkg.נמען_key || ''}
+                      onChange={v => updatePackageItem(pkgIdx, 'נמען_key', v)}
+                    />
+                    <div className="grid grid-cols-4 gap-3 mb-3">
+                      <div className="col-span-2">
+                        <Select
+                          label="בחר מארז"
+                          value={pkg.מוצר_id || ''}
+                          onChange={e => updatePackageItem(pkgIdx, 'מוצר_id', e.target.value)}
+                        >
+                          <option value="">בחר מארז...</option>
+                          {packages.filter(p => p.פעיל).map(p => (
+                            <option key={p.id} value={p.id}>
+                              {p.שם_מארז} — {p.גודל_מארז} יח׳{p.מחיר_מארז ? ` · ₪${p.מחיר_מארז}` : ''}
+                            </option>
+                          ))}
+                        </Select>
+                        {pkg.מוצר_id && !packages.find(p => p.id === pkg.מוצר_id)?.מחיר_מארז && (
+                          <p className="text-xs mt-1 text-amber-600">⚠ למארז זה אין מחיר מוגדר</p>
+                        )}
+                      </div>
+                      <Input
+                        label="כמות"
+                        type="number"
+                        value={pkg.כמות}
+                        onChange={e => updatePackageItem(pkgIdx, 'כמות', Number(e.target.value))}
+                        min={1}
+                      />
+                      <Input
+                        label="מחיר ליחידה (₪)"
+                        type="number"
+                        value={pkg.מחיר_ליחידה}
+                        onChange={e => updatePackageItem(pkgIdx, 'מחיר_ליחידה', Number(e.target.value))}
+                        min={0}
+                        step={0.01}
+                      />
+                    </div>
+
+                    {/* Petit-four selector — capacity-aware */}
+                    {(() => {
+                      const cap = pkg.גודל_מארז;
+                      const info = getCapacityInfo(sumPetitFours(pkg.פטיפורים), cap);
+                      const counterStyle = info.state === 'over'
+                        ? { backgroundColor: '#FEE2E2', color: '#991B1B', border: '1px solid #FECACA' }
+                        : info.state === 'full'
+                        ? { backgroundColor: '#D5F0E3', color: '#1D6A3D', border: '1px solid #A8DCC0' }
+                        : info.state === 'under'
+                        ? { backgroundColor: '#FEF3C7', color: '#7C5A1E', border: '1px solid #FCD9A6' }
+                        : { backgroundColor: '#EFE4D3', color: '#6B4A2D', border: '1px solid #DDD0BC' };
+                      const availableTypes = petitFourTypes.filter(pf =>
+                        pf.פעיל && !pkg.פטיפורים.find(x => x.פטיפור_id === pf.id),
+                      );
+                      return (
+                        <div className="border-t pt-3" style={{ borderColor: '#EDE0CE' }}>
+                          <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-semibold" style={{ color: '#4A2F1B' }}>פטיפורים</span>
+                              <span
+                                className="text-[11px] font-medium px-2.5 py-1 rounded-full whitespace-nowrap"
+                                style={counterStyle}
+                              >
+                                {info.message}
+                              </span>
+                            </div>
+                            <select
+                              value=""
+                              onChange={e => { if (e.target.value) addPetitFour(pkgIdx, e.target.value); }}
+                              disabled={availableTypes.length === 0 || info.state === 'over'}
+                              className="text-xs px-3 py-1.5 rounded-full border bg-white transition-colors hover:bg-amber-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                              style={{ borderColor: '#C6A77D', color: '#8B5E34' }}
+                            >
+                              <option value="">＋ הוסף סוג פטיפור</option>
+                              {availableTypes.map(pf => (
+                                <option key={pf.id} value={pf.id}>{pf.שם_פטיפור}</option>
+                              ))}
+                            </select>
+                          </div>
+                          {pkg.פטיפורים.length === 0 ? (
+                            <p className="text-xs text-center py-3" style={{ color: '#9B7A5A' }}>
+                              עדיין לא נבחרו סוגי פטיפורים
+                            </p>
+                          ) : (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2" dir="rtl">
+                              {pkg.פטיפורים.map((pf, pfIdx) => {
+                                const others = info.selected - (Number(pf.כמות) || 0);
+                                const maxForThis = cap > 0 ? Math.max(1, cap - others) : undefined;
+                                return (
+                                  <div
+                                    key={pfIdx}
+                                    className="group flex items-center gap-2 px-3 py-2 bg-white rounded-xl border transition-all hover:shadow-sm"
+                                    style={{ borderColor: '#E7D2A6' }}
+                                  >
+                                    <span className="flex-1 text-xs font-medium truncate" style={{ color: '#2B1A10' }} title={pf.שם}>
+                                      {pf.שם}
+                                    </span>
+                                    <input
+                                      type="number"
+                                      value={pf.כמות}
+                                      onChange={e => updatePetitFourQty(pkgIdx, pfIdx, Number(e.target.value))}
+                                      className="w-14 px-2 py-1 text-xs border rounded-lg text-center focus:outline-none focus:ring-1"
+                                      style={{ borderColor: '#DDD0BC', color: '#2B1A10' }}
+                                      min={1}
+                                      max={maxForThis}
+                                      aria-label={`כמות עבור ${pf.שם}`}
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => removePetitFour(pkgIdx, pfIdx)}
+                                      className="w-6 h-6 rounded-full flex items-center justify-center transition-colors text-base leading-none opacity-50 group-hover:opacity-100 hover:bg-stone-100"
+                                      style={{ color: '#9B7A5A' }}
+                                      title="הסר"
+                                      aria-label={`הסר ${pf.שם}`}
+                                    >
+                                      ×
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    <div className="flex items-center justify-between mt-3">
+                      <span className="text-xs font-semibold" style={{ color: '#2B1A10' }}>
+                        סה״כ מארז: ₪{pkg.סהכ.toFixed(2)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setPackageItems(prev => prev.filter((_, i) => i !== pkgIdx))}
+                        className="text-xs text-red-500 hover:underline"
+                      >
+                        הסר מארז
+                      </button>
+                    </div>
+                  </div>
+  );
+
+  const renderCustomRow = (item: NewCustomItem, idx: number) => {
+                  const isDiscount = item.סוג_שורה === 'הנחה_תשלום';
+                  return (
+                    <div
+                      key={idx}
+                      className="p-3 rounded-xl"
+                      style={{
+                        backgroundColor: isDiscount ? '#F0FAF2' : '#FAF7F0',
+                        border: `1px solid ${isDiscount ? '#B7E0C0' : '#E8DECE'}`,
+                      }}
+                    >
+                      <RecipientPicker
+                        recipients={activeRecipients}
+                        value={item.נמען_key || ''}
+                        onChange={v => updateCustomItem(idx, 'נמען_key', v)}
+                      />
+                      <div className="grid grid-cols-12 gap-2 items-end">
+                        <div className="col-span-3">
+                          <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>סוג</label>
+                          <select
+                            value={item.סוג_שורה}
+                            onChange={e => updateCustomItem(idx, 'סוג_שורה', e.target.value)}
+                            className="w-full px-2 py-1.5 text-xs border rounded-lg bg-white"
+                            style={{ borderColor: isDiscount ? '#B7E0C0' : '#DDD0BC', color: '#2B1A10' }}
+                          >
+                            <option value="תוספת_תשלום">תוספת תשלום ＋</option>
+                            <option value="הנחה_תשלום">הנחה / הורדה −</option>
+                            <option value="מוצר_ידני">מוצר ידני</option>
+                          </select>
+                        </div>
+                        <div className="col-span-3">
+                          <Input
+                            label="שם"
+                            value={item.שם_פריט_מותאם}
+                            onChange={e => updateCustomItem(idx, 'שם_פריט_מותאם', e.target.value)}
+                            placeholder="תיאור..."
+                          />
+                        </div>
+                        <div className="col-span-2">
+                          <Input
+                            label="כמות"
+                            type="number"
+                            value={item.כמות}
+                            onChange={e => updateCustomItem(idx, 'כמות', Number(e.target.value))}
+                            min={1}
+                          />
+                        </div>
+                        <div className="col-span-2">
+                          <Input
+                            label={isDiscount ? '−₪ מחיר' : '₪ מחיר'}
+                            type="number"
+                            value={item.מחיר_ליחידה}
+                            onChange={e => updateCustomItem(idx, 'מחיר_ליחידה', Number(e.target.value))}
+                            min={0}
+                            step={0.01}
+                          />
+                        </div>
+                        <div className="col-span-1">
+                          <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>סה״כ</label>
+                          <p
+                            className="text-xs font-semibold py-1.5"
+                            style={{ color: isDiscount ? '#15803D' : '#2B1A10' }}
+                          >
+                            {isDiscount ? '−' : ''}₪{Math.abs(item.סהכ).toFixed(2)}
+                          </p>
+                        </div>
+                        <div className="col-span-1 flex items-end justify-center pb-1">
+                          <button
+                            type="button"
+                            onClick={() => removeCustomItem(idx)}
+                            className="w-6 h-6 rounded-full flex items-center justify-center text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors text-lg leading-none"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+  };
+
   return (
     <>
     <form onSubmit={handleSubmit} className="max-w-6xl">
@@ -1249,74 +1665,10 @@ export default function NewOrderPage() {
 
               {multiRecipient ? (
                 <div className="space-y-3">
-                  <div className="flex items-start justify-between gap-3 flex-wrap">
-                    <p className="text-xs flex-1 min-w-[16rem]" style={{ color: '#6B4A2D' }}>
-                      כל נמען מקבל משלוח נפרד לכתובת שלו. ההזמנה, החשבונית והתשלום נשארים אחד.
-                    </p>
-                    <div className="flex gap-2 flex-shrink-0">
-                      <Button type="button" variant="outline" size="sm" onClick={addRecipient}>
-                        + הוסף נמען
-                      </Button>
-                      <Button type="button" variant="outline" size="sm" onClick={applyItemsToAllRecipients}>
-                        כולם מקבלים אותו דבר
-                      </Button>
-                    </div>
-                  </div>
-
-                  {recipients.length === 0 ? (
-                    <div className="text-center py-4">
-                      <Button type="button" variant="outline" size="sm" onClick={addRecipient}>
-                        + הוסף נמען ראשון
-                      </Button>
-                    </div>
-                  ) : recipients.map((r, idx) => (
-                    <div
-                      key={r.key}
-                      className="p-3 rounded-xl border"
-                      style={{ borderColor: '#DDD0BC', backgroundColor: '#FAF7F0' }}
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-semibold" style={{ color: '#8B5E34' }}>
-                          נמען {idx + 1}
-                        </span>
-                        <div className="flex items-center gap-3">
-                          <span className="text-xs" style={{ color: '#9B7A5A' }}>
-                            {recipientItemCount(r.key)} פריטים
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => removeRecipient(idx)}
-                            className="w-6 h-6 rounded-full flex items-center justify-center text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors text-lg leading-none"
-                          >
-                            ×
-                          </button>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <Input label="שם נמען" value={r.שם_נמען} onChange={e => updateRecipient(idx, 'שם_נמען', e.target.value)} />
-                        <Input label="טלפון" value={r.טלפון_נמען} onChange={e => updateRecipient(idx, 'טלפון_נמען', e.target.value)} />
-                        <Input label="כתובת" value={r.כתובת} onChange={e => updateRecipient(idx, 'כתובת', e.target.value)} />
-                        <Input label="עיר" value={r.עיר} onChange={e => updateRecipient(idx, 'עיר', e.target.value)} />
-                        <div className="col-span-2">
-                          <Textarea
-                            label="הוראות משלוח"
-                            value={r.הוראות_משלוח}
-                            onChange={e => updateRecipient(idx, 'הוראות_משלוח', e.target.value)}
-                            rows={2}
-                          />
-                        </div>
-                        <div className="col-span-2">
-                          <Textarea
-                            label="ברכה לנמען"
-                            value={r.ברכה_טקסט}
-                            onChange={e => updateRecipient(idx, 'ברכה_טקסט', e.target.value)}
-                            rows={2}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-
+                  <p className="text-xs" style={{ color: '#6B4A2D' }}>
+                    כל נמען מקבל משלוח נפרד לכתובת שלו. הפרטים והמוצרים של כל אחד נמצאים
+                    בסעיף {sectionNo.recipients} למטה. ההזמנה, החשבונית והתשלום נשארים אחד.
+                  </p>
                   <div className="grid grid-cols-2 gap-4 pt-1">
                     <Input
                       label="דמי משלוח (₪)"
@@ -1397,11 +1749,196 @@ export default function NewOrderPage() {
             </Card>
           )}
 
+          {/* 4. Recipients — each person with their own details and their own items */}
+          {recipientsActive && (
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <SectionHeader number={sectionNo.recipients} title="נמענים ומוצרים" />
+                  {selectedCustomer && (
+                    <span
+                      className="text-xs font-medium px-2.5 py-1 rounded-full"
+                      style={{ backgroundColor: TIER_INFO[effectivePriceType].bg, color: TIER_INFO[effectivePriceType].color }}
+                    >
+                      מחירון: {TIER_INFO[effectivePriceType].label}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {/* Same catalog shortcut the flat products section offers —
+                      it would otherwise be unreachable in this layout. */}
+                  <button
+                    type="button"
+                    onClick={() => openNewProductModal(-1)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors hover:bg-amber-50"
+                    style={{ borderColor: '#C6A77D', color: '#8B5E34', backgroundColor: '#FFF' }}
+                  >
+                    + מוצר חדש לקטלוג
+                  </button>
+                  <Button type="button" variant="outline" size="sm" onClick={addRecipient}>
+                    + הוסף נמען
+                  </Button>
+                </div>
+              </CardHeader>
+
+              {recipients.length === 0 ? (
+                <div className="text-center py-6">
+                  <p className="text-xs mb-3" style={{ color: '#9B7A5A' }}>
+                    לכל נמען כתובת ומוצרים משלו
+                  </p>
+                  <Button type="button" variant="outline" size="sm" onClick={addRecipient}>
+                    + הוסף נמען ראשון
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-5">
+                  {recipients.map((r, ridx) => {
+                    // The renderers below take the index into the FLAT state
+                    // array, so we carry it through the filter rather than
+                    // re-indexing the per-recipient slice.
+                    const myProducts = orderItems
+                      .map((item, idx) => ({ item, idx }))
+                      .filter(x => x.item.נמען_key === r.key);
+                    const myPackages = packageItems
+                      .map((pkg, idx) => ({ pkg, idx }))
+                      .filter(x => x.pkg.נמען_key === r.key);
+
+                    return (
+                      <div
+                        key={r.key}
+                        className="rounded-2xl border overflow-hidden"
+                        style={{ borderColor: '#DDD0BC', backgroundColor: '#FFFDF9' }}
+                      >
+                        <div
+                          className="flex items-center justify-between gap-2 px-4 py-2.5 border-b flex-wrap"
+                          style={{ backgroundColor: '#F3E9DA', borderColor: '#DDD0BC' }}
+                        >
+                          <span className="text-sm font-semibold" style={{ color: '#5C3410' }}>
+                            נמען {ridx + 1}{r.שם_נמען.trim() ? ` · ${r.שם_נמען.trim()}` : ''}
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs" style={{ color: '#8B6A4A' }}>
+                              {myProducts.length + myPackages.length} פריטים
+                            </span>
+                            {recipients.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => copyRecipientItemsToAll(r.key)}
+                                title="העתק את הפריטים של הנמען הזה לכל שאר הנמענים"
+                                className="text-xs font-medium px-2.5 py-1 rounded-full border transition-colors hover:bg-white"
+                                style={{ borderColor: '#C6A77D', color: '#7C5230' }}
+                              >
+                                שכפל לכולם
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => removeRecipient(ridx)}
+                              title="הסר נמען"
+                              className="w-6 h-6 rounded-full flex items-center justify-center text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors text-lg leading-none"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="p-4 space-y-4">
+                          <div className="grid grid-cols-2 gap-3">
+                            <Input label="שם נמען" value={r.שם_נמען} onChange={e => updateRecipient(ridx, 'שם_נמען', e.target.value)} />
+                            <Input label="טלפון" value={r.טלפון_נמען} onChange={e => updateRecipient(ridx, 'טלפון_נמען', e.target.value)} />
+                            <Input label="כתובת" value={r.כתובת} onChange={e => updateRecipient(ridx, 'כתובת', e.target.value)} />
+                            <Input label="עיר" value={r.עיר} onChange={e => updateRecipient(ridx, 'עיר', e.target.value)} />
+                            <div className="col-span-2">
+                              <Textarea
+                                label="הוראות משלוח"
+                                value={r.הוראות_משלוח}
+                                onChange={e => updateRecipient(ridx, 'הוראות_משלוח', e.target.value)}
+                                rows={2}
+                              />
+                            </div>
+                            <div className="col-span-2">
+                              <Textarea
+                                label="ברכה לנמען"
+                                value={r.ברכה_טקסט}
+                                onChange={e => updateRecipient(ridx, 'ברכה_טקסט', e.target.value)}
+                                rows={2}
+                              />
+                            </div>
+                            <div className="col-span-2">
+                              <Textarea
+                                label="הערות לנמען"
+                                value={r.הערות}
+                                onChange={e => updateRecipient(ridx, 'הערות', e.target.value)}
+                                rows={2}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="pt-3 border-t space-y-3" style={{ borderColor: '#EDE0CE' }}>
+                            <p className="text-xs font-semibold" style={{ color: '#8B5E34' }}>
+                              מה {r.שם_נמען.trim() || `נמען ${ridx + 1}`} מקבל
+                            </p>
+
+                            {myProducts.length === 0 && myPackages.length === 0 ? (
+                              <p className="text-xs" style={{ color: '#9B7A5A' }}>
+                                עדיין לא נבחרו פריטים לנמען הזה
+                              </p>
+                            ) : (
+                              <div className="space-y-3">
+                                {myProducts.map(({ item, idx }) => renderProductRow(item, idx))}
+                                {myPackages.map(({ pkg, idx }) => renderPackageRow(pkg, idx))}
+                              </div>
+                            )}
+
+                            <div className="flex gap-2 flex-wrap">
+                              <Button type="button" variant="outline" size="sm" onClick={() => addProductItemFor(r.key)}>
+                                + הוסף מוצר
+                              </Button>
+                              <Button type="button" variant="outline" size="sm" onClick={() => addPackageItemFor(r.key)}>
+                                + הוסף מארז
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  <Button type="button" variant="outline" size="sm" onClick={addRecipient}>
+                    + הוסף נמען נוסף
+                  </Button>
+
+                  {/* Lines that belong to no recipient — anything added before the
+                      order was switched to multi-recipient mode, or left behind by
+                      a removed recipient. Shown so nothing silently disappears;
+                      each row's "עבור" picker assigns it to a person. */}
+                  {(unassignedProducts.length > 0 || unassignedPackages.length > 0) && (
+                    <div
+                      className="rounded-2xl border p-4 space-y-3"
+                      style={{ borderColor: '#FBBF24', backgroundColor: '#FFFBEB' }}
+                    >
+                      <p className="text-xs font-semibold" style={{ color: '#92700E' }}>
+                        פריטים שלא שויכו לנמען ({unassignedProducts.length + unassignedPackages.length})
+                        — יש לבחור &quot;עבור&quot; בכל שורה
+                      </p>
+                      {unassignedProducts.map(({ item, idx }) => renderProductRow(item, idx))}
+                      {unassignedPackages.map(({ pkg, idx }) => renderPackageRow(pkg, idx))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </Card>
+          )}
+
+          {/* Products + packages live inside each recipient's block when the
+              order goes to several people — see the נמענים section above. */}
+          {!recipientsActive && (
+          <>
           {/* 4. Products */}
           <Card>
             <CardHeader>
               <div className="flex items-center gap-3 flex-1 min-w-0">
-                <SectionHeader number={deliveryType === 'משלוח' ? 4 : 3} title="מוצרים" />
+                <SectionHeader number={sectionNo.products} title="מוצרים" />
                 {selectedCustomer && (
                   <div className="flex flex-col gap-0.5">
                     <span
@@ -1431,123 +1968,7 @@ export default function NewOrderPage() {
               </div>
             ) : (
               <div className="space-y-2">
-                {orderItems.map((item, idx) => {
-                  const retailEntry = effectivePriceType === 'retail_quantity' && item.מוצר_id
-                    ? priceList.find(pl => pl.מוצר_id === item.מוצר_id && pl.price_type === 'retail')
-                    : undefined;
-                  const showStrikethrough = !!retailEntry && retailEntry.מחיר !== item.מחיר_ליחידה && !item.missingPrice;
-                  return (
-                  <div
-                    key={idx}
-                    className="p-3 rounded-xl"
-                    style={{ backgroundColor: '#FAF7F0', border: item.missingPrice ? '1px solid #FBBF24' : undefined }}
-                  >
-                  <RecipientPicker
-                    recipients={activeRecipients}
-                    value={item.נמען_key || ''}
-                    onChange={v => updateProductItem(idx, 'נמען_key', v)}
-                  />
-                  <div className="grid grid-cols-12 gap-2 items-end">
-                    <div className="col-span-4">
-                      <Combobox
-                        label="מוצר"
-                        value={item.מוצר_id}
-                        onChange={v => updateProductItem(idx, 'מוצר_id', v)}
-                        options={(() => {
-                          // Show all active regular products that the customer is
-                          // allowed to purchase. We deliberately do NOT hide products
-                          // that lack a price-list entry for the active tier — those
-                          // still surface, with the existing missingPrice warning to
-                          // block save until a price exists. Hiding them silently
-                          // caused legitimate items (e.g. mini magnum) to be invisible
-                          // in the create form even though they were present in edit.
-                          const isBusinessCustomer = !!customerType && customerType.startsWith('עסקי');
-                          // searchText holds a Hebrew-normalized version of the
-                          // product name so the Combobox matches on stable text:
-                          // strips geresh ׳/' / gershayim ״/", asterisks, hyphens,
-                          // collapses whitespace, and applies NFC. Without this,
-                          // a query like "מג" can fail to find "מיני מג'" and
-                          // "מיני-מגנום" can fail to find "מיני מגנום".
-                          const visible = products
-                            .filter(p => p.פעיל && p.סוג_מוצר === 'מוצר רגיל')
-                            .filter(p => !p.לקוחות_עסקיים_בלבד || isBusinessCustomer);
-                          // Detect names that appear on more than one active row,
-                          // so we can attach a base-price hint (e.g. "₪14") to the
-                          // dropdown label and the user can pick the right one.
-                          // Catalog duplicates are a known data issue (e.g. two
-                          // "טארטלט פיצוחים" rows) — this surfaces them in the UI
-                          // without any DB change.
-                          const nameCounts = visible.reduce<Record<string, number>>((acc, p) => {
-                            const k = String(p.שם_מוצר ?? '').trim();
-                            acc[k] = (acc[k] || 0) + 1;
-                            return acc;
-                          }, {});
-                          return visible.map(p => {
-                            const k = String(p.שם_מוצר ?? '').trim();
-                            const isDup = (nameCounts[k] ?? 0) > 1;
-                            return {
-                              value: p.id,
-                              label: p.שם_מוצר,
-                              searchText: normalizeSearchText(p.שם_מוצר),
-                              hint: isDup ? `₪${(p.מחיר ?? 0).toFixed(2)}` : undefined,
-                            };
-                          });
-                        })()}
-                        placeholder="בחר..."
-                        searchPlaceholder="חיפוש מוצר..."
-                        emptyText="לא נמצאו מוצרים"
-                      />
-                    </div>
-                    <div className="col-span-2">
-                      <Input
-                        label="כמות"
-                        type="number"
-                        value={item.כמות}
-                        onChange={e => updateProductItem(idx, 'כמות', Number(e.target.value))}
-                        min={1}
-                      />
-                    </div>
-                    <div className="col-span-2">
-                      <Input
-                        label={isBusiness ? 'מחיר (לפני מע״מ)' : 'מחיר'}
-                        type="number"
-                        value={item.מחיר_ליחידה}
-                        onChange={e => updateProductItem(idx, 'מחיר_ליחידה', Number(e.target.value))}
-                        min={0}
-                        step={0.01}
-                        // Highlight the field when there's no price-list entry —
-                        // this is exactly where the user must type a manual price.
-                        className={item.missingPrice ? 'border-amber-400 focus:border-amber-500 focus:ring-amber-200 bg-amber-50' : undefined}
-                      />
-                    </div>
-                    <div className="col-span-3">
-                      <Input label="סה״כ" value={`₪${item.סהכ.toFixed(2)}`} readOnly />
-                    </div>
-                    <div className="col-span-1 flex items-end justify-center pb-1">
-                      <button
-                        type="button"
-                        onClick={() => removeProductItem(idx)}
-                        className="w-6 h-6 rounded-full flex items-center justify-center text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors text-lg leading-none"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  </div>
-                  {showStrikethrough && retailEntry && (
-                    <div className="flex items-center gap-2 mt-1.5">
-                      <span className="text-xs px-1.5 py-0.5 rounded font-medium" style={{ backgroundColor: '#D5F0E3', color: '#1D6A3D' }}>מחיר אירוע</span>
-                      <span className="text-xs" style={{ color: '#9B7A5A', textDecoration: 'line-through' }}>₪{retailEntry.מחיר.toFixed(2)}</span>
-                      <span className="text-xs font-semibold" style={{ color: '#1D6A3D' }}>₪{item.מחיר_ליחידה.toFixed(2)}</span>
-                    </div>
-                  )}
-                  {item.missingPrice && (
-                    <p className="text-xs text-amber-700 mt-1.5">
-                      ⚠ אין מחיר במחירון הפעיל — ניתן להזין מחיר ידנית
-                    </p>
-                  )}
-                  </div>
-                  );
-                })}
+                {orderItems.map((item, idx) => renderProductRow(item, idx))}
                 <div className="pt-2 border-t" style={{ borderColor: '#EDE0CE' }}>
                   <Button type="button" variant="outline" size="sm" onClick={addProductItem}>
                     + הוסף מוצר נוסף
@@ -1560,7 +1981,7 @@ export default function NewOrderPage() {
           {/* 5. Packages */}
           <Card>
             <CardHeader>
-              <SectionHeader number={deliveryType === 'משלוח' ? 5 : 4} title="מארזי פטיפורים" />
+              <SectionHeader number={sectionNo.packages} title="מארזי פטיפורים" />
               <Button type="button" variant="outline" size="sm" onClick={addPackageItem}>
                 + הוסף מארז
               </Button>
@@ -1571,160 +1992,17 @@ export default function NewOrderPage() {
               </p>
             ) : (
               <div className="space-y-4">
-                {packageItems.map((pkg, pkgIdx) => (
-                  <div
-                    key={pkgIdx}
-                    className="p-4 rounded-xl border"
-                    style={{ borderColor: '#DDD0BC', backgroundColor: '#FAF7F0' }}
-                  >
-                    <RecipientPicker
-                      recipients={activeRecipients}
-                      value={pkg.נמען_key || ''}
-                      onChange={v => updatePackageItem(pkgIdx, 'נמען_key', v)}
-                    />
-                    <div className="grid grid-cols-4 gap-3 mb-3">
-                      <div className="col-span-2">
-                        <Select
-                          label="בחר מארז"
-                          value={pkg.מוצר_id || ''}
-                          onChange={e => updatePackageItem(pkgIdx, 'מוצר_id', e.target.value)}
-                        >
-                          <option value="">בחר מארז...</option>
-                          {packages.filter(p => p.פעיל).map(p => (
-                            <option key={p.id} value={p.id}>
-                              {p.שם_מארז} — {p.גודל_מארז} יח׳{p.מחיר_מארז ? ` · ₪${p.מחיר_מארז}` : ''}
-                            </option>
-                          ))}
-                        </Select>
-                        {pkg.מוצר_id && !packages.find(p => p.id === pkg.מוצר_id)?.מחיר_מארז && (
-                          <p className="text-xs mt-1 text-amber-600">⚠ למארז זה אין מחיר מוגדר</p>
-                        )}
-                      </div>
-                      <Input
-                        label="כמות"
-                        type="number"
-                        value={pkg.כמות}
-                        onChange={e => updatePackageItem(pkgIdx, 'כמות', Number(e.target.value))}
-                        min={1}
-                      />
-                      <Input
-                        label="מחיר ליחידה (₪)"
-                        type="number"
-                        value={pkg.מחיר_ליחידה}
-                        onChange={e => updatePackageItem(pkgIdx, 'מחיר_ליחידה', Number(e.target.value))}
-                        min={0}
-                        step={0.01}
-                      />
-                    </div>
-
-                    {/* Petit-four selector — capacity-aware */}
-                    {(() => {
-                      const cap = pkg.גודל_מארז;
-                      const info = getCapacityInfo(sumPetitFours(pkg.פטיפורים), cap);
-                      const counterStyle = info.state === 'over'
-                        ? { backgroundColor: '#FEE2E2', color: '#991B1B', border: '1px solid #FECACA' }
-                        : info.state === 'full'
-                        ? { backgroundColor: '#D5F0E3', color: '#1D6A3D', border: '1px solid #A8DCC0' }
-                        : info.state === 'under'
-                        ? { backgroundColor: '#FEF3C7', color: '#7C5A1E', border: '1px solid #FCD9A6' }
-                        : { backgroundColor: '#EFE4D3', color: '#6B4A2D', border: '1px solid #DDD0BC' };
-                      const availableTypes = petitFourTypes.filter(pf =>
-                        pf.פעיל && !pkg.פטיפורים.find(x => x.פטיפור_id === pf.id),
-                      );
-                      return (
-                        <div className="border-t pt-3" style={{ borderColor: '#EDE0CE' }}>
-                          <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-semibold" style={{ color: '#4A2F1B' }}>פטיפורים</span>
-                              <span
-                                className="text-[11px] font-medium px-2.5 py-1 rounded-full whitespace-nowrap"
-                                style={counterStyle}
-                              >
-                                {info.message}
-                              </span>
-                            </div>
-                            <select
-                              value=""
-                              onChange={e => { if (e.target.value) addPetitFour(pkgIdx, e.target.value); }}
-                              disabled={availableTypes.length === 0 || info.state === 'over'}
-                              className="text-xs px-3 py-1.5 rounded-full border bg-white transition-colors hover:bg-amber-50 disabled:opacity-40 disabled:cursor-not-allowed"
-                              style={{ borderColor: '#C6A77D', color: '#8B5E34' }}
-                            >
-                              <option value="">＋ הוסף סוג פטיפור</option>
-                              {availableTypes.map(pf => (
-                                <option key={pf.id} value={pf.id}>{pf.שם_פטיפור}</option>
-                              ))}
-                            </select>
-                          </div>
-                          {pkg.פטיפורים.length === 0 ? (
-                            <p className="text-xs text-center py-3" style={{ color: '#9B7A5A' }}>
-                              עדיין לא נבחרו סוגי פטיפורים
-                            </p>
-                          ) : (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2" dir="rtl">
-                              {pkg.פטיפורים.map((pf, pfIdx) => {
-                                const others = info.selected - (Number(pf.כמות) || 0);
-                                const maxForThis = cap > 0 ? Math.max(1, cap - others) : undefined;
-                                return (
-                                  <div
-                                    key={pfIdx}
-                                    className="group flex items-center gap-2 px-3 py-2 bg-white rounded-xl border transition-all hover:shadow-sm"
-                                    style={{ borderColor: '#E7D2A6' }}
-                                  >
-                                    <span className="flex-1 text-xs font-medium truncate" style={{ color: '#2B1A10' }} title={pf.שם}>
-                                      {pf.שם}
-                                    </span>
-                                    <input
-                                      type="number"
-                                      value={pf.כמות}
-                                      onChange={e => updatePetitFourQty(pkgIdx, pfIdx, Number(e.target.value))}
-                                      className="w-14 px-2 py-1 text-xs border rounded-lg text-center focus:outline-none focus:ring-1"
-                                      style={{ borderColor: '#DDD0BC', color: '#2B1A10' }}
-                                      min={1}
-                                      max={maxForThis}
-                                      aria-label={`כמות עבור ${pf.שם}`}
-                                    />
-                                    <button
-                                      type="button"
-                                      onClick={() => removePetitFour(pkgIdx, pfIdx)}
-                                      className="w-6 h-6 rounded-full flex items-center justify-center transition-colors text-base leading-none opacity-50 group-hover:opacity-100 hover:bg-stone-100"
-                                      style={{ color: '#9B7A5A' }}
-                                      title="הסר"
-                                      aria-label={`הסר ${pf.שם}`}
-                                    >
-                                      ×
-                                    </button>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()}
-
-                    <div className="flex items-center justify-between mt-3">
-                      <span className="text-xs font-semibold" style={{ color: '#2B1A10' }}>
-                        סה״כ מארז: ₪{pkg.סהכ.toFixed(2)}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setPackageItems(prev => prev.filter((_, i) => i !== pkgIdx))}
-                        className="text-xs text-red-500 hover:underline"
-                      >
-                        הסר מארז
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                {packageItems.map((pkg, idx) => renderPackageRow(pkg, idx))}
               </div>
             )}
           </Card>
+          </>
+          )}
 
           {/* Custom items: תוספות תשלום / הנחות / מוצרים ידניים */}
           <Card>
             <CardHeader>
-              <SectionHeader number={deliveryType === 'משלוח' ? 6 : 5} title="תוספות, הנחות, פריטים ידניים" />
+              <SectionHeader number={sectionNo.custom} title="תוספות, הנחות, פריטים ידניים" />
               <Button type="button" variant="outline" size="sm" onClick={addCustomItem}>
                 + הוסף פריט
               </Button>
@@ -1735,92 +2013,14 @@ export default function NewOrderPage() {
               </p>
             ) : (
               <div className="space-y-2">
-                {customItems.map((item, idx) => {
-                  const isDiscount = item.סוג_שורה === 'הנחה_תשלום';
-                  return (
-                    <div
-                      key={idx}
-                      className="p-3 rounded-xl"
-                      style={{
-                        backgroundColor: isDiscount ? '#F0FAF2' : '#FAF7F0',
-                        border: `1px solid ${isDiscount ? '#B7E0C0' : '#E8DECE'}`,
-                      }}
-                    >
-                      <RecipientPicker
-                        recipients={activeRecipients}
-                        value={item.נמען_key || ''}
-                        onChange={v => updateCustomItem(idx, 'נמען_key', v)}
-                      />
-                      <div className="grid grid-cols-12 gap-2 items-end">
-                        <div className="col-span-3">
-                          <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>סוג</label>
-                          <select
-                            value={item.סוג_שורה}
-                            onChange={e => updateCustomItem(idx, 'סוג_שורה', e.target.value)}
-                            className="w-full px-2 py-1.5 text-xs border rounded-lg bg-white"
-                            style={{ borderColor: isDiscount ? '#B7E0C0' : '#DDD0BC', color: '#2B1A10' }}
-                          >
-                            <option value="תוספת_תשלום">תוספת תשלום ＋</option>
-                            <option value="הנחה_תשלום">הנחה / הורדה −</option>
-                            <option value="מוצר_ידני">מוצר ידני</option>
-                          </select>
-                        </div>
-                        <div className="col-span-3">
-                          <Input
-                            label="שם"
-                            value={item.שם_פריט_מותאם}
-                            onChange={e => updateCustomItem(idx, 'שם_פריט_מותאם', e.target.value)}
-                            placeholder="תיאור..."
-                          />
-                        </div>
-                        <div className="col-span-2">
-                          <Input
-                            label="כמות"
-                            type="number"
-                            value={item.כמות}
-                            onChange={e => updateCustomItem(idx, 'כמות', Number(e.target.value))}
-                            min={1}
-                          />
-                        </div>
-                        <div className="col-span-2">
-                          <Input
-                            label={isDiscount ? '−₪ מחיר' : '₪ מחיר'}
-                            type="number"
-                            value={item.מחיר_ליחידה}
-                            onChange={e => updateCustomItem(idx, 'מחיר_ליחידה', Number(e.target.value))}
-                            min={0}
-                            step={0.01}
-                          />
-                        </div>
-                        <div className="col-span-1">
-                          <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>סה״כ</label>
-                          <p
-                            className="text-xs font-semibold py-1.5"
-                            style={{ color: isDiscount ? '#15803D' : '#2B1A10' }}
-                          >
-                            {isDiscount ? '−' : ''}₪{Math.abs(item.סהכ).toFixed(2)}
-                          </p>
-                        </div>
-                        <div className="col-span-1 flex items-end justify-center pb-1">
-                          <button
-                            type="button"
-                            onClick={() => removeCustomItem(idx)}
-                            className="w-6 h-6 rounded-full flex items-center justify-center text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors text-lg leading-none"
-                          >
-                            ×
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+                {customItems.map((item, idx) => renderCustomRow(item, idx))}
               </div>
             )}
           </Card>
 
           {/* 7. Greeting + notes */}
           <Card>
-            <SectionHeader number={deliveryType === 'משלוח' ? 7 : 6} title="ברכה והערות" />
+            <SectionHeader number={sectionNo.greeting} title="ברכה והערות" />
             <div className="space-y-3">
               <Textarea
                 label="טקסט ברכה"
@@ -1840,7 +2040,7 @@ export default function NewOrderPage() {
 
           {/* 8. Payment */}
           <Card>
-            <SectionHeader number={deliveryType === 'משלוח' ? 8 : 7} title="תשלום" />
+            <SectionHeader number={sectionNo.payment} title="תשלום" />
             <div className="grid grid-cols-3 gap-4">
               <Select
                 label="אמצעי תשלום"
