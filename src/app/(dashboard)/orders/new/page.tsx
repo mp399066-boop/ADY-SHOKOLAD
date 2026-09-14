@@ -101,10 +101,13 @@ function resolvePriceListEntry(
   qty: number,
 ): PriceEntry | undefined {
   if (priceType === 'business_quantity' || priceType === 'retail_quantity') {
-    const tiers = priceList
-      .filter(pl => pl.מוצר_id === productId && pl.price_type === priceType && (pl.min_quantity ?? 0) <= qty)
+    const all = priceList
+      .filter(pl => pl.מוצר_id === productId && pl.price_type === priceType)
       .sort((a, b) => (b.min_quantity ?? 0) - (a.min_quantity ?? 0));
-    return tiers[0];
+    const matching = all.filter(pl => (pl.min_quantity ?? 0) <= qty);
+    // Below every tier minimum: fall back to the lowest tier, i.e. the dearest
+    // unit price, rather than leaving the item with no price at all.
+    return matching[0] ?? all[all.length - 1];
   }
   return priceList.find(pl => pl.מוצר_id === productId && pl.price_type === priceType);
 }
@@ -1028,16 +1031,6 @@ export default function NewOrderPage() {
       return;
     }
 
-    // Block on < 20 units per item in quantity tiers
-    if (effectivePriceType === 'retail_quantity' || effectivePriceType === 'business_quantity') {
-      const underMinItems = orderItems.filter(item => item.מוצר_id && item.כמות < 20);
-      if (underMinItems.length > 0) {
-        const names = underMinItems.map(i => i.שם_מוצר || 'ללא שם').join(', ');
-        toast.error(`מינימום 20 יחידות לדגם במחירון כמות — ${names}`);
-        return;
-      }
-    }
-
     // Block when any package's petit-four selection exceeds the package size.
     // Packages whose size is unknown (גודל_מארז = 0) are skipped — the UI
     // shows a soft warning for those rather than blocking save.
@@ -1443,12 +1436,11 @@ export default function NewOrderPage() {
                     ? priceList.find(pl => pl.מוצר_id === item.מוצר_id && pl.price_type === 'retail')
                     : undefined;
                   const showStrikethrough = !!retailEntry && retailEntry.מחיר !== item.מחיר_ליחידה && !item.missingPrice;
-                  const belowMin = (effectivePriceType === 'retail_quantity' || effectivePriceType === 'business_quantity') && item.מוצר_id && item.כמות > 0 && item.כמות < 20;
                   return (
                   <div
                     key={idx}
                     className="p-3 rounded-xl"
-                    style={{ backgroundColor: '#FAF7F0', border: item.missingPrice ? '1px solid #FBBF24' : belowMin ? '1px solid #EF4444' : undefined }}
+                    style={{ backgroundColor: '#FAF7F0', border: item.missingPrice ? '1px solid #FBBF24' : undefined }}
                   >
                   <RecipientPicker
                     recipients={activeRecipients}
@@ -1552,14 +1544,6 @@ export default function NewOrderPage() {
                     <p className="text-xs text-amber-700 mt-1.5">
                       ⚠ אין מחיר במחירון הפעיל — ניתן להזין מחיר ידנית
                     </p>
-                  )}
-                  {belowMin && (
-                    <div className="flex items-center gap-1.5 mt-1">
-                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: '#FEE2E2', color: '#991B1B', border: '1px solid #FECACA' }}>
-                        מינ׳ 20
-                      </span>
-                      <span className="text-xs" style={{ color: '#991B1B' }}>מינימום 20 יחידות לדגם במחירון אירוע/כמות</span>
-                    </div>
                   )}
                   </div>
                   );
