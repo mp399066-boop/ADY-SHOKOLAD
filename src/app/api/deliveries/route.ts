@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
+import { attachDeliveryRecipients } from '@/lib/order-recipients';
 
 interface OrderRow {
   id: string;
@@ -52,16 +53,22 @@ export async function GET(req: NextRequest) {
   if (mode === 'archive') {
     const { data, error } = await supabase
       .from('משלוחים')
+      // `*` rather than an explicit column list so נמען_id comes along on
+      // databases that have migration 053 (and is simply absent on those
+      // that don't) — attachDeliveryRecipients needs it to name the stop.
       .select(`
-        id, הזמנה_id, סטטוס_משלוח, כתובת, עיר,
-        delivered_at, courier_id, delivery_token,
+        *,
         הזמנות(id, מספר_הזמנה, שם_מקבל, לקוח_id, לקוחות(שם_פרטי, שם_משפחה)),
         שליחים!courier_id(שם_שליח)
       `)
       .eq('סטטוס_משלוח', 'נמסר')
       .order('delivered_at', { ascending: false });
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ data: data || [] });
+    const withRecipients = await attachDeliveryRecipients(
+      supabase,
+      (data || []) as Record<string, unknown>[],
+    );
+    return NextResponse.json({ data: withRecipients });
   }
 
   // ── Active deliveries (ממתין / נאסף) ────────────────────────────────────
@@ -157,7 +164,15 @@ export async function GET(req: NextRequest) {
   const combined = [...activeDeliveries, ...synthetic]
     .filter(row => !status || row.סטטוס_משלוח === status);
 
-  return NextResponse.json({ data: combined });
+  // Multi-recipient stops carry their own person + address; attach the
+  // recipient so the board shows who this stop is for rather than the
+  // order-level "שם מקבל".
+  const withRecipients = await attachDeliveryRecipients(
+    supabase,
+    combined as unknown as Record<string, unknown>[],
+  );
+
+  return NextResponse.json({ data: withRecipients });
 }
 
 export async function POST(req: NextRequest) {
@@ -167,18 +182,28 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   if (!body.הזמנה_id) return NextResponse.json({ error: 'הזמנה היא שדה חובה' }, { status: 400 });
 
-  // Dedup guard: one active delivery per order. If a delivery already exists
-  // for this order id, RETURN that row instead of inserting a duplicate.
-  // This is the open-POST equivalent of the same check inside
-  // PATCH /api/deliveries/[id] (the no-record-{orderId} branch). Both paths
-  // converge on "one delivery per order" without a destructive DB constraint.
-  const { data: existing } = await supabase
+  // Dedup guard: one active delivery per order *stop*. A multi-recipient
+  // order has one row per recipient, so the match is on (order, recipient)
+  // — matching on the order alone would refuse every stop after the first.
+  // The rows are filtered in JS rather than with .eq('נמען_id', …) so this
+  // still works on databases where migration 053 isn't applied (נמען_id is
+  // simply undefined there, i.e. treated as the order-level row).
+  const wantedRecipient: string | null =
+    typeof body.נמען_id === 'string' && body.נמען_id.trim() ? body.נמען_id.trim() : null;
+
+  const { data: orderRows } = await supabase
     .from('משלוחים')
     .select('*')
-    .eq('הזמנה_id', body.הזמנה_id)
-    .maybeSingle();
+    .eq('הזמנה_id', body.הזמנה_id);
+
+  const sameStop = (row: Record<string, unknown>) => ((row['נמען_id'] as string | null) ?? null) === wantedRecipient;
+  const existing = (orderRows || []).find(sameStop);
   if (existing) {
-    console.log('[deliveries POST] dedup — existing delivery for order', body.הזמנה_id, '— returning existing id', existing.id);
+    console.log(
+      '[deliveries POST] dedup — existing delivery for order', body.הזמנה_id,
+      '| recipient:', wantedRecipient ?? 'order-level',
+      '— returning existing id', existing.id,
+    );
     return NextResponse.json({ data: existing, deduped: true }, { status: 200 });
   }
 
@@ -188,13 +213,13 @@ export async function POST(req: NextRequest) {
     // two near-simultaneous POSTs slip past the maybeSingle dedup above.
     // We turn that into a clean "already exists" return instead of a 500.
     if (error.code === '23505') {
-      const { data: existing } = await supabase
+      const { data: raceRows } = await supabase
         .from('משלוחים')
         .select('*')
-        .eq('הזמנה_id', body.הזמנה_id)
-        .single();
+        .eq('הזמנה_id', body.הזמנה_id);
+      const winner = (raceRows || []).find(sameStop) ?? null;
       console.log('[deliveries POST] race-loss — UNIQUE rejected; returning existing for order', body.הזמנה_id);
-      return NextResponse.json({ data: existing, deduped: true }, { status: 200 });
+      return NextResponse.json({ data: winner, deduped: true }, { status: 200 });
     }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

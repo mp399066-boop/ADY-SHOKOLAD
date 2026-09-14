@@ -239,6 +239,9 @@ type OrderJoin = {
   לקוחות?: { שם_פרטי: string; שם_משפחה: string } | null;
 };
 
+/** The person a single stop is for, on an order delivered to several people. */
+type StopRecipient = { שם_נמען: string; טלפון_נמען?: string | null } | null | undefined;
+
 interface CourierWithStats extends Courier {
   stats: { ממתין: number; נאסף: number; נמסר: number; total: number };
 }
@@ -634,14 +637,15 @@ function DeliveriesContent() {
 
   const handleExport = () => {
     exportToCsv('משלוחים.csv',
-      ['מספר הזמנה', 'לקוח', 'כתובת', 'עיר', 'תאריך משלוח', 'סטטוס', 'שליח'],
+      ['מספר הזמנה', 'לקוח', 'נמען', 'כתובת', 'עיר', 'תאריך משלוח', 'סטטוס', 'שליח'],
       deliveries.map(d => {
         const order = (d as DeliveryWithCourier & { הזמנות?: OrderJoin }).הזמנות;
         const customerName = order?.לקוחות
           ? `${order.לקוחות.שם_פרטי} ${order.לקוחות.שם_משפחה}`
           : order?.שם_מקבל || '';
         const courierName = d.שליחים?.שם_שליח || d.שם_שליח || '';
-        return [order?.מספר_הזמנה || '', customerName, d.כתובת || '', d.עיר || '', d.תאריך_משלוח || '', d.סטטוס_משלוח, courierName];
+        const stopName = (d as DeliveryWithCourier & { נמעני_הזמנה?: StopRecipient }).נמעני_הזמנה?.שם_נמען || '';
+        return [order?.מספר_הזמנה || '', customerName, stopName, d.כתובת || '', d.עיר || '', d.תאריך_משלוח || '', d.סטטוס_משלוח, courierName];
       }),
     );
   };
@@ -714,6 +718,10 @@ function DeliveriesContent() {
             const customerName = order?.לקוחות
               ? `${order.לקוחות.שם_פרטי} ${order.לקוחות.שם_משפחה}`
               : order?.שם_מקבל || null;
+            // On a multi-recipient order this stop belongs to one specific
+            // person — the customer above is the one who paid, not the one
+            // who opens the door.
+            const stopRecipient = (d as DeliveryWithCourier & { נמעני_הזמנה?: StopRecipient }).נמעני_הזמנה;
             const courierPhone = d.שליחים?.טלפון_שליח || d.טלפון_שליח || null;
             const assignedCourier = d.courier_id ? couriers.find(c => c.id === d.courier_id) : null;
             const canSendToCourier = !d._noRecord && !!assignedCourier &&
@@ -771,6 +779,24 @@ function DeliveriesContent() {
                         <span style={{ color: '#9B7A5A' }}>לא משויך</span>
                       )}
                     </div>
+
+                    {/* Recipient — only on orders that ship to several people */}
+                    {stopRecipient?.שם_נמען && (
+                      <div className="flex items-center gap-1.5 flex-wrap text-xs" style={{ color: '#6B4A2D' }}>
+                        <span
+                          className="font-medium rounded-full px-2 py-0.5"
+                          style={{ backgroundColor: '#EDE9FE', color: '#5B21B6' }}
+                        >
+                          לנמען
+                        </span>
+                        <span style={{ color: '#1E120A' }}>{stopRecipient.שם_נמען}</span>
+                        {stopRecipient.טלפון_נמען && (
+                          <a href={`tel:${stopRecipient.טלפון_נמען}`} className="hover:underline">
+                            {stopRecipient.טלפון_נמען}
+                          </a>
+                        )}
+                      </div>
+                    )}
 
                     {/* Address */}
                     {(d.כתובת || d.עיר) && (
@@ -1235,6 +1261,7 @@ type ArchiveRow = {
     לקוחות?: { שם_פרטי: string; שם_משפחה: string } | null;
   } | null;
   שליחים?: { שם_שליח: string } | null;
+  נמעני_הזמנה?: { שם_נמען: string } | null;
 };
 
 function ArchiveContent() {
@@ -1313,6 +1340,12 @@ function ArchiveContent() {
 
                 {customerName && (
                   <div className="text-sm font-medium" style={{ color: '#1E120A' }}>{customerName}</div>
+                )}
+
+                {d.נמעני_הזמנה?.שם_נמען && (
+                  <div className="text-xs" style={{ color: '#6B4A2D' }}>
+                    לנמען: {d.נמעני_הזמנה.שם_נמען}
+                  </div>
                 )}
 
                 {(d.כתובת || d.עיר) && (

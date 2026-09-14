@@ -26,6 +26,69 @@ interface OrderItem {
   סהכ: number;
   הערות_לשורה: string;
   missingPrice?: boolean;
+  /** Which recipient this line is for; '' = the order as a whole. */
+  נמען_key?: string;
+}
+
+/**
+ * One person an order is delivered to. A single order can be sent to many
+ * recipients — each with their own address and greeting, each receiving
+ * whatever lines are assigned to them (often the same thing for everyone).
+ * The order itself stays one financial unit: one customer, one total, one
+ * invoice, one payment.
+ */
+interface RecipientDraft {
+  /** Stable client-side id; the server maps it to a DB row on save. */
+  key: string;
+  שם_נמען: string;
+  טלפון_נמען: string;
+  כתובת: string;
+  עיר: string;
+  הוראות_משלוח: string;
+  ברכה_טקסט: string;
+}
+
+function makeRecipient(): RecipientDraft {
+  return {
+    key: `r${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`,
+    שם_נמען: '', טלפון_נמען: '', כתובת: '', עיר: '', הוראות_משלוח: '', ברכה_טקסט: '',
+  };
+}
+
+/**
+ * Per-line "who is this for?" picker. Rendered only while the order is in
+ * multi-recipient mode; a single-recipient order never sees it.
+ */
+function RecipientPicker({ recipients, value, onChange }: {
+  recipients: RecipientDraft[];
+  value: string;
+  onChange: (key: string) => void;
+}) {
+  if (recipients.length === 0) return null;
+  const unassigned = !value;
+  return (
+    <div className="flex items-center gap-2 mb-2">
+      <span className="text-xs font-medium flex-shrink-0" style={{ color: '#6B4A2D' }}>עבור:</span>
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        className="text-xs rounded-lg border px-2 py-1 bg-white"
+        style={{
+          borderColor: unassigned ? '#FBBF24' : '#DDD0BC',
+          color: '#2B1A10',
+          backgroundColor: unassigned ? '#FFFBEB' : '#FFF',
+        }}
+      >
+        <option value="">— כל ההזמנה —</option>
+        {recipients.map((r, i) => (
+          <option key={r.key} value={r.key}>{i + 1}. {r.שם_נמען.trim() || 'נמען ללא שם'}</option>
+        ))}
+      </select>
+      {unassigned && (
+        <span className="text-xs" style={{ color: '#92700E' }}>לא שויך לנמען — יופיע כפריט כללי בהזמנה</span>
+      )}
+    </div>
+  );
 }
 
 type PriceEntry = { מוצר_id: string; price_type: string; מחיר: number; min_quantity: number | null };
@@ -95,6 +158,7 @@ interface PackageItem {
   סהכ: number;
   הערות_לשורה: string;
   פטיפורים: { פטיפור_id: string; שם: string; כמות: number }[];
+  נמען_key?: string;
 }
 
 interface NewCustomItem {
@@ -104,6 +168,7 @@ interface NewCustomItem {
   מחיר_ליחידה: number;
   סהכ: number;
   הערות_לשורה: string;
+  נמען_key?: string;
 }
 
 function SectionHeader({ number, title }: { number: number; title: string }) {
@@ -161,6 +226,19 @@ export default function NewOrderPage() {
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
   const [packageItems, setPackageItems] = useState<PackageItem[]>([]);
   const [customItems, setCustomItems] = useState<NewCustomItem[]>([]);
+
+  // Multi-recipient orders — one order, several people receiving it.
+  const [multiRecipient, setMultiRecipient] = useState(false);
+  const [recipients, setRecipients] = useState<RecipientDraft[]>([]);
+
+  // Recipients only make sense on a delivery order, so a switch to איסוף עצמי
+  // takes the whole order back to the classic single-recipient shape. Kept as
+  // one derived value so the payload and the UI can never disagree.
+  const recipientsActive = multiRecipient && deliveryType === 'משלוח';
+  // Nameless rows are half-typed UI rows, not real recipients — the server
+  // drops them too, so the client agrees on what actually counts.
+  const activeRecipients = recipientsActive ? recipients.filter(r => r.שם_נמען.trim()) : [];
+  const hasRecipients = activeRecipients.length > 0;
 
   // Draft support
   const searchParams = useSearchParams();
@@ -282,6 +360,23 @@ export default function NewOrderPage() {
         setOrderSource(o.מקור_ההזמנה || '');
         setOrderType(o.סוג_הזמנה === 'סאטמר' ? 'סאטמר' : 'רגיל');
 
+        // Recipients come back with their DB ids, which we reuse as the
+        // client keys — so the item rows below can be matched by נמען_id
+        // without a lookup table.
+        const draftRecipients: RecipientDraft[] = ((o.נמענים || []) as Record<string, unknown>[]).map(r => ({
+          key: String(r.id),
+          שם_נמען: (r.שם_נמען as string) || '',
+          טלפון_נמען: (r.טלפון_נמען as string) || '',
+          כתובת: (r.כתובת as string) || '',
+          עיר: (r.עיר as string) || '',
+          הוראות_משלוח: (r.הוראות_משלוח as string) || '',
+          ברכה_טקסט: (r.ברכה_טקסט as string) || '',
+        }));
+        if (draftRecipients.length > 0) {
+          setRecipients(draftRecipients);
+          setMultiRecipient(true);
+        }
+
         const productItems = (o.מוצרים_בהזמנה || [])
           .filter((item: Record<string, unknown>) => item.סוג_שורה === 'מוצר')
           .map((item: Record<string, unknown>) => ({
@@ -292,6 +387,7 @@ export default function NewOrderPage() {
             סהכ: (item.סהכ as number) || 0,
             הערות_לשורה: (item.הערות_לשורה as string) || '',
             missingPrice: false,
+            נמען_key: (item.נמען_id as string) || '',
           }));
         setOrderItems(productItems);
 
@@ -307,6 +403,7 @@ export default function NewOrderPage() {
               מחיר_ליחידה: (item.מחיר_ליחידה as number) || 0,
               סהכ: (item.סהכ as number) || 0,
               הערות_לשורה: (item.הערות_לשורה as string) || '',
+              נמען_key: (item.נמען_id as string) || '',
               פטיפורים: pfSelections.map(s => ({
                 פטיפור_id: s.פטיפור_id as string,
                 שם: (s.סוגי_פטיפורים as Record<string, string>)?.שם_פטיפור || '',
@@ -332,6 +429,7 @@ export default function NewOrderPage() {
               מחיר_ליחידה: absPrice,
               סהכ: rowType === 'הנחה_תשלום' ? -(qty * absPrice) : qty * price,
               הערות_לשורה: (item.הערות_לשורה as string) || '',
+              נמען_key: (item.נמען_id as string) || '',
             };
           });
         setCustomItems(customItemRows);
@@ -529,9 +627,20 @@ export default function NewOrderPage() {
   const vatAmountAfterCredit = isBusiness ? +(totalAfterCredit * VAT_RATE).toFixed(2) : 0;
   const totalWithVatAfterCredit = isBusiness ? +(totalAfterCredit * (1 + VAT_RATE)).toFixed(2) : totalAfterCredit;
 
+  // A new line inherits the recipient of the line above it — when you're
+  // filling in "what does person #3 get", every row you add belongs to
+  // person #3 until you say otherwise.
+  const inheritRecipientKey = (rows: { נמען_key?: string }[]): string => {
+    if (!recipientsActive || recipients.length === 0) return '';
+    const last = rows.length > 0 ? rows[rows.length - 1].נמען_key : '';
+    if (last && recipients.some(r => r.key === last)) return last;
+    return recipients[0].key;
+  };
+
   const addProductItem = () => {
     setOrderItems(prev => [...prev, {
       מוצר_id: '', שם_מוצר: '', כמות: 1, מחיר_ליחידה: 0, סהכ: 0, הערות_לשורה: '', missingPrice: false,
+      נמען_key: inheritRecipientKey(prev),
     }]);
   };
 
@@ -582,6 +691,7 @@ export default function NewOrderPage() {
     setPackageItems(prev => [...prev, {
       מוצר_id: null, שם_מארז: '', גודל_מארז: 0, כמות: 1,
       מחיר_ליחידה: 0, סהכ: 0, הערות_לשורה: '', פטיפורים: [],
+      נמען_key: inheritRecipientKey(prev),
     }]);
   };
 
@@ -650,6 +760,7 @@ export default function NewOrderPage() {
   const addCustomItem = () => {
     setCustomItems(prev => [...prev, {
       סוג_שורה: 'תוספת_תשלום', שם_פריט_מותאם: '', כמות: 1, מחיר_ליחידה: 0, סהכ: 0, הערות_לשורה: '',
+      נמען_key: inheritRecipientKey(prev),
     }]);
   };
 
@@ -667,6 +778,72 @@ export default function NewOrderPage() {
   };
 
   const removeCustomItem = (idx: number) => setCustomItems(prev => prev.filter((_, i) => i !== idx));
+
+  // ── Recipients ──────────────────────────────────────────────────────────
+  const addRecipient = () => setRecipients(prev => [...prev, makeRecipient()]);
+
+  const updateRecipient = (idx: number, field: keyof RecipientDraft, value: string) =>
+    setRecipients(prev => prev.map((r, i) => (i === idx ? { ...r, [field]: value } : r)));
+
+  // Removing a recipient must not leave item rows pointing at a key that no
+  // longer exists — those lines fall back to "order-wide" and the picker
+  // flags them, rather than silently disappearing from the order.
+  const removeRecipient = (idx: number) => {
+    const gone = recipients[idx]?.key;
+    setRecipients(prev => prev.filter((_, i) => i !== idx));
+    if (!gone) return;
+    const clear = <T extends { נמען_key?: string }>(rows: T[]) =>
+      rows.map(r => (r.נמען_key === gone ? { ...r, נמען_key: '' } : r));
+    setOrderItems(clear);
+    setPackageItems(clear);
+    setCustomItems(clear);
+  };
+
+  /** How many lines are currently assigned to one recipient. */
+  const recipientItemCount = (key: string) =>
+    [...orderItems, ...packageItems, ...customItems].filter(r => r.נמען_key === key).length;
+
+  /**
+   * "Everyone gets the same thing" — takes the lines currently assigned to the
+   * first recipient (or still unassigned) as the template and replaces the
+   * whole item list with one copy of that template per recipient.
+   *
+   * Prices and quantities are per line, so ten recipients × one box each is
+   * ten rows of one — which is also what the quantity price tiers and the
+   * stock check need to see.
+   */
+  const applyItemsToAllRecipients = () => {
+    if (recipients.length < 2) {
+      toast.error('יש להוסיף לפחות שני נמענים');
+      return;
+    }
+    const first = recipients[0].key;
+    const isTemplate = (r: { נמען_key?: string }) => !r.נמען_key || r.נמען_key === first;
+
+    const productTpl = orderItems.filter(isTemplate);
+    const packageTpl = packageItems.filter(isTemplate);
+    const customTpl  = customItems.filter(isTemplate);
+
+    if (productTpl.length === 0 && packageTpl.length === 0 && customTpl.length === 0) {
+      toast.error(`אין פריטים לשכפול — יש להזין קודם את הפריטים של ${recipients[0].שם_נמען.trim() || 'הנמען הראשון'}`);
+      return;
+    }
+
+    const assignedElsewhere =
+      orderItems.length + packageItems.length + customItems.length
+      - (productTpl.length + packageTpl.length + customTpl.length);
+    if (assignedElsewhere > 0 && !window.confirm(
+      `הפעולה תחליף את כל הפריטים בהזמנה — כל ${recipients.length} הנמענים יקבלו את אותם פריטים. להמשיך?`,
+    )) return;
+
+    const fanOut = <T extends { נמען_key?: string }>(tpl: T[]): T[] =>
+      recipients.flatMap(r => tpl.map(row => ({ ...row, נמען_key: r.key })));
+
+    setOrderItems(fanOut(productTpl));
+    setPackageItems(fanOut(packageTpl));
+    setCustomItems(fanOut(customTpl));
+    toast.success(`הפריטים שוכפלו ל-${recipients.length} נמענים`);
+  };
 
   const inferCategoryFromName = (name: string): string => {
     const lower = name.toLowerCase();
@@ -736,6 +913,17 @@ export default function NewOrderPage() {
 
   const buildPayload = (status: 'חדשה' | 'טיוטה') => ({
     לקוח: { id: selectedCustomer },
+    // Recipients ride alongside the order. Each item below carries the key of
+    // the recipient it belongs to; the server swaps those keys for real ids.
+    נמענים: activeRecipients.map(r => ({
+      key: r.key,
+      שם_נמען: r.שם_נמען,
+      טלפון_נמען: r.טלפון_נמען || null,
+      כתובת: r.כתובת || null,
+      עיר: r.עיר || null,
+      הוראות_משלוח: r.הוראות_משלוח || null,
+      ברכה_טקסט: r.ברכה_טקסט || null,
+    })),
     הזמנה: {
       סטטוס_הזמנה: status,
       הזמנה_דחופה: isUrgent,
@@ -743,13 +931,15 @@ export default function NewOrderPage() {
       שעת_אספקה: deliveryTime || null,
       delivery_time_flexible: deliveryTimeFlexible,
       סוג_אספקה: deliveryType,
-      שם_מקבל: recipientName || null,
-      טלפון_מקבל: recipientPhone || null,
-      כתובת_מקבל_ההזמנה: recipientAddress || null,
-      עיר: recipientCity || null,
-      הוראות_משלוח: deliveryInstructions || null,
+      // A multi-recipient order has no single "מקבל" — leaving the customer's
+      // details here would make the order look like it ships to one address.
+      שם_מקבל: hasRecipients ? null : (recipientName || null),
+      טלפון_מקבל: hasRecipients ? null : (recipientPhone || null),
+      כתובת_מקבל_ההזמנה: hasRecipients ? null : (recipientAddress || null),
+      עיר: hasRecipients ? null : (recipientCity || null),
+      הוראות_משלוח: hasRecipients ? null : (deliveryInstructions || null),
       דמי_משלוח: deliveryFee,
-      delivery_recipient_type: deliveryType === 'משלוח' ? recipientType : null,
+      delivery_recipient_type: deliveryType === 'משלוח' && !hasRecipients ? recipientType : null,
       סוג_הזמנה: orderType,
       אופן_תשלום: paymentMethod,
       סטטוס_תשלום: paymentStatus,
@@ -765,6 +955,7 @@ export default function NewOrderPage() {
       כמות: i.כמות,
       מחיר_ליחידה: i.מחיר_ליחידה,
       הערות_לשורה: i.הערות_לשורה || null,
+      נמען_key: hasRecipients ? (i.נמען_key || null) : null,
     })),
     מארזי_פטיפורים: packageItems.map(p => ({
       מוצר_id: p.מוצר_id,
@@ -772,6 +963,7 @@ export default function NewOrderPage() {
       כמות: p.כמות,
       מחיר_ליחידה: p.מחיר_ליחידה,
       הערות_לשורה: p.הערות_לשורה || null,
+      נמען_key: hasRecipients ? (p.נמען_key || null) : null,
       פטיפורים: p.פטיפורים.map(pf => ({ פטיפור_id: pf.פטיפור_id, כמות: pf.כמות })),
     })),
     פריטים_ידניים: customItems
@@ -782,9 +974,14 @@ export default function NewOrderPage() {
         כמות: i.כמות,
         מחיר_ליחידה: i.סוג_שורה === 'הנחה_תשלום' ? -Math.abs(i.מחיר_ליחידה) : i.מחיר_ליחידה,
         הערות_לשורה: i.הערות_לשורה || null,
+        נמען_key: hasRecipients ? (i.נמען_key || null) : null,
       })),
     משלוח: deliveryType === 'משלוח'
-      ? { כתובת: recipientAddress, עיר: recipientCity, הוראות_משלוח: deliveryInstructions }
+      ? hasRecipients
+        // Fallbacks only — each recipient's own address wins. A recipient with
+        // no address of their own still gets a delivery row to work from.
+        ? { כתובת: null, עיר: null, הוראות_משלוח: null }
+        : { כתובת: recipientAddress, עיר: recipientCity, הוראות_משלוח: deliveryInstructions }
       : null,
   });
 
@@ -796,6 +993,26 @@ export default function NewOrderPage() {
     // If an order was already created (post-save modal open), never create another
     if (savedOrderId) return;
     if (!selectedCustomer) { toast.error('יש לבחור לקוח'); return; }
+
+    // Multi-recipient orders: every card must be a real, deliverable person.
+    // A half-typed card would otherwise be dropped silently on save, taking
+    // the items assigned to it down to "order-wide" with it.
+    if (recipientsActive) {
+      const blankIdx = recipients.findIndex(r => !r.שם_נמען.trim());
+      if (blankIdx >= 0) {
+        toast.error(`יש להזין שם לנמען ${blankIdx + 1} (או למחוק אותו)`);
+        return;
+      }
+      if (recipients.length === 0) {
+        toast.error('יש להוסיף לפחות נמען אחד, או לעבור למצב "נמען אחד"');
+        return;
+      }
+      const noAddress = recipients.find(r => !r.כתובת.trim() && !r.עיר.trim());
+      if (noAddress) {
+        toast.error(`אין כתובת לנמען "${noAddress.שם_נמען.trim()}" — לכל נמען נדרשת כתובת למשלוח`);
+        return;
+      }
+    }
 
     // When the active tier has no price-list entry for an item, allow the user
     // to type a manual price instead of blocking outright. We only refuse to
@@ -1012,6 +1229,114 @@ export default function NewOrderPage() {
           {deliveryType === 'משלוח' && (
             <Card>
               <SectionHeader number={3} title="פרטי משלוח" />
+              {/* One address, or a list of people */}
+              <div className="flex gap-2 mb-4">
+                {([
+                  { key: false, label: 'נמען אחד' },
+                  { key: true,  label: 'כמה נמענים' },
+                ] as const).map(opt => (
+                  <button
+                    key={String(opt.key)}
+                    type="button"
+                    onClick={() => {
+                      setMultiRecipient(opt.key);
+                      // Opening the list for the first time starts it with one
+                      // blank card so there's something to type into.
+                      if (opt.key && recipients.length === 0) setRecipients([makeRecipient()]);
+                    }}
+                    className="px-3 py-1.5 text-xs font-medium rounded-full border transition-colors"
+                    style={multiRecipient === opt.key
+                      ? { backgroundColor: '#6B4A2D', color: '#fff', borderColor: '#6B4A2D' }
+                      : { backgroundColor: '#fff', color: '#6B4A2D', borderColor: '#DDD0BC' }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+
+              {multiRecipient ? (
+                <div className="space-y-3">
+                  <div className="flex items-start justify-between gap-3 flex-wrap">
+                    <p className="text-xs flex-1 min-w-[16rem]" style={{ color: '#6B4A2D' }}>
+                      כל נמען מקבל משלוח נפרד לכתובת שלו. ההזמנה, החשבונית והתשלום נשארים אחד.
+                    </p>
+                    <div className="flex gap-2 flex-shrink-0">
+                      <Button type="button" variant="outline" size="sm" onClick={addRecipient}>
+                        + הוסף נמען
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" onClick={applyItemsToAllRecipients}>
+                        כולם מקבלים אותו דבר
+                      </Button>
+                    </div>
+                  </div>
+
+                  {recipients.length === 0 ? (
+                    <div className="text-center py-4">
+                      <Button type="button" variant="outline" size="sm" onClick={addRecipient}>
+                        + הוסף נמען ראשון
+                      </Button>
+                    </div>
+                  ) : recipients.map((r, idx) => (
+                    <div
+                      key={r.key}
+                      className="p-3 rounded-xl border"
+                      style={{ borderColor: '#DDD0BC', backgroundColor: '#FAF7F0' }}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-semibold" style={{ color: '#8B5E34' }}>
+                          נמען {idx + 1}
+                        </span>
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs" style={{ color: '#9B7A5A' }}>
+                            {recipientItemCount(r.key)} פריטים
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => removeRecipient(idx)}
+                            className="w-6 h-6 rounded-full flex items-center justify-center text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors text-lg leading-none"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <Input label="שם נמען" value={r.שם_נמען} onChange={e => updateRecipient(idx, 'שם_נמען', e.target.value)} />
+                        <Input label="טלפון" value={r.טלפון_נמען} onChange={e => updateRecipient(idx, 'טלפון_נמען', e.target.value)} />
+                        <Input label="כתובת" value={r.כתובת} onChange={e => updateRecipient(idx, 'כתובת', e.target.value)} />
+                        <Input label="עיר" value={r.עיר} onChange={e => updateRecipient(idx, 'עיר', e.target.value)} />
+                        <div className="col-span-2">
+                          <Textarea
+                            label="הוראות משלוח"
+                            value={r.הוראות_משלוח}
+                            onChange={e => updateRecipient(idx, 'הוראות_משלוח', e.target.value)}
+                            rows={2}
+                          />
+                        </div>
+                        <div className="col-span-2">
+                          <Textarea
+                            label="ברכה לנמען"
+                            value={r.ברכה_טקסט}
+                            onChange={e => updateRecipient(idx, 'ברכה_טקסט', e.target.value)}
+                            rows={2}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  <div className="grid grid-cols-2 gap-4 pt-1">
+                    <Input
+                      label="דמי משלוח (₪)"
+                      type="number"
+                      value={deliveryFee}
+                      onChange={e => setDeliveryFee(Number(e.target.value))}
+                      min={0}
+                      step={0.01}
+                    />
+                  </div>
+                </div>
+              ) : (
+              <>
               {/* Recipient type toggle */}
               <div className="flex gap-2 mb-4">
                 {([
@@ -1074,6 +1399,8 @@ export default function NewOrderPage() {
                   step={0.01}
                 />
               </div>
+              </>
+              )}
             </Card>
           )}
 
@@ -1123,6 +1450,11 @@ export default function NewOrderPage() {
                     className="p-3 rounded-xl"
                     style={{ backgroundColor: '#FAF7F0', border: item.missingPrice ? '1px solid #FBBF24' : belowMin ? '1px solid #EF4444' : undefined }}
                   >
+                  <RecipientPicker
+                    recipients={activeRecipients}
+                    value={item.נמען_key || ''}
+                    onChange={v => updateProductItem(idx, 'נמען_key', v)}
+                  />
                   <div className="grid grid-cols-12 gap-2 items-end">
                     <div className="col-span-4">
                       <Combobox
@@ -1261,6 +1593,11 @@ export default function NewOrderPage() {
                     className="p-4 rounded-xl border"
                     style={{ borderColor: '#DDD0BC', backgroundColor: '#FAF7F0' }}
                   >
+                    <RecipientPicker
+                      recipients={activeRecipients}
+                      value={pkg.נמען_key || ''}
+                      onChange={v => updatePackageItem(pkgIdx, 'נמען_key', v)}
+                    />
                     <div className="grid grid-cols-4 gap-3 mb-3">
                       <div className="col-span-2">
                         <Select
@@ -1425,6 +1762,11 @@ export default function NewOrderPage() {
                         border: `1px solid ${isDiscount ? '#B7E0C0' : '#E8DECE'}`,
                       }}
                     >
+                      <RecipientPicker
+                        recipients={activeRecipients}
+                        value={item.נמען_key || ''}
+                        onChange={v => updateCustomItem(idx, 'נמען_key', v)}
+                      />
                       <div className="grid grid-cols-12 gap-2 items-end">
                         <div className="col-span-3">
                           <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>סוג</label>

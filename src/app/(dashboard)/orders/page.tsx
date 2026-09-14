@@ -77,6 +77,8 @@ interface FullOrderData {
   סך_הכל_לתשלום: number | null;
   סכום_הנחה: number | null;
   לקוחות: { שם_פרטי: string; שם_משפחה: string; טלפון: string | null } | null;
+  /** People this order ships to, on an order delivered to more than one. */
+  נמענים?: { id: string; שם_נמען: string; טלפון_נמען: string | null; כתובת: string | null; עיר: string | null }[];
   מוצרים_בהזמנה: OrderLineItem[];
   תשלומים: { id: string; סכום: number }[];
 }
@@ -134,6 +136,7 @@ function OrderExpansionPanel({ fo }: { fo: FullOrderData }) {
   const total      = fo.סך_הכל_לתשלום ?? 0;
   const remaining  = Math.max(0, total - paidAmount);
   const addrLine   = [fo.כתובת_מקבל_ההזמנה, fo.עיר].filter(Boolean).join(', ');
+  const recipients = fo.נמענים ?? [];
 
   return (
     <div dir="rtl" className="space-y-2.5">
@@ -154,7 +157,11 @@ function OrderExpansionPanel({ fo }: { fo: FullOrderData }) {
           <ExpField label="סוג"   value={fo.סוג_אספקה} />
           <ExpField label="תאריך" value={fo.תאריך_אספקה ? formatDate(fo.תאריך_אספקה) : 'לא נקבע'} />
           {fo.שעת_אספקה  && <ExpField label="שעה"    value={`${fo.שעת_אספקה}${fo.delivery_time_flexible ? ' (גמיש)' : ''}`} />}
-          {addrLine      && <ExpField label="כתובת"  value={addrLine} />}
+          {recipients.length > 0 ? (
+            <ExpField label="נמענים" value={`${recipients.length} כתובות`} />
+          ) : (
+            addrLine && <ExpField label="כתובת" value={addrLine} />
+          )}
           {fo.הוראות_משלוח && <ExpField label="הוראות" value={fo.הוראות_משלוח} />}
         </ExpSec>
 
@@ -168,6 +175,23 @@ function OrderExpansionPanel({ fo }: { fo: FullOrderData }) {
           {fo.מקור_ההזמנה && <ExpField label="מקור"   value={fo.מקור_ההזמנה} />}
         </ExpSec>
       </div>
+
+      {/* 3b. נמענים — only on orders that ship to several people */}
+      {recipients.length > 0 && (
+        <ExpSec title={`נמענים (${recipients.length})`}>
+          <ul className="space-y-0.5">
+            {recipients.map((r, i) => (
+              <li key={r.id} className="text-[11px]" style={{ color: '#4A2F1B' }}>
+                <span style={{ color: '#9B7A5A' }}>{i + 1}. </span>
+                <span className="font-medium">{r.שם_נמען}</span>
+                {(r.כתובת || r.עיר) && (
+                  <span style={{ color: '#6B4A2D' }}> — {[r.כתובת, r.עיר].filter(Boolean).join(', ')}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </ExpSec>
+      )}
 
       {/* 4. פריטים */}
       <ExpSec title={`פריטים (${items.length})`}>

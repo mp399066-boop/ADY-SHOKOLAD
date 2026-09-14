@@ -6,6 +6,7 @@ import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireA
 import { isServiceEnabled, logServiceRun } from '@/lib/system-services';
 import { logActivity, userActor } from '@/lib/activity-log';
 import { buildCourierWhatsAppMessage } from '@/lib/courier-notification';
+import { fetchDeliveryRecipient } from '@/lib/order-recipients';
 import { randomBytes } from 'crypto';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -48,12 +49,15 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     const orderId = deliveryId.replace('no-record-', '');
     console.log('[delivery PATCH] synthetic id — orderId:', orderId);
 
-    // Race-condition guard: check if a delivery was already created for this order
-    const { data: existing } = await supabase
+    // Race-condition guard: check if a delivery was already created for this
+    // order. A multi-recipient order has several rows, so we take the list and
+    // pick one instead of maybeSingle() (which errors on multiple rows and
+    // would send us down the create path again).
+    const { data: existingRows } = await supabase
       .from('משלוחים')
       .select('id')
-      .eq('הזמנה_id', orderId)
-      .maybeSingle();
+      .eq('הזמנה_id', orderId);
+    const existing = (existingRows || [])[0] ?? null;
 
     if (existing) {
       deliveryId = existing.id;
@@ -233,7 +237,12 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     לקוחות?: { שם_פרטי: string; שם_משפחה: string } | null;
   };
   const order = existing.הזמנות as OrderJoin | null;
+  // On a multi-recipient order this stop belongs to one specific person —
+  // their name/phone/address win over the order-level fields, which are
+  // empty (or belong to someone else) for that kind of order.
+  const stopRecipient = await fetchDeliveryRecipient(supabase, deliveryId);
   const recipientName =
+    stopRecipient?.שם_נמען ||
     order?.שם_מקבל ||
     (order?.לקוחות ? `${order.לקוחות.שם_פרטי} ${order.לקוחות.שם_משפחה}` : '') ||
     'לקוח';
@@ -241,20 +250,25 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     כתובת?: string | null; עיר?: string | null;
     תאריך_משלוח?: string | null; שעת_משלוח?: string | null; הוראות_משלוח?: string | null;
   };
-  const addrStreet = deliveryRow.כתובת || order?.כתובת_מקבל_ההזמנה || null;
-  const addrCity   = deliveryRow.עיר   || order?.עיר                  || null;
+  const addrStreet = deliveryRow.כתובת || stopRecipient?.כתובת || order?.כתובת_מקבל_ההזמנה || null;
+  const addrCity   = deliveryRow.עיר   || stopRecipient?.עיר   || order?.עיר                  || null;
   const fullAddress = [addrStreet, addrCity].filter(Boolean).join(', ') || null;
-  const recipientPhone = order?.טלפון_מקבל || null;
-  const deliveryNotes = deliveryRow.הוראות_משלוח || order?.הוראות_משלוח || null;
+  const recipientPhone = stopRecipient?.טלפון_נמען || order?.טלפון_מקבל || null;
+  const deliveryNotes = deliveryRow.הוראות_משלוח || stopRecipient?.הוראות_משלוח || order?.הוראות_משלוח || null;
 
   // 3b. Order items for the WhatsApp summary. Best-effort — if the query
   //     fails, the message degrades gracefully to "open the link".
   let courierItems: Array<{ name: string; quantity: number; petitFours?: { name: string; quantity: number }[] }> = [];
   if (order?.id) {
-    const { data: itemsData } = await supabase
+    let itemsQuery = supabase
       .from('מוצרים_בהזמנה')
       .select('id, סוג_שורה, גודל_מארז, כמות, הערות_לשורה, מוצרים_למכירה(שם_מוצר), בחירת_פטיפורים_בהזמנה(כמות, סוגי_פטיפורים(שם_פטיפור))')
       .eq('הזמנה_id', order.id);
+    // Multi-recipient: the courier only needs THIS stop's items. Filtering on
+    // נמען_id is safe here — a non-null stopRecipient proves the column
+    // exists on this database.
+    if (stopRecipient) itemsQuery = itemsQuery.eq('נמען_id', stopRecipient.id);
+    const { data: itemsData } = await itemsQuery;
     type ItemRow = {
       סוג_שורה: string | null; גודל_מארז: number | null; כמות: number | null; הערות_לשורה: string | null;
       מוצרים_למכירה?: { שם_מוצר?: string | null } | null;

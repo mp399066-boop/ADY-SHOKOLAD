@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
+import { normalizeRecipients, replaceOrderRecipients, itemRecipientColumns } from '@/lib/order-recipients';
 
 // PATCH — silently updates a draft order's fields and items.
 // No emails, no Morning, no delivery/payment records. Status stays 'טיוטה'.
@@ -15,7 +16,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   const { data: existing } = await supabase
     .from('הזמנות')
-    .select('סטטוס_הזמנה')
+    .select('*')
     .eq('id', orderId)
     .single();
 
@@ -24,7 +25,13 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   }
 
   const body = await req.json();
-  const { הזמנה, מוצרים = [], מארזי_פטיפורים = [], פריטים_ידניים = [] } = body;
+  const { הזמנה, מוצרים = [], מארזי_פטיפורים = [], פריטים_ידניים = [], נמענים } = body;
+
+  // Multi-recipient drafts keep their recipient list so the draft can be
+  // reopened later exactly as it was. Drafts never create delivery rows.
+  const recipients = normalizeRecipients(נמענים);
+  const isMultiRecipient = recipients.length > 0;
+  const wasMultiRecipient = existing.מרובה_נמענים === true;
 
   let subtotal = 0;
   for (const item of מוצרים) subtotal += (item.כמות || 1) * (item.מחיר_ליחידה || 0);
@@ -65,7 +72,17 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     ברכה_טקסט: הזמנה?.ברכה_טקסט ?? null,
     הערות_להזמנה: הזמנה?.הערות_להזמנה ?? null,
     תאריך_עדכון: new Date().toISOString(),
+    // Touched only when it changes, so the column is never referenced on
+    // databases where migration 053 isn't applied.
+    ...(isMultiRecipient ? { מרובה_נמענים: true } : wasMultiRecipient ? { מרובה_נמענים: false } : {}),
   }).eq('id', orderId);
+
+  let recipientMap = new Map<string, string>();
+  if (isMultiRecipient || wasMultiRecipient) {
+    const res = await replaceOrderRecipients(supabase, orderId, recipients);
+    if (!res.ok) return NextResponse.json({ error: res.error }, { status: 500 });
+    recipientMap = res.map;
+  }
 
   await supabase.from('מוצרים_בהזמנה').delete().eq('הזמנה_id', orderId);
 
@@ -80,6 +97,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       סהכ: (item.כמות || 1) * (item.מחיר_ליחידה || 0),
       הערות_לשורה: item.הערות_לשורה || null,
       סדר_תצוגה: sortIdx++,
+      ...itemRecipientColumns(recipientMap, item),
     });
   }
 
@@ -94,6 +112,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       סהכ: (pkg.כמות || 1) * (pkg.מחיר_ליחידה || 0),
       הערות_לשורה: pkg.הערות_לשורה || null,
       סדר_תצוגה: sortIdx++,
+      ...itemRecipientColumns(recipientMap, pkg),
     }).select().single();
 
     if (pkg.פטיפורים && pkgRow) {
@@ -124,6 +143,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       סהכ: qty * price,
       הערות_לשורה: (item.הערות_לשורה as string) || null,
       סדר_תצוגה: sortIdx++,
+      ...itemRecipientColumns(recipientMap, item),
     });
   }
 

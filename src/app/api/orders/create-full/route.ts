@@ -20,6 +20,13 @@ import {
   formatStockShortageMessage,
   type StockAvailabilityItem,
 } from '@/lib/inventory-deduct';
+import {
+  normalizeRecipients,
+  replaceOrderRecipients,
+  syncRecipientDeliveries,
+  itemRecipientColumns,
+  type RecipientRow,
+} from '@/lib/order-recipients';
 
 // In-memory idempotency store — maps clientRequestId → { orderId, response, expiresAt }
 // Prevents duplicate orders when the client sends the same request more than once.
@@ -70,9 +77,19 @@ export async function POST(req: NextRequest) {
     מוצרים = [],
     מארזי_פטיפורים = [],
     פריטים_ידניים = [],
+    נמענים,
   } = body;
 
   if (!לקוח) return NextResponse.json({ error: 'פרטי לקוח הם חובה' }, { status: 400 });
+
+  // Multi-recipient orders (הזמנה לכמה נמענים): one customer pays, several
+  // people receive. The financial side stays single (one total / invoice /
+  // payment); only fulfilment fans out. normalizeRecipients validates and
+  // caps everything the client sent — nameless rows are dropped, so an empty
+  // result means "classic single-recipient order" and no new column is
+  // touched at all.
+  const recipients = normalizeRecipients(נמענים);
+  const isMultiRecipient = recipients.length > 0;
 
   console.log('[create-full] STEP 1: resolving customer', { hasId: !!לקוח.id });
 
@@ -148,6 +165,9 @@ export async function POST(req: NextRequest) {
       מקור_ההזמנה: הזמנה?.מקור_ההזמנה || null,
       ברכה_טקסט: הזמנה?.ברכה_טקסט || null,
       הערות_להזמנה: הזמנה?.הערות_להזמנה || null,
+      // Only set on multi-recipient orders so single-recipient creation keeps
+      // working on databases where migration 053 hasn't been applied yet.
+      ...(isMultiRecipient ? { מרובה_נמענים: true } : {}),
     })
     .select()
     .single();
@@ -239,6 +259,25 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // 4c. Create the recipients — must happen BEFORE the item lines so each
+  // line can be stamped with its נמען_id. Returns the client-key → id map
+  // the item inserts below use.
+  let recipientMap = new Map<string, string>();
+  let recipientRows: RecipientRow[] = [];
+  if (isMultiRecipient) {
+    const res = await replaceOrderRecipients(supabase, order!.id, recipients);
+    if (!res.ok) {
+      // Nothing else has been written yet — undo the bare order and surface
+      // the reason (most likely: migration 053 not applied).
+      await supabase.from('הזמנות').delete().eq('id', order!.id);
+      console.error('[create-full] recipients failed:', res.error, '| order:', order!.id);
+      return NextResponse.json({ error: res.error }, { status: 500 });
+    }
+    recipientMap = res.map;
+    recipientRows = res.rows;
+    console.log('[create-full] recipients created:', recipientRows.length, '| order:', order!.id);
+  }
+
   // 5. Create regular product lines (validated only)
   let sortIdx = 1;
   for (const item of validProducts) {
@@ -251,6 +290,7 @@ export async function POST(req: NextRequest) {
       סהכ: ((item.כמות as number) || 1) * ((item.מחיר_ליחידה as number) || 0),
       הערות_לשורה: (item.הערות_לשורה as string) || null,
       סדר_תצוגה: sortIdx++,
+      ...itemRecipientColumns(recipientMap, item),
     });
     if (itemError) return NextResponse.json({ error: `יצירת פריט נכשלה: ${itemError.message}` }, { status: 500 });
   }
@@ -268,6 +308,7 @@ export async function POST(req: NextRequest) {
       סהכ: (pkg.כמות || 1) * (pkg.מחיר_ליחידה || 0),
       הערות_לשורה: pkg.הערות_לשורה || null,
       סדר_תצוגה: sortIdx++,
+      ...itemRecipientColumns(recipientMap, pkg),
     }).select().single();
 
     if (pkgError) return NextResponse.json({ error: `יצירת מארז נכשלה: ${pkgError.message}` }, { status: 500 });
@@ -302,6 +343,7 @@ export async function POST(req: NextRequest) {
       סהכ: qty * price,
       הערות_לשורה: (item.הערות_לשורה as string) || null,
       סדר_תצוגה: sortIdx++,
+      ...itemRecipientColumns(recipientMap, item),
     });
     if (itemError) return NextResponse.json({ error: `יצירת פריט ידני נכשלה: ${itemError.message}` }, { status: 500 });
   }
@@ -352,7 +394,20 @@ export async function POST(req: NextRequest) {
   // check costs ~1ms and prevents duplicates if a future caller ever
   // resubmits with the same order id (the 60s in-memory idempotency cache
   // covers this for repeat clients, but defense-in-depth is cheap).
-  if (!isDraft && משלוח) {
+  if (!isDraft && isMultiRecipient && משלוח) {
+    // Multi-recipient: one delivery row per recipient, each with that
+    // person's own address. The order-level row is never created.
+    // Gated on משלוח for the same reason as the branch below — an
+    // איסוף עצמי order has no stops to dispatch.
+    await syncRecipientDeliveries(supabase, order!.id, recipientRows, {
+      תאריך_משלוח:   order!.תאריך_אספקה || null,
+      שעת_משלוח:     order!.שעת_אספקה   || null,
+      כתובת:          משלוח?.כתובת          || order!.כתובת_מקבל_ההזמנה || null,
+      עיר:             משלוח?.עיר             || order!.עיר                || null,
+      הוראות_משלוח:   משלוח?.הוראות_משלוח   || order!.הוראות_משלוח      || null,
+    });
+    console.log('[create-full] per-recipient deliveries synced —', recipientRows.length, 'stops | order:', order!.id);
+  } else if (!isDraft && משלוח) {
     const { data: existingDelivery } = await supabase
       .from('משלוחים').select('id').eq('הזמנה_id', order!.id).maybeSingle();
     if (existingDelivery) {

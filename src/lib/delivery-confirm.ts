@@ -69,8 +69,33 @@ export async function markDeliveryDeliveredByToken(
 
   // 2. Cascade to the linked order — סטטוס_הזמנה → 'הושלמה בהצלחה' + ארכיון.
   //    Mirrors PATCH /api/orders/[id]: archive + satmar email when relevant.
+  //
+  //    A multi-recipient order has one delivery row per recipient. Completing
+  //    the order on the FIRST courier confirmation would archive it while the
+  //    other stops are still out for delivery, so the cascade waits until
+  //    every stop is marked נמסר. Single-stop orders are unaffected (their
+  //    only row is the one we just flipped).
   let orderCompleted = false;
   if (existing.הזמנה_id) {
+    const { data: siblings, error: siblingsErr } = await supabase
+      .from('משלוחים')
+      .select('id, סטטוס_משלוח')
+      .eq('הזמנה_id', existing.הזמנה_id);
+
+    const pending = (siblings || []).filter(
+      (d: { id: string; סטטוס_משלוח: string }) => d.id !== existing.id && d.סטטוס_משלוח !== 'נמסר',
+    );
+    if (siblingsErr) {
+      console.error('[delivery-confirm] sibling-stop check failed:', siblingsErr.message, '| order:', existing.הזמנה_id);
+    }
+    if (pending.length > 0) {
+      console.log(
+        '[delivery-confirm] order not completed —', pending.length,
+        'stop(s) still pending | order:', existing.הזמנה_id,
+      );
+      return { ok: true, status: 'delivered', deliveryId: String(existing.id), orderCompleted: false };
+    }
+
     const { data: orderRow } = await supabase
       .from('הזמנות')
       .select('id, מספר_הזמנה, סטטוס_הזמנה, סוג_הזמנה')

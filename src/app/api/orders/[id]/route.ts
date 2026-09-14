@@ -5,6 +5,7 @@ import { sendSatmarSummaryEmail } from '@/lib/satmar-email';
 import { AUTO_CREATE_MORNING_DOCUMENTS } from '@/lib/morning';
 import { restoreOrderInventory, deductOrderInventory, DEDUCT_INVENTORY_ON_ORDER_STATUS } from '@/lib/inventory-deduct';
 import { logActivity, userActor } from '@/lib/activity-log';
+import { fetchOrderRecipients } from '@/lib/order-recipients';
 // deploy trigger
 
 export async function GET(_: NextRequest, { params }: { params: { id: string } }) {
@@ -26,11 +27,26 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
     .eq('הזמנה_id', params.id)
     .order('סדר_תצוגה', { ascending: true });
 
-  const { data: delivery } = await supabase
+  // A multi-recipient order has one delivery row per recipient, so this can
+  // legitimately return several rows — .single() would error. `משלוח` keeps
+  // its original single-row meaning (first/only stop) for every existing
+  // consumer; `משלוחים` carries the full list.
+  const { data: deliveriesRaw } = await supabase
     .from('משלוחים')
     .select('*, שליחים:courier_id(id, שם_שליח, טלפון_שליח)')
-    .eq('הזמנה_id', params.id)
-    .single();
+    .eq('הזמנה_id', params.id);
+
+  const recipients = await fetchOrderRecipients(supabase, params.id);
+
+  // Order the stops the way the operator entered the recipients (משלוחים has
+  // no created-at column to sort on).
+  const recipientOrder = new Map(recipients.map((r, i) => [r.id, i]));
+  const deliveries = ((deliveriesRaw || []) as Record<string, string>[]).slice().sort(
+    (a: Record<string, string>, b: Record<string, string>) =>
+      (recipientOrder.get(a['נמען_id']) ?? -1) -
+      (recipientOrder.get(b['נמען_id']) ?? -1),
+  );
+  const delivery = deliveries[0] ?? null;
 
   const { data: payments } = await supabase
     .from('תשלומים')
@@ -56,6 +72,8 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
       ...order,
       מוצרים_בהזמנה: items || [],
       משלוח: delivery || null,
+      משלוחים: deliveries || [],
+      נמענים: recipients,
       תשלומים: payments || [],
       חשבוניות: invoices || [],
       קבצים: files || [],
@@ -184,6 +202,15 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if (Object.prototype.hasOwnProperty.call(body, orderField)) {
       deliveryUpdate[deliveryField] = body[orderField];
     }
+  }
+  // On a multi-recipient order each stop has its OWN address — mirroring the
+  // order-level address onto every row would overwrite all of them with one
+  // recipient's street. Only the schedule (date/time) is shared there.
+  const isMultiRecipient = (data as Record<string, unknown>)?.['מרובה_נמענים'] === true;
+  if (isMultiRecipient) {
+    delete deliveryUpdate['כתובת'];
+    delete deliveryUpdate['עיר'];
+    delete deliveryUpdate['הוראות_משלוח'];
   }
   if (Object.keys(deliveryUpdate).length > 0) {
     const { error: syncErr } = await supabase

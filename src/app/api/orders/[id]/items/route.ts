@@ -7,6 +7,7 @@ import {
   formatStockShortageMessage,
   type StockAvailabilityItem,
 } from '@/lib/inventory-deduct';
+import { fetchOrderRecipients } from '@/lib/order-recipients';
 
 // GET: return items for a single order (used by inline order expansion on the list page)
 export async function GET(_: NextRequest, { params }: { params: { id: string } }) {
@@ -46,12 +47,24 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     ערך_הנחה = 0,
     דמי_משלוח = 0,
   } = body as {
-    מוצרים: { מוצר_id: string; כמות: number; מחיר_ליחידה: number; הערות_לשורה?: string }[];
-    מארזים: { גודל_מארז: number; כמות: number; מחיר_ליחידה: number; הערות_לשורה?: string; פטיפורים: { פטיפור_id: string; כמות: number }[] }[];
-    פריטים_ידניים: { שם_פריט_מותאם: string; סוג_שורה: string; כמות: number; מחיר_ליחידה: number; הערות_לשורה?: string }[];
+    מוצרים: { מוצר_id: string; כמות: number; מחיר_ליחידה: number; הערות_לשורה?: string; נמען_id?: string | null }[];
+    מארזים: { גודל_מארז: number; כמות: number; מחיר_ליחידה: number; הערות_לשורה?: string; נמען_id?: string | null; פטיפורים: { פטיפור_id: string; כמות: number }[] }[];
+    פריטים_ידניים: { שם_פריט_מותאם: string; סוג_שורה: string; כמות: number; מחיר_ליחידה: number; הערות_לשורה?: string; נמען_id?: string | null }[];
     סוג_הנחה: 'ללא' | 'אחוז' | 'סכום';
     ערך_הנחה: number;
     דמי_משלוח: number;
+  };
+
+  // Replacing the item rows would otherwise drop which recipient each line
+  // belongs to. The client sends נמען_id back per line; we accept it only
+  // when it names a recipient OF THIS ORDER — never a client-supplied id we
+  // haven't verified. An order with no recipients ignores the field entirely,
+  // so the column is not referenced before migration 053 is applied.
+  const orderRecipientIds = new Set((await fetchOrderRecipients(supabase, params.id)).map(r => r.id));
+  const recipientColumns = (line: { נמען_id?: string | null }): { נמען_id?: string } => {
+    if (orderRecipientIds.size === 0) return {};
+    const id = typeof line.נמען_id === 'string' ? line.נמען_id.trim() : '';
+    return id && orderRecipientIds.has(id) ? { נמען_id: id } : {};
   };
 
   console.log('[items PUT] orderId:', params.id);
@@ -230,6 +243,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       סהכ: lineTotal,
       הערות_לשורה: item.הערות_לשורה || null,
       סדר_תצוגה: sortIdx++,
+      ...recipientColumns(item),
     });
     if (error) {
       console.error('[items PUT] failed to insert product row:', error, item);
@@ -254,6 +268,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
         סהכ: lineTotal,
         הערות_לשורה: pkg.הערות_לשורה || null,
         סדר_תצוגה: sortIdx++,
+        ...recipientColumns(pkg),
       })
       .select()
       .single();
@@ -298,6 +313,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       סהכ:             lineTotal,
       הערות_לשורה:     item.הערות_לשורה || null,
       סדר_תצוגה:      sortIdx++,
+      ...recipientColumns(item),
     });
     if (error) {
       console.error('[items PUT] failed to insert custom item:', error, item);

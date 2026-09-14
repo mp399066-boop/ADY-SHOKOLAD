@@ -205,7 +205,30 @@ export interface Order {
   summary_email_sent_at: string | null;
   summary_email_sent_total: number | null;
   summary_email_sent_items_snapshot: { key: string; name: string; quantity: number; unitPrice: number }[] | null;
+  /** True when the order is fulfilled to several recipients (migration 053). */
+  מרובה_נמענים?: boolean;
   לקוחות?: Customer;
+  נמעני_הזמנה?: OrderRecipient[];
+}
+
+/**
+ * One recipient of a multi-recipient order — a person the order is delivered
+ * to. The order itself stays a single financial unit (one customer, one
+ * total, one invoice); only fulfilment fans out per recipient.
+ */
+export interface OrderRecipient {
+  id: string;
+  הזמנה_id: string;
+  שם_נמען: string;
+  טלפון_נמען: string | null;
+  כתובת: string | null;
+  עיר: string | null;
+  הוראות_משלוח: string | null;
+  ברכה_טקסט: string | null;
+  הערות: string | null;
+  סדר_תצוגה: number;
+  תאריך_יצירה?: string;
+  תאריך_עדכון?: string;
 }
 
 export interface Product {
@@ -247,6 +270,8 @@ export interface OrderItem {
   מחיר_ליחידה: number;
   סהכ: number;
   הערות_לשורה: string | null;
+  /** Recipient this line is for; null = the order as a whole (migration 053). */
+  נמען_id?: string | null;
   תאריך_יצירה: string;
   תאריך_עדכון: string;
   מוצרים_למכירה?: Product;
@@ -407,8 +432,11 @@ export interface Delivery {
   delivered_at: string | null;
   whatsapp_sent_at: string | null;
   email_sent_at: string | null;
+  /** Recipient this delivery serves; null = a classic single-stop order. */
+  נמען_id?: string | null;
   הזמנות?: Order;
   שליחים?: { id: string; שם_שליח: string; טלפון_שליח: string } | null;
+  נמעני_הזמנה?: OrderRecipient | null;
   _noRecord?: boolean;
 }
 

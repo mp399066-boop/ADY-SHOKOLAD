@@ -19,6 +19,13 @@ import {
   formatStockShortageMessage,
   type StockAvailabilityItem,
 } from '@/lib/inventory-deduct';
+import {
+  normalizeRecipients,
+  replaceOrderRecipients,
+  syncRecipientDeliveries,
+  itemRecipientColumns,
+  type RecipientRow,
+} from '@/lib/order-recipients';
 
 // Converts a draft order (status=טיוטה) to a real order (status=חדשה).
 // Replaces all items, creates delivery/payment records, sends emails.
@@ -44,7 +51,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   }
 
   const body = await req.json();
-  const { הזמנה, משלוח, מוצרים = [], מארזי_פטיפורים = [], פריטים_ידניים = [] } = body;
+  const { הזמנה, משלוח, מוצרים = [], מארזי_פטיפורים = [], פריטים_ידניים = [], נמענים } = body;
+
+  // Multi-recipient orders — see src/lib/order-recipients.ts. An empty list
+  // means a classic single-recipient order and nothing new is written.
+  const recipients = normalizeRecipients(נמענים);
+  const isMultiRecipient = recipients.length > 0;
+  const wasMultiRecipient = existingOrder.מרובה_נמענים === true;
 
   // 0. Stock-availability guard — a draft becoming real is exactly the
   // moment stock must be checked (the check was skipped at draft creation
@@ -121,10 +134,27 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       מקור_ההזמנה: הזמנה?.מקור_ההזמנה ?? existingOrder.מקור_ההזמנה,
       ברכה_טקסט: הזמנה?.ברכה_טקסט ?? existingOrder.ברכה_טקסט,
       הערות_להזמנה: הזמנה?.הערות_להזמנה ?? existingOrder.הערות_להזמנה,
+      // Touched only when it actually changes, so the column is never
+      // referenced on databases where migration 053 isn't applied.
+      ...(isMultiRecipient ? { מרובה_נמענים: true } : wasMultiRecipient ? { מרובה_נמענים: false } : {}),
     })
     .eq('id', orderId);
 
   if (updateErr) return NextResponse.json({ error: `עדכון הזמנה נכשל: ${updateErr.message}` }, { status: 500 });
+
+  // 2b. Replace the recipients before the item lines, so each line can be
+  // stamped with its נמען_id.
+  let recipientMap = new Map<string, string>();
+  let recipientRows: RecipientRow[] = [];
+  if (isMultiRecipient || wasMultiRecipient) {
+    const res = await replaceOrderRecipients(supabase, orderId, recipients);
+    if (!res.ok) {
+      console.error('[finalize-draft] recipients failed:', res.error, '| order:', orderId);
+      return NextResponse.json({ error: res.error }, { status: 500 });
+    }
+    recipientMap = res.map;
+    recipientRows = res.rows;
+  }
 
   // 3. Replace all items (delete existing, insert new)
   await supabase.from('מוצרים_בהזמנה').delete().eq('הזמנה_id', orderId);
@@ -140,6 +170,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       סהכ: (item.כמות || 1) * (item.מחיר_ליחידה || 0),
       הערות_לשורה: item.הערות_לשורה || null,
       סדר_תצוגה: sortIdx++,
+      ...itemRecipientColumns(recipientMap, item),
     });
     if (itemErr) return NextResponse.json({ error: `יצירת פריט נכשלה: ${itemErr.message}` }, { status: 500 });
   }
@@ -155,6 +186,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       סהכ: (pkg.כמות || 1) * (pkg.מחיר_ליחידה || 0),
       הערות_לשורה: pkg.הערות_לשורה || null,
       סדר_תצוגה: sortIdx++,
+      ...itemRecipientColumns(recipientMap, pkg),
     }).select().single();
     if (pkgErr) return NextResponse.json({ error: `יצירת מארז נכשל: ${pkgErr.message}` }, { status: 500 });
     if (pkg.פטיפורים && pkgRow) {
@@ -186,6 +218,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       סהכ: qty * price,
       הערות_לשורה: (item.הערות_לשורה as string) || null,
       סדר_תצוגה: sortIdx++,
+      ...itemRecipientColumns(recipientMap, item),
     });
     if (itemErr) return NextResponse.json({ error: `יצירת פריט ידני נכשלה: ${itemErr.message}` }, { status: 500 });
   }
@@ -195,7 +228,17 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   // src/app/api/orders/create-full/route.ts — defaulting to 'נאסף' would
   // mis-label the row as already-collected and skip the WhatsApp-on-pickup
   // trigger that lives in PATCH /api/deliveries/[id].
-  if (משלוח) {
+  if (isMultiRecipient && משלוח) {
+    // One delivery row per recipient, each with that person's own address.
+    await syncRecipientDeliveries(supabase, orderId, recipientRows, {
+      תאריך_משלוח:   הזמנה?.תאריך_אספקה || existingOrder.תאריך_אספקה || null,
+      שעת_משלוח:     הזמנה?.שעת_אספקה   || existingOrder.שעת_אספקה   || null,
+      כתובת:          משלוח?.כתובת          || null,
+      עיר:             משלוח?.עיר             || null,
+      הוראות_משלוח:   משלוח?.הוראות_משלוח   || null,
+    });
+    console.log('[finalize-draft] per-recipient deliveries synced —', recipientRows.length, 'stops | order:', orderId);
+  } else if (משלוח) {
     // maybeSingle() — `single()` errors on both zero rows AND multi rows,
     // which used to make `existingDelivery` falsy in the multi-row case
     // and let us insert *yet another* duplicate. maybeSingle() is null
