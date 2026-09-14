@@ -633,8 +633,8 @@ interface FinanceOverviewData {
     year:   FinKpi;
     unpaid: FinKpi;
   };
-  // Shipping fees (דמי משלוח) already excluded from the kpis above, over the
-  // same periods — shown alongside them so the exclusion is visible/checkable.
+  // How much of each kpi above is delivery fees (דמי משלוח), over the same
+  // periods. Included in those totals — a breakdown, not a deduction.
   shipping: {
     today: FinKpi;
     week:  FinKpi;
@@ -670,8 +670,8 @@ function FinKpiCard({
   accent: string;
   accentBg: string;
   onClick?: () => void;
-  // Shipping fees already excluded from `amount` above — shown as a small
-  // proof line so it's visible (not just claimed) that revenue excludes it.
+  // How much of `amount` above is delivery fees. Included in the total —
+  // shown as a composition line so the make-up of the figure is visible.
   shipping?: number;
   // Delivered in this same period but not yet marked paid. `amount` counts
   // only שולם orders, so without this line that money reads as if it never
@@ -704,7 +704,7 @@ function FinKpiCard({
       )}
       {typeof shipping === 'number' && shipping > 0 && (
         <p className="text-[9px] font-medium tabular-nums" style={{ color: C.textMuted }}>
-          לא כולל {formatCurrency(shipping)} משלוח
+          מתוכם {formatCurrency(shipping)} דמי משלוח
         </p>
       )}
     </>

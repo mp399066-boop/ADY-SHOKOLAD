@@ -95,20 +95,22 @@ export async function GET(req: NextRequest) {
     const unpaid = (unpaidRows ?? []) as Record<string, unknown>[];
     const chart  = (chartRows  ?? []) as Record<string, unknown>[];
 
-    // Financial figures exclude shipping (דמי_משלוח) — it's a pass-through
-    // cost, not revenue, so every amount below is net of it.
-    const netAmount = (r: Record<string, unknown>) =>
-      ((r['סך_הכל_לתשלום'] as number) ?? 0) - ((r['דמי_משלוח'] as number) ?? 0);
+    // Revenue = the full amount charged, delivery fees included. The fee is
+    // billed to the customer as a taxable "דמי משלוח" income line on the
+    // Morning invoice and no courier cost is tracked anywhere to offset it,
+    // so subtracting it here only hid money that was genuinely earned.
+    const orderAmount = (r: Record<string, unknown>) =>
+      (r['סך_הכל_לתשלום'] as number) ?? 0;
 
-    const paidTotal   = paid.reduce((s, r) => s + netAmount(r), 0);
-    const unpaidTotal = unpaid.reduce((s, r) => s + netAmount(r), 0);
+    const paidTotal   = paid.reduce((s, r) => s + orderAmount(r), 0);
+    const unpaidTotal = unpaid.reduce((s, r) => s + orderAmount(r), 0);
 
     // Build daily revenue map spanning last 30 days
     const dailyMap = new Map<string, number>();
     for (let i = 0; i < 30; i++) dailyMap.set(addDaysISO(today, -29 + i), 0);
     for (const r of chart) {
       const d = r['תאריך_אספקה'] as string | null;
-      if (d && dailyMap.has(d)) dailyMap.set(d, (dailyMap.get(d) ?? 0) + netAmount(r));
+      if (d && dailyMap.has(d)) dailyMap.set(d, (dailyMap.get(d) ?? 0) + orderAmount(r));
     }
     const dailyRevenue = Array.from(dailyMap.entries()).map(([date, amount]) => ({ date, amount }));
 
@@ -117,7 +119,7 @@ export async function GET(req: NextRequest) {
     for (const r of paid) {
       const method = (r['אופן_תשלום'] as string | null) || 'לא צוין';
       const prev = methodMap.get(method) ?? { count: 0, amount: 0 };
-      methodMap.set(method, { count: prev.count + 1, amount: prev.amount + netAmount(r) });
+      methodMap.set(method, { count: prev.count + 1, amount: prev.amount + orderAmount(r) });
     }
     const byPaymentMethod = Array.from(methodMap.entries())
       .map(([method, v]) => ({ method, ...v }))
@@ -130,7 +132,7 @@ export async function GET(req: NextRequest) {
       const c = r['לקוחות'] as { שם_פרטי: string; שם_משפחה: string } | null;
       const name = c ? `${c.שם_פרטי} ${c.שם_משפחה}` : '—';
       const prev = custMap.get(cid) ?? { name, amount: 0, count: 0 };
-      custMap.set(cid, { name, amount: prev.amount + netAmount(r), count: prev.count + 1 });
+      custMap.set(cid, { name, amount: prev.amount + orderAmount(r), count: prev.count + 1 });
     }
     const topCustomers = Array.from(custMap.entries())
       .map(([id, v]) => ({ id, ...v }))
@@ -144,7 +146,7 @@ export async function GET(req: NextRequest) {
         id:            r['id'] as string,
         orderNumber:   r['מספר_הזמנה'] as string,
         customerName:  c ? `${c.שם_פרטי} ${c.שם_משפחה}` : '—',
-        amount:        netAmount(r),
+        amount:        orderAmount(r),
         orderStatus:   r['סטטוס_הזמנה'] as string,
         date:          r['תאריך_אספקה'] as string | null,
         paymentMethod: (r['אופן_תשלום'] as string | null) ?? null,

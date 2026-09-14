@@ -60,10 +60,15 @@ async function fetchAllPaged<T = PaidRow>(
   return all;
 }
 
-// Financial figures exclude shipping (דמי_משלוח) — it's a pass-through cost,
-// not revenue, so every amount computed from a row goes through this.
-const netAmount = (r: PaidRow) =>
-  ((r['סך_הכל_לתשלום'] as number) ?? 0) - ((r['דמי_משלוח'] as number) ?? 0);
+// Revenue = the full amount charged, delivery fees included. They used to be
+// subtracted here as a "pass-through cost", but nothing in this system pays
+// that cost back out: there is no courier-cost field anywhere, so the
+// subtraction just deleted money from the books. The delivery fee is also
+// billed to the customer as a taxable "דמי משלוח" income line on the Morning
+// invoice — the invoice says it was earned, so the dashboard must agree.
+// The shipping breakdown below still reports how much of each total is
+// delivery, so the composition stays visible.
+const orderAmount = (r: PaidRow) => (r['סך_הכל_לתשלום'] as number) ?? 0;
 const shippingAmount = (r: PaidRow) => (r['דמי_משלוח'] as number) ?? 0;
 
 const getKpi = (rows: PaidRow[], fromDate: string, toDate: string) => {
@@ -72,14 +77,14 @@ const getKpi = (rows: PaidRow[], fromDate: string, toDate: string) => {
     return d && d >= fromDate && d <= toDate;
   });
   return {
-    total: r.reduce((s, o) => s + netAmount(o), 0),
+    total: r.reduce((s, o) => s + orderAmount(o), 0),
     count: r.length,
   };
 };
 
 // Shipping totals mirror the revenue KPI periods so the finance tab can show
-// "excluded from revenue" alongside each figure — visible proof the totals
-// above are net of shipping rather than a silent, unverifiable subtraction.
+// how much of each revenue figure is delivery fees ("מתוכם X דמי משלוח").
+// Included in the totals above — this is a breakdown, not a deduction.
 const getShippingKpi = (rows: PaidRow[], fromDate: string, toDate: string) => {
   const r = rows.filter(o => {
     const d = o['תאריך_אספקה'] as string | null;
@@ -94,7 +99,7 @@ const toOrderRow = (r: PaidRow) => {
     id:            r['id'] as string,
     orderNumber:   r['מספר_הזמנה'] as string,
     customerName:  c ? `${c.שם_פרטי} ${c.שם_משפחה}`.trim() : '—',
-    amount:        netAmount(r),
+    amount:        orderAmount(r),
     orderStatus:   (r['סטטוס_הזמנה'] as string | null) ?? '',
     date:          r['תאריך_אספקה'] as string | null,
     paymentMethod: (r['אופן_תשלום'] as string | null) ?? null,
@@ -154,13 +159,14 @@ export async function GET() {
       month:  getKpi(paid, monthFrom, today),
       year:   getKpi(paid, yearFrom,  today),
       unpaid: {
-        total: unpaid.reduce((s, o) => s + netAmount(o), 0),
+        total: unpaid.reduce((s, o) => s + orderAmount(o), 0),
         count: unpaidCount ?? 0,
       },
     };
 
-    // Shipping fees excluded from the revenue KPIs above, over the same
-    // periods — shown alongside them in the UI so the exclusion is visible.
+    // How much of each revenue figure above is delivery fees, over the same
+    // periods. Included in those totals — shown in the UI as a composition
+    // line ("מתוכם X דמי משלוח"), not as a deduction.
     const shipping = {
       today: getShippingKpi(paid, today,     today),
       week:  getShippingKpi(paid, weekFrom,  today),
@@ -186,7 +192,7 @@ export async function GET() {
     for (let i = 0; i < 30; i++) dailyMap.set(addDaysISO(today, -29 + i), 0);
     for (const r of paid) {
       const d = r['תאריך_אספקה'] as string | null;
-      if (d && dailyMap.has(d)) dailyMap.set(d, (dailyMap.get(d) ?? 0) + netAmount(r));
+      if (d && dailyMap.has(d)) dailyMap.set(d, (dailyMap.get(d) ?? 0) + orderAmount(r));
     }
     const dailyChart = Array.from(dailyMap.entries()).map(([key, amount]) => ({
       key, label: key.slice(5).replace('-', '/'), amount,
@@ -201,7 +207,7 @@ export async function GET() {
       const d = r['תאריך_אספקה'] as string | null;
       if (d) {
         const mk = d.slice(0, 7);
-        if (monthlyMap.has(mk)) monthlyMap.set(mk, (monthlyMap.get(mk) ?? 0) + netAmount(r));
+        if (monthlyMap.has(mk)) monthlyMap.set(mk, (monthlyMap.get(mk) ?? 0) + orderAmount(r));
       }
     }
     const monthlyChart = monthKeys.map(key => ({
@@ -217,7 +223,7 @@ export async function GET() {
     for (const r of paid30) {
       const method = (r['אופן_תשלום'] as string | null) || 'לא צוין';
       const prev = methodMap.get(method) ?? { count: 0, amount: 0 };
-      methodMap.set(method, { count: prev.count + 1, amount: prev.amount + netAmount(r) });
+      methodMap.set(method, { count: prev.count + 1, amount: prev.amount + orderAmount(r) });
     }
     const byPaymentMethod = Array.from(methodMap.entries())
       .map(([method, v]) => ({ method, ...v }))
@@ -230,7 +236,7 @@ export async function GET() {
       const c   = r['לקוחות'] as { שם_פרטי: string; שם_משפחה: string } | null;
       const name = c ? `${c.שם_פרטי} ${c.שם_משפחה}`.trim() : '—';
       const prev = custMap.get(cid) ?? { name, amount: 0, count: 0 };
-      custMap.set(cid, { name, amount: prev.amount + netAmount(r), count: prev.count + 1 });
+      custMap.set(cid, { name, amount: prev.amount + orderAmount(r), count: prev.count + 1 });
     }
     const topCustomers = Array.from(custMap.entries())
       .map(([id, v]) => ({ id, ...v }))
@@ -239,7 +245,7 @@ export async function GET() {
 
     // High-value paid orders — top 8 by amount, last 12 months
     const highValueOrders = [...paid]
-      .sort((a, b) => netAmount(b) - netAmount(a))
+      .sort((a, b) => orderAmount(b) - orderAmount(a))
       .slice(0, 8)
       .map(toOrderRow);
 
@@ -250,7 +256,7 @@ export async function GET() {
     // sorts by gross סך_הכל_לתשלום, so re-sort here to match the net amounts
     // actually displayed (shipping fees can otherwise shuffle the order).
     const openOrders = [...unpaid]
-      .sort((a, b) => netAmount(b) - netAmount(a))
+      .sort((a, b) => orderAmount(b) - orderAmount(a))
       .slice(0, 12)
       .map(toOrderRow);
 
