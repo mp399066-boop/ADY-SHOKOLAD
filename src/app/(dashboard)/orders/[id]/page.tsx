@@ -379,6 +379,7 @@ export default function OrderDetailPage() {
     paymentMethod: string | undefined,
     force: boolean,
     invoiceNotes?: string,
+    receiptName?: string,
   ): Promise<boolean> => {
     if (!order) return false;
     setIssuingDocType(documentType);
@@ -399,6 +400,7 @@ export default function OrderDetailPage() {
         body: JSON.stringify({
           documentType, paymentMethod, paymentMethodSource: 'manual_modal', force,
           ...(invoiceNotes?.trim() ? { invoiceNotes: invoiceNotes.trim() } : {}),
+          ...(receiptName?.trim() ? { receiptName: receiptName.trim() } : {}),
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -3360,8 +3362,8 @@ export default function OrderDetailPage() {
           documentType={previewDocType}
           loading={issuingDoc}
           onClose={() => setPreviewDocType(null)}
-          onIssue={async (paymentMethod, force, invoiceNotes) => {
-            const ok = await issueDocument(previewDocType, paymentMethod, force, invoiceNotes);
+          onIssue={async (paymentMethod, force, invoiceNotes, receiptName) => {
+            const ok = await issueDocument(previewDocType, paymentMethod, force, invoiceNotes, receiptName);
             if (ok) setPreviewDocType(null);
           }}
         />
@@ -3887,12 +3889,16 @@ function InvoicePreviewModal({
   documentType: 'tax_invoice' | 'receipt' | 'invoice_receipt';
   loading: boolean;
   onClose: () => void;
-  onIssue: (paymentMethod: string | undefined, force: boolean, invoiceNotes?: string) => void | Promise<void>;
+  onIssue: (paymentMethod: string | undefined, force: boolean, invoiceNotes?: string, receiptName?: string) => void | Promise<void>;
 }) {
   const [payMethod, setPayMethod]     = useState<string>('');
   const [customMethod, setCustomMethod] = useState<string>('');
   // Optional free-text notes printed on the Morning document (remarks).
   const [invoiceNotes, setInvoiceNotes] = useState<string>('');
+  // "שם לקבלה" — the name the document is made out to. Seeded below with the
+  // ordering customer's name; the operator edits it when the receipt has to
+  // go out to somebody else (spouse, paying company…).
+  const [receiptName, setReceiptName] = useState<string>('');
 
   const needsPayment    = documentType === 'receipt' || documentType === 'invoice_receipt';
   const effectiveMethod = payMethod === 'אחר' ? customMethod.trim() : payMethod;
@@ -3907,6 +3913,13 @@ function InvoicePreviewModal({
 
   const cust     = order.לקוחות;
   const custName = cust ? `${cust.שם_פרטי} ${cust.שם_משפחה}`.trim() : '';
+  // Pre-fill "שם לקבלה" with the ordering customer. The modal is mounted
+  // fresh on every open (it is rendered behind `previewDocType &&`), so this
+  // runs once per issuance and never clobbers a name the operator typed.
+  useEffect(() => { setReceiptName(custName); }, [custName]);
+  // Blank means "no override" — the document goes out to the customer.
+  const effectiveReceiptName = receiptName.trim() || custName;
+  const receiptNameChanged   = !!custName && effectiveReceiptName !== custName;
   const items    = order.מוצרים_בהזמנה ?? [];
   const total    = order.סך_הכל_לתשלום ?? 0;
   const subtotal = order.סכום_לפני_הנחה ?? 0;
@@ -3928,7 +3941,14 @@ function InvoicePreviewModal({
 
   const handleIssue = async () => {
     if (!canSubmit) return;
-    await onIssue(needsPayment ? effectiveMethod : undefined, duplicate, invoiceNotes.trim() || undefined);
+    await onIssue(
+      needsPayment ? effectiveMethod : undefined,
+      duplicate,
+      invoiceNotes.trim() || undefined,
+      // Only send an override when it actually differs from the customer —
+      // otherwise the EF keeps its existing customer-name path (and the ת.ז).
+      receiptNameChanged ? effectiveReceiptName : undefined,
+    );
   };
 
   return (
@@ -3984,6 +4004,33 @@ function InvoicePreviewModal({
               </>
             ) : (
               <p className="text-[12px]" style={{ color: '#C05A3C' }}>לקוח לא מזוהה</p>
+            )}
+          </PreviewSec>
+
+          {/* "שם לקבלה" — the name the document is made out to. Pre-filled
+              with the ordering customer; edited when the receipt has to be
+              issued to someone else. */}
+          <PreviewSec title="שם לקבלה">
+            <input
+              type="text"
+              value={receiptName}
+              onChange={e => setReceiptName(e.target.value)}
+              maxLength={200}
+              placeholder={custName || 'שם שיודפס על המסמך'}
+              className="w-full px-3 h-9 text-[13px] rounded-lg border focus:outline-none focus:ring-2"
+              style={{ borderColor: '#E8DED2', color: '#2B1A10', backgroundColor: '#FFFCF7' }}
+            />
+            {receiptNameChanged ? (
+              <div className="mt-2 text-[12px] px-3 py-2 rounded-lg"
+                style={{ backgroundColor: '#FFF7ED', color: '#92602A', border: '1px solid #FCD9A8' }}>
+                המסמך יופק על שם <strong>{effectiveReceiptName}</strong> ולא על שם המזמין
+                {custName ? <> ({custName})</> : null}.
+                {cust?.מספר_זהות ? ' מספר הזהות של המזמין לא יודפס על המסמך.' : ''}
+              </div>
+            ) : (
+              <p className="mt-1.5 text-[11.5px]" style={{ color: '#9B7A5A' }}>
+                ממולא אוטומטית בשם המזמין — ניתן לשנות אם הקבלה צריכה לצאת על שם אחר.
+              </p>
             )}
           </PreviewSec>
 

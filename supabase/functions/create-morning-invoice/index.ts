@@ -245,12 +245,22 @@ serve(async (req: Request) => {
       typeof payload.invoice_notes === 'string' && payload.invoice_notes.trim()
         ? payload.invoice_notes.trim().slice(0, 1000)
         : null;
+    // Optional "שם לקבלה" — the name the document should be issued to when it
+    // differs from the ordering customer (the spouse, the paying company…).
+    // The issuance modal pre-fills it with the customer's own name, so in the
+    // common case this arrives identical to `שם_פרטי שם_משפחה` and changes
+    // nothing. Additive: absent/blank = customer name, exactly as before.
+    const receiptName: string | null =
+      typeof payload.receipt_name === 'string' && payload.receipt_name.trim()
+        ? payload.receipt_name.trim().slice(0, 200)
+        : null;
 
     console.log('[PAYMENT EF] document_type:', documentType);
     console.log('[PAYMENT EF] payload.type:', payload.type);
     console.log('[PAYMENT EF] received payment_method:', JSON.stringify(paymentMethodOverride));
     console.log('[PAYMENT EF] received payment_method_source:', JSON.stringify(paymentMethodSource));
     console.log('[PAYMENT EF] force:', force);
+    console.log('[PAYMENT EF] received receipt_name:', JSON.stringify(receiptName));
 
     if (payload.type !== 'UPDATE') {
       return new Response(JSON.stringify({ success: true, skipped: true, reason: 'not UPDATE' }), { status: 200 });
@@ -321,6 +331,13 @@ serve(async (req: Request) => {
 
     type CustomerRow = { שם_פרטי: string; שם_משפחה: string; אימייל: string | null; טלפון: string | null; סוג_לקוח: string | null; מספר_זהות: string | null };
     const customer = order.לקוחות as CustomerRow;
+    // Name printed on the document. Defaults to the ordering customer; the
+    // issuance modal may override it with "שם לקבלה" when the receipt has to
+    // be made out to someone else. `receiptNameOverridden` is true only when
+    // the operator actually typed a DIFFERENT name than the customer's.
+    const customerFullName = `${customer.שם_פרטי} ${customer.שם_משפחה}`.trim();
+    const documentClientName = receiptName || customerFullName;
+    const receiptNameOverridden = documentClientName !== customerFullName;
     // Mirror the order screen / invoice preview `isBusinessForVat`: VAT is
     // added on top ONLY for business customers AND non-Satmar orders. Satmar
     // orders never add VAT regardless of customer type, so סך_הכל_לתשלום stays
@@ -651,7 +668,9 @@ serve(async (req: Request) => {
     console.log('[invoice-debug] order:', order.מספר_הזמנה, '| document type:', documentType, '| morningType:', morningDocType);
     console.log('[invoice-debug] client:', JSON.stringify({
       id: order.לקוח_id,
-      name: `${customer.שם_פרטי} ${customer.שם_משפחה}`,
+      name: documentClientName,
+      customerName: customerFullName,
+      receiptNameOverridden,
       type: customer.סוג_לקוח ?? 'פרטי',
       isBusiness,
     }));
@@ -699,12 +718,20 @@ serve(async (req: Request) => {
       // (INCLUDED, VAT extracted from gross, total unchanged).
       vatType: 0,
       client: {
-        name: `${customer.שם_פרטי} ${customer.שם_משפחה}`,
+        // "שם לקבלה" when the operator overrode it, otherwise the customer.
+        name: documentClientName,
+        // Contact details stay the ordering customer's even under an override:
+        // the document still has to reach the person who placed the order.
         ...(customer.אימייל ? { emails: [customer.אימייל] } : {}),
         ...(customer.טלפון ? { phone: customer.טלפון } : {}),
         // Customer ID number (ת.ז / ח.פ, migration 051) — Morning prints the
         // client taxId on the document. Additive: omitted when not set.
-        ...(customer.מספר_זהות?.trim() ? { taxId: customer.מספר_זהות.trim() } : {}),
+        // Deliberately DROPPED when the receipt is made out to someone else:
+        // printing the orderer's ת.ז / ח.פ next to a different name would be a
+        // wrong (and tax-wise misleading) document.
+        ...(customer.מספר_זהות?.trim() && !receiptNameOverridden
+          ? { taxId: customer.מספר_זהות.trim() }
+          : {}),
       },
       // Each order item appears exactly ONCE with its original quantity. No
       // qty-flattening — that caused visually-duplicated lines on the

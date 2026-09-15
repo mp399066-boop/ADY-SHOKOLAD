@@ -8,6 +8,7 @@ export const dynamic = 'force-dynamic';
 //   {
 //     documentType: 'tax_invoice' | 'receipt' | 'invoice_receipt',
 //     paymentMethod?: string,   // required for receipt + invoice_receipt
+//     receiptName?: string,     // "שם לקבלה" — name printed on the document
 //     force?: boolean,          // bypass (הזמנה_id, סוג_מסמך) idempotency
 //   }
 //
@@ -92,6 +93,11 @@ const bodySchema = z.object({
   // Optional free-text notes typed in the issuance modal — forwarded to the
   // EF as `invoice_notes` and printed on the Morning document (remarks).
   invoiceNotes: z.string().max(1000).optional(),
+  // "שם לקבלה" — the name the document is made out to. The issuance modal
+  // pre-fills it with the ordering customer's name and the operator may
+  // replace it (receipts often have to be issued to a different person).
+  // Forwarded to the EF as `receipt_name`; blank/absent = customer name.
+  receiptName: z.string().max(200).optional(),
 });
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
@@ -108,6 +114,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   }
 
   const { documentType, paymentMethod, paymentMethodSource, force, invoiceNotes } = parsed.data;
+  const receiptName = parsed.data.receiptName?.trim() || undefined;
   const orderId = params.id;
 
   // ── CONTROL CENTER GATE ────────────────────────────────────────────────
@@ -186,6 +193,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   console.log('[PAYMENT API] canonical method:', JSON.stringify(canonicalMethod));
   console.log('[PAYMENT API] forwarding to EF — payment_method:', JSON.stringify(canonicalMethod), '| payment_method_source:', JSON.stringify(paymentMethodSource ?? null));
   console.log('[PAYMENT API] force:', !!force);
+  console.log('[PAYMENT API] receiptName provided:', !!receiptName);
   // Defensive belt-and-suspenders. The schema + canonicalization above
   // already guarantees this for PAYMENT_DOCS, but a final assertion makes
   // it impossible to ever forward a PAYMENT_DOC without a method — even if
@@ -225,6 +233,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         // belt-and-suspenders against a future caller that bypasses this route.
         payment_method_source: paymentMethodSource ?? undefined,
         invoice_notes: invoiceNotes?.trim() || undefined,
+        receipt_name: receiptName,
         force: !!force,
         record: { הזמנה_id: orderId },
         old_record: {},
@@ -266,7 +275,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       title:        'נוצר מסמך פיננסי',
       description:  `סוג: ${documentType}${canonicalMethod ? ` · אמצעי: ${canonicalMethod}` : ''}`,
       serviceKey:   'morning_documents',
-      metadata:     { document_type: documentType, payment_method: canonicalMethod, invoice_id: body.invoice_id, invoice_number: body.invoice_number },
+      metadata:     { document_type: documentType, payment_method: canonicalMethod, receipt_name: receiptName ?? null, invoice_id: body.invoice_id, invoice_number: body.invoice_number },
       request:      req,
     });
     return NextResponse.json({
