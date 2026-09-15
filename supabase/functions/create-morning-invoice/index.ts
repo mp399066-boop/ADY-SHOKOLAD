@@ -254,6 +254,17 @@ serve(async (req: Request) => {
       typeof payload.receipt_name === 'string' && payload.receipt_name.trim()
         ? payload.receipt_name.trim().slice(0, 200)
         : null;
+    // Optional client tax id (ת.ז / ח.פ) typed in the issuance modal. Unlike
+    // every other optional field here, PRESENCE OF THE KEY is what matters:
+    // the modal always sends it (pre-filled from the customer card), so an
+    // empty string is a deliberate "print no tax id" and must NOT silently
+    // fall back to the stored card value. Callers that don't send the key at
+    // all (mark-paid, any status-driven path) keep the old card-based
+    // behavior untouched.
+    const clientTaxIdProvided = typeof payload.client_tax_id === 'string';
+    const clientTaxId: string = clientTaxIdProvided
+      ? (payload.client_tax_id as string).trim().slice(0, 20)
+      : '';
 
     console.log('[PAYMENT EF] document_type:', documentType);
     console.log('[PAYMENT EF] payload.type:', payload.type);
@@ -261,6 +272,7 @@ serve(async (req: Request) => {
     console.log('[PAYMENT EF] received payment_method_source:', JSON.stringify(paymentMethodSource));
     console.log('[PAYMENT EF] force:', force);
     console.log('[PAYMENT EF] received receipt_name:', JSON.stringify(receiptName));
+    console.log('[PAYMENT EF] client_tax_id provided:', clientTaxIdProvided, '| value set:', !!clientTaxId);
 
     if (payload.type !== 'UPDATE') {
       return new Response(JSON.stringify({ success: true, skipped: true, reason: 'not UPDATE' }), { status: 200 });
@@ -338,6 +350,14 @@ serve(async (req: Request) => {
     const customerFullName = `${customer.שם_פרטי} ${customer.שם_משפחה}`.trim();
     const documentClientName = receiptName || customerFullName;
     const receiptNameOverridden = documentClientName !== customerFullName;
+    // Tax id printed on the document (Morning `client.taxId`):
+    //   • modal sent the key  → that value wins, empty included;
+    //   • key absent          → the customer card's מספר_זהות, but only while
+    //     the name is the customer's own — an orderer's ת.ז next to somebody
+    //     else's name would be a wrong (and tax-wise misleading) document.
+    const documentTaxId = clientTaxIdProvided
+      ? clientTaxId
+      : (receiptNameOverridden ? '' : (customer.מספר_זהות?.trim() ?? ''));
     // Mirror the order screen / invoice preview `isBusinessForVat`: VAT is
     // added on top ONLY for business customers AND non-Satmar orders. Satmar
     // orders never add VAT regardless of customer type, so סך_הכל_לתשלום stays
@@ -671,6 +691,8 @@ serve(async (req: Request) => {
       name: documentClientName,
       customerName: customerFullName,
       receiptNameOverridden,
+      taxId: documentTaxId || null,
+      taxIdFromModal: clientTaxIdProvided,
       type: customer.סוג_לקוח ?? 'פרטי',
       isBusiness,
     }));
@@ -724,14 +746,10 @@ serve(async (req: Request) => {
         // the document still has to reach the person who placed the order.
         ...(customer.אימייל ? { emails: [customer.אימייל] } : {}),
         ...(customer.טלפון ? { phone: customer.טלפון } : {}),
-        // Customer ID number (ת.ז / ח.פ, migration 051) — Morning prints the
-        // client taxId on the document. Additive: omitted when not set.
-        // Deliberately DROPPED when the receipt is made out to someone else:
-        // printing the orderer's ת.ז / ח.פ next to a different name would be a
-        // wrong (and tax-wise misleading) document.
-        ...(customer.מספר_זהות?.trim() && !receiptNameOverridden
-          ? { taxId: customer.מספר_זהות.trim() }
-          : {}),
+        // ת.ז / ח.פ printed on the document — resolved above from the
+        // issuance modal, falling back to the customer card (migration 051).
+        // Additive: the key is omitted entirely when there is no tax id.
+        ...(documentTaxId ? { taxId: documentTaxId } : {}),
       },
       // Each order item appears exactly ONCE with its original quantity. No
       // qty-flattening — that caused visually-duplicated lines on the

@@ -9,6 +9,7 @@ export const dynamic = 'force-dynamic';
 //     documentType: 'tax_invoice' | 'receipt' | 'invoice_receipt',
 //     paymentMethod?: string,   // required for receipt + invoice_receipt
 //     receiptName?: string,     // "שם לקבלה" — name printed on the document
+//     clientTaxId?: string,     // ת.ז / ח.פ printed on the document ('' = none)
 //     force?: boolean,          // bypass (הזמנה_id, סוג_מסמך) idempotency
 //   }
 //
@@ -98,6 +99,12 @@ const bodySchema = z.object({
   // replace it (receipts often have to be issued to a different person).
   // Forwarded to the EF as `receipt_name`; blank/absent = customer name.
   receiptName: z.string().max(200).optional(),
+  // ת.ז / ח.פ printed on the document. The issuance modal always sends this
+  // key (pre-filled from the customer card), so an EMPTY STRING is meaningful:
+  // "print no tax id". It is therefore forwarded as-is rather than normalized
+  // away — see the EF's `client_tax_id` handling. Digits, spaces and dashes
+  // only: a tax document must not carry free text in this position.
+  clientTaxId: z.string().max(20).regex(/^[\d\s-]*$/, 'מספר זהות / ח.פ יכול להכיל ספרות, רווחים ומקפים בלבד').optional(),
 });
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
@@ -115,6 +122,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const { documentType, paymentMethod, paymentMethodSource, force, invoiceNotes } = parsed.data;
   const receiptName = parsed.data.receiptName?.trim() || undefined;
+  // Presence, not truthiness — `''` means "no tax id" and must reach the EF.
+  const clientTaxId = parsed.data.clientTaxId === undefined ? undefined : parsed.data.clientTaxId.trim();
   const orderId = params.id;
 
   // ── CONTROL CENTER GATE ────────────────────────────────────────────────
@@ -194,6 +203,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   console.log('[PAYMENT API] forwarding to EF — payment_method:', JSON.stringify(canonicalMethod), '| payment_method_source:', JSON.stringify(paymentMethodSource ?? null));
   console.log('[PAYMENT API] force:', !!force);
   console.log('[PAYMENT API] receiptName provided:', !!receiptName);
+  console.log('[PAYMENT API] clientTaxId provided:', clientTaxId !== undefined, '| value set:', !!clientTaxId);
   // Defensive belt-and-suspenders. The schema + canonicalization above
   // already guarantees this for PAYMENT_DOCS, but a final assertion makes
   // it impossible to ever forward a PAYMENT_DOC without a method — even if
@@ -234,6 +244,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         payment_method_source: paymentMethodSource ?? undefined,
         invoice_notes: invoiceNotes?.trim() || undefined,
         receipt_name: receiptName,
+        client_tax_id: clientTaxId,
         force: !!force,
         record: { הזמנה_id: orderId },
         old_record: {},
@@ -275,7 +286,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       title:        'נוצר מסמך פיננסי',
       description:  `סוג: ${documentType}${canonicalMethod ? ` · אמצעי: ${canonicalMethod}` : ''}`,
       serviceKey:   'morning_documents',
-      metadata:     { document_type: documentType, payment_method: canonicalMethod, receipt_name: receiptName ?? null, invoice_id: body.invoice_id, invoice_number: body.invoice_number },
+      metadata:     { document_type: documentType, payment_method: canonicalMethod, receipt_name: receiptName ?? null, client_tax_id: clientTaxId ?? null, invoice_id: body.invoice_id, invoice_number: body.invoice_number },
       request:      req,
     });
     return NextResponse.json({

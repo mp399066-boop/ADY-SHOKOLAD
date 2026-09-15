@@ -380,6 +380,7 @@ export default function OrderDetailPage() {
     force: boolean,
     invoiceNotes?: string,
     receiptName?: string,
+    clientTaxId?: string,
   ): Promise<boolean> => {
     if (!order) return false;
     setIssuingDocType(documentType);
@@ -401,6 +402,10 @@ export default function OrderDetailPage() {
           documentType, paymentMethod, paymentMethodSource: 'manual_modal', force,
           ...(invoiceNotes?.trim() ? { invoiceNotes: invoiceNotes.trim() } : {}),
           ...(receiptName?.trim() ? { receiptName: receiptName.trim() } : {}),
+          // Sent whenever the modal supplied it — INCLUDING the empty string,
+          // which means "print no ת.ז / ח.פ". Only a caller that omits the
+          // key entirely falls back to the customer card server-side.
+          ...(clientTaxId !== undefined ? { clientTaxId: clientTaxId.trim() } : {}),
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -3362,8 +3367,8 @@ export default function OrderDetailPage() {
           documentType={previewDocType}
           loading={issuingDoc}
           onClose={() => setPreviewDocType(null)}
-          onIssue={async (paymentMethod, force, invoiceNotes, receiptName) => {
-            const ok = await issueDocument(previewDocType, paymentMethod, force, invoiceNotes, receiptName);
+          onIssue={async (paymentMethod, force, invoiceNotes, receiptName, clientTaxId) => {
+            const ok = await issueDocument(previewDocType, paymentMethod, force, invoiceNotes, receiptName, clientTaxId);
             if (ok) setPreviewDocType(null);
           }}
         />
@@ -3889,7 +3894,7 @@ function InvoicePreviewModal({
   documentType: 'tax_invoice' | 'receipt' | 'invoice_receipt';
   loading: boolean;
   onClose: () => void;
-  onIssue: (paymentMethod: string | undefined, force: boolean, invoiceNotes?: string, receiptName?: string) => void | Promise<void>;
+  onIssue: (paymentMethod: string | undefined, force: boolean, invoiceNotes?: string, receiptName?: string, clientTaxId?: string) => void | Promise<void>;
 }) {
   const [payMethod, setPayMethod]     = useState<string>('');
   const [customMethod, setCustomMethod] = useState<string>('');
@@ -3899,6 +3904,10 @@ function InvoicePreviewModal({
   // ordering customer's name; the operator edits it when the receipt has to
   // go out to somebody else (spouse, paying company…).
   const [receiptName, setReceiptName] = useState<string>('');
+  // ת.ז / ח.פ printed on the document. Seeded from the customer card below;
+  // whatever stands here at issuance time is exactly what Morning receives,
+  // so clearing it means the document goes out without a tax id.
+  const [clientTaxId, setClientTaxId] = useState<string>('');
 
   const needsPayment    = documentType === 'receipt' || documentType === 'invoice_receipt';
   const effectiveMethod = payMethod === 'אחר' ? customMethod.trim() : payMethod;
@@ -3913,13 +3922,33 @@ function InvoicePreviewModal({
 
   const cust     = order.לקוחות;
   const custName = cust ? `${cust.שם_פרטי} ${cust.שם_משפחה}`.trim() : '';
-  // Pre-fill "שם לקבלה" with the ordering customer. The modal is mounted
-  // fresh on every open (it is rendered behind `previewDocType &&`), so this
-  // runs once per issuance and never clobbers a name the operator typed.
+  const custTaxId = (cust?.מספר_זהות ?? '').trim();
+  // Pre-fill both document fields from the customer card. The modal is mounted
+  // fresh on every open (it is rendered behind `previewDocType &&`), so these
+  // run once per issuance and never clobber what the operator typed.
   useEffect(() => { setReceiptName(custName); }, [custName]);
+  useEffect(() => { setClientTaxId(custTaxId); }, [custTaxId]);
   // Blank means "no override" — the document goes out to the customer.
   const effectiveReceiptName = receiptName.trim() || custName;
   const receiptNameChanged   = !!custName && effectiveReceiptName !== custName;
+  const taxIdValue           = clientTaxId.trim();
+  // Israeli ת.ז / ח.פ is 9 digits. A wrong one on a tax document is worse than
+  // none, so flag anything else — as a hint, not a block: foreign customers
+  // and edge cases exist and the operator is the one who knows.
+  const taxIdLooksOdd        = !!taxIdValue && !/^\d{9}$/.test(taxIdValue.replace(/[\s-]/g, ''));
+
+  // Keep the tax id honest as the name changes: the customer's ת.ז belongs to
+  // the customer's name only. Moving away from it drops the card value, moving
+  // back restores it — but anything the operator typed themselves is left be.
+  const handleReceiptNameChange = (next: string) => {
+    setReceiptName(next);
+    const backToCustomer = next.trim() === custName;
+    setClientTaxId(prev => {
+      if (!backToCustomer && prev === custTaxId) return '';
+      if (backToCustomer && prev === '')         return custTaxId;
+      return prev;
+    });
+  };
   const items    = order.מוצרים_בהזמנה ?? [];
   const total    = order.סך_הכל_לתשלום ?? 0;
   const subtotal = order.סכום_לפני_הנחה ?? 0;
@@ -3948,6 +3977,8 @@ function InvoicePreviewModal({
       // Only send an override when it actually differs from the customer —
       // otherwise the EF keeps its existing customer-name path (and the ת.ז).
       receiptNameChanged ? effectiveReceiptName : undefined,
+      // Always sent — the modal is the source of truth for what Morning prints.
+      taxIdValue,
     );
   };
 
@@ -4014,7 +4045,7 @@ function InvoicePreviewModal({
             <input
               type="text"
               value={receiptName}
-              onChange={e => setReceiptName(e.target.value)}
+              onChange={e => handleReceiptNameChange(e.target.value)}
               maxLength={200}
               placeholder={custName || 'שם שיודפס על המסמך'}
               className="w-full px-3 h-9 text-[13px] rounded-lg border focus:outline-none focus:ring-2"
@@ -4025,11 +4056,40 @@ function InvoicePreviewModal({
                 style={{ backgroundColor: '#FFF7ED', color: '#92602A', border: '1px solid #FCD9A8' }}>
                 המסמך יופק על שם <strong>{effectiveReceiptName}</strong> ולא על שם המזמין
                 {custName ? <> ({custName})</> : null}.
-                {cust?.מספר_זהות ? ' מספר הזהות של המזמין לא יודפס על המסמך.' : ''}
+                {custTaxId ? ' מספר הזהות של המזמין הוסר — הזיני למטה את הח.פ של הגורם שעל שמו הקבלה, אם יש.' : ''}
               </div>
             ) : (
               <p className="mt-1.5 text-[11.5px]" style={{ color: '#9B7A5A' }}>
                 ממולא אוטומטית בשם המזמין — ניתן לשנות אם הקבלה צריכה לצאת על שם אחר.
+              </p>
+            )}
+          </PreviewSec>
+
+          {/* ת.ז / ח.פ printed on the document. Pre-filled from the customer
+              card; whatever stands here is exactly what Morning receives. */}
+          <PreviewSec title="מספר זהות / ח.פ">
+            <input
+              type="text"
+              inputMode="numeric"
+              value={clientTaxId}
+              onChange={e => setClientTaxId(e.target.value)}
+              maxLength={20}
+              placeholder="ללא מספר זהות / ח.פ"
+              className="w-full px-3 h-9 text-[13px] rounded-lg border focus:outline-none focus:ring-2"
+              style={{ borderColor: '#E8DED2', color: '#2B1A10', backgroundColor: '#FFFCF7' }}
+            />
+            {taxIdLooksOdd ? (
+              <div className="mt-2 text-[12px] px-3 py-2 rounded-lg"
+                style={{ backgroundColor: '#FFF3CD', color: '#7A5A10', border: '1px solid #F0D080' }}>
+                ת.ז / ח.פ בישראל הוא 9 ספרות — ודאי שהמספר נכון לפני ההפקה.
+              </div>
+            ) : taxIdValue ? (
+              <p className="mt-1.5 text-[11.5px]" style={{ color: '#9B7A5A' }}>
+                יודפס על המסמך: <strong style={{ color: '#7A4A27' }}>{taxIdValue}</strong>
+              </p>
+            ) : (
+              <p className="mt-1.5 text-[11.5px]" style={{ color: '#9B7A5A' }}>
+                ריק — המסמך יופק ללא מספר זהות / ח.פ. אפשר להקליד כאן גם אם לא שמור בכרטיס הלקוח.
               </p>
             )}
           </PreviewSec>
