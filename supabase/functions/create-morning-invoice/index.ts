@@ -261,6 +261,12 @@ serve(async (req: Request) => {
     // fall back to the stored card value. Callers that don't send the key at
     // all (mark-paid, any status-driven path) keep the old card-based
     // behavior untouched.
+    // Optional VAT-exempt override (לקוח חו"ל). Presence-based like
+    // client_tax_id: the issuance modal always sends it, pre-filled from the
+    // customer card, so `false` is a deliberate "charge VAT normally" and must
+    // not fall back to the card. Callers that omit the key keep the card value.
+    const vatExemptProvided = typeof payload.vat_exempt === 'boolean';
+    const vatExemptOverride: boolean = vatExemptProvided ? payload.vat_exempt as boolean : false;
     const clientTaxIdProvided = typeof payload.client_tax_id === 'string';
     const clientTaxId: string = clientTaxIdProvided
       ? (payload.client_tax_id as string).trim().slice(0, 20)
@@ -273,6 +279,7 @@ serve(async (req: Request) => {
     console.log('[PAYMENT EF] force:', force);
     console.log('[PAYMENT EF] received receipt_name:', JSON.stringify(receiptName));
     console.log('[PAYMENT EF] client_tax_id provided:', clientTaxIdProvided, '| value set:', !!clientTaxId);
+    console.log('[PAYMENT EF] vat_exempt provided:', vatExemptProvided, '| value:', vatExemptOverride);
 
     if (payload.type !== 'UPDATE') {
       return new Response(JSON.stringify({ success: true, skipped: true, reason: 'not UPDATE' }), { status: 200 });
@@ -314,7 +321,7 @@ serve(async (req: Request) => {
       .select(`
         id, מספר_הזמנה, לקוח_id, סך_הכל_לתשלום, סכום_לפני_הנחה, סכום_הנחה,
         סוג_הנחה, ערך_הנחה, אופן_תשלום, דמי_משלוח, זיכוי_בשימוש, סוג_הזמנה,
-        לקוחות (שם_פרטי, שם_משפחה, אימייל, טלפון, סוג_לקוח, מספר_זהות)
+        לקוחות (שם_פרטי, שם_משפחה, אימייל, טלפון, סוג_לקוח, מספר_זהות, פטור_ממעמ)
       `)
       .eq('id', orderId)
       .single();
@@ -341,7 +348,7 @@ serve(async (req: Request) => {
 
     const token = await getMorningToken(morningApiId, morningApiSecret);
 
-    type CustomerRow = { שם_פרטי: string; שם_משפחה: string; אימייל: string | null; טלפון: string | null; סוג_לקוח: string | null; מספר_זהות: string | null };
+    type CustomerRow = { שם_פרטי: string; שם_משפחה: string; אימייל: string | null; טלפון: string | null; סוג_לקוח: string | null; מספר_זהות: string | null; פטור_ממעמ: boolean | null };
     const customer = order.לקוחות as CustomerRow;
     // Name printed on the document. Defaults to the ordering customer; the
     // issuance modal may override it with "שם לקבלה" when the receipt has to
@@ -358,11 +365,26 @@ serve(async (req: Request) => {
     const documentTaxId = clientTaxIdProvided
       ? clientTaxId
       : (receiptNameOverridden ? '' : (customer.מספר_זהות?.trim() ?? ''));
+    // ── VAT exemption (לקוח חו"ל / export, migration 054) ─────────────────
+    // Zero-rated: the document carries NO VAT at all — not added on top
+    // (business pricing) and not extracted from the price (private pricing).
+    // The amount is unchanged: what the CRM recorded is what the customer
+    // pays and what the document says. That is the only self-consistent
+    // reading for a חשבונית מס קבלה, which must equal the money received.
+    const vatExempt = vatExemptProvided ? vatExemptOverride : (customer.פטור_ממעמ === true);
+
     // Mirror the order screen / invoice preview `isBusinessForVat`: VAT is
     // added on top ONLY for business customers AND non-Satmar orders. Satmar
     // orders never add VAT regardless of customer type, so סך_הכל_לתשלום stays
     // the final amount as-is (vatType:0, taken as gross).
+    //
+    // An exempt customer is never "business" for VAT purposes: that flag is
+    // what drives every × 1.18 below, so clearing it here is what keeps the
+    // final payable equal to the CRM total for a business export customer too
+    // (their stored total is the pre-VAT price, which is exactly what an
+    // exempt customer owes).
     const isBusiness =
+      !vatExempt &&
       (order.סוג_הזמנה as string | undefined) !== 'סאטמר' &&
       BUSINESS_TYPES.has(customer.סוג_לקוח ?? '');
 
@@ -378,7 +400,9 @@ serve(async (req: Request) => {
     //     → Morning extracts VAT for display, total stays = סך_הכל_לתשלום.
     // Document-level vatType is always 0 (DEFAULT) — per-line vatType decides
     // each line's treatment.
-    const lineVatType: 0 | 1 = isBusiness ? 0 : 1;
+    //   • Exempt (חו"ל): line vatType 2 (EXEMPT) → no VAT on any line, and the
+    //     document-level vatType is EXEMPT too (see documentBody below).
+    const lineVatType: 0 | 1 | 2 = vatExempt ? 2 : (isBusiness ? 0 : 1);
 
     // ── Final payable — the single source of truth ───────────────────────
     // `order.סך_הכל_לתשלום` is stored WITHOUT VAT-grossing: it is
@@ -414,7 +438,7 @@ serve(async (req: Request) => {
     // customer's invoice). Each row in מוצרים_בהזמנה → one line on the
     // invoice with its original quantity. Manual / custom items keep their
     // operator-given name. Morning rounding drift is reconciled below.
-    type IncomeLine = { description: string; quantity: number; price: number; vatType: 0 | 1 };
+    type IncomeLine = { description: string; quantity: number; price: number; vatType: 0 | 1 | 2 };
     const incomeLines: IncomeLine[] = [];
 
     const rawItems = (items ?? []) as Array<Record<string, unknown>>;
@@ -604,9 +628,10 @@ serve(async (req: Request) => {
     }));
 
     // Net / VAT breakdown for the [VAT] audit log only.
+    //   Exempt:   no VAT exists — net IS the total, VAT is 0.
     //   Business: line sum IS the net total; Morning adds VAT on top.
     //   Retail:   line sum IS the gross total; back-calculate net from gross.
-    const netCentsForLog = isBusiness
+    const netCentsForLog = (vatExempt || isBusiness)
       ? finalLineSumCents
       : Math.round(finalGrossCents / VAT_MULT);
     const roundedNet = netCentsForLog / 100;
@@ -695,6 +720,8 @@ serve(async (req: Request) => {
       taxIdFromModal: clientTaxIdProvided,
       type: customer.סוג_לקוח ?? 'פרטי',
       isBusiness,
+      vatExempt,
+      vatExemptFromModal: vatExemptProvided,
     }));
     console.log('[invoice-debug] income lines:', JSON.stringify(incomeLinesDebug));
     console.log('[invoice-debug] payment lines:', JSON.stringify(paymentLinesDebug));
@@ -717,7 +744,11 @@ serve(async (req: Request) => {
     console.log('[VAT]', JSON.stringify({
       customerType: customer.סוג_לקוח ?? 'פרטי',
       isBusiness,
-      vatHandling: 'inclusive: CRM amounts (סך_הכל_לתשלום, line prices, fees, discounts) are treated as VAT-inclusive — same as the invoice preview',
+      vatExempt,
+      lineVatType,
+      vatHandling: vatExempt
+        ? 'exempt: לקוח חו"ל — document vatType 1 (EXEMPT) + every line vatType 2 (EXEMPT). No VAT is added or extracted; the CRM total is the document total.'
+        : 'inclusive: CRM amounts (סך_הכל_לתשלום, line prices, fees, discounts) are treated as VAT-inclusive — same as the invoice preview',
       orderTotalFromCRM: crmStoredTotal,
       crmDisplayedTotal,
       netAmount: roundedNet,
@@ -738,7 +769,11 @@ serve(async (req: Request) => {
       // on business invoices. Per-line `vatType` (lineVatType) decides each
       // line: business → 0 (DEFAULT, VAT added on net), private/Satmar → 1
       // (INCLUDED, VAT extracted from gross, total unchanged).
-      vatType: 0,
+      // DocumentVatType: 0 = DEFAULT (taxable), 1 = EXEMPT (the WHOLE document
+      // is VAT-free). Exempt is exactly what a זכאי-שיעור-אפס export document
+      // needs — and production already proved that 1 zeroes a document's VAT
+      // (that is how business invoices once came out with no VAT by mistake).
+      vatType: vatExempt ? 1 : 0,
       client: {
         // "שם לקבלה" when the operator overrode it, otherwise the customer.
         name: documentClientName,

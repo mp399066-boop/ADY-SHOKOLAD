@@ -324,6 +324,7 @@ export default function CustomerDetailPage() {
         טלפון:       editForm.טלפון,
         אימייל:      editForm.אימייל,
         מספר_זהות:   editForm.מספר_זהות?.trim() || null,
+        פטור_ממעמ:   editForm.פטור_ממעמ === true,
         סוג_לקוח:    editForm.סוג_לקוח,
         סטטוס_לקוח:  editForm.סטטוס_לקוח,
         מקור_הגעה:   editForm.מקור_הגעה,
@@ -459,6 +460,22 @@ export default function CustomerDetailPage() {
               {(['פרטי', 'חוזר', 'עסקי - קבוע', 'עסקי - כמות', 'בארטר'] as const).map(t => <option key={t} value={t}>{t}</option>)}
             </Select>
             <Input label="אחוז הנחה (%)" type="number" value={editForm.אחוז_הנחה ?? 0} onChange={e => setEditForm(p => ({ ...p, אחוז_הנחה: Number(e.target.value) }))} />
+            {/* לקוח חו"ל — every document for this customer is issued VAT-free. */}
+            <label className="sm:col-span-2 flex items-start gap-2 cursor-pointer rounded-lg px-3 py-2.5"
+              style={{ backgroundColor: editForm.פטור_ממעמ ? '#FFF7ED' : '#FBF7F1', border: `1px solid ${editForm.פטור_ממעמ ? '#FCD9A8' : '#EDE0CE'}` }}>
+              <input
+                type="checkbox"
+                checked={editForm.פטור_ממעמ === true}
+                onChange={e => setEditForm(p => ({ ...p, פטור_ממעמ: e.target.checked }))}
+                className="mt-0.5 h-4 w-4 cursor-pointer"
+              />
+              <span className="text-[13px] leading-5" style={{ color: '#2B1A10' }}>
+                לקוח חו״ל — פטור ממע״מ
+                <span className="block text-[11.5px]" style={{ color: '#9B7A5A' }}>
+                  חשבוניות וקבלות ללקוח זה יופקו ללא מע״מ כלל. סכום ההזמנה נשאר כפי שנרשם.
+                </span>
+              </span>
+            </label>
             <div className="col-span-2">
               <Input label="מקור הגעה" value={editForm.מקור_הגעה || ''} onChange={e => setEditForm(p => ({ ...p, מקור_הגעה: e.target.value }))} />
             </div>
@@ -778,6 +795,7 @@ export default function CustomerDetailPage() {
               { label: 'הנחה קבועה',  value: customer.אחוז_הנחה ? `${customer.אחוז_הנחה}%` : '—', icon: <ITag className="w-3 h-3 inline ml-1" /> },
               { label: 'מקור',        value: customer.מקור_הגעה || '—' },
               { label: 'מספר זהות',   value: customer.מספר_זהות || '—' },
+              { label: 'מע״מ',         value: customer.פטור_ממעמ ? 'פטור — לקוח חו״ל' : 'רגיל' },
               { label: 'מזהה לקוח',   value: customer.id,                                         mono: true  },
             ].map(row => (
               <div key={row.label} className="flex items-center justify-between py-2.5" style={{ borderColor: '#F0EAE0' }}>

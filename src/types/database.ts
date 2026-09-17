@@ -153,6 +153,9 @@ export interface Customer {
   הערות_כתובת: string | null;
   // ID number — added in migration 051. Optional everywhere.
   מספר_זהות: string | null;
+  // VAT-exempt customer (לקוח חו"ל / export) — migration 054. When true the
+  // Morning document carries no VAT at all and the order total is final.
+  פטור_ממעמ: boolean;
   תאריך_יצירה: string;
   תאריך_עדכון: string;
 }

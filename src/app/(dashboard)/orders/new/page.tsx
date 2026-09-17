@@ -638,8 +638,11 @@ export default function NewOrderPage() {
       ? Math.min(subtotal, discountValue)
       : 0;
   const total = Math.max(0, subtotal - discountAmount + deliveryFee);
-  // Satmar orders never show VAT, regardless of customer type
-  const isBusiness = orderType !== 'סאטמר' && (customerType === 'עסקי' || customerType === 'עסקי - קבוע' || customerType === 'עסקי - כמות');
+  // Satmar orders never show VAT, regardless of customer type. Neither do
+  // VAT-exempt customers (לקוח חו"ל, migration 054) — their price is final,
+  // which is exactly what the Morning document will say.
+  const customerVatExempt = selectedCustomerData?.פטור_ממעמ === true;
+  const isBusiness = !customerVatExempt && orderType !== 'סאטמר' && (customerType === 'עסקי' || customerType === 'עסקי - קבוע' || customerType === 'עסקי - כמות');
   const VAT_RATE = 0.18;
   const effectiveCreditApplied = Math.min(creditToApply, Math.max(0, total));
   const totalAfterCredit = Math.max(0, total - effectiveCreditApplied);

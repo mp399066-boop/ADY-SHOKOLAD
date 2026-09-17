@@ -59,6 +59,8 @@ export async function POST(req: NextRequest) {
     טלפון: body.טלפון || null,
     אימייל: body.אימייל || null,
     מספר_זהות: typeof body.מספר_זהות === 'string' && body.מספר_זהות.trim() ? body.מספר_זהות.trim() : null,
+    // לקוח חו"ל — VAT-free documents (migration 054). Coerced, never trusted raw.
+    פטור_ממעמ: body.פטור_ממעמ === true,
     סוג_לקוח: body.סוג_לקוח || 'פרטי',
     סטטוס_לקוח: body.סטטוס_לקוח || 'פעיל',
     מקור_הגעה: body.מקור_הגעה || null,

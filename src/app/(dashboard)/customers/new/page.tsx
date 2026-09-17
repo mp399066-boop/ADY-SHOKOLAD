@@ -21,6 +21,8 @@ export default function NewCustomerPage() {
     אימייל: '',
     מספר_זהות: '',
     סוג_לקוח: 'פרטי',
+    // לקוח חו"ל — documents are issued VAT-free (migration 054).
+    פטור_ממעמ: false,
     מקור_הגעה: '',
     אחוז_הנחה: 0,
     הערות: '',
@@ -41,7 +43,7 @@ export default function NewCustomerPage() {
     if (def) setForm(prev => (prev.מקור_הגעה ? prev : { ...prev, מקור_הגעה: def }));
   }, [configLoading, config]);
 
-  const set = (field: string, value: string | number) => setForm(prev => ({ ...prev, [field]: value }));
+  const set = (field: string, value: string | number | boolean) => setForm(prev => ({ ...prev, [field]: value }));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,6 +85,21 @@ export default function NewCustomerPage() {
           </Select>
           <Input label="אחוז הנחה (%)" type="number" value={form.אחוז_הנחה} onChange={e => set('אחוז_הנחה', Number(e.target.value))} min={0} max={100} step={0.5} />
           <Input label="עיר" value={form.עיר} onChange={e => set('עיר', e.target.value)} />
+          <label className="col-span-2 flex items-start gap-2 cursor-pointer rounded-lg px-3 py-2.5"
+            style={{ backgroundColor: form.פטור_ממעמ ? '#FFF7ED' : '#FBF7F1', border: `1px solid ${form.פטור_ממעמ ? '#FCD9A8' : '#EDE0CE'}` }}>
+            <input
+              type="checkbox"
+              checked={form.פטור_ממעמ}
+              onChange={e => set('פטור_ממעמ', e.target.checked)}
+              className="mt-0.5 h-4 w-4 cursor-pointer"
+            />
+            <span className="text-[13px] leading-5" style={{ color: '#2B1A10' }}>
+              לקוח חו״ל — פטור ממע״מ
+              <span className="block text-[11.5px]" style={{ color: '#9B7A5A' }}>
+                חשבוניות וקבלות ללקוח זה יופקו ללא מע״מ כלל. סכום ההזמנה נשאר כפי שנרשם.
+              </span>
+            </span>
+          </label>
           <div className="col-span-2">
             <Textarea label="כתובת" value={form.כתובת} onChange={e => set('כתובת', e.target.value)} rows={2} />
           </div>

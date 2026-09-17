@@ -10,6 +10,7 @@ export const dynamic = 'force-dynamic';
 //     paymentMethod?: string,   // required for receipt + invoice_receipt
 //     receiptName?: string,     // "שם לקבלה" — name printed on the document
 //     clientTaxId?: string,     // ת.ז / ח.פ printed on the document ('' = none)
+//     vatExempt?: boolean,      // לקוח חו"ל — issue the document with no VAT
 //     force?: boolean,          // bypass (הזמנה_id, סוג_מסמך) idempotency
 //   }
 //
@@ -99,6 +100,11 @@ const bodySchema = z.object({
   // replace it (receipts often have to be issued to a different person).
   // Forwarded to the EF as `receipt_name`; blank/absent = customer name.
   receiptName: z.string().max(200).optional(),
+  // לקוח חו"ל — the document is issued VAT-free (migration 054). Like
+  // clientTaxId this is presence-based at the EF: the modal always sends it
+  // (pre-filled from the customer card) so `false` is a real answer and not a
+  // missing one. Callers that omit it keep the customer-card value.
+  vatExempt: z.boolean().optional(),
   // ת.ז / ח.פ printed on the document. The issuance modal always sends this
   // key (pre-filled from the customer card), so an EMPTY STRING is meaningful:
   // "print no tax id". It is therefore forwarded as-is rather than normalized
@@ -124,6 +130,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const receiptName = parsed.data.receiptName?.trim() || undefined;
   // Presence, not truthiness — `''` means "no tax id" and must reach the EF.
   const clientTaxId = parsed.data.clientTaxId === undefined ? undefined : parsed.data.clientTaxId.trim();
+  const vatExempt = parsed.data.vatExempt;
   const orderId = params.id;
 
   // ── CONTROL CENTER GATE ────────────────────────────────────────────────
@@ -204,6 +211,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   console.log('[PAYMENT API] force:', !!force);
   console.log('[PAYMENT API] receiptName provided:', !!receiptName);
   console.log('[PAYMENT API] clientTaxId provided:', clientTaxId !== undefined, '| value set:', !!clientTaxId);
+  console.log('[PAYMENT API] vatExempt provided:', vatExempt !== undefined, '| value:', vatExempt ?? null);
   // Defensive belt-and-suspenders. The schema + canonicalization above
   // already guarantees this for PAYMENT_DOCS, but a final assertion makes
   // it impossible to ever forward a PAYMENT_DOC without a method — even if
@@ -245,6 +253,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         invoice_notes: invoiceNotes?.trim() || undefined,
         receipt_name: receiptName,
         client_tax_id: clientTaxId,
+        vat_exempt: vatExempt,
         force: !!force,
         record: { הזמנה_id: orderId },
         old_record: {},
@@ -286,7 +295,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       title:        'נוצר מסמך פיננסי',
       description:  `סוג: ${documentType}${canonicalMethod ? ` · אמצעי: ${canonicalMethod}` : ''}`,
       serviceKey:   'morning_documents',
-      metadata:     { document_type: documentType, payment_method: canonicalMethod, receipt_name: receiptName ?? null, client_tax_id: clientTaxId ?? null, invoice_id: body.invoice_id, invoice_number: body.invoice_number },
+      metadata:     { document_type: documentType, payment_method: canonicalMethod, receipt_name: receiptName ?? null, client_tax_id: clientTaxId ?? null, vat_exempt: vatExempt ?? null, invoice_id: body.invoice_id, invoice_number: body.invoice_number },
       request:      req,
     });
     return NextResponse.json({
