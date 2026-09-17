@@ -3,7 +3,7 @@
 import { Fragment, useState, useEffect, useMemo } from 'react';
 import { IconPlus, IconEdit, IconWhatsApp } from '@/components/icons';
 
-type PageTab = 'suppliers' | 'settings' | 'shopping';
+type PageTab = 'suppliers' | 'settings' | 'cart';
 
 interface Supplier {
   id: string;
@@ -32,6 +32,56 @@ interface PurchaseMaterial {
   ספקים?: { id: string; שם_ספק: string; טלפון: string | null; אימייל: string | null } | null;
 }
 
+/** A line in the purchasing cart (migration 055 / /api/purchasing/cart). */
+interface CartItem {
+  id: string;
+  חומר_גלם_id: string | null;
+  שם_פריט: string;
+  כמות: number;
+  יחידה: string | null;
+  ספק_id: string | null;
+  הערה: string | null;
+  הועבר_ידנית: boolean;
+  תאריך_יצירה: string;
+  מלאי_חומרי_גלם?: {
+    id: string;
+    שם_חומר_גלם: string;
+    כמות_במלאי: number;
+    יחידת_מידה: string;
+    סטטוס_מלאי: string;
+    שם_מוצר_אצל_הספק: string | null;
+    מקט_ספק: string | null;
+    יחידת_קניה: string | null;
+    הערות_רכש: string | null;
+    ספק_מועדף_id: string | null;
+  } | null;
+  ספקים?: { id: string; שם_ספק: string; טלפון: string | null; אימייל: string | null; איש_קשר: string | null } | null;
+}
+
+/** One printable/sendable line — what every export builder below consumes. */
+interface ExportLine {
+  name:  string;
+  alias: string | null;
+  sku:   string | null;
+  qty:   number;
+  unit:  string;
+  note:  string | null;
+}
+
+function toExportLines(items: CartItem[]): ExportLine[] {
+  return items.map(item => {
+    const mat = item.מלאי_חומרי_גלם ?? null;
+    return {
+      name:  item.שם_פריט,
+      alias: mat?.שם_מוצר_אצל_הספק && mat.שם_מוצר_אצל_הספק !== item.שם_פריט ? mat.שם_מוצר_אצל_הספק : null,
+      sku:   mat?.מקט_ספק ?? null,
+      qty:   Number(item.כמות),
+      unit:  item.יחידה || mat?.יחידת_מידה || '',
+      note:  item.הערה,
+    };
+  });
+}
+
 const EMPTY_FORM = { שם_ספק: '', טלפון: '', אימייל: '', איש_קשר: '', הערות: '', פעיל: true as boolean };
 
 export default function SuppliersPage() {
@@ -56,14 +106,22 @@ export default function SuppliersPage() {
   const [rowSaving, setRowSaving] = useState(false);
   const [matSearch, setMatSearch] = useState('');
 
-  // ── Shopping tab state ───────────────────────────────────────────────────
-  const [needed, setNeeded] = useState<PurchaseMaterial[]>([]);
-  const [loadingNeeded, setLoadingNeeded] = useState(false);
+  // ── Cart tab state ───────────────────────────────────────────────────────
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [loadingCart, setLoadingCart] = useState(false);
+  const [addSearch, setAddSearch] = useState('');
+  const [addingId, setAddingId] = useState<string | null>(null);
+  const [lowStockAdding, setLowStockAdding] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  // Quantity inputs are uncontrolled drafts while typing, saved on blur.
+  const [qtyDraft, setQtyDraft] = useState<Record<string, string>>({});
+  const [qtySaving, setQtySaving] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [orderQty, setOrderQty] = useState<Record<string, number>>({});
   const [orderSaving, setOrderSaving] = useState<string | null>(null);
   const [executedGroups, setExecutedGroups] = useState<Set<string>>(new Set());
-  const [qtySaving, setQtySaving] = useState<Set<string>>(new Set());
+  // Drag & drop: "carry" a line from one supplier group to another.
+  const [dragItemId, setDragItemId] = useState<string | null>(null);
+  const [dragOverGroup, setDragOverGroup] = useState<string | null>(null);
 
   // ── Toast ────────────────────────────────────────────────────────────────
   const [toast, setToast] = useState<{ text: string; ok: boolean } | null>(null);
@@ -74,11 +132,13 @@ export default function SuppliersPage() {
   }
 
   // ── Initial loads ────────────────────────────────────────────────────────
-  useEffect(() => { fetchSuppliers(); }, []);
+  // The cart loads on mount too, so the tab badge shows its size right away.
+  useEffect(() => { fetchSuppliers(); fetchCart(); }, []);
 
   useEffect(() => {
     if (tab === 'settings' && !materialsLoaded) fetchMaterials();
-    if (tab === 'shopping') fetchNeeded();
+    // The cart's product picker needs the full raw-material list.
+    if (tab === 'cart') { fetchCart(); if (!materialsLoaded) fetchMaterials(); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
@@ -105,63 +165,159 @@ export default function SuppliersPage() {
     }
   }
 
-  async function fetchNeeded() {
-    setLoadingNeeded(true);
+  // ── Cart ─────────────────────────────────────────────────────────────────
+  async function fetchCart() {
+    setLoadingCart(true);
     try {
-      const res = await fetch('/api/purchasing');
+      const res = await fetch('/api/purchasing/cart');
       const json = await res.json();
       if (json.data) {
-        const items: PurchaseMaterial[] = json.data;
-        setNeeded(items);
+        const items: CartItem[] = json.data;
+        setCart(items);
         setSelected(new Set(items.map(i => i.id)));
-        const qty: Record<string, number> = {};
-        for (const item of items) qty[item.id] = item.כמות_להזמנה ?? item.כמות_מינימום;
-        setOrderQty(qty);
+        setQtyDraft({});
         setExecutedGroups(new Set());
       }
-    } finally {
-      setLoadingNeeded(false);
-    }
+    } catch { /* keep whatever is on screen */ }
+    finally { setLoadingCart(false); }
   }
 
-  // Refresh stock numbers only — preserves selection, quantity edits and executed badges.
-  async function refreshNeededStock() {
+  /** Inserts or replaces one line in local state, keeping it selected. */
+  function upsertCartItem(item: CartItem) {
+    setCart(prev => {
+      const idx = prev.findIndex(i => i.id === item.id);
+      if (idx === -1) return [...prev, item];
+      const next = [...prev];
+      next[idx] = item;
+      return next;
+    });
+    setSelected(prev => new Set(prev).add(item.id));
+    setQtyDraft(d => { const n = { ...d }; delete n[item.id]; return n; });
+    setExecutedGroups(new Set());
+  }
+
+  // Adds a raw material to the cart. The name, unit and supplier are resolved
+  // server-side from the raw material, so the line always lands under the
+  // supplier assigned to that product in הגדרות רכש.
+  async function addToCart(materialId: string, name: string) {
+    setAddingId(materialId);
     try {
-      const res = await fetch('/api/purchasing');
-      const json = await res.json();
-      if (!json.data) return;
-      const items: PurchaseMaterial[] = json.data;
-      setNeeded(prev => {
-        const byId = new Map(items.map(i => [i.id, i]));
-        const merged = prev.map(p => {
-          const fresh = byId.get(p.id);
-          if (!fresh) return p;
-          return { ...p, כמות_במלאי: fresh.כמות_במלאי, סטטוס_מלאי: fresh.סטטוס_מלאי };
-        });
-        for (const i of items) if (!merged.find(m => m.id === i.id)) merged.push(i);
-        return merged;
+      const res = await fetch('/api/purchasing/cart', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ חומר_גלם_id: materialId }),
       });
-    } catch { /* silent */ }
+      const json = await res.json();
+      if (!res.ok) { showToast(json.error || 'שגיאה בהוספה לסל', false); return; }
+      upsertCartItem(json.data as CartItem);
+      showToast(json.merged ? `${name} — הכמות בסל עודכנה` : `${name} נוסף לסל`);
+    } catch { showToast('שגיאת רשת', false); }
+    finally { setAddingId(null); }
   }
 
-  async function persistOrderQty(itemId: string, qty: number) {
-    const current = needed.find(i => i.id === itemId);
+  // Free-text line — something that has no raw-material card in the system.
+  async function addFreeTextToCart(name: string) {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setAddingId('free-text');
+    try {
+      const res = await fetch('/api/purchasing/cart', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ שם_פריט: trimmed }),
+      });
+      const json = await res.json();
+      if (!res.ok) { showToast(json.error || 'שגיאה בהוספה לסל', false); return; }
+      upsertCartItem(json.data as CartItem);
+      setAddSearch('');
+      showToast(`${trimmed} נוסף לסל`);
+    } catch { showToast('שגיאת רשת', false); }
+    finally { setAddingId(null); }
+  }
+
+  async function addLowStockToCart() {
+    setLowStockAdding(true);
+    try {
+      const res = await fetch('/api/purchasing/cart/low-stock', { method: 'POST' });
+      const json = await res.json();
+      if (!res.ok) { showToast(json.error || 'שגיאה', false); return; }
+      if (!json.added) { showToast('אין חוסרים חדשים להוספה'); return; }
+      await fetchCart();
+      showToast(`${json.added} פריטים חסרים נוספו לסל`);
+    } catch { showToast('שגיאת רשת', false); }
+    finally { setLowStockAdding(false); }
+  }
+
+  async function saveQty(itemId: string, raw: string) {
+    const current = cart.find(i => i.id === itemId);
     if (!current) return;
-    if (!Number.isFinite(qty) || qty < 0) return;
-    if (Number(current.כמות_להזמנה ?? NaN) === qty) return;
+    const clearDraft = () => setQtyDraft(d => { const n = { ...d }; delete n[itemId]; return n; });
+    const qty = Number(raw);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      clearDraft();
+      showToast('כמות חייבת להיות גדולה מאפס', false);
+      return;
+    }
+    if (Number(current.כמות) === qty) { clearDraft(); return; }
     setQtySaving(prev => { const s = new Set(prev); s.add(itemId); return s; });
     try {
-      const res = await fetch(`/api/inventory/${itemId}`, {
+      const res = await fetch(`/api/purchasing/cart/${itemId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ כמות_להזמנה: qty }),
+        body: JSON.stringify({ כמות: qty }),
       });
-      if (!res.ok) { showToast('שמירת כמות נכשלה', false); return; }
-      setNeeded(prev => prev.map(i => i.id === itemId ? { ...i, כמות_להזמנה: qty } : i));
-    } catch { showToast('שגיאת רשת', false); }
+      const json = await res.json();
+      if (!res.ok) { showToast(json.error || 'שמירת כמות נכשלה', false); clearDraft(); return; }
+      setCart(prev => prev.map(i => i.id === itemId ? { ...i, כמות: Number(json.data.כמות) } : i));
+      clearDraft();
+    } catch { showToast('שגיאת רשת', false); clearDraft(); }
     finally {
       setQtySaving(prev => { const s = new Set(prev); s.delete(itemId); return s; });
     }
+  }
+
+  // "Carry" a line to another supplier — when one supplier is out of something
+  // and another has it. Stays there: the server marks the line as moved by hand.
+  async function moveToSupplier(itemId: string, supplierId: string | null) {
+    const item = cart.find(i => i.id === itemId);
+    if (!item || (item.ספק_id ?? null) === supplierId) return;
+    try {
+      const res = await fetch(`/api/purchasing/cart/${itemId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ספק_id: supplierId }),
+      });
+      const json = await res.json();
+      if (!res.ok) { showToast(json.error || 'ההעברה נכשלה', false); return; }
+      upsertCartItem(json.data as CartItem);
+      const target = supplierId ? (suppliers.find(s => s.id === supplierId)?.שם_ספק ?? 'ספק') : 'ללא ספק מוגדר';
+      showToast(`${item.שם_פריט} הועבר ל${target}`);
+    } catch { showToast('שגיאת רשת', false); }
+  }
+
+  async function removeFromCart(itemId: string) {
+    try {
+      const res = await fetch(`/api/purchasing/cart/${itemId}`, { method: 'DELETE' });
+      if (!res.ok) { showToast('הסרת הפריט נכשלה', false); return; }
+      setCart(prev => prev.filter(i => i.id !== itemId));
+      setSelected(prev => { const s = new Set(prev); s.delete(itemId); return s; });
+      setQtyDraft(d => { const n = { ...d }; delete n[itemId]; return n; });
+    } catch { showToast('שגיאת רשת', false); }
+  }
+
+  async function clearCart() {
+    if (!window.confirm('לרוקן את כל הסל?')) return;
+    setClearing(true);
+    try {
+      const res = await fetch('/api/purchasing/cart?all=1', { method: 'DELETE' });
+      if (!res.ok) { showToast('ריקון הסל נכשל', false); return; }
+      setCart([]);
+      setSelected(new Set());
+      setQtyDraft({});
+      setExecutedGroups(new Set());
+      showToast('הסל רוקן');
+    } catch { showToast('שגיאת רשת', false); }
+    finally { setClearing(false); }
   }
 
   async function handleSaveSupplier() {
@@ -214,7 +370,10 @@ export default function SuppliersPage() {
     finally { setRowSaving(false); }
   }
 
-  async function handleMarkOrdered(supplierId: string | null, groupItems: PurchaseMaterial[]) {
+  // Turns the selected lines of one supplier group into a purchase order.
+  // The server reads the quantities from the cart itself and removes the
+  // ordered lines, so nothing is trusted from the browser.
+  async function handleMarkOrdered(supplierId: string | null, groupItems: CartItem[]) {
     const items = groupItems.filter(i => selected.has(i.id));
     if (items.length === 0) { showToast('לא נבחרו פריטים', false); return; }
     const key = supplierId ?? 'none';
@@ -223,21 +382,15 @@ export default function SuppliersPage() {
       const res = await fetch('/api/purchasing/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ספק_id: supplierId,
-          items: items.map(i => ({
-            חומר_גלם_id: i.id,
-            שם_פריט:     i.שם_חומר_גלם,
-            כמות:        orderQty[i.id] ?? i.כמות_להזמנה ?? i.כמות_מינימום,
-            יחידה:       i.יחידת_קניה || i.יחידת_מידה,
-          })),
-        }),
+        body: JSON.stringify({ cart_item_ids: items.map(i => i.id) }),
       });
-      if (!res.ok) { showToast('שגיאה', false); return; }
+      const json = await res.json();
+      if (!res.ok) { showToast(json.error || 'שגיאה ביצירת הזמנת רכש', false); return; }
+      const orderedIds = new Set(items.map(i => i.id));
+      setCart(prev => prev.filter(i => !orderedIds.has(i.id)));
+      setSelected(prev => { const s = new Set(prev); orderedIds.forEach(id => s.delete(id)); return s; });
       setExecutedGroups(prev => new Set(prev).add(key));
-      showToast('בוצע — הזמנת רכש נוצרה');
-      // Refresh stock numbers without resetting selection, quantities, or executed badges.
-      refreshNeededStock();
+      showToast(`הזמנת רכש נוצרה — ${items.length} פריטים הוסרו מהסל`);
     } catch { showToast('שגיאת רשת', false); }
     finally { setOrderSaving(null); }
   }
@@ -263,25 +416,14 @@ export default function SuppliersPage() {
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
-  function buildWaUrl(supplier: Supplier, items: PurchaseMaterial[]): string {
-    const raw = supplier.טלפון?.replace(/\D/g, '') ?? '';
-    const phone = raw.startsWith('972') ? raw : raw.startsWith('0') ? '972' + raw.slice(1) : raw;
-    const lines = items.filter(i => selected.has(i.id))
-      .map(i => `• ${i.שם_מוצר_אצל_הספק || i.שם_חומר_גלם} — ${orderQty[i.id] ?? i.כמות_להזמנה ?? i.כמות_מינימום} ${i.יחידת_קניה || i.יחידת_מידה}`)
-      .join('\n');
-    return `https://wa.me/${phone}?text=${encodeURIComponent(`שלום ${supplier.שם_ספק},\nברצוני להזמין:\n\n${lines}\n\nתודה רבה,\nעדי תכשיט שוקולד`)}`;
+  function buildCopyText(supplierName: string, lines: ExportLine[]): string {
+    const body = lines.map(l => `• ${l.alias || l.name} — ${l.qty} ${l.unit}`).join('\n');
+    return `שלום ${supplierName},\nברצוני להזמין:\n\n${body}\n\nתודה רבה,\nעדי תכשיט שוקולד`;
   }
 
-  function buildCopyText(supplierName: string, items: PurchaseMaterial[]): string {
-    const lines = items.filter(i => selected.has(i.id))
-      .map(i => `• ${i.שם_מוצר_אצל_הספק || i.שם_חומר_גלם} — ${orderQty[i.id] ?? i.כמות_להזמנה ?? i.כמות_מינימום} ${i.יחידת_קניה || i.יחידת_מידה}`)
-      .join('\n');
-    return `שלום ${supplierName},\nברצוני להזמין:\n\n${lines}\n\nתודה רבה,\nעדי תכשיט שוקולד`;
-  }
-
-  function buildMailUrl(supplier: Supplier, items: PurchaseMaterial[]): string {
+  function buildMailUrl(supplier: Supplier, lines: ExportLine[]): string {
     const subject = `הזמנת רכש — ${new Date().toLocaleDateString('he-IL')}`;
-    const body = buildCopyText(supplier.שם_ספק, items);
+    const body = buildCopyText(supplier.שם_ספק, lines);
     return `mailto:${supplier.אימייל}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   }
 
@@ -289,20 +431,18 @@ export default function SuppliersPage() {
     return s.replace(/[\\/:*?"<>|]+/g, '_').slice(0, 80);
   }
 
-  function downloadWord(supplier: Supplier | null, groupItems: PurchaseMaterial[]) {
-    const items = groupItems.filter(i => selected.has(i.id));
+  function downloadWord(supplier: Supplier | null, items: ExportLine[]) {
     if (!items.length) { showToast('לא נבחרו פריטים', false); return; }
     const today = new Date().toLocaleDateString('he-IL');
     const supplierName = supplier?.שם_ספק ?? 'ללא ספק מוגדר';
     const rows = items.map(i => {
-      const alias = i.שם_מוצר_אצל_הספק && i.שם_מוצר_אצל_הספק !== i.שם_חומר_גלם
-        ? ` (${escapeHtml(i.שם_מוצר_אצל_הספק)})` : '';
+      const alias = i.alias ? ` (${escapeHtml(i.alias)})` : '';
       return `<tr>
-        <td>${escapeHtml(i.שם_חומר_גלם || '')}${alias}${i.מקט_ספק ? `<br><span style="color:#777;font-size:11px">מק"ט ${escapeHtml(i.מקט_ספק)}</span>` : ''}</td>
+        <td>${escapeHtml(i.name || '')}${alias}${i.sku ? `<br><span style="color:#777;font-size:11px">מק"ט ${escapeHtml(i.sku)}</span>` : ''}</td>
         <td>${escapeHtml(supplierName)}</td>
-        <td style="text-align:left">${orderQty[i.id] ?? i.כמות_להזמנה ?? i.כמות_מינימום}</td>
-        <td>${escapeHtml(i.יחידת_קניה || i.יחידת_מידה || '')}</td>
-        <td>${escapeHtml(i.הערות_רכש || '')}</td>
+        <td style="text-align:left">${i.qty}</td>
+        <td>${escapeHtml(i.unit || '')}</td>
+        <td>${escapeHtml(i.note || '')}</td>
       </tr>`;
     }).join('');
     const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40" dir="rtl" lang="he">
@@ -329,8 +469,7 @@ th{background:#F3EDE4}</style></head>
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  async function downloadExcel(supplier: Supplier | null, groupItems: PurchaseMaterial[]): Promise<boolean> {
-    const items = groupItems.filter(i => selected.has(i.id));
+  async function downloadExcel(supplier: Supplier | null, items: ExportLine[]): Promise<boolean> {
     if (!items.length) { showToast('לא נבחרו פריטים', false); return false; }
     try {
       const XLSX = await import('xlsx');
@@ -338,13 +477,13 @@ th{background:#F3EDE4}</style></head>
       const today = new Date().toLocaleDateString('he-IL');
       const header = ['שם מוצר', 'כמות', 'יחידה', 'שם אצל ספק', 'מק"ט', 'ספק', 'הערה'];
       const rows = items.map(i => ({
-        'שם מוצר':      i.שם_חומר_גלם || '',
-        'כמות':         orderQty[i.id] ?? i.כמות_להזמנה ?? i.כמות_מינימום,
-        'יחידה':        i.יחידת_קניה || i.יחידת_מידה || '',
-        'שם אצל ספק':   i.שם_מוצר_אצל_הספק || '',
-        'מק"ט':         i.מקט_ספק || '',
+        'שם מוצר':      i.name || '',
+        'כמות':         i.qty,
+        'יחידה':        i.unit || '',
+        'שם אצל ספק':   i.alias || '',
+        'מק"ט':         i.sku || '',
         'ספק':          supplierName,
-        'הערה':         i.הערות_רכש || '',
+        'הערה':         i.note || '',
       }));
       const ws = XLSX.utils.json_to_sheet(rows, { header });
       ws['!cols'] = [{ wch: 26 }, { wch: 10 }, { wch: 10 }, { wch: 22 }, { wch: 14 }, { wch: 20 }, { wch: 28 }];
@@ -361,8 +500,7 @@ th{background:#F3EDE4}</style></head>
     }
   }
 
-  function downloadDesigned(supplier: Supplier | null, groupItems: PurchaseMaterial[]) {
-    const items = groupItems.filter(i => selected.has(i.id));
+  function downloadDesigned(supplier: Supplier | null, items: ExportLine[]) {
     if (!items.length) { showToast('לא נבחרו פריטים', false); return; }
     const today = new Date().toLocaleDateString('he-IL');
     const supplierName = supplier?.שם_ספק ?? 'ללא ספק מוגדר';
@@ -372,16 +510,16 @@ th{background:#F3EDE4}</style></head>
       <tr>
         <td class="num idx">${idx + 1}</td>
         <td>
-          <div class="prod-name">${escapeHtml(i.שם_חומר_גלם || '')}</div>
-          ${i.מקט_ספק ? `<div class="prod-meta">מק"ט ${escapeHtml(i.מקט_ספק)}</div>` : ''}
+          <div class="prod-name">${escapeHtml(i.name || '')}</div>
+          ${i.sku ? `<div class="prod-meta">מק"ט ${escapeHtml(i.sku)}</div>` : ''}
         </td>
-        <td>${escapeHtml(i.שם_מוצר_אצל_הספק || '—')}</td>
-        <td class="num qty">${orderQty[i.id] ?? i.כמות_להזמנה ?? i.כמות_מינימום}</td>
-        <td>${escapeHtml(i.יחידת_קניה || i.יחידת_מידה || '')}</td>
-        <td>${escapeHtml(i.הערות_רכש || '')}</td>
+        <td>${escapeHtml(i.alias || '—')}</td>
+        <td class="num qty">${i.qty}</td>
+        <td>${escapeHtml(i.unit || '')}</td>
+        <td>${escapeHtml(i.note || '')}</td>
       </tr>`).join('');
-    const itemNotes = items.filter(i => i.הערות_רכש)
-      .map(i => `• ${escapeHtml(i.שם_חומר_גלם)} — ${escapeHtml(i.הערות_רכש!)}`)
+    const itemNotes = items.filter(i => i.note)
+      .map(i => `• ${escapeHtml(i.name)} — ${escapeHtml(i.note!)}`)
       .join('<br>');
     const downloadName = `הזמנת_רכש_${safeFileName(supplierName)}_${today}.html`;
     const html = `<!DOCTYPE html>
@@ -489,7 +627,7 @@ th{background:#F3EDE4}</style></head>
     </table>
 
     <div class="summary">
-      <span>* הכמויות לפי הצורך המעודכן במלאי</span>
+      <span>* הכמויות לפי סל הקניות</span>
       <span><b>סה״כ שורות:</b> ${items.length}</span>
     </div>
 
@@ -534,37 +672,35 @@ th{background:#F3EDE4}</style></head>
     w.focus();
   }
 
-  async function whatsappWithFile(supplier: Supplier, groupItems: PurchaseMaterial[]) {
-    const items = groupItems.filter(i => selected.has(i.id));
+  async function whatsappWithFile(supplier: Supplier, items: ExportLine[]) {
     if (!items.length) { showToast('לא נבחרו פריטים', false); return; }
-    const ok = await downloadExcel(supplier, groupItems);
+    const ok = await downloadExcel(supplier, items);
     if (!ok) return;
     showToast('הקובץ הורד — צרף אותו בוואטסאפ', true);
     const raw = supplier.טלפון?.replace(/\D/g, '') ?? '';
     const phone = raw.startsWith('972') ? raw : raw.startsWith('0') ? '972' + raw.slice(1) : raw;
-    const msg = `שלום ${supplier.שם_ספק},\nרשימת הקניות מצורפת.\nתודה רבה,\nעדי תכשיט שוקולד`;
+    const msg = `שלום ${supplier.שם_ספק},\nרשימת ההזמנה מצורפת.\nתודה רבה,\nעדי תכשיט שוקולד`;
     setTimeout(() => {
       window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener,noreferrer');
     }, 500);
   }
 
-  function downloadPdf(supplier: Supplier | null, groupItems: PurchaseMaterial[]) {
-    const items = groupItems.filter(i => selected.has(i.id));
+  function downloadPdf(supplier: Supplier | null, items: ExportLine[]) {
     if (!items.length) { showToast('לא נבחרו פריטים', false); return; }
     const today = new Date().toLocaleDateString('he-IL');
     const supplierName = supplier?.שם_ספק ?? 'ללא ספק מוגדר';
     const rows = items.map(i => {
-      const productName = (i.שם_חומר_גלם && i.שם_חומר_גלם.trim()) ? i.שם_חומר_גלם : 'שם מוצר חסר';
-      const supplierAlias = i.שם_מוצר_אצל_הספק && i.שם_מוצר_אצל_הספק.trim() && i.שם_מוצר_אצל_הספק !== i.שם_חומר_גלם
-        ? `<div class="alias">${escapeHtml(i.שם_מוצר_אצל_הספק)}${i.מקט_ספק ? ` · מק"ט ${escapeHtml(i.מקט_ספק)}` : ''}</div>`
-        : i.מקט_ספק ? `<div class="alias">מק"ט ${escapeHtml(i.מקט_ספק)}</div>` : '';
+      const productName = i.name.trim() || 'שם מוצר חסר';
+      const supplierAlias = i.alias?.trim()
+        ? `<div class="alias">${escapeHtml(i.alias)}${i.sku ? ` · מק"ט ${escapeHtml(i.sku)}` : ''}</div>`
+        : i.sku ? `<div class="alias">מק"ט ${escapeHtml(i.sku)}</div>` : '';
       return `
       <tr>
         <td><div class="name">${escapeHtml(productName)}</div>${supplierAlias}</td>
         <td>${escapeHtml(supplierName)}</td>
-        <td class="num">${orderQty[i.id] ?? i.כמות_להזמנה ?? i.כמות_מינימום}</td>
-        <td>${escapeHtml(i.יחידת_קניה || i.יחידת_מידה || '')}</td>
-        <td>${escapeHtml(i.הערות_רכש || '')}</td>
+        <td class="num">${i.qty}</td>
+        <td>${escapeHtml(i.unit || '')}</td>
+        <td>${escapeHtml(i.note || '')}</td>
       </tr>`;
     }).join('');
     const meta = [
@@ -621,20 +757,53 @@ th{background:#F3EDE4}</style></head>
     [materials, matSearch],
   );
 
-  const supplierGroups = useMemo(() => {
-    const map = new Map<string | null, { supplier: Supplier | null; items: PurchaseMaterial[] }>();
-    for (const item of needed) {
-      const sid = item.ספק_מועדף_id ?? null;
+  // The cart, grouped by the supplier each line currently belongs to.
+  const cartGroups = useMemo(() => {
+    const map = new Map<string | null, { supplier: Supplier | null; items: CartItem[] }>();
+    for (const item of cart) {
+      const sid = item.ספק_id ?? null;
       if (!map.has(sid)) {
-        map.set(sid, { supplier: sid ? (suppliers.find(s => s.id === sid) ?? null) : null, items: [] });
+        let supplier: Supplier | null = sid ? (suppliers.find(s => s.id === sid) ?? null) : null;
+        // Fall back to the supplier embedded in the cart row (suppliers list not loaded yet).
+        if (!supplier && sid && item.ספקים) {
+          supplier = {
+            id: item.ספקים.id, שם_ספק: item.ספקים.שם_ספק, טלפון: item.ספקים.טלפון,
+            אימייל: item.ספקים.אימייל, איש_קשר: item.ספקים.איש_קשר,
+            הערות: null, פעיל: true, תאריך_יצירה: '',
+          };
+        }
+        map.set(sid, { supplier, items: [] });
       }
       map.get(sid)!.items.push(item);
     }
-    // Named suppliers first, "no supplier" group last
+    // Named suppliers first (alphabetical), "no supplier" group last
     const entries = Array.from(map.entries());
-    entries.sort(([a], [b]) => (a === null ? 1 : b === null ? -1 : 0));
+    entries.sort(([aId, a], [bId, b]) => {
+      if (aId === null) return 1;
+      if (bId === null) return -1;
+      return (a.supplier?.שם_ספק ?? '').localeCompare(b.supplier?.שם_ספק ?? '', 'he');
+    });
     return entries.map(([supplierId, g]) => ({ supplierId, ...g }));
-  }, [needed, suppliers]);
+  }, [cart, suppliers]);
+
+  // Product picker — raw materials matching the search box, in-cart ones marked.
+  const cartMaterialIds = useMemo(
+    () => new Set(cart.map(i => i.חומר_גלם_id).filter((id): id is string => !!id)),
+    [cart],
+  );
+
+  const pickerResults = useMemo(() => {
+    const q = addSearch.trim();
+    if (!q) return [];
+    return materials
+      .filter(m => m.שם_חומר_גלם.includes(q) || m.שם_מוצר_אצל_הספק?.includes(q) || m.מקט_ספק?.includes(q))
+      .slice(0, 12);
+  }, [materials, addSearch]);
+
+  const lowStockCount = useMemo(
+    () => materials.filter(m => Number(m.כמות_מינימום) > 0 && Number(m.כמות_במלאי) <= Number(m.כמות_מינימום)).length,
+    [materials],
+  );
 
   // ── Render ───────────────────────────────────────────────────────────────
   return (
@@ -654,7 +823,7 @@ th{background:#F3EDE4}</style></head>
             {([
               ['suppliers', 'ספקים'],
               ['settings',  'הגדרות רכש'],
-              ['shopping',  'רשימת קניות'],
+              ['cart',      'סל קניות'],
             ] as [PageTab, string][]).map(([id, label]) => (
               <button
                 key={id}
@@ -662,8 +831,8 @@ th{background:#F3EDE4}</style></head>
                 className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-colors relative ${tab === id ? 'bg-[#F8F4EF] text-[#2A1A0E]' : 'text-[#A88B6A] hover:text-[#FAF7F0]'}`}
               >
                 {label}
-                {id === 'shopping' && needed.length > 0 && (
-                  <span className="absolute -top-1 -left-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">{needed.length}</span>
+                {id === 'cart' && cart.length > 0 && (
+                  <span className="absolute -top-1 -left-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">{cart.length}</span>
                 )}
               </button>
             ))}
@@ -934,38 +1103,133 @@ th{background:#F3EDE4}</style></head>
           </div>
         )}
 
-        {/* ── TAB 3: Shopping list ──────────────────────────────────────── */}
-        {tab === 'shopping' && (
+        {/* ── TAB 3: Purchasing cart ────────────────────────────────────── */}
+        {tab === 'cart' && (
           <div>
-            <div className="flex items-center justify-between mb-5">
-              <div>
-                <h2 className="text-lg font-semibold text-gray-800">רשימת קניות</h2>
-                <p className="text-sm text-gray-500 mt-0.5">חומרי גלם שמלאיהם ירד מתחת לכמות המינימום</p>
+            {/* Add to cart */}
+            <div className="bg-white rounded-xl shadow-sm p-4 mb-5">
+              <div className="flex items-start gap-3 flex-wrap">
+                <div className="relative flex-1 min-w-[260px]">
+                  <input
+                    placeholder="חפש מוצר והוסף לסל..."
+                    value={addSearch}
+                    onChange={e => setAddSearch(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Escape') { setAddSearch(''); return; }
+                      if (e.key !== 'Enter') return;
+                      if (pickerResults.length === 1) addToCart(pickerResults[0].id, pickerResults[0].שם_חומר_גלם);
+                      else if (pickerResults.length === 0 && addSearch.trim()) addFreeTextToCart(addSearch);
+                    }}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#C7A46B]"
+                  />
+                  {addSearch.trim() && (
+                    <div className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-80 overflow-y-auto">
+                      {loadingMaterials && (
+                        <div className="px-3 py-3 text-xs text-gray-400">טוען מוצרים...</div>
+                      )}
+                      {pickerResults.map(m => {
+                        const supplierName = suppliers.find(s => s.id === m.ספק_מועדף_id)?.שם_ספק
+                          ?? m.ספקים?.שם_ספק ?? 'ללא ספק מוגדר';
+                        return (
+                          <button
+                            key={m.id}
+                            onClick={() => addToCart(m.id, m.שם_חומר_גלם)}
+                            disabled={addingId === m.id}
+                            className="w-full text-right px-3 py-2 hover:bg-amber-50 border-b border-gray-50 last:border-b-0 disabled:opacity-50"
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="text-sm font-medium text-gray-900 truncate">
+                                  {m.שם_חומר_גלם}
+                                  {cartMaterialIds.has(m.id) && (
+                                    <span className="mr-2 text-[10px] text-amber-700 bg-amber-100 rounded px-1.5 py-0.5">בסל</span>
+                                  )}
+                                </div>
+                                <div className="text-xs text-gray-400 truncate">
+                                  {supplierName} · במלאי {m.כמות_במלאי} {m.יחידת_מידה}
+                                </div>
+                              </div>
+                              <span className="text-xs font-medium text-[#C7A46B] flex-shrink-0">
+                                {addingId === m.id ? '...' : '+ הוסף'}
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                      {!loadingMaterials && (
+                        <button
+                          onClick={() => addFreeTextToCart(addSearch)}
+                          disabled={addingId === 'free-text'}
+                          className="w-full text-right px-3 py-2 hover:bg-amber-50 text-xs text-gray-500 disabled:opacity-50"
+                        >
+                          + הוסף &ldquo;{addSearch.trim()}&rdquo; כפריט חופשי (ללא כרטיס מלאי)
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  onClick={addLowStockToCart}
+                  disabled={lowStockAdding}
+                  className="px-4 py-2 text-sm rounded-lg border border-gray-300 hover:bg-amber-50 text-gray-600 disabled:opacity-50"
+                  title="מוסיף לסל כל חומר גלם שהמלאי שלו ירד לכמות המינימום"
+                >
+                  {lowStockAdding ? 'מוסיף...' : `הוסף חוסרי מלאי${lowStockCount ? ` (${lowStockCount})` : ''}`}
+                </button>
+                <button
+                  onClick={fetchCart}
+                  className="px-4 py-2 text-sm rounded-lg border border-gray-300 hover:bg-white text-gray-600"
+                >
+                  רענן
+                </button>
+                {cart.length > 0 && (
+                  <button
+                    onClick={clearCart}
+                    disabled={clearing}
+                    className="px-4 py-2 text-sm rounded-lg border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50"
+                  >
+                    {clearing ? 'מרוקן...' : 'רוקן סל'}
+                  </button>
+                )}
               </div>
-              <button
-                onClick={fetchNeeded}
-                className="px-4 py-2 text-sm rounded-lg border border-gray-300 hover:bg-white text-gray-600"
-              >
-                רענן
-              </button>
+              <p className="text-xs text-gray-400 mt-2">
+                כל מוצר שנוסף לסל מקבל כמות ונכנס אוטומטית לספק שהוגדר לו בלשונית &ldquo;הגדרות רכש&rdquo;.
+                אפשר לגרור פריט לקבוצה של ספק אחר, או להעביר דרך &ldquo;העבר לספק&rdquo; — למשל כשלספק אחד חסר משהו שיש לאחר.
+              </p>
             </div>
 
-            {loadingNeeded ? (
+            {loadingCart && cart.length === 0 ? (
               <div className="text-center py-16 text-gray-400">טוען...</div>
-            ) : needed.length === 0 ? (
+            ) : cart.length === 0 ? (
               <div className="text-center py-16">
-                <div className="text-5xl mb-3">✓</div>
-                <div className="text-gray-700 font-semibold text-lg">כל המלאי תקין</div>
-                <div className="text-sm text-gray-400 mt-1">אין פריטים שצריך להזמין כרגע</div>
+                <div className="text-5xl mb-3">🛒</div>
+                <div className="text-gray-700 font-semibold text-lg">הסל ריק</div>
+                <div className="text-sm text-gray-400 mt-1">חפש מוצר בשורת החיפוש והוסף אותו לסל</div>
               </div>
             ) : (
               <div className="space-y-5">
-                {supplierGroups.map(group => {
+                {cartGroups.map(group => {
                   const gKey = group.supplierId ?? 'none';
                   const selectedInGroup = group.items.filter(i => selected.has(i.id));
+                  const groupLines = toExportLines(selectedInGroup);
                   const isExecuted = executedGroups.has(gKey);
+                  const isDropTarget = dragItemId !== null && dragOverGroup === gKey;
                   return (
-                    <div key={gKey} className="bg-white rounded-xl shadow-sm overflow-hidden">
+                    <div
+                      key={gKey}
+                      onDragOver={e => { if (dragItemId) { e.preventDefault(); setDragOverGroup(gKey); } }}
+                      onDragLeave={() => setDragOverGroup(prev => (prev === gKey ? null : prev))}
+                      onDrop={e => {
+                        e.preventDefault();
+                        const id = dragItemId;
+                        setDragOverGroup(null);
+                        setDragItemId(null);
+                        if (id) moveToSupplier(id, group.supplierId);
+                      }}
+                      className="bg-white rounded-xl shadow-sm overflow-hidden"
+                      style={isDropTarget ? { outline: '2px dashed #C7A46B', outlineOffset: 2 } : undefined}
+                    >
                       {/* Group header */}
                       <div className="px-5 py-4" style={{ background: '#F3EDE4', borderBottom: '1px solid #E8DED4' }}>
                         <div className="flex items-center justify-between">
@@ -974,11 +1238,12 @@ th{background:#F3EDE4}</style></head>
                               <span>{group.supplier?.שם_ספק ?? 'ללא ספק מוגדר'}</span>
                               {isExecuted && (
                                 <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
-                                  ✓ בוצע · עודכן למלאי
+                                  ✓ הוזמן · הפריטים הוסרו מהסל
                                 </span>
                               )}
                             </div>
                             <div className="flex gap-3 mt-0.5 flex-wrap">
+                              <span className="text-sm text-gray-500">{group.items.length} פריטים בסל</span>
                               {group.supplier?.טלפון && (
                                 <span className="text-sm text-gray-500 font-mono">{group.supplier.טלפון}</span>
                               )}
@@ -993,7 +1258,7 @@ th{background:#F3EDE4}</style></head>
                           <div className="flex items-center gap-2 flex-wrap justify-end">
                             {/* PDF download */}
                             <button
-                              onClick={() => downloadPdf(group.supplier, group.items)}
+                              onClick={() => downloadPdf(group.supplier, groupLines)}
                               className="px-3 py-1.5 rounded-lg text-xs border border-gray-300 hover:bg-white text-gray-600 transition-colors"
                               title="הורד PDF"
                             >
@@ -1002,7 +1267,7 @@ th{background:#F3EDE4}</style></head>
 
                             {/* Word download */}
                             <button
-                              onClick={() => downloadWord(group.supplier, group.items)}
+                              onClick={() => downloadWord(group.supplier, groupLines)}
                               className="px-3 py-1.5 rounded-lg text-xs border border-gray-300 hover:bg-white text-gray-600 transition-colors"
                               title="הורד Word"
                             >
@@ -1011,7 +1276,7 @@ th{background:#F3EDE4}</style></head>
 
                             {/* Excel download */}
                             <button
-                              onClick={() => downloadExcel(group.supplier, group.items)}
+                              onClick={() => downloadExcel(group.supplier, groupLines)}
                               className="px-3 py-1.5 rounded-lg text-xs border border-gray-300 hover:bg-white text-gray-600 transition-colors"
                               title="הורד Excel"
                             >
@@ -1020,7 +1285,7 @@ th{background:#F3EDE4}</style></head>
 
                             {/* Designed branded file */}
                             <button
-                              onClick={() => downloadDesigned(group.supplier, group.items)}
+                              onClick={() => downloadDesigned(group.supplier, groupLines)}
                               className="px-3 py-1.5 rounded-lg text-xs font-medium text-white transition-opacity hover:opacity-90"
                               style={{ background: '#C7A46B' }}
                               title="קובץ מעוצב — תצוגה מקדימה, הדפסה ושמירה"
@@ -1031,7 +1296,7 @@ th{background:#F3EDE4}</style></head>
                             {/* WhatsApp — generates Excel then opens WhatsApp with prefilled note */}
                             {group.supplier?.טלפון && (
                               <button
-                                onClick={() => whatsappWithFile(group.supplier!, group.items)}
+                                onClick={() => whatsappWithFile(group.supplier!, groupLines)}
                                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-white font-medium transition-opacity hover:opacity-90"
                                 style={{ background: '#25D366' }}
                                 title="הורד קובץ ופתח וואטסאפ"
@@ -1044,7 +1309,7 @@ th{background:#F3EDE4}</style></head>
                             {/* Copy text */}
                             <button
                               onClick={() => {
-                                const text = buildCopyText(group.supplier?.שם_ספק ?? 'ספק', group.items);
+                                const text = buildCopyText(group.supplier?.שם_ספק ?? 'ספק', groupLines);
                                 navigator.clipboard?.writeText(text).then(() => showToast('הועתק ללוח'));
                               }}
                               className="px-3 py-1.5 rounded-lg text-xs border border-gray-300 hover:bg-white text-gray-600 transition-colors"
@@ -1055,7 +1320,7 @@ th{background:#F3EDE4}</style></head>
                             {/* Email */}
                             {group.supplier?.אימייל && (
                               <a
-                                href={buildMailUrl(group.supplier, group.items)}
+                                href={buildMailUrl(group.supplier, groupLines)}
                                 className="px-3 py-1.5 rounded-lg text-xs border border-gray-300 hover:bg-white text-gray-600 transition-colors"
                               >
                                 שלח מייל
@@ -1069,7 +1334,7 @@ th{background:#F3EDE4}</style></head>
                               className="px-3 py-1.5 rounded-lg text-xs text-white font-medium disabled:opacity-40 transition-opacity"
                               style={{ background: '#C7A46B' }}
                             >
-                              {orderSaving === gKey ? 'שומר...' : `ביצוע (${selectedInGroup.length})`}
+                              {orderSaving === gKey ? 'שומר...' : `הזמן (${selectedInGroup.length})`}
                             </button>
                           </div>
                         </div>
@@ -1078,58 +1343,94 @@ th{background:#F3EDE4}</style></head>
                       {/* Items */}
                       <div>
                         {group.items.map(item => {
-                          const deficit = Math.max(0, item.כמות_מינימום - item.כמות_במלאי);
+                          const mat = item.מלאי_חומרי_גלם ?? null;
+                          const unit = item.יחידה || mat?.יחידת_מידה || '';
+                          const qtyValue = qtyDraft[item.id] ?? String(item.כמות);
                           return (
                             <div
                               key={item.id}
-                              className={`flex items-center px-5 py-3 gap-4 border-b border-gray-50 last:border-b-0 transition-opacity ${selected.has(item.id) ? '' : 'opacity-40'}`}
+                              draggable
+                              onDragStart={() => setDragItemId(item.id)}
+                              onDragEnd={() => { setDragItemId(null); setDragOverGroup(null); }}
+                              className={`flex items-center px-5 py-3 gap-4 border-b border-gray-50 last:border-b-0 transition-opacity cursor-grab active:cursor-grabbing ${selected.has(item.id) ? '' : 'opacity-40'} ${dragItemId === item.id ? 'opacity-50' : ''}`}
                             >
                               <input
                                 type="checkbox"
                                 checked={selected.has(item.id)}
                                 onChange={e => {
                                   const s = new Set(selected);
-                                  e.target.checked ? s.add(item.id) : s.delete(item.id);
+                                  if (e.target.checked) s.add(item.id); else s.delete(item.id);
                                   setSelected(s);
                                 }}
                                 className="w-4 h-4 rounded accent-amber-600 flex-shrink-0"
+                                title="כלול בהזמנה / בקובץ"
                               />
 
                               <div className="flex-1 min-w-0">
-                                <div className="font-medium text-gray-900 text-sm">{item.שם_חומר_גלם}</div>
-                                {item.שם_מוצר_אצל_הספק && item.שם_מוצר_אצל_הספק !== item.שם_חומר_גלם && (
-                                  <div className="text-xs text-gray-400 mt-0.5">{item.שם_מוצר_אצל_הספק}</div>
+                                <div className="font-medium text-gray-900 text-sm flex items-center gap-2 flex-wrap">
+                                  <span>{item.שם_פריט}</span>
+                                  {!item.חומר_גלם_id && (
+                                    <span className="text-[10px] text-gray-500 bg-gray-100 rounded px-1.5 py-0.5">פריט חופשי</span>
+                                  )}
+                                  {item.הועבר_ידנית && (
+                                    <span className="text-[10px] text-amber-700 bg-amber-100 rounded px-1.5 py-0.5">הועבר ידנית</span>
+                                  )}
+                                </div>
+                                {mat?.שם_מוצר_אצל_הספק && mat.שם_מוצר_אצל_הספק !== item.שם_פריט && (
+                                  <div className="text-xs text-gray-400 mt-0.5">{mat.שם_מוצר_אצל_הספק}</div>
                                 )}
-                                {item.מקט_ספק && (
-                                  <div className="text-xs text-gray-400">מקט: {item.מקט_ספק}</div>
+                                {mat?.מקט_ספק && (
+                                  <div className="text-xs text-gray-400">מקט: {mat.מקט_ספק}</div>
                                 )}
-                                {item.הערות_רכש && (
-                                  <div className="text-xs text-amber-700 mt-0.5">{item.הערות_רכש}</div>
+                                {item.הערה && (
+                                  <div className="text-xs text-amber-700 mt-0.5">{item.הערה}</div>
                                 )}
                               </div>
 
-                              <div className="text-xs text-gray-500 text-left flex-shrink-0 space-y-0.5">
-                                <div>במלאי: <span className="font-semibold text-red-600">{item.כמות_במלאי}</span> {item.יחידת_מידה}</div>
-                                <div>מינימום: {item.כמות_מינימום} {item.יחידת_מידה}</div>
-                                <div>חסר: <span className="font-semibold text-red-700">{deficit} {item.יחידת_מידה}</span></div>
-                              </div>
+                              {mat && (
+                                <div className="text-xs text-gray-500 text-left flex-shrink-0">
+                                  במלאי: <span className="font-semibold text-gray-700">{mat.כמות_במלאי}</span> {mat.יחידת_מידה}
+                                </div>
+                              )}
+
+                              {/* Move the line to another supplier */}
+                              <select
+                                value={item.ספק_id ?? ''}
+                                onChange={e => moveToSupplier(item.id, e.target.value || null)}
+                                className="border border-gray-300 rounded px-2 py-1 text-xs bg-white text-gray-600 max-w-[150px] focus:outline-none focus:border-[#C7A46B]"
+                                title="העבר לספק אחר"
+                              >
+                                <option value="">ללא ספק מוגדר</option>
+                                {suppliers.map(s => (
+                                  <option key={s.id} value={s.id}>{s.שם_ספק}</option>
+                                ))}
+                              </select>
 
                               <div className="flex items-center gap-1.5 flex-shrink-0">
                                 <span className="text-xs text-gray-500">כמות:</span>
                                 <input
                                   type="number"
-                                  value={orderQty[item.id] ?? item.כמות_להזמנה ?? item.כמות_מינימום}
-                                  onChange={e => setOrderQty(q => ({ ...q, [item.id]: Number(e.target.value) }))}
-                                  onBlur={e => persistOrderQty(item.id, Number(e.target.value))}
+                                  value={qtyValue}
+                                  onChange={e => setQtyDraft(d => ({ ...d, [item.id]: e.target.value }))}
+                                  onBlur={e => saveQty(item.id, e.target.value)}
+                                  onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
                                   className="border border-gray-300 rounded px-2 py-1 text-sm w-20 text-center focus:outline-none focus:border-[#C7A46B]"
                                   min={0}
                                   step="0.001"
                                 />
-                                <span className="text-xs text-gray-500 w-10 truncate">{item.יחידת_קניה || item.יחידת_מידה}</span>
+                                <span className="text-xs text-gray-500 w-10 truncate">{unit}</span>
                                 {qtySaving.has(item.id) && (
                                   <span className="text-[10px] text-gray-400">שומר...</span>
                                 )}
                               </div>
+
+                              <button
+                                onClick={() => removeFromCart(item.id)}
+                                className="text-gray-300 hover:text-red-600 transition-colors text-lg leading-none px-1 flex-shrink-0"
+                                title="הסר מהסל"
+                              >
+                                ×
+                              </button>
                             </div>
                           );
                         })}

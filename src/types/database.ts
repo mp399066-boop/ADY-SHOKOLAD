@@ -68,6 +68,11 @@ export interface Database {
         Insert: Partial<PurchaseOrderItem>;
         Update: Partial<PurchaseOrderItem>;
       };
+      סל_קניות: {
+        Row: ShoppingCartItem;
+        Insert: Partial<ShoppingCartItem>;
+        Update: Partial<ShoppingCartItem>;
+      };
       מתכונים: {
         Row: Recipe;
         Insert: Partial<Recipe>;
@@ -375,6 +380,28 @@ export interface PurchaseOrderItem {
   כמות: number;
   יחידה: string | null;
   תאריך_יצירה: string;
+}
+
+/**
+ * שורה בסל הקניות (migration 055).
+ * Every line is added by hand and belongs to a supplier — by default the raw
+ * material's ספק_מועדף_id, resolved server-side. הועבר_ידנית marks a line whose
+ * supplier was changed inside the cart ("carried" to a supplier that has it).
+ */
+export interface ShoppingCartItem {
+  id: string;
+  חומר_גלם_id: string | null;
+  שם_פריט: string;
+  כמות: number;
+  יחידה: string | null;
+  ספק_id: string | null;
+  הערה: string | null;
+  הועבר_ידנית: boolean;
+  נוצר_על_ידי: string | null;
+  תאריך_יצירה: string;
+  תאריך_עדכון: string;
+  מלאי_חומרי_גלם?: RawMaterial | null;
+  ספקים?: Supplier | null;
 }
 
 export interface Recipe {
