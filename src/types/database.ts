@@ -262,6 +262,10 @@ export interface Product {
   תיאור: string | null;
   תמונה_url: string | null;
   price_availability: 'retail' | 'business_fixed' | 'business_quantity' | null;
+  // Made-to-order product — migration 056. Nothing is kept in stock for it, so
+  // the order stock guard (migration 052) skips it instead of blocking every
+  // order until a stock number is entered by hand.
+  בהזמנה_מראש: boolean;
   קטגוריית_מוצר: 'עוגה' | 'פטיפורים' | 'קינוחים' | 'מארז' | 'אחר' | null;
   תאריך_יצירה: string;
   תאריך_עדכון: string;
@@ -309,6 +313,8 @@ export interface PetitFourType {
   סף_מלאי_נמוך: number;
   סף_מלאי_קריטי: number;
   סטטוס_מלאי: 'תקין' | 'מלאי נמוך' | 'קריטי' | 'אזל מהמלאי';
+  /** Made-to-order petit four — migration 056. Exempt from the stock guard. */
+  בהזמנה_מראש: boolean;
   הערות: string | null;
   תאריך_יצירה: string;
   תאריך_עדכון: string;

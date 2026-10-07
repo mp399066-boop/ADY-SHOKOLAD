@@ -89,6 +89,7 @@ function product(p: Partial<Product> & Pick<Product, 'id' | 'שם_מוצר' | '�
     לקוחות_עסקיים_בלבד: false, כמות_במארז: null, כמות_במלאי: 25,
     סף_מלאי_נמוך: 10, סף_מלאי_קריטי: 4, סטטוס_מלאי: 'תקין',
     sku: null, תיאור: null, תמונה_url: null, price_availability: 'retail',
+    בהזמנה_מראש: false,
     קטגוריית_מוצר: 'אחר', תאריך_יצירה: NOW, תאריך_עדכון: NOW,
     ...p,
   };

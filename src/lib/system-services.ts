@@ -59,7 +59,7 @@ export const SERVICE_FALLBACK_LABELS: Record<ServiceKey, { display: string; desc
   woocommerce_orders:     { display: 'WooCommerce — קבלת הזמנות', description: 'קבלת הזמנות מהאתר והכנסתן למערכת.',                  category: 'integrations' },
   inventory_deduction:    { display: 'הורדת מלאי אוטומטית',        description: 'הורדת מלאי בעת מעבר סטטוס תשלום ל-"שולם".',          category: 'inventory'    },
   payplus_payments:       { display: 'PayPlus — קישורי תשלום',     description: 'יצירת קישורי תשלום דרך PayPlus.',                    category: 'integrations' },
-  order_stock_guard:      { display: 'חסימת הזמנה במלאי חסר',       description: 'חוסם יצירה/עריכה/סגירת הזמנה כשאין מספיק מלאי.',    category: 'inventory'    },
+  order_stock_guard:      { display: 'חסימת הזמנה במלאי חסר',       description: 'חוסם יצירה/עריכה/סגירת הזמנה כשאין מספיק מלאי. לא חל על פריטים שסומנו "בהזמנה מראש".', category: 'inventory' },
 };
 
 // Caller-facing error message shown when a service is disabled. Same string

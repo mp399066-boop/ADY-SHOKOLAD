@@ -18,6 +18,7 @@ import {
   deductOrderInventory,
   checkOrderStockAvailability,
   formatStockShortageMessage,
+  stockShortageErrorMessage,
   type StockAvailabilityItem,
 } from '@/lib/inventory-deduct';
 import {
@@ -252,7 +253,7 @@ export async function POST(req: NextRequest) {
         await supabase.from('הזמנות').delete().eq('id', order!.id);
         console.warn('[create-full] BLOCKED — insufficient stock:', formatStockShortageMessage(availability.shortages));
         return NextResponse.json(
-          { error: `אין מספיק מלאי: ${formatStockShortageMessage(availability.shortages)}`, shortages: availability.shortages },
+          { error: stockShortageErrorMessage(availability.shortages), shortages: availability.shortages },
           { status: 422 },
         );
       }

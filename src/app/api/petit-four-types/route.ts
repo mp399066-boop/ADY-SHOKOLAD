@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
+import { missingColumnMessage } from '@/lib/db-error';
 
 export async function GET() {
   const auth = await requireManagementUser();
@@ -24,6 +25,9 @@ export async function POST(req: NextRequest) {
     .insert(body)
     .select()
     .single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    const missing = missingColumnMessage(error);
+    return NextResponse.json({ error: missing ?? error.message }, { status: missing ? 400 : 500 });
+  }
   return NextResponse.json({ data }, { status: 201 });
 }

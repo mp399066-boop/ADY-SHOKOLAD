@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { recordStockMovement } from '@/lib/inventory-movements';
+import { missingColumnMessage } from '@/lib/db-error';
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const auth = await requireManagementUser();
@@ -24,10 +25,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     .select()
     .single();
   if (error) {
-    const msg = error.message?.includes('column') && error.message?.includes('not found')
-      ? 'עמודת המלאי לא קיימת — הרץ את migration 002 בסופרבייס SQL Editor'
-      : error.message;
-    return NextResponse.json({ error: msg }, { status: 500 });
+    // Covers both the old case (migration 002's stock column) and any newer
+    // manually-run migration that hasn't been applied yet — the helper names
+    // the column so it's clear which one is missing.
+    const missing = missingColumnMessage(error);
+    return NextResponse.json({ error: missing ?? error.message }, { status: missing ? 400 : 500 });
   }
 
   if (prev && data && Number(prev.כמות_במלאי) !== Number(data.כמות_במלאי)) {

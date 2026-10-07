@@ -20,6 +20,48 @@ import type { Product, Package, PetitFourType } from '@/types/database';
 
 type Tab = 'products' | 'packages' | 'petitfours';
 
+// "בהזמנה מראש" — the item is made to order, so no stock is ever kept for it
+// and the order stock guard (migration 052) must not block on it. Migration
+// 056 added the column; this toggle is where it gets set.
+function PreorderToggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label
+      className="flex items-start gap-2 cursor-pointer rounded-lg px-3 py-2.5"
+      style={{
+        backgroundColor: checked ? '#FFF7ED' : '#FBF7F1',
+        border: '1px solid ' + (checked ? '#FCD9A8' : '#EDE0CE'),
+      }}
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={e => onChange(e.target.checked)}
+        className="mt-0.5 h-4 w-4 cursor-pointer"
+        style={{ accentColor: '#8B5E34' }}
+      />
+      <span className="text-[13px] leading-5" style={{ color: '#2B1A10' }}>
+        בהזמנה מראש — לא נשמר במלאי
+        <span className="block text-[11.5px]" style={{ color: '#9B7A5A' }}>
+          הפריט מיוצר לפי הזמנה, ולכן חסימת ההזמנה במלאי חסר לא תחול עליו. אין צורך לעדכן לו כמות במלאי.
+        </span>
+      </span>
+    </label>
+  );
+}
+
+/** Small "בהזמנה מראש" marker for catalog cards. */
+function PreorderBadge() {
+  return (
+    <span
+      className="text-xs px-1.5 py-0.5 rounded-full flex-shrink-0"
+      style={{ backgroundColor: '#FFF1DC', color: '#92400E' }}
+      title="מיוצר בהזמנה מראש — לא נחסם במלאי חסר"
+    >
+      בהזמנה מראש
+    </span>
+  );
+}
+
 export default function ProductsPage() {
   const [tab, setTab] = useState<Tab>('products');
   const [products, setProducts] = useState<Product[]>([]);
@@ -100,9 +142,9 @@ export default function ProductsPage() {
   const openAdd = () => {
     setEditMode(false);
     setEditId(null);
-    if (tab === 'products') setForm({ שם_מוצר: '', סוג_מוצר: 'מוצר רגיל', מחיר: 0, פעיל: true, תיאור: '', price_availability: 'retail', לקוחות_עסקיים_בלבד: false });
+    if (tab === 'products') setForm({ שם_מוצר: '', סוג_מוצר: 'מוצר רגיל', מחיר: 0, פעיל: true, תיאור: '', price_availability: 'retail', לקוחות_עסקיים_בלבד: false, בהזמנה_מראש: false });
     if (tab === 'packages') setForm({ שם_מארז: '', גודל_מארז: 0, כמה_סוגים_מותר_לבחור: 1, מחיר_מארז: 0, פעיל: true });
-    if (tab === 'petitfours') setForm({ שם_פטיפור: '', פעיל: true, הערות: '' });
+    if (tab === 'petitfours') setForm({ שם_פטיפור: '', פעיל: true, הערות: '', בהזמנה_מראש: false });
     setShowModal(true);
   };
 
@@ -211,6 +253,27 @@ export default function ProductsPage() {
     finally { setBulkToggling(false); }
   };
 
+  // Bulk "בהזמנה מראש" — mark/unmark the selected products as made to order,
+  // which is what exempts them from the order stock guard (migration 056).
+  const handleBulkPreorder = async (value: boolean) => {
+    setBulkToggling(true);
+    try {
+      const ids = Array.from(currentSel);
+      const res = await fetch('/api/products/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'toggle_preorder', ids, value }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || 'שגיאה בעדכון');
+      if (json.succeeded > 0) toast.success(`${json.succeeded} מוצרים סומנו כ${value ? 'בהזמנה מראש' : 'נמכרים ממלאי'}`);
+      if (json.failed > 0) toast.error(`${json.failed} מוצרים לא עודכנו`);
+      clearSel();
+      fetchAll();
+    } catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'שגיאה בעדכון'); }
+    finally { setBulkToggling(false); }
+  };
+
   const tabList = [
     { key: 'products',   label: 'מוצרים למכירה',  count: products.filter(p => p.סוג_מוצר !== 'מארז פטיפורים').length },
     { key: 'packages',   label: 'מארזים',          count: packages.length },
@@ -223,8 +286,8 @@ export default function ProductsPage() {
     const fpf = filteredPFArr();
     if (tab === 'products') {
       exportToCsv('מוצרים.csv',
-        ['שם מוצר', 'סוג', 'פעיל', 'כמות במלאי'],
-        fp.map(p => [p.שם_מוצר, p.סוג_מוצר, p.פעיל ? 'כן' : 'לא', p.כמות_במלאי]),
+        ['שם מוצר', 'סוג', 'פעיל', 'אופן הזמנה', 'כמות במלאי'],
+        fp.map(p => [p.שם_מוצר, p.סוג_מוצר, p.פעיל ? 'כן' : 'לא', p.בהזמנה_מראש ? 'בהזמנה מראש' : 'ממלאי', p.כמות_במלאי]),
       );
     } else if (tab === 'packages') {
       exportToCsv('מארזים.csv',
@@ -233,8 +296,8 @@ export default function ProductsPage() {
       );
     } else {
       exportToCsv('פטיפורים.csv',
-        ['שם פטיפור', 'פעיל', 'כמות במלאי'],
-        fpf.map(p => [p.שם_פטיפור, p.פעיל ? 'כן' : 'לא', p.כמות_במלאי]),
+        ['שם פטיפור', 'פעיל', 'אופן הזמנה', 'כמות במלאי'],
+        fpf.map(p => [p.שם_פטיפור, p.פעיל ? 'כן' : 'לא', p.בהזמנה_מראש ? 'בהזמנה מראש' : 'ממלאי', p.כמות_במלאי]),
       );
     }
   };
@@ -251,6 +314,8 @@ export default function ProductsPage() {
     ? [
         { label: 'הפעל', onClick: () => handleBulkToggle(true) },
         { label: 'השבת', onClick: () => handleBulkToggle(false) },
+        { label: 'סמן: בהזמנה מראש', onClick: () => handleBulkPreorder(true) },
+        { label: 'סמן: ממלאי', onClick: () => handleBulkPreorder(false) },
         { label: 'מחיקה', variant: 'danger' as const, icon: <IconTrash className="w-3.5 h-3.5" />, onClick: () => setShowBulkConfirm(true) },
       ]
     : [
@@ -373,14 +438,21 @@ export default function ProductsPage() {
                                 {p.פעיל ? 'פעיל' : 'לא פעיל'}
                               </span>
                             </div>
-                            <p className="text-xs mb-2" style={{ color: '#9B7A5A' }}>
-                              {p.סוג_מוצר}
-                            </p>
+                            <div className="flex items-center gap-1.5 flex-wrap mb-2">
+                              <p className="text-xs" style={{ color: '#9B7A5A' }}>
+                                {p.סוג_מוצר}
+                              </p>
+                              {p.בהזמנה_מראש && <PreorderBadge />}
+                            </div>
                             {p.תיאור && (
                               <p className="text-xs mb-2 line-clamp-2" style={{ color: '#6B4A2D' }}>{p.תיאור}</p>
                             )}
                             <div className="flex items-center justify-between mt-2">
-                              {p.כמות_במלאי > 0 ? (
+                              {p.בהזמנה_מראש ? (
+                                <span className="text-xs" style={{ color: '#9B7A5A' }}>
+                                  ללא מלאי
+                                </span>
+                              ) : p.כמות_במלאי > 0 ? (
                                 <span className="text-xs" style={{ color: '#9B7A5A' }}>
                                   מלאי: {p.כמות_במלאי}
                                 </span>
@@ -509,6 +581,15 @@ export default function ProductsPage() {
                               </span>
                             </div>
                             <div className="flex items-center gap-1 flex-shrink-0">
+                              {pf.בהזמנה_מראש && (
+                                <span
+                                  className="text-[10px] px-1.5 py-0.5 rounded-full"
+                                  style={{ backgroundColor: '#FFF1DC', color: '#92400E' }}
+                                  title="מיוצר בהזמנה מראש — לא נחסם במלאי חסר"
+                                >
+                                  מראש
+                                </span>
+                              )}
                               <span
                                 className="text-xs px-1.5 py-0.5 rounded-full"
                                 style={
@@ -613,6 +694,10 @@ export default function ProductsPage() {
                 onChange={e => setForm(p => ({ ...p, תיאור: e.target.value }))}
                 rows={2}
               />
+              <PreorderToggle
+                checked={form.בהזמנה_מראש === true}
+                onChange={v => setForm(p => ({ ...p, בהזמנה_מראש: v }))}
+              />
             </>
           )}
           {tab === 'packages' && (
@@ -660,6 +745,10 @@ export default function ProductsPage() {
                 value={String(form.הערות || '')}
                 onChange={e => setForm(p => ({ ...p, הערות: e.target.value }))}
                 rows={2}
+              />
+              <PreorderToggle
+                checked={form.בהזמנה_מראש === true}
+                onChange={v => setForm(p => ({ ...p, בהזמנה_מראש: v }))}
               />
             </>
           )}

@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { recordStockMovement } from '@/lib/inventory-movements';
+import { missingColumnMessage } from '@/lib/db-error';
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const auth = await requireManagementUser();
@@ -23,7 +24,12 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     .eq('id', params.id)
     .select()
     .single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    // A manually-run migration that hasn't been applied yet shows up here as
+    // an unknown column; say so instead of leaking the raw Postgres text.
+    const missing = missingColumnMessage(error);
+    return NextResponse.json({ error: missing ?? error.message }, { status: missing ? 400 : 500 });
+  }
 
   // Record movement only on actual stock change. Threshold/name edits stay
   // out of the ledger to keep it focused on inventory deltas.

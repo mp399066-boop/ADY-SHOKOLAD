@@ -17,6 +17,7 @@ import {
   deductOrderInventory,
   checkOrderStockAvailability,
   formatStockShortageMessage,
+  stockShortageErrorMessage,
   type StockAvailabilityItem,
 } from '@/lib/inventory-deduct';
 import {
@@ -84,7 +85,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       if (!availability.ok) {
         console.warn('[finalize-draft] BLOCKED — insufficient stock:', formatStockShortageMessage(availability.shortages));
         return NextResponse.json(
-          { error: `אין מספיק מלאי: ${formatStockShortageMessage(availability.shortages)}`, shortages: availability.shortages },
+          { error: stockShortageErrorMessage(availability.shortages), shortages: availability.shortages },
           { status: 422 },
         );
       }

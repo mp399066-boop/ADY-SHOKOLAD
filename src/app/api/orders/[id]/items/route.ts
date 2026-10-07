@@ -5,6 +5,7 @@ import {
   reconcileOrderInventory,
   checkOrderStockAvailability,
   formatStockShortageMessage,
+  stockShortageErrorMessage,
   type StockAvailabilityItem,
 } from '@/lib/inventory-deduct';
 import { fetchOrderRecipients } from '@/lib/order-recipients';
@@ -185,7 +186,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
         if (!availability.ok) {
           console.warn('[items PUT] BLOCKED — insufficient stock:', formatStockShortageMessage(availability.shortages));
           return NextResponse.json(
-            { error: `אין מספיק מלאי: ${formatStockShortageMessage(availability.shortages)}`, shortages: availability.shortages },
+            { error: stockShortageErrorMessage(availability.shortages), shortages: availability.shortages },
             { status: 422 },
           );
         }

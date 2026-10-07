@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
+import { missingColumnMessage } from '@/lib/db-error';
 
 export async function POST(req: NextRequest) {
   const auth = await requireManagementUser();
@@ -39,6 +40,25 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ succeeded: 0, failed: ids.length });
       }
       console.log(`[bulk-products] toggle_active — ids: ${ids.length}, value: ${value}`);
+      return NextResponse.json({ succeeded: ids.length, failed: 0 });
+    }
+
+    // Flip several products between "ממלאי" and "בהזמנה מראש" at once — the
+    // made-to-order flag that exempts an item from the order stock guard
+    // (migration 056). Catalogs are long, and this is a one-time sort-out.
+    if (action === 'toggle_preorder') {
+      const next = value === true;
+      const { error } = await supabase
+        .from('מוצרים_למכירה')
+        .update({ בהזמנה_מראש: next })
+        .in('id', ids);
+      if (error) {
+        console.warn('[bulk-products] toggle_preorder failed:', error.message);
+        const missing = missingColumnMessage(error);
+        if (missing) return NextResponse.json({ error: missing }, { status: 400 });
+        return NextResponse.json({ succeeded: 0, failed: ids.length });
+      }
+      console.log(`[bulk-products] toggle_preorder — ids: ${ids.length}, value: ${next}`);
       return NextResponse.json({ succeeded: ids.length, failed: 0 });
     }
 

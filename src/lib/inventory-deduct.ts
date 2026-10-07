@@ -631,6 +631,51 @@ export async function reconcileOrderInventory(
 // PUT /api/orders/[id]/items — all BEFORE any destructive write, so a
 // shortage never leaves a half-mutated order.
 
+/** One catalog row as the guard needs it, normalized across both tables. */
+interface CatalogStockRow {
+  id:       string;
+  name:     string;
+  stock:    number;
+  /** migration 056 — made to order, never kept in stock, exempt from the guard. */
+  preorder: boolean;
+}
+
+/**
+ * Loads name + stock + the בהזמנה_מראש exemption flag for the given catalog ids.
+ *
+ * The flag column arrives via a manually-run migration (056), so a database
+ * that hasn't had it applied yet must keep working: on any error from the
+ * first query we retry without the column and treat every row as
+ * stock-tracked — i.e. exactly the pre-056 behaviour. A hard failure on the
+ * retry returns no rows, which makes the guard fail open for those ids (same
+ * as an unknown id below).
+ */
+async function loadCatalogStock(
+  supabase:   AnySupabase,
+  table:      'מוצרים_למכירה' | 'סוגי_פטיפורים',
+  nameColumn: 'שם_מוצר' | 'שם_פטיפור',
+  ids:        string[],
+): Promise<CatalogStockRow[]> {
+  const base = `id, ${nameColumn}, כמות_במלאי`;
+  const withFlag = await supabase.from(table).select(`${base}, בהזמנה_מראש`).in('id', ids);
+  let rows = withFlag.data as unknown as Array<Record<string, unknown>> | null;
+  if (withFlag.error) {
+    console.warn(`[inventory] stock guard: could not read "בהזמנה_מראש" on ${table} (${withFlag.error.message}) — run migration 056. Treating all items as stock-tracked for now.`);
+    const fallback = await supabase.from(table).select(base).in('id', ids);
+    if (fallback.error) {
+      console.error(`[inventory] stock guard: catalog lookup failed on ${table} —`, fallback.error.message);
+      return [];
+    }
+    rows = fallback.data as unknown as Array<Record<string, unknown>> | null;
+  }
+  return (rows ?? []).map(r => ({
+    id:       String(r.id),
+    name:     (r[nameColumn] as string | null) || '',
+    stock:    Number(r['כמות_במלאי']) || 0,
+    preorder: r['בהזמנה_מראש'] === true,
+  }));
+}
+
 export interface StockAvailabilityItem {
   kind: 'מוצר' | 'פטיפור';
   id:   string;
@@ -666,6 +711,12 @@ export type StockAvailabilityResult =
  * the same on-hand numbers as any other order. Only fails open when the
  * order_stock_guard service is OFF in the control center, or there are no
  * items to check.
+ *
+ * Per-item exemption (Oct 2026): products/petit-fours flagged בהזמנה_מראש
+ * (migration 056) are made to order — nothing is ever kept in stock for
+ * them, so checking them against on-hand would block every order and force
+ * a pointless detour to the inventory screen. They're skipped here; their
+ * ledger deduction still happens as before (and is allowed to go negative).
  */
 export async function checkOrderStockAvailability(
   supabase: AnySupabase,
@@ -702,27 +753,32 @@ export async function checkOrderStockAvailability(
   const productIds = Array.from(desired.entries()).filter(([, v]) => v.kind === 'מוצר').map(([id]) => id);
   const pfIds      = Array.from(desired.entries()).filter(([, v]) => v.kind === 'פטיפור').map(([id]) => id);
 
-  const stockById = new Map<string, { name: string; stock: number }>();
+  const stockById = new Map<string, CatalogStockRow>();
   if (productIds.length > 0) {
-    const { data } = await supabase.from('מוצרים_למכירה').select('id, שם_מוצר, כמות_במלאי').in('id', productIds);
-    for (const row of (data ?? []) as Array<{ id: string; שם_מוצר: string | null; כמות_במלאי: number | null }>) {
-      stockById.set(row.id, { name: row.שם_מוצר || '', stock: Number(row.כמות_במלאי) || 0 });
+    for (const row of await loadCatalogStock(supabase, 'מוצרים_למכירה', 'שם_מוצר', productIds)) {
+      stockById.set(row.id, row);
     }
   }
   if (pfIds.length > 0) {
-    const { data } = await supabase.from('סוגי_פטיפורים').select('id, שם_פטיפור, כמות_במלאי').in('id', pfIds);
-    for (const row of (data ?? []) as Array<{ id: string; שם_פטיפור: string | null; כמות_במלאי: number | null }>) {
-      stockById.set(row.id, { name: row.שם_פטיפור || '', stock: Number(row.כמות_במלאי) || 0 });
+    for (const row of await loadCatalogStock(supabase, 'סוגי_פטיפורים', 'שם_פטיפור', pfIds)) {
+      stockById.set(row.id, row);
     }
   }
 
   const shortages: StockShortage[] = [];
+  const exempted: string[] = [];
   for (const [id, want] of Array.from(desired.entries())) {
     const catalog = stockById.get(id);
     // Unknown / archived id — existing per-route validation already lets
     // these through (e.g. editing an order that references a deleted
     // product); nothing to check stock against, so don't block here.
     if (!catalog) continue;
+    // Made to order (בהזמנה מראש) — no stock is kept for it by definition,
+    // so there is nothing to be short of. Migration 056.
+    if (catalog.preorder) {
+      exempted.push(catalog.name || id);
+      continue;
+    }
     const alreadyReserved = netByItem.get(id) || 0;
     const available = catalog.stock + alreadyReserved;
     if (want.qty > available) {
@@ -730,12 +786,26 @@ export async function checkOrderStockAvailability(
     }
   }
 
+  if (exempted.length > 0) {
+    console.log('[inventory] stock guard: skipped made-to-order items (בהזמנה מראש):', exempted.join(', '));
+  }
+
   return shortages.length === 0 ? { ok: true } : { ok: false, shortages };
 }
 
-/** Formats shortages into one Hebrew message for API error responses. */
+/** Formats shortages into one compact Hebrew line — used for server logs. */
 export function formatStockShortageMessage(shortages: StockShortage[]): string {
   return shortages
     .map(s => `${s.name || s.id}: התבקשו ${s.requested}, זמינים ${Math.max(0, s.available)}`)
     .join(' · ');
+}
+
+/**
+ * The user-facing 422 message for a blocked order. Includes the way out —
+ * an item that is made to order should be flagged "בהזמנה מראש" instead of
+ * being given a fake stock number (migration 056).
+ */
+export function stockShortageErrorMessage(shortages: StockShortage[]): string {
+  return `אין מספיק מלאי: ${formatStockShortageMessage(shortages)}`
+    + ' — אם הפריט מיוצר בהזמנה מראש, סמני אותו כ"בהזמנה מראש" (מוצרים / מלאי) והחסימה לא תחול עליו יותר.';
 }

@@ -27,6 +27,33 @@ import type { RawMaterial, Product, PetitFourType } from '@/types/database';
 type ActiveTab = 'raw' | 'products' | 'petitfours' | 'alerts' | 'movements';
 type QtyMode = 'add' | 'subtract' | 'set';
 
+// "אופן הזמנה" cell — flips a catalog item between "ממלאי" (stock-tracked, the
+// order stock guard applies) and "בהזמנה מראש" (made to order, no stock kept,
+// guard skips it). Migration 056. Sits in the inventory table because that's
+// where the operator lands when an order gets blocked on a shortage.
+function PreorderCell({ value, saving, onToggle }: {
+  value:    boolean;
+  saving:   boolean;
+  onToggle: (next: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={saving}
+      onClick={() => onToggle(!value)}
+      className="text-xs px-2 py-0.5 rounded-full transition-opacity hover:opacity-80 disabled:opacity-50"
+      style={value
+        ? { backgroundColor: '#FFF1DC', color: '#92400E', border: '1px solid #FCD9A8' }
+        : { backgroundColor: '#F3F4F6', color: '#4B5563', border: '1px solid #E5E7EB' }}
+      title={value
+        ? 'מיוצר בהזמנה מראש — לא נחסם במלאי חסר. לחצי כדי להחזיר להזמנה ממלאי.'
+        : 'נמכר מהמלאי — הזמנה תיחסם אם אין מספיק. לחצי כדי לסמן כבהזמנה מראש.'}
+    >
+      {value ? 'בהזמנה מראש' : 'ממלאי'}
+    </button>
+  );
+}
+
 export default function InventoryPage() {
   const [materials, setMaterials] = useState<RawMaterial[]>([]);
   const [suppliers, setSuppliers] = useState<{ id: string; שם_ספק: string }[]>([]);
@@ -47,6 +74,8 @@ export default function InventoryPage() {
   const [editStockId, setEditStockId] = useState<string | null>(null);
   const [editStockQty, setEditStockQty] = useState(0);
   const [savingStock, setSavingStock] = useState(false);
+  // Id of the row whose "בהזמנה מראש" flag is currently being saved.
+  const [savingPreorderId, setSavingPreorderId] = useState<string | null>(null);
   const [confirmMaterial, setConfirmMaterial] = useState<{ id: string; name: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
   // Manual "replace raw material" — move usages of a duplicate onto a chosen material.
@@ -152,6 +181,50 @@ export default function InventoryPage() {
     if (tab === 'products' || tab === 'alerts') fetchProductStock();
     if (tab === 'petitfours') fetchPetitFourStock();
   }, [tab]);
+
+  // "בהזמנה מראש" (migration 056) — made-to-order items keep no stock, so the
+  // order stock guard skips them and no fake quantity has to be entered here.
+  const saveProductPreorder = async (productId: string, value: boolean) => {
+    setSavingPreorderId(productId);
+    try {
+      const res = await fetch(`/api/products/${productId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ בהזמנה_מראש: value }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || 'שגיאה בשמירה');
+      const updated = json.data as Product | undefined;
+      setStockProducts(prev => prev.map(p => p.id === productId
+        ? (updated ? { ...p, ...updated } : { ...p, בהזמנה_מראש: value })
+        : p,
+      ));
+      toast.success(value ? 'סומן כבהזמנה מראש — לא ייחסם במלאי חסר' : 'חזר להזמנה ממלאי');
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'שגיאה בשמירה');
+    } finally { setSavingPreorderId(null); }
+  };
+
+  const savePetitFourPreorder = async (pfId: string, value: boolean) => {
+    setSavingPreorderId(pfId);
+    try {
+      const res = await fetch(`/api/petit-four-types/${pfId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ בהזמנה_מראש: value }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || 'שגיאה בשמירה');
+      const updated = json.data as PetitFourType | undefined;
+      setStockPetitFours(prev => prev.map(p => p.id === pfId
+        ? (updated ? { ...p, ...updated } : { ...p, בהזמנה_מראש: value })
+        : p,
+      ));
+      toast.success(value ? 'סומן כבהזמנה מראש — לא ייחסם במלאי חסר' : 'חזר להזמנה ממלאי');
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'שגיאה בשמירה');
+    } finally { setSavingPreorderId(null); }
+  };
 
   const saveProductStock = async (productId: string, qty: number) => {
     setSavingStock(true);
@@ -461,7 +534,9 @@ export default function InventoryPage() {
 
   // Finished-product alerts — populated from the trigger added in migration 021.
   // Inactive products are excluded so an archived item never raises a flag.
-  const productAlerts = stockProducts.filter(p => p.פעיל && p.סטטוס_מלאי && p.סטטוס_מלאי !== 'תקין');
+  // "בהזמנה מראש" products (migration 056) are made to order and hold no stock
+  // by design — their permanent below-threshold status is not an alert.
+  const productAlerts = stockProducts.filter(p => p.פעיל && !p.בהזמנה_מראש && p.סטטוס_מלאי && p.סטטוס_מלאי !== 'תקין');
   const productCriticals = productAlerts.filter(p => p.סטטוס_מלאי === 'קריטי' || p.סטטוס_מלאי === 'אזל מהמלאי');
   const productLow = productAlerts.filter(p => p.סטטוס_מלאי === 'מלאי נמוך');
   const totalAlertsCount = alerts.length + productAlerts.length;
@@ -751,7 +826,7 @@ export default function InventoryPage() {
                           onChange={() => setSelProducts(prev => prev.size === stockProducts.length ? new Set() : new Set(stockProducts.map(p => p.id)))}
                         />
                       </th>
-                      {['שם מוצר', 'סוג', 'מחיר ליח׳', 'כמות במלאי', 'ספים (נמוך / קריטי)', 'סטטוס', ''].map(h => (
+                      {['שם מוצר', 'סוג', 'מחיר ליח׳', 'כמות במלאי', 'ספים (נמוך / קריטי)', 'סטטוס', 'אופן הזמנה', ''].map(h => (
                         <th key={h} className="px-4 py-3 text-right text-xs font-semibold" style={{ color: '#6B4A2D' }}>{h}</th>
                       ))}
                     </tr>
@@ -820,6 +895,13 @@ export default function InventoryPage() {
                             <StatusBadge status={p.סטטוס_מלאי || 'תקין'} type="inventory" />
                           </td>
                           <td className="px-4 py-3">
+                            <PreorderCell
+                              value={p.בהזמנה_מראש === true}
+                              saving={savingPreorderId === p.id}
+                              onToggle={v => saveProductPreorder(p.id, v)}
+                            />
+                          </td>
+                          <td className="px-4 py-3">
                             {editStockId !== p.id && editThresholdId !== p.id && (
                               <div className="flex items-center gap-2">
                                 <button className="text-xs hover:underline" style={{ color: '#8B5E34' }} onClick={() => { setEditStockId(p.id); setEditStockQty(p.כמות_במלאי ?? 0); }}>
@@ -882,7 +964,7 @@ export default function InventoryPage() {
                           onChange={() => setSelPF(prev => prev.size === stockPetitFours.length ? new Set() : new Set(stockPetitFours.map(p => p.id)))}
                         />
                       </th>
-                      {['שם פטיפור', 'פעיל', 'כמות במלאי', 'ספים (נמוך / קריטי)', 'סטטוס', ''].map(h => (
+                      {['שם פטיפור', 'פעיל', 'כמות במלאי', 'ספים (נמוך / קריטי)', 'סטטוס', 'אופן הזמנה', ''].map(h => (
                         <th key={h} className="px-4 py-3 text-right text-xs font-semibold" style={{ color: '#6B4A2D' }}>{h}</th>
                       ))}
                     </tr>
@@ -952,6 +1034,13 @@ export default function InventoryPage() {
                           </td>
                           <td className="px-4 py-3">
                             <StatusBadge status={pf.סטטוס_מלאי || 'תקין'} type="inventory" />
+                          </td>
+                          <td className="px-4 py-3">
+                            <PreorderCell
+                              value={pf.בהזמנה_מראש === true}
+                              saving={savingPreorderId === pf.id}
+                              onToggle={v => savePetitFourPreorder(pf.id, v)}
+                            />
                           </td>
                           <td className="px-4 py-3">
                             {editStockId !== pf.id && editThresholdId !== pf.id && (

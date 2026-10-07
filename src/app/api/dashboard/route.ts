@@ -113,6 +113,27 @@ export async function GET() {
       return NextResponse.json({ error: msg }, { status: 500 });
     }
 
+    // "בהזמנה מראש" products (migration 056) keep no stock on purpose, so their
+    // permanent below-threshold status is not something to act on. Counted and
+    // subtracted separately rather than filtered inside the query above: that
+    // query is part of the all-or-nothing Promise.all, and the column arrives
+    // via a manually-run migration — an unknown column there would 500 the
+    // whole dashboard. Here a failure just means no subtraction.
+    let preorderProductsBelowThreshold = 0;
+    {
+      const { count, error } = await supabase
+        .from('מוצרים_למכירה')
+        .select('*', { count: 'exact', head: true })
+        .eq('פעיל', true)
+        .eq('בהזמנה_מראש', true)
+        .in('סטטוס_מלאי', ['מלאי נמוך', 'קריטי', 'אזל מהמלאי']);
+      if (error) {
+        console.warn('[dashboard] could not exclude בהזמנה מראש products from the stock-alert count —', error.message);
+      } else {
+        preorderProductsBelowThreshold = count ?? 0;
+      }
+    }
+
     const unpaidAmount = (unpaidRows ?? []).reduce(
       (sum: number, row: any) => sum + (row['סך_הכל_לתשלום'] ?? 0),
       0,
@@ -138,7 +159,7 @@ export async function GET() {
         deliveriesCollected:  deliveriesCollected  ?? 0,
         deliveriesDelivered:  deliveriesDelivered  ?? 0,
         revenueToday,
-        lowProductStock:      lowProductStock      ?? 0,
+        lowProductStock:      Math.max(0, (lowProductStock ?? 0) - preorderProductsBelowThreshold),
       },
     });
   } catch (err: any) {
