@@ -11,42 +11,43 @@ import {
 import { downloadExcel, downloadElementPng, fmtDate, type Cell } from '@/lib/finance-export';
 import { C, money, StatCard, ExportButtons, Th, Td, EmptyNote } from './shared';
 
-// Every amount on this tab is BEFORE VAT, for every customer — the money that
-// is really the business's. Only the per-order "סכום בחשבונית" column shows
-// what the customer was charged (VAT included), for matching invoices.
+// Amounts are BEFORE VAT for every customer (the money that is really the
+// business's), with a "כולל מע״מ" column beside each total showing what the
+// customer was charged. Every table ends with a total row for every column.
 
 const BASIS_LABEL: Record<DateBasis, string> = { order: 'לפי תאריך הזמנה', delivery: 'לפי תאריך אספקה' };
-const VAT_NOTE = 'כל הסכומים לפני מע״מ, לכל הלקוחות — זה הכסף שנכנס אלייך בפועל (המע״מ שייך למדינה).';
+const VAT_NOTE = '"לפני מע״מ" = הכסף שנכנס אלייך בפועל, לכל הלקוחות (המע״מ שייך למדינה). "כולל מע״מ" = מה שהלקוחות חויבו.';
 
 function ordersExcelRows(orders: FinanceOrder[], basis: DateBasis): Cell[][] {
   const header: Cell[] = [
     basis === 'order' ? 'תאריך הזמנה' : 'תאריך אספקה', 'מס׳ הזמנה', 'לקוח',
-    'ללא משלוח (לפני מע״מ)', 'דמי משלוח (לפני מע״מ)', 'סה״כ נכנס (לפני מע״מ)',
-    'אמצעי תשלום', 'סטטוס תשלום', 'סכום בחשבונית (כולל מע״מ)',
+    'ללא משלוח (לפני מע״מ)', 'דמי משלוח (לפני מע״מ)', 'סה״כ לפני מע״מ', 'סה״כ כולל מע״מ',
+    'אמצעי תשלום', 'סטטוס תשלום',
   ];
   const rows = orders.map(o => [
     fmtDate(orderBasisDate(o, basis)), o.orderNumber, o.customerName,
-    o.netNoShipping, o.netShipping, o.netTotal,
-    paymentMethodLabel(o.paymentMethod), o.barter ? 'בארטר (לא נספר)' : o.paymentStatus, o.grossTotal,
+    ...(o.barter ? [null, null, null, null] : [o.netNoShipping, o.netShipping, o.netTotal, o.grossTotal]),
+    paymentMethodLabel(o.paymentMethod), o.barter ? 'בארטר (לא נספר)' : o.paymentStatus,
   ] as Cell[]);
-  return [header, ...rows];
+  const s = summarize(orders);
+  return [header, ...rows, ['סה״כ', '', `${s.count} הזמנות`, s.noShipping, s.shipping, s.total, s.grossTotal, '', '']];
 }
 
 function customersExcelRows(orders: FinanceOrder[]): Cell[][] {
   const s = summarize(orders);
   return [
-    ['לקוח', 'מס׳ הזמנות', 'ללא משלוח', 'דמי משלוח', 'סה״כ נכנס', 'מתוכו טרם שולם'],
-    ...summarizeByCustomer(orders).map(c => [c.customerName, c.count, c.noShipping, c.shipping, c.total, c.openTotal] as Cell[]),
-    ['סה״כ', s.count, s.noShipping, s.shipping, s.total, s.openTotal],
+    ['לקוח', 'מס׳ הזמנות', 'ללא משלוח (לפני מע״מ)', 'דמי משלוח (לפני מע״מ)', 'סה״כ לפני מע״מ', 'סה״כ כולל מע״מ', 'טרם שולם (לפני מע״מ)'],
+    ...summarizeByCustomer(orders).map(c => [c.customerName, c.count, c.noShipping, c.shipping, c.total, c.grossTotal, c.openTotal] as Cell[]),
+    ['סה״כ', s.count, s.noShipping, s.shipping, s.total, s.grossTotal, s.openTotal],
   ];
 }
 
 function methodsExcelRows(orders: FinanceOrder[]): Cell[][] {
   const s = summarize(orders);
   return [
-    ['אמצעי תשלום', 'מס׳ הזמנות', 'סה״כ נכנס (לפני מע״מ)', 'מתוכו טרם שולם'],
-    ...summarizeByPaymentMethod(orders).map(m => [m.method, m.count, m.total, m.openTotal] as Cell[]),
-    ['סה״כ', s.count, s.total, s.openTotal],
+    ['אמצעי תשלום', 'מס׳ הזמנות', 'סה״כ לפני מע״מ', 'סה״כ כולל מע״מ', 'טרם שולם (לפני מע״מ)'],
+    ...summarizeByPaymentMethod(orders).map(m => [m.method, m.count, m.total, m.grossTotal, m.openTotal] as Cell[]),
+    ['סה״כ', s.count, s.total, s.grossTotal, s.openTotal],
   ];
 }
 
@@ -77,9 +78,9 @@ export default function IncomeTab({ orders, year, basis, undatedCount }: {
 
   async function exportYearExcel() {
     const monthly: Cell[][] = [
-      ['חודש', 'מס׳ הזמנות', 'ללא משלוח', 'דמי משלוח', 'סה״כ נכנס', 'שולם', 'טרם שולם'],
-      ...monthRows.map(m => [monthLabel(m.key), m.s.count, m.s.noShipping, m.s.shipping, m.s.total, m.s.paidTotal, m.s.openTotal] as Cell[]),
-      ['סה״כ שנתי', yearSummary.count, yearSummary.noShipping, yearSummary.shipping, yearSummary.total, yearSummary.paidTotal, yearSummary.openTotal],
+      ['חודש', 'מס׳ הזמנות', 'ללא משלוח (לפני מע״מ)', 'דמי משלוח (לפני מע״מ)', 'סה״כ לפני מע״מ', 'סה״כ כולל מע״מ', 'שולם (לפני מע״מ)', 'טרם שולם (לפני מע״מ)'],
+      ...monthRows.map(m => [monthLabel(m.key), m.s.count, m.s.noShipping, m.s.shipping, m.s.total, m.s.grossTotal, m.s.paidTotal, m.s.openTotal] as Cell[]),
+      ['סה״כ שנתי', yearSummary.count, yearSummary.noShipping, yearSummary.shipping, yearSummary.total, yearSummary.grossTotal, yearSummary.paidTotal, yearSummary.openTotal],
       [],
       [`${VAT_NOTE} ${BASIS_LABEL[basis]}. הזמנות שבוטלו, טיוטות והזמנות בארטר אינן נספרות.`],
     ];
@@ -99,7 +100,7 @@ export default function IncomeTab({ orders, year, basis, undatedCount }: {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <StatCard label={`נכנס אלייך ב-${year} (לפני מע״מ)`} value={money(yearSummary.total)} sub={`${yearSummary.count} הזמנות`} tone="green" />
           <StatCard label="מתוכו ללא משלוחים" value={money(yearSummary.noShipping)} tone="brand" />
-          <StatCard label="מתוכו דמי משלוח" value={money(yearSummary.shipping)} />
+          <StatCard label="סה״כ כולל מע״מ" value={money(yearSummary.grossTotal)} sub={`מתוכו דמי משלוח (לפני מע״מ): ${money(yearSummary.shipping)}`} />
           <StatCard label="מתוכו טרם שולם" value={money(yearSummary.openTotal)} sub={`${yearSummary.openCount} הזמנות`} tone={yearSummary.openTotal > 0 ? 'amber' : undefined} />
         </div>
 
@@ -108,7 +109,7 @@ export default function IncomeTab({ orders, year, basis, undatedCount }: {
             <div>
               <h2 className="text-sm font-semibold" style={{ color: C.text }}>הכנסות לפי חודש — {year}</h2>
               <p className="text-xs mt-0.5" style={{ color: C.sub }}>
-                לפני מע״מ · {BASIS_LABEL[basis]} · לחיצה על חודש פותחת פירוט מלא של כל ההזמנות
+                {BASIS_LABEL[basis]} · ללא משלוח, דמי משלוח, שולם וטרם שולם — לפני מע״מ · לחיצה על חודש פותחת פירוט מלא של כל ההזמנות
               </p>
             </div>
             <ExportButtons
@@ -120,7 +121,7 @@ export default function IncomeTab({ orders, year, basis, undatedCount }: {
             <table className="w-full">
               <thead style={{ backgroundColor: C.soft }}>
                 <tr>
-                  <Th>חודש</Th><Th>הזמנות</Th><Th>ללא משלוח</Th><Th>דמי משלוח</Th><Th>סה״כ נכנס</Th><Th>שולם</Th><Th>טרם שולם</Th><Th />
+                  <Th>חודש</Th><Th>הזמנות</Th><Th>ללא משלוח</Th><Th>דמי משלוח</Th><Th>סה״כ לפני מע״מ</Th><Th>סה״כ כולל מע״מ</Th><Th>שולם</Th><Th>טרם שולם</Th><Th />
                 </tr>
               </thead>
               <tbody>
@@ -137,6 +138,7 @@ export default function IncomeTab({ orders, year, basis, undatedCount }: {
                       <Td className="tabular-nums" style={{ color: dim(s.noShipping, C.brand) }}>{money(s.noShipping)}</Td>
                       <Td className="tabular-nums" style={{ color: dim(s.shipping) }}>{money(s.shipping)}</Td>
                       <Td className="font-semibold tabular-nums" style={{ color: dim(s.total, C.green) }}>{money(s.total)}</Td>
+                      <Td className="tabular-nums" style={{ color: dim(s.grossTotal) }}>{money(s.grossTotal)}</Td>
                       <Td className="tabular-nums" style={{ color: dim(s.paidTotal) }}>{money(s.paidTotal)}</Td>
                       <Td className="tabular-nums" style={{ color: dim(s.openTotal, C.amber) }}>{money(s.openTotal)}</Td>
                       <Td className="text-xs" style={{ color: C.gold }}>
@@ -151,6 +153,7 @@ export default function IncomeTab({ orders, year, basis, undatedCount }: {
                   <Td className="font-bold tabular-nums" style={{ color: C.brand }}>{money(yearSummary.noShipping)}</Td>
                   <Td className="font-bold tabular-nums">{money(yearSummary.shipping)}</Td>
                   <Td className="font-bold tabular-nums" style={{ color: C.green }}>{money(yearSummary.total)}</Td>
+                  <Td className="font-bold tabular-nums">{money(yearSummary.grossTotal)}</Td>
                   <Td className="font-bold tabular-nums">{money(yearSummary.paidTotal)}</Td>
                   <Td className="font-bold tabular-nums" style={{ color: C.amber }}>{money(yearSummary.openTotal)}</Td>
                   <Td />
@@ -194,7 +197,6 @@ function Footnote({ summary, undatedCount }: { summary: MoneySummary; undatedCou
   return (
     <div className="px-5 py-3 text-xs space-y-0.5" style={{ color: C.sub, borderTop: `1px solid ${C.border}` }}>
       <div>{VAT_NOTE} כולל הזמנות שטרם שולמו (מופיעות בטור &quot;טרם שולם&quot;). הזמנות שבוטלו וטיוטות לא נספרות.</div>
-      <div>סה״כ שהלקוחות חויבו כולל מע״מ: {money(summary.grossTotal)}.</div>
       {summary.barterCount > 0 && (
         <div>{summary.barterCount} הזמנות בארטר (שווי {money(summary.barterTotal)} לפני מע״מ) לא נכללו — לא נכנס עליהן כסף.</div>
       )}
@@ -211,7 +213,7 @@ function CustomersTable({ orders }: { orders: FinanceOrder[] }) {
   return (
     <table className="w-full">
       <thead className="sticky top-0" style={{ backgroundColor: C.soft }}>
-        <tr><Th>לקוח</Th><Th>הזמנות</Th><Th>ללא משלוח</Th><Th>דמי משלוח</Th><Th>סה״כ נכנס</Th><Th>טרם שולם</Th></tr>
+        <tr><Th>לקוח</Th><Th>הזמנות</Th><Th>ללא משלוח</Th><Th>דמי משלוח</Th><Th>סה״כ לפני מע״מ</Th><Th>סה״כ כולל מע״מ</Th><Th>טרם שולם</Th></tr>
       </thead>
       <tbody>
         {list.map(c => (
@@ -221,6 +223,7 @@ function CustomersTable({ orders }: { orders: FinanceOrder[] }) {
             <Td className="tabular-nums" style={{ color: C.brand }}>{money(c.noShipping)}</Td>
             <Td className="tabular-nums">{money(c.shipping)}</Td>
             <Td className="font-semibold tabular-nums" style={{ color: C.green }}>{money(c.total)}</Td>
+            <Td className="tabular-nums">{money(c.grossTotal)}</Td>
             <Td className="tabular-nums" style={{ color: c.openTotal ? C.amber : C.faint }}>{money(c.openTotal)}</Td>
           </tr>
         ))}
@@ -230,6 +233,7 @@ function CustomersTable({ orders }: { orders: FinanceOrder[] }) {
           <Td className="font-bold tabular-nums" style={{ color: C.brand }}>{money(s.noShipping)}</Td>
           <Td className="font-bold tabular-nums">{money(s.shipping)}</Td>
           <Td className="font-bold tabular-nums" style={{ color: C.green }}>{money(s.total)}</Td>
+          <Td className="font-bold tabular-nums">{money(s.grossTotal)}</Td>
           <Td className="font-bold tabular-nums" style={{ color: C.amber }}>{money(s.openTotal)}</Td>
         </tr>
       </tbody>
@@ -244,7 +248,7 @@ function MethodsTable({ orders }: { orders: FinanceOrder[] }) {
   return (
     <table className="w-full">
       <thead style={{ backgroundColor: C.soft }}>
-        <tr><Th>אמצעי תשלום</Th><Th>הזמנות</Th><Th>סה״כ נכנס</Th><Th>טרם שולם</Th></tr>
+        <tr><Th>אמצעי תשלום</Th><Th>הזמנות</Th><Th>לפני מע״מ</Th><Th>כולל מע״מ</Th><Th>טרם שולם</Th></tr>
       </thead>
       <tbody>
         {list.map(m => (
@@ -252,6 +256,7 @@ function MethodsTable({ orders }: { orders: FinanceOrder[] }) {
             <Td className="font-medium">{m.method}</Td>
             <Td>{m.count}</Td>
             <Td className="font-semibold tabular-nums" style={{ color: C.green }}>{money(m.total)}</Td>
+            <Td className="tabular-nums">{money(m.grossTotal)}</Td>
             <Td className="tabular-nums" style={{ color: m.openTotal ? C.amber : C.faint }}>{money(m.openTotal)}</Td>
           </tr>
         ))}
@@ -259,6 +264,7 @@ function MethodsTable({ orders }: { orders: FinanceOrder[] }) {
           <Td className="font-bold">סה״כ</Td>
           <Td className="font-bold">{s.count}</Td>
           <Td className="font-bold tabular-nums" style={{ color: C.green }}>{money(s.total)}</Td>
+          <Td className="font-bold tabular-nums">{money(s.grossTotal)}</Td>
           <Td className="font-bold tabular-nums" style={{ color: C.amber }}>{money(s.openTotal)}</Td>
         </tr>
       </tbody>
@@ -303,7 +309,7 @@ function MonthDetailModal({ monthKeyStr, orders, basis, onClose }: {
       ...(s.barterCount ? [[`בארטר (לא נספר): ${s.barterCount} הזמנות`, s.barterTotal] as Cell[]] : []),
     ];
     await downloadExcel(`הכנסות_${monthKeyStr}`, [
-      { name: 'כל ההזמנות', rows: [...ordersExcelRows(sorted, basis), [], ['סה״כ', '', '', s.noShipping, s.shipping, s.total, '', '', s.grossTotal]] },
+      { name: 'כל ההזמנות', rows: ordersExcelRows(sorted, basis) },
       { name: 'לפי לקוח', rows: customersExcelRows(sorted) },
       { name: 'לפי אמצעי תשלום', rows: methodsExcelRows(sorted) },
       { name: 'סיכום', rows: summaryRows },
@@ -316,7 +322,7 @@ function MonthDetailModal({ monthKeyStr, orders, basis, onClose }: {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
           <StatCard label="נכנס אלייך (לפני מע״מ)" value={money(s.total)} sub={`${s.count} הזמנות`} tone="green" />
           <StatCard label="ללא משלוח" value={money(s.noShipping)} tone="brand" />
-          <StatCard label="דמי משלוח" value={money(s.shipping)} />
+          <StatCard label="סה״כ כולל מע״מ" value={money(s.grossTotal)} sub={`דמי משלוח (לפני מע״מ): ${money(s.shipping)}`} />
           <StatCard label="טרם שולם" value={money(s.openTotal)} sub={s.openCount ? `${s.openCount} הזמנות` : undefined} tone={s.openTotal ? 'amber' : undefined} />
         </div>
 
@@ -339,8 +345,8 @@ function MonthDetailModal({ monthKeyStr, orders, basis, onClose }: {
               <table className="w-full">
                 <thead className="sticky top-0" style={{ backgroundColor: C.soft }}>
                   <tr>
-                    <Th>תאריך</Th><Th>מס׳ הזמנה</Th><Th>לקוח</Th><Th>ללא משלוח</Th><Th>דמי משלוח</Th><Th>סה״כ נכנס</Th>
-                    <Th>אמצעי תשלום</Th><Th>סטטוס</Th><Th>בחשבונית (כולל מע״מ)</Th>
+                    <Th>תאריך</Th><Th>מס׳ הזמנה</Th><Th>לקוח</Th><Th>ללא משלוח</Th><Th>דמי משלוח</Th><Th>סה״כ לפני מע״מ</Th>
+                    <Th>סה״כ כולל מע״מ</Th><Th>אמצעי תשלום</Th><Th>סטטוס</Th>
                   </tr>
                 </thead>
                 <tbody>
@@ -353,9 +359,10 @@ function MonthDetailModal({ monthKeyStr, orders, basis, onClose }: {
                         </a>
                       </Td>
                       <Td className="font-medium">{o.customerName}</Td>
-                      <Td className="tabular-nums" style={{ color: C.brand }}>{money(o.netNoShipping)}</Td>
-                      <Td className="tabular-nums">{money(o.netShipping)}</Td>
-                      <Td className="font-semibold tabular-nums" style={{ color: C.green }}>{money(o.netTotal)}</Td>
+                      <Td className="tabular-nums" style={{ color: C.brand }}>{o.barter ? '—' : money(o.netNoShipping)}</Td>
+                      <Td className="tabular-nums">{o.barter ? '—' : money(o.netShipping)}</Td>
+                      <Td className="font-semibold tabular-nums" style={{ color: C.green }}>{o.barter ? '—' : money(o.netTotal)}</Td>
+                      <Td className="tabular-nums">{o.barter ? '—' : money(o.grossTotal)}</Td>
                       <Td>{paymentMethodLabel(o.paymentMethod)}</Td>
                       <Td>
                         <span className="text-xs px-2 py-0.5 rounded-full" style={
@@ -365,7 +372,6 @@ function MonthDetailModal({ monthKeyStr, orders, basis, onClose }: {
                           {o.barter ? 'בארטר — לא נספר' : o.paymentStatus}
                         </span>
                       </Td>
-                      <Td className="tabular-nums" style={{ color: C.faint }}>{money(o.grossTotal)}</Td>
                     </tr>
                   ))}
                   <tr style={{ borderTop: `2px solid ${C.gold}`, backgroundColor: C.soft }}>
@@ -373,8 +379,8 @@ function MonthDetailModal({ monthKeyStr, orders, basis, onClose }: {
                     <Td className="font-bold tabular-nums" style={{ color: C.brand }}>{money(s.noShipping)}</Td>
                     <Td className="font-bold tabular-nums">{money(s.shipping)}</Td>
                     <Td className="font-bold tabular-nums" style={{ color: C.green }}>{money(s.total)}</Td>
+                    <Td className="font-bold tabular-nums">{money(s.grossTotal)}</Td>
                     <Td /><Td />
-                    <Td className="font-bold tabular-nums" style={{ color: C.faint }}>{money(s.grossTotal)}</Td>
                   </tr>
                 </tbody>
               </table>

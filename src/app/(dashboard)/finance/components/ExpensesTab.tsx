@@ -106,20 +106,20 @@ export default function ExpensesTab({ expenses, suppliers, year, tableReady, hin
 
   async function exportExcel() {
     const groupRows = (gs: Group[], title: string): Cell[][] => [
-      [title, 'מס׳ הוצאות', 'סכום ששולם', 'מע״מ', 'לפני מע״מ'],
-      ...gs.map(g => [g.name, g.count, g.gross, g.vat, g.net] as Cell[]),
-      ['סה״כ', filtered.length, totals.gross, totals.vat, totals.net],
+      [title, 'מס׳ הוצאות', 'לפני מע״מ', 'מע״מ', 'כולל מע״מ'],
+      ...gs.map(g => [g.name, g.count, g.net, g.vat, g.gross] as Cell[]),
+      ['סה״כ', filtered.length, totals.net, totals.vat, totals.gross],
     ];
     await downloadExcel(`הוצאות_${month === 'all' ? year : `${year}-${String(month).padStart(2, '0')}`}`, [
       {
         name: 'כל ההוצאות',
         rows: [
-          ['תאריך', 'ספק / שם', 'קטגוריה', 'תיאור', 'סכום ששולם', 'מע״מ', 'לפני מע״מ', 'מס׳ מסמך', 'אמצעי תשלום', 'הערות'],
+          ['תאריך', 'ספק / שם', 'קטגוריה', 'תיאור', 'לפני מע״מ', 'מע״מ', 'כולל מע״מ', 'מס׳ מסמך', 'אמצעי תשלום', 'הערות'],
           ...[...filtered].sort((a, b) => a.תאריך.localeCompare(b.תאריך)).map(e => [
-            fmtDate(e.תאריך), expenseSupplierName(e), e.קטגוריה, e.תיאור ?? '', Number(e.סכום), Number(e.מעמ), expenseNet(e),
+            fmtDate(e.תאריך), expenseSupplierName(e), e.קטגוריה, e.תיאור ?? '', expenseNet(e), Number(e.מעמ), Number(e.סכום),
             e.מספר_מסמך ?? '', paymentMethodLabel(e.אמצעי_תשלום), e.הערות ?? '',
           ] as Cell[]),
-          ['סה״כ', '', '', '', totals.gross, totals.vat, totals.net],
+          ['סה״כ', '', '', `${filtered.length} הוצאות`, totals.net, totals.vat, totals.gross, '', '', ''],
         ],
       },
       { name: 'לפי קטגוריה', rows: groupRows(byCategory, 'קטגוריה') },
@@ -172,9 +172,9 @@ export default function ExpensesTab({ expenses, suppliers, year, tableReady, hin
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <StatCard label="סה״כ שולם" value={money(totals.gross)} sub={`${filtered.length} הוצאות`} tone="red" />
-          <StatCard label="מתוכו מע״מ (מוכר)" value={money(totals.vat)} />
-          <StatCard label="הוצאה לפני מע״מ" value={money(totals.net)} tone="brand" />
+          <StatCard label="סה״כ לפני מע״מ" value={money(totals.net)} sub={`${filtered.length} הוצאות`} tone="red" />
+          <StatCard label="מע״מ (מוכר)" value={money(totals.vat)} />
+          <StatCard label="סה״כ כולל מע״מ (שולם בפועל)" value={money(totals.gross)} />
           <StatCard label="ספקים / מקבלים" value={String(bySupplier.length)} />
         </div>
 
@@ -193,7 +193,7 @@ export default function ExpensesTab({ expenses, suppliers, year, tableReady, hin
             <div className="overflow-auto" style={{ maxHeight: 560 }} data-export-expand>
               <table className="w-full">
                 <thead className="sticky top-0" style={{ backgroundColor: C.soft }}>
-                  <tr><Th>תאריך</Th><Th>ספק / שם</Th><Th>קטגוריה</Th><Th>תיאור</Th><Th>סכום</Th><Th>מע״מ</Th><Th>אמצעי תשלום</Th><Th>מס׳ מסמך</Th><Th /></tr>
+                  <tr><Th>תאריך</Th><Th>ספק / שם</Th><Th>קטגוריה</Th><Th>תיאור</Th><Th>לפני מע״מ</Th><Th>מע״מ</Th><Th>כולל מע״מ</Th><Th>אמצעי תשלום</Th><Th>מס׳ מסמך</Th><Th /></tr>
                 </thead>
                 <tbody>
                   {filtered.map(e => (
@@ -202,8 +202,9 @@ export default function ExpensesTab({ expenses, suppliers, year, tableReady, hin
                       <Td className="font-medium">{expenseSupplierName(e)}</Td>
                       <Td>{e.קטגוריה}</Td>
                       <Td className="max-w-[260px] truncate" style={{ color: C.sub }}>{e.תיאור ?? ''}</Td>
-                      <Td className="font-semibold tabular-nums">{money(Number(e.סכום))}</Td>
+                      <Td className="font-semibold tabular-nums">{money(expenseNet(e))}</Td>
                       <Td className="tabular-nums" style={{ color: C.sub }}>{money(Number(e.מעמ))}</Td>
+                      <Td className="tabular-nums">{money(Number(e.סכום))}</Td>
                       <Td>{paymentMethodLabel(e.אמצעי_תשלום)}</Td>
                       <Td style={{ color: C.sub }}>{e.מספר_מסמך ?? ''}</Td>
                       <Td>
@@ -215,6 +216,14 @@ export default function ExpensesTab({ expenses, suppliers, year, tableReady, hin
                       </Td>
                     </tr>
                   ))}
+                  <tr style={{ borderTop: `2px solid ${C.gold}`, backgroundColor: C.soft }}>
+                    <Td className="font-bold">סה״כ</Td><Td /><Td />
+                    <Td className="font-bold">{filtered.length} הוצאות</Td>
+                    <Td className="font-bold tabular-nums">{money(totals.net)}</Td>
+                    <Td className="font-bold tabular-nums">{money(totals.vat)}</Td>
+                    <Td className="font-bold tabular-nums">{money(totals.gross)}</Td>
+                    <Td /><Td /><Td />
+                  </tr>
                 </tbody>
               </table>
             </div>
@@ -249,23 +258,24 @@ function GroupTable({ title, groups, total, onPick }: {
       <div className="overflow-auto" style={{ maxHeight: 380 }} data-export-expand>
         <table className="w-full">
           <thead className="sticky top-0" style={{ backgroundColor: C.soft }}>
-            <tr><Th>שם</Th><Th>הוצאות</Th><Th>שולם</Th><Th>לפני מע״מ</Th><Th>%</Th></tr>
+            <tr><Th>שם</Th><Th>הוצאות</Th><Th>לפני מע״מ</Th><Th>כולל מע״מ</Th><Th>%</Th></tr>
           </thead>
           <tbody>
             {groups.map(g => (
               <tr key={g.name} className="cursor-pointer hover:bg-[#FBF6EE]" onClick={() => onPick(g.name)} style={{ borderTop: `1px solid ${C.border}` }}>
                 <Td className="font-medium">{g.name}</Td>
                 <Td>{g.count}</Td>
-                <Td className="font-semibold tabular-nums">{money(g.gross)}</Td>
-                <Td className="tabular-nums" style={{ color: C.sub }}>{money(g.net)}</Td>
+                <Td className="font-semibold tabular-nums">{money(g.net)}</Td>
+                <Td className="tabular-nums">{money(g.gross)}</Td>
                 <Td className="tabular-nums" style={{ color: C.sub }}>{total.gross ? Math.round((g.gross / total.gross) * 100) : 0}%</Td>
               </tr>
             ))}
             <tr style={{ borderTop: `2px solid ${C.gold}`, backgroundColor: C.soft }}>
-              <Td className="font-bold">סה״כ</Td><Td />
-              <Td className="font-bold tabular-nums">{money(total.gross)}</Td>
+              <Td className="font-bold">סה״כ</Td>
+              <Td className="font-bold">{groups.reduce((t, g) => t + g.count, 0)}</Td>
               <Td className="font-bold tabular-nums">{money(total.net)}</Td>
-              <Td />
+              <Td className="font-bold tabular-nums">{money(total.gross)}</Td>
+              <Td className="font-bold">100%</Td>
             </tr>
           </tbody>
         </table>

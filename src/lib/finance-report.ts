@@ -73,20 +73,20 @@ export function buildFinanceReport(opts: {
     title: `סיכום — ${periodLabel}`,
     kpis: [
       { label: 'סה״כ נכנס אלייך (לפני מע״מ)', value: s.total, money: true, tone: 'green' },
-      { label: 'מתוכו ללא משלוחים', value: s.noShipping, money: true },
-      { label: 'מתוכו דמי משלוח', value: s.shipping, money: true },
-      { label: 'מתוכו טרם שולם', value: s.openTotal, money: true, tone: s.openTotal ? 'amber' : undefined },
+      { label: 'סה״כ הכנסות כולל מע״מ', value: s.grossTotal, money: true },
       { label: 'מספר הזמנות', value: s.count },
-      { label: 'הלקוחות חויבו (כולל מע״מ)', value: s.grossTotal, money: true },
+      { label: 'מתוכו ללא משלוחים (לפני מע״מ)', value: s.noShipping, money: true },
+      { label: 'מתוכו דמי משלוח (לפני מע״מ)', value: s.shipping, money: true },
+      { label: 'מתוכו טרם שולם (לפני מע״מ)', value: s.openTotal, money: true, tone: s.openTotal ? 'amber' : undefined },
       ...(expensesReady ? [
-        { label: 'הוצאות ששולמו (כולל מע״מ)', value: expGross, money: true },
         { label: 'הוצאות לפני מע״מ', value: expNet, money: true, tone: 'red' as const },
+        { label: 'הוצאות כולל מע״מ (שולם בפועל)', value: expGross, money: true },
         { label: result >= 0 ? 'רווח (לפני מע״מ)' : 'הפסד (לפני מע״מ)', value: Math.abs(result), money: true, tone: result >= 0 ? 'green' as const : 'red' as const },
       ] : []),
     ],
     notes: [
       basisLabel + '.',
-      'כל הסכומים לפני מע״מ, לכל הלקוחות — זה הכסף שנכנס אלייך בפועל (המע״מ שייך למדינה). כולל הזמנות שטרם שולמו; ללא הזמנות שבוטלו, טיוטות ובארטר.',
+      '"לפני מע״מ" = הכסף שנכנס אלייך בפועל, לכל הלקוחות (המע״מ שייך למדינה). "כולל מע״מ" = מה שהלקוחות חויבו. כולל הזמנות שטרם שולמו; ללא הזמנות שבוטלו, טיוטות ובארטר.',
       ...(s.barterCount ? [`${s.barterCount} הזמנות בארטר (שווי ₪${s.barterTotal.toLocaleString('he-IL')} לפני מע״מ) לא נכללו — לא נכנס עליהן כסף.`] : []),
       'הוצאות: "שולם" = הסכום שיצא בפועל; "לפני מע״מ" = אחרי קיזוז המע״מ. רווח והפסד מחושב לפני מע״מ.',
       ...(!expensesReady ? ['טבלת ההוצאות עדיין לא הופעלה (מיגרציה 057) — הדוח כולל הכנסות בלבד.'] : []),
@@ -102,24 +102,24 @@ export function buildFinanceReport(opts: {
     });
     sections.push({
       sheet: 'הכנסות לפי חודש',
-      title: `הכנסות לפי חודש — ${year} (לפני מע״מ)`,
+      title: `הכנסות לפי חודש — ${year}`,
       table: {
-        headers: ['חודש', 'הזמנות', 'ללא משלוח', 'דמי משלוח', 'סה״כ נכנס', 'שולם', 'טרם שולם'],
-        rows: monthly.map(({ m, s: x }) => [m, x.count, x.noShipping, x.shipping, x.total, x.paidTotal, x.openTotal]),
-        total: ['סה״כ נכנס אלייך', s.count, s.noShipping, s.shipping, s.total, s.paidTotal, s.openTotal],
-        moneyCols: [2, 3, 4, 5, 6],
+        headers: ['חודש', 'הזמנות', 'ללא משלוח', 'דמי משלוח', 'סה״כ לפני מע״מ', 'סה״כ כולל מע״מ', 'שולם', 'טרם שולם'],
+        rows: monthly.map(({ m, s: x }) => [m, x.count, x.noShipping, x.shipping, x.total, x.grossTotal, x.paidTotal, x.openTotal]),
+        total: ['סה״כ', s.count, s.noShipping, s.shipping, s.total, s.grossTotal, s.paidTotal, s.openTotal],
+        moneyCols: [2, 3, 4, 5, 6, 7],
       },
     });
     if (expensesReady) {
       const t = pnl.totals;
       sections.push({
         sheet: 'רווח והפסד',
-        title: `רווח והפסד לפי חודש — ${year} (לפני מע״מ)`,
+        title: `רווח והפסד לפי חודש — ${year} (רווח / הפסד לפני מע״מ)`,
         table: {
-          headers: ['חודש', 'הכנסות', 'הוצאות', 'רווח / הפסד', 'מצטבר', 'טרם נגבה'],
-          rows: pnl.months.map(r => [r.month, r.income, r.expenses, r.result, r.cumulative, r.open]),
-          total: ['סה״כ', t.income, t.expenses, t.result, null, t.open],
-          moneyCols: [1, 2, 3, 4, 5],
+          headers: ['חודש', 'הכנסות לפני מע״מ', 'הכנסות כולל מע״מ', 'הוצאות לפני מע״מ', 'הוצאות כולל מע״מ', 'רווח / הפסד', 'מצטבר', 'טרם נגבה'],
+          rows: pnl.months.map(r => [r.month, r.income, r.incomeGross, r.expenses, r.expensesGross, r.result, r.cumulative, r.open]),
+          total: ['סה״כ', t.income, t.incomeGross, t.expenses, t.expensesGross, t.result, t.result, t.open],
+          moneyCols: [1, 2, 3, 4, 5, 6, 7],
         },
         notes: [
           ...(pnl.avgExpenses > 0 ? [`הוצאה חודשית ממוצעת: ₪${pnl.avgExpenses.toLocaleString('he-IL')} לפני מע״מ — זו ההכנסה המינימלית לחודש כדי לא להפסיד.`] : []),
@@ -141,47 +141,47 @@ export function buildFinanceReport(opts: {
         map.set(k, g);
       }
       return Array.from(map.entries()).sort((a, b) => b[1].gross - a[1].gross)
-        .map(([name, g]) => [name, g.n, g.gross, g.vat, round2(g.gross - g.vat)] as Cell[]);
+        .map(([name, g]) => [name, g.n, round2(g.gross - g.vat), g.vat, g.gross] as Cell[]);
     };
-    const total: Cell[] = ['סה״כ', expenses.length, expGross, expVat, expNet];
+    const total: Cell[] = ['סה״כ', expenses.length, expNet, expVat, expGross];
     sections.push({
       sheet: 'הוצאות לפי קטגוריה',
       title: `הוצאות לפי קטגוריה — ${periodLabel}`,
-      table: { headers: ['קטגוריה', 'הוצאות', 'שולם', 'מע״מ', 'לפני מע״מ'], rows: group(e => e.קטגוריה || 'אחר'), total, moneyCols: [2, 3, 4] },
+      table: { headers: ['קטגוריה', 'הוצאות', 'לפני מע״מ', 'מע״מ', 'כולל מע״מ'], rows: group(e => e.קטגוריה || 'אחר'), total, moneyCols: [2, 3, 4] },
     });
     sections.push({
       sheet: 'הוצאות לפי ספק',
       title: `הוצאות לפי ספק / מקבל — ${periodLabel}`,
-      table: { headers: ['ספק / מקבל', 'הוצאות', 'שולם', 'מע״מ', 'לפני מע״מ'], rows: group(expenseSupplierName), total, moneyCols: [2, 3, 4] },
+      table: { headers: ['ספק / מקבל', 'הוצאות', 'לפני מע״מ', 'מע״מ', 'כולל מע״מ'], rows: group(expenseSupplierName), total, moneyCols: [2, 3, 4] },
     });
     sections.push({
       sheet: 'הוצאות לפי אמצעי תשלום',
       title: `הוצאות לפי אמצעי תשלום — ${periodLabel}`,
-      table: { headers: ['אמצעי תשלום', 'הוצאות', 'שולם', 'מע״מ', 'לפני מע״מ'], rows: group(e => paymentMethodLabel(e.אמצעי_תשלום)), total, moneyCols: [2, 3, 4] },
+      table: { headers: ['אמצעי תשלום', 'הוצאות', 'לפני מע״מ', 'מע״מ', 'כולל מע״מ'], rows: group(e => paymentMethodLabel(e.אמצעי_תשלום)), total, moneyCols: [2, 3, 4] },
     });
   }
 
   // 4. Income by customer
   sections.push({
     sheet: 'הכנסות לפי לקוח',
-    title: `הכנסות לפי לקוח — ${periodLabel} (לפני מע״מ)`,
+    title: `הכנסות לפי לקוח — ${periodLabel}`,
     table: {
-      headers: ['לקוח', 'הזמנות', 'ללא משלוח', 'דמי משלוח', 'סה״כ נכנס', 'טרם שולם'],
-      rows: summarizeByCustomer(orders).map(c => [c.customerName, c.count, c.noShipping, c.shipping, c.total, c.openTotal]),
-      total: ['סה״כ', s.count, s.noShipping, s.shipping, s.total, s.openTotal],
-      moneyCols: [2, 3, 4, 5],
+      headers: ['לקוח', 'הזמנות', 'ללא משלוח', 'דמי משלוח', 'סה״כ לפני מע״מ', 'סה״כ כולל מע״מ', 'טרם שולם'],
+      rows: summarizeByCustomer(orders).map(c => [c.customerName, c.count, c.noShipping, c.shipping, c.total, c.grossTotal, c.openTotal]),
+      total: ['סה״כ', s.count, s.noShipping, s.shipping, s.total, s.grossTotal, s.openTotal],
+      moneyCols: [2, 3, 4, 5, 6],
     },
   });
 
   // 4b. Income by payment method
   sections.push({
     sheet: 'הכנסות לפי אמצעי תשלום',
-    title: `הכנסות לפי אמצעי תשלום — ${periodLabel} (לפני מע״מ)`,
+    title: `הכנסות לפי אמצעי תשלום — ${periodLabel}`,
     table: {
-      headers: ['אמצעי תשלום', 'הזמנות', 'סה״כ נכנס', 'טרם שולם'],
-      rows: summarizeByPaymentMethod(orders).map(m => [m.method, m.count, m.total, m.openTotal]),
-      total: ['סה״כ', s.count, s.total, s.openTotal],
-      moneyCols: [2, 3],
+      headers: ['אמצעי תשלום', 'הזמנות', 'סה״כ לפני מע״מ', 'סה״כ כולל מע״מ', 'טרם שולם'],
+      rows: summarizeByPaymentMethod(orders).map(m => [m.method, m.count, m.total, m.grossTotal, m.openTotal]),
+      total: ['סה״כ', s.count, s.total, s.grossTotal, s.openTotal],
+      moneyCols: [2, 3, 4],
     },
   });
 
@@ -190,16 +190,16 @@ export function buildFinanceReport(opts: {
     (orderBasisDate(a, basis) ?? '').localeCompare(orderBasisDate(b, basis) ?? '') || a.orderNumber.localeCompare(b.orderNumber));
   sections.push({
     sheet: 'כל ההזמנות',
-    title: `כל ההזמנות — ${periodLabel} (לפני מע״מ)`,
+    title: `כל ההזמנות — ${periodLabel}`,
     table: {
-      headers: [basis === 'order' ? 'תאריך הזמנה' : 'תאריך אספקה', 'מס׳ הזמנה', 'לקוח', 'ללא משלוח', 'דמי משלוח', 'סה״כ נכנס', 'אמצעי תשלום', 'סטטוס'],
+      headers: [basis === 'order' ? 'תאריך הזמנה' : 'תאריך אספקה', 'מס׳ הזמנה', 'לקוח', 'ללא משלוח', 'דמי משלוח', 'לפני מע״מ', 'כולל מע״מ', 'אמצעי תשלום', 'סטטוס'],
       rows: sortedOrders.map(o => [
         fmtD(orderBasisDate(o, basis)), o.orderNumber, o.customerName,
-        o.netNoShipping, o.netShipping, o.netTotal,
+        ...(o.barter ? [null, null, null, null] : [o.netNoShipping, o.netShipping, o.netTotal, o.grossTotal]),
         paymentMethodLabel(o.paymentMethod), o.barter ? 'בארטר (לא נספר)' : o.paymentStatus,
       ]),
-      total: ['סה״כ', '', `${s.count} הזמנות`, s.noShipping, s.shipping, s.total, '', ''],
-      moneyCols: [3, 4, 5],
+      total: ['סה״כ', '', `${s.count} הזמנות`, s.noShipping, s.shipping, s.total, s.grossTotal, '', ''],
+      moneyCols: [3, 4, 5, 6],
     },
   });
 
@@ -209,12 +209,12 @@ export function buildFinanceReport(opts: {
       sheet: 'כל ההוצאות',
       title: `כל ההוצאות — ${periodLabel}`,
       table: {
-        headers: ['תאריך', 'ספק / מקבל', 'קטגוריה', 'תיאור', 'שולם', 'מע״מ', 'לפני מע״מ', 'אמצעי תשלום', 'מס׳ מסמך'],
+        headers: ['תאריך', 'ספק / מקבל', 'קטגוריה', 'תיאור', 'לפני מע״מ', 'מע״מ', 'כולל מע״מ', 'אמצעי תשלום', 'מס׳ מסמך'],
         rows: [...expenses].sort((a, b) => a.תאריך.localeCompare(b.תאריך)).map(e => [
           fmtD(e.תאריך), expenseSupplierName(e), e.קטגוריה, e.תיאור ?? '',
-          Number(e.סכום), Number(e.מעמ), expenseNet(e), paymentMethodLabel(e.אמצעי_תשלום), e.מספר_מסמך ?? '',
+          expenseNet(e), Number(e.מעמ), Number(e.סכום), paymentMethodLabel(e.אמצעי_תשלום), e.מספר_מסמך ?? '',
         ]),
-        total: ['סה״כ', '', '', `${expenses.length} הוצאות`, expGross, expVat, expNet, '', ''],
+        total: ['סה״כ', '', '', `${expenses.length} הוצאות`, expNet, expVat, expGross, '', ''],
         moneyCols: [4, 5, 6],
       },
     });

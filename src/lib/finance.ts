@@ -181,22 +181,25 @@ export interface CustomerSummary {
   noShipping: number;
   shipping: number;
   total: number;
+  /** VAT included — what the customer was charged. */
+  grossTotal: number;
   openTotal: number;
 }
 
-/** Per-customer totals, before VAT. */
+/** Per-customer totals, before VAT (plus the VAT-inclusive total). */
 export function summarizeByCustomer(orders: FinanceOrder[]): CustomerSummary[] {
   const map = new Map<string, CustomerSummary>();
   for (const o of orders) {
     if (o.barter) continue;
     const key = o.customerId ?? `name:${o.customerName}`;
     const cur = map.get(key) ?? {
-      customerId: key, customerName: o.customerName, count: 0, noShipping: 0, shipping: 0, total: 0, openTotal: 0,
+      customerId: key, customerName: o.customerName, count: 0, noShipping: 0, shipping: 0, total: 0, grossTotal: 0, openTotal: 0,
     };
     cur.count++;
     cur.noShipping = round2(cur.noShipping + o.netNoShipping);
     cur.shipping = round2(cur.shipping + o.netShipping);
     cur.total = round2(cur.total + o.netTotal);
+    cur.grossTotal = round2(cur.grossTotal + o.grossTotal);
     if (!o.paid) cur.openTotal = round2(cur.openTotal + o.netTotal);
     map.set(key, cur);
   }
@@ -207,6 +210,7 @@ export interface PaymentMethodSummary {
   method: string;
   count: number;
   total: number;
+  grossTotal: number;
   openTotal: number;
 }
 
@@ -218,9 +222,10 @@ export function summarizeByPaymentMethod(orders: FinanceOrder[]): PaymentMethodS
   for (const o of orders) {
     if (o.barter) continue;
     const k = paymentMethodLabel(o.paymentMethod);
-    const cur = map.get(k) ?? { method: k, count: 0, total: 0, openTotal: 0 };
+    const cur = map.get(k) ?? { method: k, count: 0, total: 0, grossTotal: 0, openTotal: 0 };
     cur.count++;
     cur.total = round2(cur.total + o.netTotal);
+    cur.grossTotal = round2(cur.grossTotal + o.grossTotal);
     if (!o.paid) cur.openTotal = round2(cur.openTotal + o.netTotal);
     map.set(k, cur);
   }

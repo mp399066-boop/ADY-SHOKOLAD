@@ -29,9 +29,9 @@ export default function ProfitLossTab({ orders, expenses, year, basis, expensesR
 
   async function exportExcel() {
     const sheet: Cell[][] = [
-      ['חודש', 'הכנסות לפני מע״מ', 'הוצאות לפני מע״מ', 'רווח / הפסד', 'מצטבר מתחילת השנה', 'הכנסות כולל מע״מ', 'הוצאות ששולמו (כולל מע״מ)', 'טרם נגבה מלקוחות'],
-      ...rows.map(r => [r.month, r.income, r.expenses, r.result, r.cumulative ?? '', r.incomeGross, r.expensesGross, r.open] as Cell[]),
-      ['סה״כ שנתי', totals.income, totals.expenses, result, '', totals.incomeGross, totals.expensesGross, totals.open],
+      ['חודש', 'הכנסות לפני מע״מ', 'הכנסות כולל מע״מ', 'הוצאות לפני מע״מ', 'הוצאות כולל מע״מ', 'רווח / הפסד (לפני מע״מ)', 'מצטבר מתחילת השנה', 'טרם נגבה (לפני מע״מ)'],
+      ...rows.map(r => [r.month, r.income, r.incomeGross, r.expenses, r.expensesGross, r.result, r.cumulative ?? '', r.open] as Cell[]),
+      ['סה״כ שנתי', totals.income, totals.incomeGross, totals.expenses, totals.expensesGross, result, result, totals.open],
       [],
       ['הוצאה חודשית ממוצעת (לפני מע״מ)', avgExpenses],
       ['הכנסה חודשית ממוצעת (לפני מע״מ)', avgIncome],
@@ -98,7 +98,10 @@ export default function ProfitLossTab({ orders, expenses, year, basis, expensesR
         <div className="overflow-x-auto" data-export-expand>
           <table className="w-full">
             <thead style={{ backgroundColor: C.soft }}>
-              <tr><Th>חודש</Th><Th>הכנסות</Th><Th>הוצאות</Th><Th>רווח / הפסד</Th><Th>מצטבר</Th><Th>טרם נגבה</Th></tr>
+              <tr>
+                <Th>חודש</Th><Th>הכנסות לפני מע״מ</Th><Th>הכנסות כולל מע״מ</Th><Th>הוצאות לפני מע״מ</Th><Th>הוצאות כולל מע״מ</Th>
+                <Th>רווח / הפסד</Th><Th>מצטבר</Th><Th>טרם נגבה</Th>
+              </tr>
             </thead>
             <tbody>
               {rows.map(r => {
@@ -107,7 +110,9 @@ export default function ProfitLossTab({ orders, expenses, year, basis, expensesR
                   <tr key={r.key} style={{ borderTop: `1px solid ${C.border}`, opacity: future ? 0.45 : 1 }}>
                     <Td className="font-medium">{r.month}</Td>
                     <Td className="tabular-nums" style={{ color: r.income ? C.green : C.faint }}>{money(r.income)}</Td>
+                    <Td className="tabular-nums" style={{ color: r.incomeGross ? C.text : C.faint }}>{money(r.incomeGross)}</Td>
                     <Td className="tabular-nums" style={{ color: r.expenses ? C.red : C.faint }}>{money(r.expenses)}</Td>
+                    <Td className="tabular-nums" style={{ color: r.expensesGross ? C.text : C.faint }}>{money(r.expensesGross)}</Td>
                     <Td className="font-semibold tabular-nums" style={{ color: r.result > 0 ? C.green : r.result < 0 ? C.red : C.faint }}>
                       {r.result < 0 ? '−' : ''}{money(Math.abs(r.result))}
                     </Td>
@@ -121,16 +126,18 @@ export default function ProfitLossTab({ orders, expenses, year, basis, expensesR
               <tr style={{ borderTop: `2px solid ${C.gold}`, backgroundColor: C.soft }}>
                 <Td className="font-bold">סה״כ שנתי</Td>
                 <Td className="font-bold tabular-nums" style={{ color: C.green }}>{money(totals.income)}</Td>
+                <Td className="font-bold tabular-nums">{money(totals.incomeGross)}</Td>
                 <Td className="font-bold tabular-nums" style={{ color: C.red }}>{money(totals.expenses)}</Td>
+                <Td className="font-bold tabular-nums">{money(totals.expensesGross)}</Td>
                 <Td className="font-bold tabular-nums" style={{ color: result >= 0 ? C.green : C.red }}>{result < 0 ? '−' : ''}{money(Math.abs(result))}</Td>
-                <Td />
+                <Td className="font-bold tabular-nums" style={{ color: result >= 0 ? C.green : C.red }}>{result < 0 ? '−' : ''}{money(Math.abs(result))}</Td>
                 <Td className="font-bold tabular-nums" style={{ color: C.amber }}>{money(totals.open)}</Td>
               </tr>
             </tbody>
           </table>
         </div>
         <div className="px-5 py-3 text-xs" style={{ color: C.sub, borderTop: `1px solid ${C.border}` }}>
-          כל הסכומים בטבלה לפני מע״מ — המע״מ שהלקוחות משלמים שייך למדינה, והמע״מ על ההוצאות מקוזז, ולכן זה הרווח האמיתי.
+          רווח / הפסד מחושב לפני מע״מ — המע״מ שהלקוחות משלמים שייך למדינה, והמע״מ על ההוצאות מקוזז, ולכן זה הרווח האמיתי. עמודות &quot;כולל מע״מ&quot; מראות את הסכומים כפי שחויבו / שולמו בפועל.
           ההכנסות {basis === 'order' ? 'לפי תאריך ההזמנה' : 'לפי תאריך האספקה'} (כולל הזמנות שטרם שולמו, ללא בארטר ובוטלו).
         </div>
       </Card>

@@ -119,14 +119,21 @@ function cellHtml(v: Cell, isMoney: boolean): string {
   return esc(v);
 }
 
+// Cells never wrap, except long free text (customer names, descriptions),
+// so dates, order numbers and amounts always stay on one line.
+function cellClass(v: Cell, isMoney: boolean): string {
+  if (isMoney) return 'num';
+  return typeof v === 'string' && v.length > 22 ? 'wrap' : '';
+}
+
 function tableHtml(sec: ReportSection, rows: Cell[][], withTotal: boolean): string {
   const t = sec.table!;
   const head = t.headers.map(h => `<th>${esc(h)}</th>`).join('');
-  const body = rows.map(r => `<tr>${r.map((v, i) => `<td class="${t.moneyCols.includes(i) ? 'num' : ''}">${cellHtml(v, t.moneyCols.includes(i))}</td>`).join('')}</tr>`).join('');
-  const total = withTotal && t.total
-    ? `<tr class="total">${t.total.map((v, i) => `<td class="${t.moneyCols.includes(i) ? 'num' : ''}">${cellHtml(v, t.moneyCols.includes(i))}</td>`).join('')}</tr>`
-    : '';
-  return `<table><thead><tr>${head}</tr></thead><tbody>${body}${total}</tbody></table>`;
+  const cells = (r: Cell[]) => r.map((v, i) => `<td class="${cellClass(v, t.moneyCols.includes(i))}">${cellHtml(v, t.moneyCols.includes(i))}</td>`).join('');
+  const body = rows.map(r => `<tr>${cells(r)}</tr>`).join('');
+  const total = withTotal && t.total ? `<tr class="total">${cells(t.total)}</tr>` : '';
+  const wide = t.headers.length >= 8 ? ' class="wide"' : '';
+  return `<table${wide}><thead><tr>${head}</tr></thead><tbody>${body}${total}</tbody></table>`;
 }
 
 const REPORT_CSS = `
@@ -141,8 +148,10 @@ const REPORT_CSS = `
   .blk .kpi .v { font-size:17px; font-weight:bold; margin-top:2px; }
   .blk .green { color:#2F6B3A; } .blk .red { color:#A0362C; } .blk .amber { color:#9A6A12; }
   .blk table { width:100%; border-collapse: collapse; font-size: 11px; }
-  .blk th { background:#FAF7F0; color:#8A7664; font-weight:bold; text-align:right; padding:5px 6px; border-bottom:1px solid #EAE0D4; }
-  .blk td { padding:4px 6px; border-bottom:1px solid #F0EAE2; text-align:right; }
+  .blk table.wide { font-size: 10px; }
+  .blk th { background:#FAF7F0; color:#8A7664; font-weight:bold; text-align:right; padding:5px 5px; border-bottom:1px solid #EAE0D4; white-space: nowrap; }
+  .blk td { padding:4px 5px; border-bottom:1px solid #F0EAE2; text-align:right; white-space: nowrap; }
+  .blk td.wrap { white-space: normal; }
   .blk td.num { white-space: nowrap; direction: ltr; text-align: right; unicode-bidi: plaintext; }
   .blk tr.total td { font-weight:bold; background:#FAF7F0; border-top:2px solid #C9A46A; }
   .blk .notes { margin-top: 6px; font-size: 11px; color:#8A7664; }
