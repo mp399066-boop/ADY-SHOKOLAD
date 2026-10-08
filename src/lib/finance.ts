@@ -126,16 +126,22 @@ export function orderBasisDate(o: FinanceOrder, basis: DateBasis): string | null
   return basis === 'delivery' ? o.deliveryDate : o.orderDate;
 }
 
+// All summary amounts are BEFORE VAT, for every customer type — the money
+// that is really the business's (VAT collected belongs to the state). The
+// only VAT-inclusive figure is grossTotal: what customers were charged.
 export interface MoneySummary {
   count: number;
+  /** Before VAT, without delivery fees. */
   noShipping: number;
+  /** Delivery fees, before VAT. */
   shipping: number;
+  /** Before VAT, including delivery — "כמה נכנס אליי". */
   total: number;
   paidTotal: number;
   openTotal: number;
   openCount: number;
-  netTotal: number;
-  netNoShipping: number;
+  /** What customers were charged, VAT included. */
+  grossTotal: number;
   barterCount: number;
   barterTotal: number;
 }
@@ -143,7 +149,7 @@ export interface MoneySummary {
 export function emptySummary(): MoneySummary {
   return {
     count: 0, noShipping: 0, shipping: 0, total: 0, paidTotal: 0, openTotal: 0,
-    openCount: 0, netTotal: 0, netNoShipping: 0, barterCount: 0, barterTotal: 0,
+    openCount: 0, grossTotal: 0, barterCount: 0, barterTotal: 0,
   };
 }
 
@@ -153,17 +159,16 @@ export function summarize(orders: FinanceOrder[]): MoneySummary {
   for (const o of orders) {
     if (o.barter) {
       s.barterCount++;
-      s.barterTotal += o.grossTotal;
+      s.barterTotal += o.netTotal;
       continue;
     }
     s.count++;
-    s.noShipping += o.grossNoShipping;
-    s.shipping += o.grossShipping;
-    s.total += o.grossTotal;
-    s.netTotal += o.netTotal;
-    s.netNoShipping += o.netNoShipping;
-    if (o.paid) s.paidTotal += o.grossTotal;
-    else { s.openTotal += o.grossTotal; s.openCount++; }
+    s.noShipping += o.netNoShipping;
+    s.shipping += o.netShipping;
+    s.total += o.netTotal;
+    s.grossTotal += o.grossTotal;
+    if (o.paid) s.paidTotal += o.netTotal;
+    else { s.openTotal += o.netTotal; s.openCount++; }
   }
   (Object.keys(s) as (keyof MoneySummary)[]).forEach(k => { s[k] = round2(s[k]); });
   return s;
@@ -179,6 +184,7 @@ export interface CustomerSummary {
   openTotal: number;
 }
 
+/** Per-customer totals, before VAT. */
 export function summarizeByCustomer(orders: FinanceOrder[]): CustomerSummary[] {
   const map = new Map<string, CustomerSummary>();
   for (const o of orders) {
@@ -188,13 +194,37 @@ export function summarizeByCustomer(orders: FinanceOrder[]): CustomerSummary[] {
       customerId: key, customerName: o.customerName, count: 0, noShipping: 0, shipping: 0, total: 0, openTotal: 0,
     };
     cur.count++;
-    cur.noShipping = round2(cur.noShipping + o.grossNoShipping);
-    cur.shipping = round2(cur.shipping + o.grossShipping);
-    cur.total = round2(cur.total + o.grossTotal);
-    if (!o.paid) cur.openTotal = round2(cur.openTotal + o.grossTotal);
+    cur.noShipping = round2(cur.noShipping + o.netNoShipping);
+    cur.shipping = round2(cur.shipping + o.netShipping);
+    cur.total = round2(cur.total + o.netTotal);
+    if (!o.paid) cur.openTotal = round2(cur.openTotal + o.netTotal);
     map.set(key, cur);
   }
-  return Array.from(map.values()).sort((a, b) => b.noShipping - a.noShipping);
+  return Array.from(map.values()).sort((a, b) => b.total - a.total);
+}
+
+export interface PaymentMethodSummary {
+  method: string;
+  count: number;
+  total: number;
+  openTotal: number;
+}
+
+export const paymentMethodLabel = (m: string | null | undefined) => (m ?? '').trim() || 'לא צוין';
+
+/** Per-payment-method totals of orders, before VAT (barter excluded). */
+export function summarizeByPaymentMethod(orders: FinanceOrder[]): PaymentMethodSummary[] {
+  const map = new Map<string, PaymentMethodSummary>();
+  for (const o of orders) {
+    if (o.barter) continue;
+    const k = paymentMethodLabel(o.paymentMethod);
+    const cur = map.get(k) ?? { method: k, count: 0, total: 0, openTotal: 0 };
+    cur.count++;
+    cur.total = round2(cur.total + o.netTotal);
+    if (!o.paid) cur.openTotal = round2(cur.openTotal + o.netTotal);
+    map.set(k, cur);
+  }
+  return Array.from(map.values()).sort((a, b) => b.total - a.total);
 }
 
 // ── Expenses ────────────────────────────────────────────────────────────────
@@ -253,7 +283,7 @@ export interface PnlMonth {
   month: string;
   income: number;        // net of VAT
   incomeGross: number;   // what customers pay
-  open: number;          // gross, not yet paid
+  open: number;          // net of VAT, not yet paid
   expenses: number;      // net of VAT
   expensesGross: number; // what was paid
   result: number;
@@ -281,12 +311,12 @@ export function buildPnl(orders: FinanceOrder[], expenses: Expense[], year: numb
     const ex = expenses.filter(e => e.תאריך.slice(0, 7) === key);
     const exp = round2(ex.reduce((t, e) => t + expenseNet(e), 0));
     const expGross = round2(ex.reduce((t, e) => t + (Number(e.סכום) || 0), 0));
-    const result = round2(s.netTotal - exp);
+    const result = round2(s.total - exp);
     const hasData = s.count > 0 || ex.length > 0;
     const counts = key <= currentMonth || hasData;
     if (counts) running = round2(running + result);
     return {
-      key, month: HEBREW_MONTHS[i], income: s.netTotal, incomeGross: s.total, open: s.openTotal,
+      key, month: HEBREW_MONTHS[i], income: s.total, incomeGross: s.grossTotal, open: s.openTotal,
       expenses: exp, expensesGross: expGross, result, cumulative: counts ? running : null, hasData,
     };
   });

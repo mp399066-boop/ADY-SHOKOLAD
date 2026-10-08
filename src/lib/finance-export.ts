@@ -174,8 +174,8 @@ function reportBlocks(r: FinanceReport, businessName: string): string[] {
   return blocks;
 }
 
-/** Renders the full report to an A4 PDF and downloads it. */
-export async function downloadReportPdf(r: FinanceReport, businessName: string): Promise<void> {
+/** Renders the full report to an A4 PDF (for preview or download). */
+export async function buildReportPdf(r: FinanceReport, businessName: string): Promise<Blob> {
   const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import('html2canvas'), import('jspdf')]);
 
   const host = document.createElement('div');
@@ -211,10 +211,15 @@ export async function downloadReportPdf(r: FinanceReport, businessName: string):
       pdf.setTextColor(150);
       pdf.text(`${p} / ${pages}`, pageW / 2, pageH - 6, { align: 'center' });
     }
-    triggerDownload(pdf.output('blob'), `${r.fileBase}.pdf`);
+    return pdf.output('blob');
   } finally {
     host.remove();
   }
+}
+
+/** Downloads a ready PDF blob under the report's file name. */
+export function downloadPdfBlob(blob: Blob, r: FinanceReport) {
+  triggerDownload(blob, `${r.fileBase}.pdf`);
 }
 
 /** Downloads the full report as a multi-sheet Excel workbook. */

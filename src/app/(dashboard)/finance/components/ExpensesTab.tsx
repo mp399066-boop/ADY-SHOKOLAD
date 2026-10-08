@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import {
-  expenseNet, expenseSupplierName, round2, HEBREW_MONTHS, todayJerusalem, type Expense,
+  expenseNet, expenseSupplierName, paymentMethodLabel, round2, HEBREW_MONTHS, todayJerusalem, type Expense,
 } from '@/lib/finance';
 import { downloadExcel, downloadElementPng, fmtDate, type Cell } from '@/lib/finance-export';
 import { C, money, StatCard, ExportButtons, Th, Td, EmptyNote } from './shared';
@@ -43,6 +43,7 @@ export default function ExpensesTab({ expenses, suppliers, year, tableReady, hin
   const [month, setMonth] = useState<number | 'all'>('all');
   const [category, setCategory] = useState('');
   const [supplier, setSupplier] = useState('');
+  const [method, setMethod] = useState('');
   const [search, setSearch] = useState('');
   const [formOpen, setFormOpen] = useState(false);
   const [formInitial, setFormInitial] = useState<Partial<Expense> | null>(null);
@@ -59,12 +60,14 @@ export default function ExpensesTab({ expenses, suppliers, year, tableReady, hin
     return inMonth.filter(e =>
       (!category || e.קטגוריה === category) &&
       (!supplier || expenseSupplierName(e) === supplier) &&
-      (!q || [e.שם_ספק, e.תיאור, e.מספר_מסמך, e.הערות, e.קטגוריה].some(v => (v ?? '').toLowerCase().includes(q))),
+      (!method || paymentMethodLabel(e.אמצעי_תשלום) === method) &&
+      (!q || [e.שם_ספק, e.תיאור, e.מספר_מסמך, e.הערות, e.קטגוריה, e.אמצעי_תשלום].some(v => (v ?? '').toLowerCase().includes(q))),
     );
-  }, [inMonth, category, supplier, search]);
+  }, [inMonth, category, supplier, method, search]);
 
   const byCategory = useMemo(() => groupBy(filtered, e => e.קטגוריה || 'אחר'), [filtered]);
   const bySupplier = useMemo(() => groupBy(filtered, expenseSupplierName), [filtered]);
+  const byMethod = useMemo(() => groupBy(filtered, e => paymentMethodLabel(e.אמצעי_תשלום)), [filtered]);
   const totals = useMemo(() => ({
     gross: round2(filtered.reduce((s, e) => s + Number(e.סכום), 0)),
     vat: round2(filtered.reduce((s, e) => s + Number(e.מעמ), 0)),
@@ -73,6 +76,7 @@ export default function ExpensesTab({ expenses, suppliers, year, tableReady, hin
 
   const allCategories = useMemo(() => Array.from(new Set(inMonth.map(e => e.קטגוריה))).sort(), [inMonth]);
   const allSuppliers = useMemo(() => Array.from(new Set(inMonth.map(expenseSupplierName))).sort(), [inMonth]);
+  const allMethods = useMemo(() => Array.from(new Set(inMonth.map(e => paymentMethodLabel(e.אמצעי_תשלום)))).sort(), [inMonth]);
   const periodLabel = month === 'all' ? `שנת ${year}` : `${HEBREW_MONTHS[month - 1]} ${year}`;
 
   function openNew() { setFormInitial(null); setFormOpen(true); }
@@ -113,13 +117,14 @@ export default function ExpensesTab({ expenses, suppliers, year, tableReady, hin
           ['תאריך', 'ספק / שם', 'קטגוריה', 'תיאור', 'סכום ששולם', 'מע״מ', 'לפני מע״מ', 'מס׳ מסמך', 'אמצעי תשלום', 'הערות'],
           ...[...filtered].sort((a, b) => a.תאריך.localeCompare(b.תאריך)).map(e => [
             fmtDate(e.תאריך), expenseSupplierName(e), e.קטגוריה, e.תיאור ?? '', Number(e.סכום), Number(e.מעמ), expenseNet(e),
-            e.מספר_מסמך ?? '', e.אמצעי_תשלום ?? '', e.הערות ?? '',
+            e.מספר_מסמך ?? '', paymentMethodLabel(e.אמצעי_תשלום), e.הערות ?? '',
           ] as Cell[]),
           ['סה״כ', '', '', '', totals.gross, totals.vat, totals.net],
         ],
       },
       { name: 'לפי קטגוריה', rows: groupRows(byCategory, 'קטגוריה') },
       { name: 'לפי ספק', rows: groupRows(bySupplier, 'ספק / שם') },
+      { name: 'לפי אמצעי תשלום', rows: groupRows(byMethod, 'אמצעי תשלום') },
     ]);
   }
 
@@ -153,12 +158,16 @@ export default function ExpensesTab({ expenses, suppliers, year, tableReady, hin
           <option value="">כל הספקים</option>
           {allSuppliers.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
+        <select className={selectCls} value={method} onChange={e => setMethod(e.target.value)}>
+          <option value="">כל אמצעי התשלום</option>
+          {allMethods.map(m => <option key={m} value={m}>{m}</option>)}
+        </select>
         <input className={selectCls} placeholder="חיפוש…" value={search} onChange={e => setSearch(e.target.value)} />
       </div>
 
       <div ref={ref} className="space-y-5 bg-white sm:bg-transparent">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold" style={{ color: C.text }}>הוצאות — {periodLabel}{category ? ` · ${category}` : ''}{supplier ? ` · ${supplier}` : ''}</h2>
+          <h2 className="text-sm font-semibold" style={{ color: C.text }}>הוצאות — {periodLabel}{category ? ` · ${category}` : ''}{supplier ? ` · ${supplier}` : ''}{method ? ` · ${method}` : ''}</h2>
           <ExportButtons onExcel={exportExcel} onImage={() => ref.current ? downloadElementPng(ref.current, `הוצאות_${periodLabel}`) : undefined} />
         </div>
 
@@ -172,9 +181,10 @@ export default function ExpensesTab({ expenses, suppliers, year, tableReady, hin
         {expenses.length === 0 ? (
           <EmptyNote>עוד לא הוזנו הוצאות לשנת {year}. אפשר להוסיף ידנית או לייבא קובץ מהנהלת החשבונות.</EmptyNote>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
             <GroupTable title="לפי קטגוריה" groups={byCategory} total={totals} onPick={setCategory} />
             <GroupTable title="לפי ספק / מקבל — כמה שילמתי לכל אחד" groups={bySupplier} total={totals} onPick={setSupplier} />
+            <GroupTable title="לפי אמצעי תשלום" groups={byMethod} total={totals} onPick={setMethod} />
           </div>
         )}
 
@@ -183,7 +193,7 @@ export default function ExpensesTab({ expenses, suppliers, year, tableReady, hin
             <div className="overflow-auto" style={{ maxHeight: 560 }} data-export-expand>
               <table className="w-full">
                 <thead className="sticky top-0" style={{ backgroundColor: C.soft }}>
-                  <tr><Th>תאריך</Th><Th>ספק / שם</Th><Th>קטגוריה</Th><Th>תיאור</Th><Th>סכום</Th><Th>מע״מ</Th><Th>מס׳ מסמך</Th><Th /></tr>
+                  <tr><Th>תאריך</Th><Th>ספק / שם</Th><Th>קטגוריה</Th><Th>תיאור</Th><Th>סכום</Th><Th>מע״מ</Th><Th>אמצעי תשלום</Th><Th>מס׳ מסמך</Th><Th /></tr>
                 </thead>
                 <tbody>
                   {filtered.map(e => (
@@ -194,6 +204,7 @@ export default function ExpensesTab({ expenses, suppliers, year, tableReady, hin
                       <Td className="max-w-[260px] truncate" style={{ color: C.sub }}>{e.תיאור ?? ''}</Td>
                       <Td className="font-semibold tabular-nums">{money(Number(e.סכום))}</Td>
                       <Td className="tabular-nums" style={{ color: C.sub }}>{money(Number(e.מעמ))}</Td>
+                      <Td>{paymentMethodLabel(e.אמצעי_תשלום)}</Td>
                       <Td style={{ color: C.sub }}>{e.מספר_מסמך ?? ''}</Td>
                       <Td>
                         <div className="flex gap-2 text-xs" data-export-hide>
