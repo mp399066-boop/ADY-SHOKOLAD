@@ -56,11 +56,13 @@ export default function ProfitLossTab({ orders, expenses, year, basis, expensesR
         <EmptyNote>עוד לא הוזנו הוצאות לשנת {year}. הוסיפי אותן בלשונית &quot;הוצאות&quot; כדי לראות רווח והפסד אמיתי.</EmptyNote>
       )}
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard label="הכנסות (לפני מע״מ)" value={money(totals.income)} sub={`כולל מע״מ: ${money(totals.incomeGross)}`} tone="green" />
-        <StatCard label="הוצאות (לפני מע״מ)" value={money(totals.expenses)} sub={`שולם בפועל: ${money(totals.expensesGross)}`} tone="red" />
-        <StatCard label={result >= 0 ? 'רווח' : 'הפסד'} value={money(Math.abs(result))} tone={result >= 0 ? 'green' : 'red'} sub={`${active.length} חודשים עם פעילות`} />
-        <StatCard label="טרם נגבה מלקוחות" value={money(totals.open)} tone={totals.open ? 'amber' : undefined} sub="כלול בהכנסות" />
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+        <StatCard label="הכנסות — לפני מע״מ" value={money(totals.income)} tone="green" />
+        <StatCard label="הכנסות — כולל מע״מ" value={money(totals.incomeGross)} />
+        <StatCard label="הוצאות — לפני מע״מ" value={money(totals.expenses)} tone="red" />
+        <StatCard label="הוצאות — כולל מע״מ (שולם בפועל)" value={money(totals.expensesGross)} />
+        <StatCard label={result >= 0 ? 'רווח — לפני מע״מ' : 'הפסד — לפני מע״מ'} value={money(Math.abs(result))} tone={result >= 0 ? 'green' : 'red'} sub={`${active.length} חודשים עם פעילות`} />
+        <StatCard label="טרם נגבה מלקוחות — לפני מע״מ" value={money(totals.open)} tone={totals.open ? 'amber' : undefined} sub="כלול בהכנסות" />
       </div>
 
       {(avgExpenses > 0 || result < 0) && (

@@ -172,9 +172,9 @@ export default function ExpensesTab({ expenses, suppliers, year, tableReady, hin
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <StatCard label="סה״כ לפני מע״מ" value={money(totals.net)} sub={`${filtered.length} הוצאות`} tone="red" />
+          <StatCard label="הוצאות — לפני מע״מ" value={money(totals.net)} sub={`${filtered.length} הוצאות`} tone="red" />
           <StatCard label="מע״מ (מוכר)" value={money(totals.vat)} />
-          <StatCard label="סה״כ כולל מע״מ (שולם בפועל)" value={money(totals.gross)} />
+          <StatCard label="הוצאות — כולל מע״מ (שולם בפועל)" value={money(totals.gross)} />
           <StatCard label="ספקים / מקבלים" value={String(bySupplier.length)} />
         </div>
 

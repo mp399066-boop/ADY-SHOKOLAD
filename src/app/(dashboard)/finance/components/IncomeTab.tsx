@@ -106,13 +106,14 @@ export default function IncomeTab({ orders, year, basis, undatedCount }: {
   return (
     <div className="space-y-5">
       <div ref={yearRef} className="space-y-5 bg-white sm:bg-transparent">
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-          <StatCard label={`נכנס אלייך ב-${year} (לפני מע״מ)`} value={money(yearSummary.total)} sub={`${yearSummary.count} הזמנות`} tone="green" />
-          <StatCard label="מתוכו ללא משלוחים" value={money(yearSummary.noShipping)} tone="brand" />
-          <StatCard label="סה״כ כולל מע״מ" value={money(yearSummary.grossTotal)} sub={`מתוכו דמי משלוח (לפני מע״מ): ${money(yearSummary.shipping)}`} />
-          <StatCard label="מתוכו טרם שולם" value={money(yearSummary.openTotal)} sub={`${yearSummary.openCount} הזמנות`} tone={yearSummary.openTotal > 0 ? 'amber' : undefined} />
-          <StatCard label="ממוצע חודשי (לפני מע״מ)" value={money(avg(yearSummary.total))}
-            sub={average.months ? `${average.label} · כולל מע״מ: ${money(avg(yearSummary.grossTotal))}` : undefined} tone="brand" />
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+          <StatCard label={`נכנס אלייך ב-${year} — לפני מע״מ`} value={money(yearSummary.total)} sub={`${yearSummary.count} הזמנות`} tone="green" />
+          <StatCard label={`סה״כ ${year} — כולל מע״מ`} value={money(yearSummary.grossTotal)} />
+          <StatCard label="ללא משלוחים — לפני מע״מ" value={money(yearSummary.noShipping)} tone="brand" />
+          <StatCard label="דמי משלוח — לפני מע״מ" value={money(yearSummary.shipping)} />
+          <StatCard label="טרם שולם — לפני מע״מ" value={money(yearSummary.openTotal)} sub={`${yearSummary.openCount} הזמנות`} tone={yearSummary.openTotal > 0 ? 'amber' : undefined} />
+          <StatCard label="ממוצע חודשי — לפני מע״מ" value={money(avg(yearSummary.total))}
+            sub={average.months ? average.label : undefined} tone="brand" />
         </div>
 
         <Card className="!p-0 overflow-hidden">
@@ -346,11 +347,12 @@ function MonthDetailModal({ monthKeyStr, orders, basis, onClose }: {
   return (
     <Modal open={!!monthKeyStr} onClose={onClose} title={`פירוט הכנסות — ${label}`} size="xl">
       <div ref={ref} className="space-y-4 bg-white">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-          <StatCard label="נכנס אלייך (לפני מע״מ)" value={money(s.total)} sub={`${s.count} הזמנות`} tone="green" />
-          <StatCard label="ללא משלוח" value={money(s.noShipping)} tone="brand" />
-          <StatCard label="סה״כ כולל מע״מ" value={money(s.grossTotal)} sub={`דמי משלוח (לפני מע״מ): ${money(s.shipping)}`} />
-          <StatCard label="טרם שולם" value={money(s.openTotal)} sub={s.openCount ? `${s.openCount} הזמנות` : undefined} tone={s.openTotal ? 'amber' : undefined} />
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
+          <StatCard label="נכנס אלייך — לפני מע״מ" value={money(s.total)} sub={`${s.count} הזמנות`} tone="green" />
+          <StatCard label="סה״כ — כולל מע״מ" value={money(s.grossTotal)} />
+          <StatCard label="ללא משלוח — לפני מע״מ" value={money(s.noShipping)} tone="brand" />
+          <StatCard label="דמי משלוח — לפני מע״מ" value={money(s.shipping)} />
+          <StatCard label="טרם שולם — לפני מע״מ" value={money(s.openTotal)} sub={s.openCount ? `${s.openCount} הזמנות` : undefined} tone={s.openTotal ? 'amber' : undefined} />
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-2">
