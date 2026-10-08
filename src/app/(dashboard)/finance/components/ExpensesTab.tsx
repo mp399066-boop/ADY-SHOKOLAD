@@ -1,0 +1,264 @@
+'use client';
+
+import { useMemo, useRef, useState } from 'react';
+import toast from 'react-hot-toast';
+import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { ConfirmModal } from '@/components/ui/ConfirmModal';
+import {
+  expenseNet, expenseSupplierName, round2, HEBREW_MONTHS, todayJerusalem, type Expense,
+} from '@/lib/finance';
+import { downloadExcel, downloadElementPng, fmtDate, type Cell } from '@/lib/finance-export';
+import { C, money, StatCard, ExportButtons, Th, Td, EmptyNote } from './shared';
+import ExpenseFormModal, { type SupplierOption } from './ExpenseFormModal';
+import ExpenseImportModal from './ExpenseImportModal';
+
+interface Group { name: string; count: number; gross: number; vat: number; net: number }
+
+function groupBy(list: Expense[], keyOf: (e: Expense) => string): Group[] {
+  const map = new Map<string, Group>();
+  for (const e of list) {
+    const k = keyOf(e);
+    const g = map.get(k) ?? { name: k, count: 0, gross: 0, vat: 0, net: 0 };
+    g.count++;
+    g.gross = round2(g.gross + Number(e.סכום));
+    g.vat = round2(g.vat + Number(e.מעמ));
+    g.net = round2(g.net + expenseNet(e));
+    map.set(k, g);
+  }
+  return Array.from(map.values()).sort((a, b) => b.gross - a.gross);
+}
+
+const selectCls = 'px-3 py-1.5 text-sm rounded-lg border border-[#E8DED2] bg-white focus:outline-none focus:border-[#C9A46A]';
+
+export default function ExpensesTab({ expenses, suppliers, year, tableReady, hint, reload }: {
+  expenses: Expense[];
+  suppliers: SupplierOption[];
+  year: number;
+  tableReady: boolean;
+  hint: string | null;
+  reload: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [month, setMonth] = useState<number | 'all'>('all');
+  const [category, setCategory] = useState('');
+  const [supplier, setSupplier] = useState('');
+  const [search, setSearch] = useState('');
+  const [formOpen, setFormOpen] = useState(false);
+  const [formInitial, setFormInitial] = useState<Partial<Expense> | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [toDelete, setToDelete] = useState<Expense | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const inMonth = useMemo(
+    () => (month === 'all' ? expenses : expenses.filter(e => Number(e.תאריך.slice(5, 7)) === month)),
+    [expenses, month],
+  );
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return inMonth.filter(e =>
+      (!category || e.קטגוריה === category) &&
+      (!supplier || expenseSupplierName(e) === supplier) &&
+      (!q || [e.שם_ספק, e.תיאור, e.מספר_מסמך, e.הערות, e.קטגוריה].some(v => (v ?? '').toLowerCase().includes(q))),
+    );
+  }, [inMonth, category, supplier, search]);
+
+  const byCategory = useMemo(() => groupBy(filtered, e => e.קטגוריה || 'אחר'), [filtered]);
+  const bySupplier = useMemo(() => groupBy(filtered, expenseSupplierName), [filtered]);
+  const totals = useMemo(() => ({
+    gross: round2(filtered.reduce((s, e) => s + Number(e.סכום), 0)),
+    vat: round2(filtered.reduce((s, e) => s + Number(e.מעמ), 0)),
+    net: round2(filtered.reduce((s, e) => s + expenseNet(e), 0)),
+  }), [filtered]);
+
+  const allCategories = useMemo(() => Array.from(new Set(inMonth.map(e => e.קטגוריה))).sort(), [inMonth]);
+  const allSuppliers = useMemo(() => Array.from(new Set(inMonth.map(expenseSupplierName))).sort(), [inMonth]);
+  const periodLabel = month === 'all' ? `שנת ${year}` : `${HEBREW_MONTHS[month - 1]} ${year}`;
+
+  function openNew() { setFormInitial(null); setFormOpen(true); }
+  function openEdit(e: Expense) { setFormInitial(e); setFormOpen(true); }
+  function openDuplicate(e: Expense) {
+    const { id: _id, ...rest } = e;
+    setFormInitial({ ...rest, תאריך: todayJerusalem(), מספר_מסמך: null });
+    setFormOpen(true);
+  }
+
+  async function confirmDelete() {
+    if (!toDelete) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/finance/expenses/${toDelete.id}`, { method: 'DELETE' });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || 'המחיקה נכשלה');
+      toast.success('ההוצאה נמחקה');
+      setToDelete(null);
+      reload();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'המחיקה נכשלה');
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  async function exportExcel() {
+    const groupRows = (gs: Group[], title: string): Cell[][] => [
+      [title, 'מס׳ הוצאות', 'סכום ששולם', 'מע״מ', 'לפני מע״מ'],
+      ...gs.map(g => [g.name, g.count, g.gross, g.vat, g.net] as Cell[]),
+      ['סה״כ', filtered.length, totals.gross, totals.vat, totals.net],
+    ];
+    await downloadExcel(`הוצאות_${month === 'all' ? year : `${year}-${String(month).padStart(2, '0')}`}`, [
+      {
+        name: 'כל ההוצאות',
+        rows: [
+          ['תאריך', 'ספק / שם', 'קטגוריה', 'תיאור', 'סכום ששולם', 'מע״מ', 'לפני מע״מ', 'מס׳ מסמך', 'אמצעי תשלום', 'הערות'],
+          ...[...filtered].sort((a, b) => a.תאריך.localeCompare(b.תאריך)).map(e => [
+            fmtDate(e.תאריך), expenseSupplierName(e), e.קטגוריה, e.תיאור ?? '', Number(e.סכום), Number(e.מעמ), expenseNet(e),
+            e.מספר_מסמך ?? '', e.אמצעי_תשלום ?? '', e.הערות ?? '',
+          ] as Cell[]),
+          ['סה״כ', '', '', '', totals.gross, totals.vat, totals.net],
+        ],
+      },
+      { name: 'לפי קטגוריה', rows: groupRows(byCategory, 'קטגוריה') },
+      { name: 'לפי ספק', rows: groupRows(bySupplier, 'ספק / שם') },
+    ]);
+  }
+
+  if (!tableReady) {
+    return (
+      <Card>
+        <div className="space-y-2 text-sm" style={{ color: C.text }}>
+          <p className="font-semibold">צריך להפעיל את טבלת ההוצאות</p>
+          <p style={{ color: C.sub }}>{hint ?? 'יש להריץ את מיגרציה 057 ב-Supabase SQL Editor.'}</p>
+          <p style={{ color: C.sub }}>אחרי ההרצה — רענני את הדף ותוכלי להזין ולייבא הוצאות.</p>
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center gap-2">
+        <Button onClick={openNew}>+ הוצאה חדשה</Button>
+        <Button variant="outline" onClick={() => setImportOpen(true)}>ייבוא מקובץ הנהלת חשבונות</Button>
+        <div className="flex-1" />
+        <select className={selectCls} value={month} onChange={e => setMonth(e.target.value === 'all' ? 'all' : Number(e.target.value))}>
+          <option value="all">כל השנה</option>
+          {HEBREW_MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+        </select>
+        <select className={selectCls} value={category} onChange={e => setCategory(e.target.value)}>
+          <option value="">כל הקטגוריות</option>
+          {allCategories.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select className={selectCls} value={supplier} onChange={e => setSupplier(e.target.value)}>
+          <option value="">כל הספקים</option>
+          {allSuppliers.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <input className={selectCls} placeholder="חיפוש…" value={search} onChange={e => setSearch(e.target.value)} />
+      </div>
+
+      <div ref={ref} className="space-y-5 bg-white sm:bg-transparent">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold" style={{ color: C.text }}>הוצאות — {periodLabel}{category ? ` · ${category}` : ''}{supplier ? ` · ${supplier}` : ''}</h2>
+          <ExportButtons onExcel={exportExcel} onImage={() => ref.current ? downloadElementPng(ref.current, `הוצאות_${periodLabel}`) : undefined} />
+        </div>
+
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <StatCard label="סה״כ שולם" value={money(totals.gross)} sub={`${filtered.length} הוצאות`} tone="red" />
+          <StatCard label="מתוכו מע״מ (מוכר)" value={money(totals.vat)} />
+          <StatCard label="הוצאה לפני מע״מ" value={money(totals.net)} tone="brand" />
+          <StatCard label="ספקים / מקבלים" value={String(bySupplier.length)} />
+        </div>
+
+        {expenses.length === 0 ? (
+          <EmptyNote>עוד לא הוזנו הוצאות לשנת {year}. אפשר להוסיף ידנית או לייבא קובץ מהנהלת החשבונות.</EmptyNote>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            <GroupTable title="לפי קטגוריה" groups={byCategory} total={totals} onPick={setCategory} />
+            <GroupTable title="לפי ספק / מקבל — כמה שילמתי לכל אחד" groups={bySupplier} total={totals} onPick={setSupplier} />
+          </div>
+        )}
+
+        {filtered.length > 0 && (
+          <Card className="!p-0 overflow-hidden">
+            <div className="overflow-auto" style={{ maxHeight: 560 }} data-export-expand>
+              <table className="w-full">
+                <thead className="sticky top-0" style={{ backgroundColor: C.soft }}>
+                  <tr><Th>תאריך</Th><Th>ספק / שם</Th><Th>קטגוריה</Th><Th>תיאור</Th><Th>סכום</Th><Th>מע״מ</Th><Th>מס׳ מסמך</Th><Th /></tr>
+                </thead>
+                <tbody>
+                  {filtered.map(e => (
+                    <tr key={e.id} style={{ borderTop: `1px solid ${C.border}` }}>
+                      <Td>{fmtDate(e.תאריך)}</Td>
+                      <Td className="font-medium">{expenseSupplierName(e)}</Td>
+                      <Td>{e.קטגוריה}</Td>
+                      <Td className="max-w-[260px] truncate" style={{ color: C.sub }}>{e.תיאור ?? ''}</Td>
+                      <Td className="font-semibold tabular-nums">{money(Number(e.סכום))}</Td>
+                      <Td className="tabular-nums" style={{ color: C.sub }}>{money(Number(e.מעמ))}</Td>
+                      <Td style={{ color: C.sub }}>{e.מספר_מסמך ?? ''}</Td>
+                      <Td>
+                        <div className="flex gap-2 text-xs" data-export-hide>
+                          <button onClick={() => openEdit(e)} style={{ color: C.brand }}>עריכה</button>
+                          <button onClick={() => openDuplicate(e)} style={{ color: C.sub }} title="יצירת הוצאה זהה (למשל הוצאה חודשית קבועה)">שכפול</button>
+                          <button onClick={() => setToDelete(e)} style={{ color: C.red }}>מחיקה</button>
+                        </div>
+                      </Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        )}
+      </div>
+
+      <ExpenseFormModal open={formOpen} initial={formInitial} suppliers={suppliers} onClose={() => setFormOpen(false)} onSaved={reload} />
+      <ExpenseImportModal open={importOpen} onClose={() => setImportOpen(false)} onImported={reload} />
+      <ConfirmModal
+        open={!!toDelete}
+        onClose={() => setToDelete(null)}
+        onConfirm={confirmDelete}
+        title="מחיקת הוצאה"
+        description={toDelete ? `למחוק את ההוצאה של ${expenseSupplierName(toDelete)} על סך ${money(Number(toDelete.סכום))} מ-${fmtDate(toDelete.תאריך)}?` : ''}
+        confirmLabel="מחיקה"
+        loading={deleting}
+      />
+    </div>
+  );
+}
+
+function GroupTable({ title, groups, total, onPick }: {
+  title: string;
+  groups: Group[];
+  total: { gross: number; net: number };
+  onPick: (name: string) => void;
+}) {
+  return (
+    <Card className="!p-0 overflow-hidden">
+      <div className="px-5 py-3 text-sm font-semibold" style={{ color: C.text, borderBottom: `1px solid ${C.border}` }}>{title}</div>
+      <div className="overflow-auto" style={{ maxHeight: 380 }} data-export-expand>
+        <table className="w-full">
+          <thead className="sticky top-0" style={{ backgroundColor: C.soft }}>
+            <tr><Th>שם</Th><Th>הוצאות</Th><Th>שולם</Th><Th>לפני מע״מ</Th><Th>%</Th></tr>
+          </thead>
+          <tbody>
+            {groups.map(g => (
+              <tr key={g.name} className="cursor-pointer hover:bg-[#FBF6EE]" onClick={() => onPick(g.name)} style={{ borderTop: `1px solid ${C.border}` }}>
+                <Td className="font-medium">{g.name}</Td>
+                <Td>{g.count}</Td>
+                <Td className="font-semibold tabular-nums">{money(g.gross)}</Td>
+                <Td className="tabular-nums" style={{ color: C.sub }}>{money(g.net)}</Td>
+                <Td className="tabular-nums" style={{ color: C.sub }}>{total.gross ? Math.round((g.gross / total.gross) * 100) : 0}%</Td>
+              </tr>
+            ))}
+            <tr style={{ borderTop: `2px solid ${C.gold}`, backgroundColor: C.soft }}>
+              <Td className="font-bold">סה״כ</Td><Td />
+              <Td className="font-bold tabular-nums">{money(total.gross)}</Td>
+              <Td className="font-bold tabular-nums">{money(total.net)}</Td>
+              <Td />
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}

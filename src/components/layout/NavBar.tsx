@@ -20,6 +20,7 @@ const NAV_MAIN = [
   { href: '/inventory',  label: 'מלאי',     Icon: IconInventory },
   { href: '/recipes',    label: 'מתכונים', Icon: IconRecipes   },
   { href: '/invoices',   label: 'חשבוניות וקבלות', Icon: IconInvoices },
+  { href: '/finance',    label: 'פיננסים',         Icon: IconInvoices },
   { href: '/suppliers',  label: 'ספקים',            Icon: IconSuppliers  },
   { href: '/employees', label: 'עובדים / משימות',  Icon: IconEmployees  },
 ];

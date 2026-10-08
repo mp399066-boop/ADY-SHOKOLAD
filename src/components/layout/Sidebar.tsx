@@ -24,6 +24,7 @@ const NAV_MAIN = [
   { href: '/products',   label: 'מוצרים',             Icon: IconProducts   },
   { href: '/deliveries', label: 'משלוחים',            Icon: IconDeliveries },
   { href: '/invoices',   label: 'חשבוניות וקבלות',    Icon: IconInvoices   },
+  { href: '/finance',    label: 'פיננסים',            Icon: IconInvoices   },
   { href: '/inventory',  label: 'מלאי',               Icon: IconInventory  },
   { href: '/recipes',    label: 'מתכונים וייצור',  Icon: IconRecipes    },
   { href: '/suppliers', label: 'ספקים / קניות',  Icon: IconSuppliers },
