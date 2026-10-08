@@ -3,24 +3,11 @@
 import { useMemo, useRef } from 'react';
 import { Card } from '@/components/ui/Card';
 import {
-  summarize, orderBasisDate, expenseNet, monthKey, round2, HEBREW_MONTHS, todayJerusalem, VAT_RATE,
+  buildPnl, round2, VAT_RATE,
   type FinanceOrder, type Expense, type DateBasis,
 } from '@/lib/finance';
 import { downloadExcel, downloadElementPng, type Cell } from '@/lib/finance-export';
 import { C, money, StatCard, ExportButtons, Th, Td, EmptyNote } from './shared';
-
-interface MonthRow {
-  key: string;
-  month: string;
-  income: number;       // net of VAT
-  incomeGross: number;  // what customers pay
-  open: number;         // gross, not yet paid
-  expenses: number;     // net of VAT
-  expensesGross: number;
-  result: number;
-  cumulative: number;
-  hasData: boolean;
-}
 
 export default function ProfitLossTab({ orders, expenses, year, basis, expensesReady }: {
   orders: FinanceOrder[];
@@ -30,43 +17,12 @@ export default function ProfitLossTab({ orders, expenses, year, basis, expensesR
   expensesReady: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const today = todayJerusalem();
-  const currentMonthKey = today.slice(0, 7);
-
-  const rows = useMemo<MonthRow[]>(() => {
-    let cumulative = 0;
-    return Array.from({ length: 12 }, (_, i) => {
-      const key = monthKey(year, i);
-      const monthOrders = orders.filter(o => orderBasisDate(o, basis)?.slice(0, 7) === key);
-      const s = summarize(monthOrders);
-      const monthExpenses = expenses.filter(e => e.תאריך.slice(0, 7) === key);
-      const exp = round2(monthExpenses.reduce((t, e) => t + expenseNet(e), 0));
-      const expGross = round2(monthExpenses.reduce((t, e) => t + Number(e.סכום), 0));
-      const result = round2(s.netTotal - exp);
-      const hasData = s.count > 0 || monthExpenses.length > 0;
-      if (key <= currentMonthKey || hasData) cumulative = round2(cumulative + result);
-      return {
-        key, month: HEBREW_MONTHS[i], income: s.netTotal, incomeGross: s.total, open: s.openTotal,
-        expenses: exp, expensesGross: expGross, result, cumulative, hasData,
-      };
-    });
-  }, [orders, expenses, year, basis, currentMonthKey]);
-
+  const pnl = useMemo(() => buildPnl(orders, expenses, year, basis), [orders, expenses, year, basis]);
+  const rows = pnl.months;
   const active = rows.filter(r => r.hasData);
-  const totals = useMemo(() => ({
-    income: round2(rows.reduce((t, r) => t + r.income, 0)),
-    incomeGross: round2(rows.reduce((t, r) => t + r.incomeGross, 0)),
-    open: round2(rows.reduce((t, r) => t + r.open, 0)),
-    expenses: round2(rows.reduce((t, r) => t + r.expenses, 0)),
-    expensesGross: round2(rows.reduce((t, r) => t + r.expensesGross, 0)),
-  }), [rows]);
-  const result = round2(totals.income - totals.expenses);
-
-  // Break-even: average monthly expense over months that have expenses.
-  const expenseMonths = rows.filter(r => r.expenses > 0);
-  const avgExpenses = expenseMonths.length ? round2(totals.expenses / expenseMonths.length) : 0;
-  const incomeMonths = rows.filter(r => r.income > 0);
-  const avgIncome = incomeMonths.length ? round2(totals.income / incomeMonths.length) : 0;
+  const totals = pnl.totals;
+  const result = totals.result;
+  const { avgExpenses, avgIncome } = pnl;
   const monthlyGap = round2(avgExpenses - avgIncome);
   // Customers pay VAT on top of the net income — show the matching gross too.
   const withVat = (n: number) => round2(n * (1 + VAT_RATE));
@@ -74,7 +30,7 @@ export default function ProfitLossTab({ orders, expenses, year, basis, expensesR
   async function exportExcel() {
     const sheet: Cell[][] = [
       ['חודש', 'הכנסות לפני מע״מ', 'הוצאות לפני מע״מ', 'רווח / הפסד', 'מצטבר מתחילת השנה', 'הכנסות כולל מע״מ', 'הוצאות ששולמו (כולל מע״מ)', 'טרם נגבה מלקוחות'],
-      ...rows.map(r => [r.month, r.income, r.expenses, r.result, r.cumulative, r.incomeGross, r.expensesGross, r.open] as Cell[]),
+      ...rows.map(r => [r.month, r.income, r.expenses, r.result, r.cumulative ?? '', r.incomeGross, r.expensesGross, r.open] as Cell[]),
       ['סה״כ שנתי', totals.income, totals.expenses, result, '', totals.incomeGross, totals.expensesGross, totals.open],
       [],
       ['הוצאה חודשית ממוצעת (לפני מע״מ)', avgExpenses],
@@ -146,7 +102,7 @@ export default function ProfitLossTab({ orders, expenses, year, basis, expensesR
             </thead>
             <tbody>
               {rows.map(r => {
-                const future = r.key > currentMonthKey && !r.hasData;
+                const future = r.cumulative === null;
                 return (
                   <tr key={r.key} style={{ borderTop: `1px solid ${C.border}`, opacity: future ? 0.45 : 1 }}>
                     <Td className="font-medium">{r.month}</Td>
@@ -155,8 +111,8 @@ export default function ProfitLossTab({ orders, expenses, year, basis, expensesR
                     <Td className="font-semibold tabular-nums" style={{ color: r.result > 0 ? C.green : r.result < 0 ? C.red : C.faint }}>
                       {r.result < 0 ? '−' : ''}{money(Math.abs(r.result))}
                     </Td>
-                    <Td className="tabular-nums" style={{ color: future ? C.faint : r.cumulative >= 0 ? C.green : C.red }}>
-                      {future ? '' : `${r.cumulative < 0 ? '−' : ''}${money(Math.abs(r.cumulative))}`}
+                    <Td className="tabular-nums" style={{ color: future ? C.faint : (r.cumulative ?? 0) >= 0 ? C.green : C.red }}>
+                      {future ? '' : `${(r.cumulative ?? 0) < 0 ? '−' : ''}${money(Math.abs(r.cumulative ?? 0))}`}
                     </Td>
                     <Td className="tabular-nums" style={{ color: r.open ? C.amber : C.faint }}>{money(r.open)}</Td>
                   </tr>

@@ -2,6 +2,8 @@
 // xlsx and html2canvas are imported dynamically so they stay out of the
 // initial page bundle and never enter SSR.
 
+import type { FinanceReport, ReportSection } from '@/lib/finance-report';
+
 export type Cell = string | number | null;
 export interface Sheet {
   name: string;
@@ -82,11 +84,141 @@ export async function downloadElementPng(el: HTMLElement, fileName: string): Pro
   triggerDownload(blob, fileName.endsWith('.png') ? fileName : `${fileName}.png`);
 }
 
-export const fmtILS = (n: number) =>
-  `₪${(Math.round(n * 100) / 100).toLocaleString('he-IL', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+export const fmtILS = (n: number) => {
+  const v = Math.round(n * 100) / 100;
+  // Whole shekels stay clean (₪250); anything with agorot always shows two digits (₪12,729.20).
+  const digits = Number.isInteger(v) ? 0 : 2;
+  return `₪${v.toLocaleString('he-IL', { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
+};
 
 export const fmtDate = (iso: string | null | undefined) => {
   if (!iso) return '—';
   const [y, m, d] = iso.slice(0, 10).split('-');
   return `${d}/${m}/${y}`;
 };
+
+// ── Full report → PDF ───────────────────────────────────────────────────────
+// Each section is rendered as real HTML (so Hebrew/RTL is shaped by the
+// browser), rasterised block by block, and stacked onto A4 pages. Tables are
+// split between rows — never through a row — and repeat their header on every
+// page.
+
+
+const PDF_W = 794; // A4 width in CSS px at 96dpi
+const ROWS_PER_CHUNK = 40; // ≈ one full A4 page per table chunk
+
+const esc = (s: unknown) =>
+  String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+function cellHtml(v: Cell, isMoney: boolean): string {
+  if (v == null || v === '') return '';
+  if (isMoney && typeof v === 'number') {
+    const neg = v < 0;
+    return `${neg ? '−' : ''}${fmtILS(Math.abs(v))}`;
+  }
+  return esc(v);
+}
+
+function tableHtml(sec: ReportSection, rows: Cell[][], withTotal: boolean): string {
+  const t = sec.table!;
+  const head = t.headers.map(h => `<th>${esc(h)}</th>`).join('');
+  const body = rows.map(r => `<tr>${r.map((v, i) => `<td class="${t.moneyCols.includes(i) ? 'num' : ''}">${cellHtml(v, t.moneyCols.includes(i))}</td>`).join('')}</tr>`).join('');
+  const total = withTotal && t.total
+    ? `<tr class="total">${t.total.map((v, i) => `<td class="${t.moneyCols.includes(i) ? 'num' : ''}">${cellHtml(v, t.moneyCols.includes(i))}</td>`).join('')}</tr>`
+    : '';
+  return `<table><thead><tr>${head}</tr></thead><tbody>${body}${total}</tbody></table>`;
+}
+
+const REPORT_CSS = `
+  .blk, .blk * { box-sizing: border-box; }
+  .blk { width:${PDF_W}px; padding: 10px 34px; background:#fff; direction: rtl; font-family: Arial, Helvetica, sans-serif; color:#3A2A1A; }
+  .blk h1 { font-size: 22px; margin: 0 0 4px; color:#5C3410; }
+  .blk h2 { font-size: 15px; margin: 6px 0 8px; color:#5C3410; border-bottom: 2px solid #C9A46A; padding-bottom: 4px; }
+  .blk .meta { font-size: 12px; color:#8A7664; }
+  .blk .kpis { display:grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .blk .kpi { border:1px solid #EAE0D4; border-radius:8px; padding:8px 10px; }
+  .blk .kpi .l { font-size:11px; color:#8A7664; }
+  .blk .kpi .v { font-size:17px; font-weight:bold; margin-top:2px; }
+  .blk .green { color:#2F6B3A; } .blk .red { color:#A0362C; } .blk .amber { color:#9A6A12; }
+  .blk table { width:100%; border-collapse: collapse; font-size: 11px; }
+  .blk th { background:#FAF7F0; color:#8A7664; font-weight:bold; text-align:right; padding:5px 6px; border-bottom:1px solid #EAE0D4; }
+  .blk td { padding:4px 6px; border-bottom:1px solid #F0EAE2; text-align:right; }
+  .blk td.num { white-space: nowrap; direction: ltr; text-align: right; unicode-bidi: plaintext; }
+  .blk tr.total td { font-weight:bold; background:#FAF7F0; border-top:2px solid #C9A46A; }
+  .blk .notes { margin-top: 6px; font-size: 11px; color:#8A7664; }
+  .blk .notes div { margin: 2px 0; }
+`;
+
+function reportBlocks(r: FinanceReport, businessName: string): string[] {
+  const blocks: string[] = [
+    `<h1>${esc(businessName)} — ${esc(r.title)}</h1><div class="meta">תקופה: ${esc(r.periodLabel)} · הופק: ${esc(r.generatedAt)}</div>`,
+  ];
+  for (const sec of r.sections) {
+    let head = `<h2>${esc(sec.title)}</h2>`;
+    if (sec.kpis) {
+      head += `<div class="kpis">${sec.kpis.map(k =>
+        `<div class="kpi"><div class="l">${esc(k.label)}</div><div class="v ${k.tone ?? ''}">${k.money ? fmtILS(k.value) : esc(k.value.toLocaleString('he-IL'))}</div></div>`,
+      ).join('')}</div>`;
+    }
+    const notes = sec.notes?.length ? `<div class="notes">${sec.notes.map(n => `<div>• ${esc(n)}</div>`).join('')}</div>` : '';
+    if (!sec.table) { blocks.push(head + notes); continue; }
+    const rows = sec.table.rows;
+    if (rows.length === 0) { blocks.push(head + `<div class="meta">אין נתונים בתקופה זו</div>` + notes); continue; }
+    for (let i = 0; i < rows.length; i += ROWS_PER_CHUNK) {
+      const chunk = rows.slice(i, i + ROWS_PER_CHUNK);
+      const last = i + ROWS_PER_CHUNK >= rows.length;
+      const title = i === 0 ? head : `<h2>${esc(sec.title)} (המשך)</h2>`;
+      blocks.push(title + tableHtml(sec, chunk, last) + (last ? notes : ''));
+    }
+  }
+  return blocks;
+}
+
+/** Renders the full report to an A4 PDF and downloads it. */
+export async function downloadReportPdf(r: FinanceReport, businessName: string): Promise<void> {
+  const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import('html2canvas'), import('jspdf')]);
+
+  const host = document.createElement('div');
+  host.style.cssText = `position:fixed;left:-100000px;top:0;width:${PDF_W}px;z-index:-1;background:#fff`;
+  host.innerHTML = `<style>${REPORT_CSS}</style>`;
+  document.body.appendChild(host);
+
+  try {
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
+    const pageW = 210, pageH = 297, marginTop = 10, marginBottom = 14;
+    const usable = pageH - marginTop - marginBottom;
+    let y = marginTop;
+
+    for (const html of reportBlocks(r, businessName)) {
+      const el = document.createElement('div');
+      el.className = 'blk';
+      el.innerHTML = html;
+      host.appendChild(el);
+      const canvas = await html2canvas(el, { backgroundColor: '#FFFFFF', scale: 1.6, logging: false, width: PDF_W, windowWidth: PDF_W });
+      host.removeChild(el);
+      let h = (canvas.height / canvas.width) * pageW;
+      let w = pageW;
+      if (h > usable) { w = (usable / h) * pageW; h = usable; } // safety: never overflow a page
+      if (y + h > pageH - marginBottom && y > marginTop) { pdf.addPage(); y = marginTop; }
+      pdf.addImage(canvas.toDataURL('image/jpeg', 0.85), 'JPEG', (pageW - w) / 2, y, w, h);
+      y += h;
+    }
+
+    const pages = pdf.getNumberOfPages();
+    for (let p = 1; p <= pages; p++) {
+      pdf.setPage(p);
+      pdf.setFontSize(9);
+      pdf.setTextColor(150);
+      pdf.text(`${p} / ${pages}`, pageW / 2, pageH - 6, { align: 'center' });
+    }
+    triggerDownload(pdf.output('blob'), `${r.fileBase}.pdf`);
+  } finally {
+    host.remove();
+  }
+}
+
+/** Downloads the full report as a multi-sheet Excel workbook. */
+export async function downloadReportExcel(r: FinanceReport): Promise<void> {
+  const { reportToSheets } = await import('@/lib/finance-report');
+  await downloadExcel(r.fileBase, reportToSheets(r));
+}

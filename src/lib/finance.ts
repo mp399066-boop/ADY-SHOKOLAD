@@ -245,3 +245,63 @@ export function monthLabel(key: string): string {
 export function todayJerusalem(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
 }
+
+// ── Profit & loss ───────────────────────────────────────────────────────────
+
+export interface PnlMonth {
+  key: string;
+  month: string;
+  income: number;        // net of VAT
+  incomeGross: number;   // what customers pay
+  open: number;          // gross, not yet paid
+  expenses: number;      // net of VAT
+  expensesGross: number; // what was paid
+  result: number;
+  /** Running result from January; null for future months with no data. */
+  cumulative: number | null;
+  hasData: boolean;
+}
+
+export interface Pnl {
+  months: PnlMonth[];
+  totals: { income: number; incomeGross: number; open: number; expenses: number; expensesGross: number; result: number };
+  /** Average net monthly expense over months that have expenses. */
+  avgExpenses: number;
+  /** Average net monthly income over months that have income. */
+  avgIncome: number;
+}
+
+/** Monthly profit & loss for a year — the single source for screen and reports. */
+export function buildPnl(orders: FinanceOrder[], expenses: Expense[], year: number, basis: DateBasis, today = todayJerusalem()): Pnl {
+  const currentMonth = today.slice(0, 7);
+  let running = 0;
+  const months: PnlMonth[] = Array.from({ length: 12 }, (_, i) => {
+    const key = monthKey(year, i);
+    const s = summarize(orders.filter(o => orderBasisDate(o, basis)?.slice(0, 7) === key));
+    const ex = expenses.filter(e => e.תאריך.slice(0, 7) === key);
+    const exp = round2(ex.reduce((t, e) => t + expenseNet(e), 0));
+    const expGross = round2(ex.reduce((t, e) => t + (Number(e.סכום) || 0), 0));
+    const result = round2(s.netTotal - exp);
+    const hasData = s.count > 0 || ex.length > 0;
+    const counts = key <= currentMonth || hasData;
+    if (counts) running = round2(running + result);
+    return {
+      key, month: HEBREW_MONTHS[i], income: s.netTotal, incomeGross: s.total, open: s.openTotal,
+      expenses: exp, expensesGross: expGross, result, cumulative: counts ? running : null, hasData,
+    };
+  });
+  const sum = (f: (m: PnlMonth) => number) => round2(months.reduce((t, m) => t + f(m), 0));
+  const totals = {
+    income: sum(m => m.income), incomeGross: sum(m => m.incomeGross), open: sum(m => m.open),
+    expenses: sum(m => m.expenses), expensesGross: sum(m => m.expensesGross), result: 0,
+  };
+  totals.result = round2(totals.income - totals.expenses);
+  const expMonths = months.filter(m => m.expenses > 0).length;
+  const incMonths = months.filter(m => m.income > 0).length;
+  return {
+    months,
+    totals,
+    avgExpenses: expMonths ? round2(totals.expenses / expMonths) : 0,
+    avgIncome: incMonths ? round2(totals.income / incMonths) : 0,
+  };
+}

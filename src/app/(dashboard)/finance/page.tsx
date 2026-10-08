@@ -7,6 +7,7 @@ import { todayJerusalem, type FinanceOrder, type Expense, type DateBasis } from 
 import IncomeTab from './components/IncomeTab';
 import ExpensesTab from './components/ExpensesTab';
 import ProfitLossTab from './components/ProfitLossTab';
+import FullReportModal from './components/FullReportModal';
 import type { SupplierOption } from './components/ExpenseFormModal';
 import { C } from './components/shared';
 
@@ -33,6 +34,7 @@ export default function FinancePage() {
   const [expensesLoading, setExpensesLoading] = useState(true);
 
   const [suppliers, setSuppliers] = useState<SupplierOption[]>([]);
+  const [reportOpen, setReportOpen] = useState(false);
 
   useEffect(() => {
     fetch('/api/me').then(r => (r.ok ? r.json() : null)).then(j => setRole(j?.role ?? null)).catch(() => setRole(null));
@@ -108,6 +110,13 @@ export default function FinancePage() {
           <select className={selectCls} value={year} onChange={e => setYear(Number(e.target.value))} aria-label="שנה">
             {years.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
+          <button
+            onClick={() => setReportOpen(true)}
+            disabled={incomeLoading || expensesLoading || !!incomeError}
+            className="px-3 py-1.5 text-sm font-medium rounded-lg text-white disabled:opacity-50"
+            style={{ backgroundColor: C.brand }}>
+            ⬇ דוח מלא (PDF / אקסל)
+          </button>
           {tab !== 'expenses' && (
             <select className={selectCls} value={basis} onChange={e => setBasis(e.target.value as DateBasis)} aria-label="שיוך הזמנה לחודש">
               <option value="order">הזמנות לפי תאריך הזמנה</option>
@@ -138,6 +147,16 @@ export default function FinancePage() {
       ) : (
         <ProfitLossTab orders={orders} expenses={expenses} year={year} basis={basis} expensesReady={expensesReady} />
       )}
+
+      <FullReportModal
+        open={reportOpen}
+        onClose={() => setReportOpen(false)}
+        orders={orders}
+        expenses={expensesReady ? expenses : []}
+        year={year}
+        basis={basis}
+        expensesReady={expensesReady}
+      />
     </div>
   );
 }
