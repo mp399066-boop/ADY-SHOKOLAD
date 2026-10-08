@@ -281,6 +281,40 @@ export function todayJerusalem(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
 }
 
+// ── Monthly average ─────────────────────────────────────────────────────────
+
+export interface AverageBasis {
+  /** Number of months to divide the year total by (0 = nothing to average). */
+  months: number;
+  /** true for a finished year (÷ 12); false while the year is still running. */
+  final: boolean;
+  /** Human label, e.g. "÷ 6 חודשים, מאי–אוקטובר". */
+  label: string;
+}
+
+/**
+ * Owner's rule for "ממוצע חודשי":
+ *   • a finished calendar year → year total ÷ 12;
+ *   • the current year → year total ÷ the months from the first month with
+ *     activity up to the current month (inclusive). It grows each month and
+ *     becomes ÷ 12 once the year is over.
+ * @param activeMonthKeys "YYYY-MM" keys of months that have any activity.
+ */
+export function averageBasis(year: number, activeMonthKeys: string[], today = todayJerusalem()): AverageBasis {
+  const currentYear = Number(today.slice(0, 4));
+  if (year < currentYear) return { months: 12, final: true, label: '÷ 12 חודשים' };
+  if (year > currentYear) return { months: 0, final: false, label: '' };
+  const inYear = activeMonthKeys.filter(k => k.startsWith(`${year}-`)).sort();
+  if (!inYear.length) return { months: 0, final: false, label: '' };
+  const from = Number(inYear[0].slice(5, 7));
+  const to = Number(today.slice(5, 7));
+  const months = Math.max(1, to - from + 1);
+  const range = from === to ? HEBREW_MONTHS[to - 1] : `${HEBREW_MONTHS[from - 1]}–${HEBREW_MONTHS[to - 1]}`;
+  return { months, final: false, label: `÷ ${months} חודשים, ${range}` };
+}
+
+export const averageOf = (total: number, basis: AverageBasis) => (basis.months ? round2(total / basis.months) : 0);
+
 // ── Profit & loss ───────────────────────────────────────────────────────────
 
 export interface PnlMonth {
@@ -300,9 +334,10 @@ export interface PnlMonth {
 export interface Pnl {
   months: PnlMonth[];
   totals: { income: number; incomeGross: number; open: number; expenses: number; expensesGross: number; result: number };
-  /** Average net monthly expense over months that have expenses. */
+  /** Monthly averages (see averageBasis) — same divisor for every column. */
+  average: AverageBasis;
+  avg: { income: number; incomeGross: number; expenses: number; expensesGross: number; result: number; open: number };
   avgExpenses: number;
-  /** Average net monthly income over months that have income. */
   avgIncome: number;
 }
 
@@ -331,12 +366,21 @@ export function buildPnl(orders: FinanceOrder[], expenses: Expense[], year: numb
     expenses: sum(m => m.expenses), expensesGross: sum(m => m.expensesGross), result: 0,
   };
   totals.result = round2(totals.income - totals.expenses);
-  const expMonths = months.filter(m => m.expenses > 0).length;
-  const incMonths = months.filter(m => m.income > 0).length;
+  const average = averageBasis(year, months.filter(m => m.hasData).map(m => m.key), today);
+  const avg = {
+    income: averageOf(totals.income, average),
+    incomeGross: averageOf(totals.incomeGross, average),
+    expenses: averageOf(totals.expenses, average),
+    expensesGross: averageOf(totals.expensesGross, average),
+    result: averageOf(totals.result, average),
+    open: averageOf(totals.open, average),
+  };
   return {
     months,
     totals,
-    avgExpenses: expMonths ? round2(totals.expenses / expMonths) : 0,
-    avgIncome: incMonths ? round2(totals.income / incMonths) : 0,
+    average,
+    avg,
+    avgExpenses: avg.expenses,
+    avgIncome: avg.income,
   };
 }

@@ -3,7 +3,7 @@
 // the two files always contain the same numbers as the /finance screens.
 
 import {
-  summarize, summarizeByCustomer, summarizeByPaymentMethod, paymentMethodLabel, buildPnl, orderBasisDate, expenseNet, expenseSupplierName,
+  summarize, summarizeByCustomer, summarizeByPaymentMethod, paymentMethodLabel, buildPnl, averageBasis, averageOf, orderBasisDate, expenseNet, expenseSupplierName,
   monthKey, monthLabel, round2, HEBREW_MONTHS, todayJerusalem,
   type FinanceOrder, type Expense, type DateBasis,
 } from '@/lib/finance';
@@ -13,6 +13,8 @@ export interface ReportTable {
   headers: string[];
   rows: Cell[][];
   total?: Cell[];
+  /** Optional "ממוצע חודשי" row, printed under the total row. */
+  average?: Cell[];
   /** Column indexes holding shekel amounts (formatted as ₪ in the PDF). */
   moneyCols: number[];
 }
@@ -60,6 +62,9 @@ export function buildFinanceReport(opts: {
   const basisLabel = basis === 'order' ? 'הזמנות משויכות לחודש לפי תאריך ההזמנה' : 'הזמנות משויכות לחודש לפי תאריך האספקה';
 
   const s = summarize(orders);
+  const yearAvg = averageBasis(year, Array.from(new Set(
+    orders.map(o => orderBasisDate(o, basis)?.slice(0, 7)).filter((k): k is string => !!k),
+  )));
   const expGross = round2(expenses.reduce((t, e) => t + (Number(e.סכום) || 0), 0));
   const expVat = round2(expenses.reduce((t, e) => t + (Number(e.מעמ) || 0), 0));
   const expNet = round2(expGross - expVat);
@@ -72,9 +77,12 @@ export function buildFinanceReport(opts: {
     sheet: 'סיכום',
     title: `סיכום — ${periodLabel}`,
     kpis: [
-      { label: 'סה״כ נכנס אלייך (לפני מע״מ)', value: s.total, money: true, tone: 'green' },
+      { label: `סה״כ נכנס אלייך (לפני מע״מ) · ${s.count} הזמנות`, value: s.total, money: true, tone: 'green' },
       { label: 'סה״כ הכנסות כולל מע״מ', value: s.grossTotal, money: true },
-      { label: 'מספר הזמנות', value: s.count },
+      // Whole year: monthly average (same rule as the screens); single month: order count.
+      ...(!key && yearAvg.months
+        ? [{ label: `ממוצע חודשי לפני מע״מ (${yearAvg.label})`, value: averageOf(s.total, yearAvg), money: true }]
+        : [{ label: 'מספר הזמנות', value: s.count }]),
       { label: 'מתוכו ללא משלוחים (לפני מע״מ)', value: s.noShipping, money: true },
       { label: 'מתוכו דמי משלוח (לפני מע״מ)', value: s.shipping, money: true },
       { label: 'מתוכו טרם שולם (לפני מע״מ)', value: s.openTotal, money: true, tone: s.openTotal ? 'amber' : undefined },
@@ -98,8 +106,9 @@ export function buildFinanceReport(opts: {
     const pnl = buildPnl(opts.orders, opts.expenses, year, basis);
     const monthly = Array.from({ length: 12 }, (_, i) => {
       const k = monthKey(year, i);
-      return { m: HEBREW_MONTHS[i], s: summarize(orders.filter(o => orderBasisDate(o, basis)?.slice(0, 7) === k)) };
+      return { k, m: HEBREW_MONTHS[i], s: summarize(orders.filter(o => orderBasisDate(o, basis)?.slice(0, 7) === k)) };
     });
+    const incomeAvg = averageBasis(year, monthly.filter(x => x.s.count + x.s.barterCount > 0).map(x => x.k));
     sections.push({
       sheet: 'הכנסות לפי חודש',
       title: `הכנסות לפי חודש — ${year}`,
@@ -107,6 +116,9 @@ export function buildFinanceReport(opts: {
         headers: ['חודש', 'הזמנות', 'ללא משלוח', 'דמי משלוח', 'סה״כ לפני מע״מ', 'סה״כ כולל מע״מ', 'שולם', 'טרם שולם'],
         rows: monthly.map(({ m, s: x }) => [m, x.count, x.noShipping, x.shipping, x.total, x.grossTotal, x.paidTotal, x.openTotal]),
         total: ['סה״כ', s.count, s.noShipping, s.shipping, s.total, s.grossTotal, s.paidTotal, s.openTotal],
+        average: incomeAvg.months
+          ? [`ממוצע חודשי (${incomeAvg.label})`, round2(s.count / incomeAvg.months), ...[s.noShipping, s.shipping, s.total, s.grossTotal, s.paidTotal, s.openTotal].map(n => averageOf(n, incomeAvg))]
+          : undefined,
         moneyCols: [2, 3, 4, 5, 6, 7],
       },
     });
@@ -119,11 +131,15 @@ export function buildFinanceReport(opts: {
           headers: ['חודש', 'הכנסות לפני מע״מ', 'הכנסות כולל מע״מ', 'הוצאות לפני מע״מ', 'הוצאות כולל מע״מ', 'רווח / הפסד', 'מצטבר', 'טרם נגבה'],
           rows: pnl.months.map(r => [r.month, r.income, r.incomeGross, r.expenses, r.expensesGross, r.result, r.cumulative, r.open]),
           total: ['סה״כ', t.income, t.incomeGross, t.expenses, t.expensesGross, t.result, t.result, t.open],
+          average: pnl.average.months
+            ? [`ממוצע חודשי (${pnl.average.label})`, pnl.avg.income, pnl.avg.incomeGross, pnl.avg.expenses, pnl.avg.expensesGross, pnl.avg.result, null, pnl.avg.open]
+            : undefined,
           moneyCols: [1, 2, 3, 4, 5, 6, 7],
         },
         notes: [
-          ...(pnl.avgExpenses > 0 ? [`הוצאה חודשית ממוצעת: ₪${pnl.avgExpenses.toLocaleString('he-IL')} לפני מע״מ — זו ההכנסה המינימלית לחודש כדי לא להפסיד.`] : []),
-          ...(pnl.avgIncome > 0 ? [`הכנסה חודשית ממוצעת: ₪${pnl.avgIncome.toLocaleString('he-IL')} לפני מע״מ.`] : []),
+          ...(pnl.avgExpenses > 0 ? [`הוצאה חודשית ממוצעת (${pnl.average.label}): ₪${pnl.avgExpenses.toLocaleString('he-IL')} לפני מע״מ — זו ההכנסה המינימלית לחודש כדי לא להפסיד.`] : []),
+          ...(pnl.avgIncome > 0 ? [`הכנסה חודשית ממוצעת (${pnl.average.label}): ₪${pnl.avgIncome.toLocaleString('he-IL')} לפני מע״מ.`] : []),
+          'ממוצע חודשי: בשנה שהסתיימה — סה״כ השנה ÷ 12. בשנה הנוכחית — ÷ מספר החודשים מהחודש הראשון עם פעילות ועד החודש הנוכחי (מתעדכן כל חודש).',
           ...(t.result < 0 ? [`כדי לכסות את ההפסד המצטבר צריך עוד ₪${(-t.result).toLocaleString('he-IL')} רווח מעבר להוצאות.`] : []),
         ],
       });
@@ -241,6 +257,7 @@ export function reportToSheets(r: FinanceReport): { name: string; rows: Cell[][]
     if (sec.table) {
       rows.push([], sec.table.headers, ...sec.table.rows);
       if (sec.table.total) rows.push(sec.table.total);
+      if (sec.table.average) rows.push(sec.table.average);
     }
     if (sec.notes?.length) {
       rows.push([]);

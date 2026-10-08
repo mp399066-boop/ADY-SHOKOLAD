@@ -5,7 +5,7 @@ import { Card } from '@/components/ui/Card';
 import { Modal } from '@/components/ui/Modal';
 import {
   summarize, summarizeByCustomer, summarizeByPaymentMethod, paymentMethodLabel, orderBasisDate,
-  monthKey, monthLabel, HEBREW_MONTHS,
+  monthKey, monthLabel, HEBREW_MONTHS, averageBasis, averageOf, round2,
   type FinanceOrder, type DateBasis, type MoneySummary,
 } from '@/lib/finance';
 import { downloadExcel, downloadElementPng, fmtDate, type Cell } from '@/lib/finance-export';
@@ -75,12 +75,21 @@ export default function IncomeTab({ orders, year, basis, undatedCount }: {
     [byMonth],
   );
   const yearSummary = useMemo(() => summarize(orders), [orders]);
+  // Monthly average: ÷ 12 for a finished year; for the current year ÷ the
+  // months from the first month with orders up to this month.
+  const average = useMemo(
+    () => averageBasis(year, monthRows.filter(m => m.s.count + m.s.barterCount > 0).map(m => m.key)),
+    [year, monthRows],
+  );
+  const avg = (n: number) => averageOf(n, average);
+  const avgCount = average.months ? round2(yearSummary.count / average.months) : 0;
 
   async function exportYearExcel() {
     const monthly: Cell[][] = [
       ['חודש', 'מס׳ הזמנות', 'ללא משלוח (לפני מע״מ)', 'דמי משלוח (לפני מע״מ)', 'סה״כ לפני מע״מ', 'סה״כ כולל מע״מ', 'שולם (לפני מע״מ)', 'טרם שולם (לפני מע״מ)'],
       ...monthRows.map(m => [monthLabel(m.key), m.s.count, m.s.noShipping, m.s.shipping, m.s.total, m.s.grossTotal, m.s.paidTotal, m.s.openTotal] as Cell[]),
       ['סה״כ שנתי', yearSummary.count, yearSummary.noShipping, yearSummary.shipping, yearSummary.total, yearSummary.grossTotal, yearSummary.paidTotal, yearSummary.openTotal],
+      ...(average.months ? [[`ממוצע חודשי (${average.label})`, avgCount, avg(yearSummary.noShipping), avg(yearSummary.shipping), avg(yearSummary.total), avg(yearSummary.grossTotal), avg(yearSummary.paidTotal), avg(yearSummary.openTotal)] as Cell[]] : []),
       [],
       [`${VAT_NOTE} ${BASIS_LABEL[basis]}. הזמנות שבוטלו, טיוטות והזמנות בארטר אינן נספרות.`],
     ];
@@ -97,11 +106,13 @@ export default function IncomeTab({ orders, year, basis, undatedCount }: {
   return (
     <div className="space-y-5">
       <div ref={yearRef} className="space-y-5 bg-white sm:bg-transparent">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
           <StatCard label={`נכנס אלייך ב-${year} (לפני מע״מ)`} value={money(yearSummary.total)} sub={`${yearSummary.count} הזמנות`} tone="green" />
           <StatCard label="מתוכו ללא משלוחים" value={money(yearSummary.noShipping)} tone="brand" />
           <StatCard label="סה״כ כולל מע״מ" value={money(yearSummary.grossTotal)} sub={`מתוכו דמי משלוח (לפני מע״מ): ${money(yearSummary.shipping)}`} />
           <StatCard label="מתוכו טרם שולם" value={money(yearSummary.openTotal)} sub={`${yearSummary.openCount} הזמנות`} tone={yearSummary.openTotal > 0 ? 'amber' : undefined} />
+          <StatCard label="ממוצע חודשי (לפני מע״מ)" value={money(avg(yearSummary.total))}
+            sub={average.months ? `${average.label} · כולל מע״מ: ${money(avg(yearSummary.grossTotal))}` : undefined} tone="brand" />
         </div>
 
         <Card className="!p-0 overflow-hidden">
@@ -158,6 +169,22 @@ export default function IncomeTab({ orders, year, basis, undatedCount }: {
                   <Td className="font-bold tabular-nums" style={{ color: C.amber }}>{money(yearSummary.openTotal)}</Td>
                   <Td />
                 </tr>
+                {average.months > 0 && (
+                  <tr style={{ borderTop: `1px solid ${C.border}`, backgroundColor: '#FBF6EE' }}>
+                    <Td className="font-semibold">
+                      ממוצע חודשי
+                      <div className="text-xs font-normal" style={{ color: C.sub }}>{average.label}</div>
+                    </Td>
+                    <Td className="font-semibold">{avgCount.toLocaleString('he-IL')}</Td>
+                    <Td className="font-semibold tabular-nums" style={{ color: C.brand }}>{money(avg(yearSummary.noShipping))}</Td>
+                    <Td className="font-semibold tabular-nums">{money(avg(yearSummary.shipping))}</Td>
+                    <Td className="font-semibold tabular-nums" style={{ color: C.green }}>{money(avg(yearSummary.total))}</Td>
+                    <Td className="font-semibold tabular-nums">{money(avg(yearSummary.grossTotal))}</Td>
+                    <Td className="font-semibold tabular-nums">{money(avg(yearSummary.paidTotal))}</Td>
+                    <Td className="font-semibold tabular-nums" style={{ color: C.amber }}>{money(avg(yearSummary.openTotal))}</Td>
+                    <Td />
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>

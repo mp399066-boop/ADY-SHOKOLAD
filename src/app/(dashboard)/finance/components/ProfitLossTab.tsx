@@ -22,7 +22,8 @@ export default function ProfitLossTab({ orders, expenses, year, basis, expensesR
   const active = rows.filter(r => r.hasData);
   const totals = pnl.totals;
   const result = totals.result;
-  const { avgExpenses, avgIncome } = pnl;
+  const { avgExpenses, avgIncome, average, avg } = pnl;
+  const signed = (n: number) => `${n < 0 ? '−' : ''}${money(Math.abs(n))}`;
   const monthlyGap = round2(avgExpenses - avgIncome);
   // Customers pay VAT on top of the net income — show the matching gross too.
   const withVat = (n: number) => round2(n * (1 + VAT_RATE));
@@ -32,9 +33,8 @@ export default function ProfitLossTab({ orders, expenses, year, basis, expensesR
       ['חודש', 'הכנסות לפני מע״מ', 'הכנסות כולל מע״מ', 'הוצאות לפני מע״מ', 'הוצאות כולל מע״מ', 'רווח / הפסד (לפני מע״מ)', 'מצטבר מתחילת השנה', 'טרם נגבה (לפני מע״מ)'],
       ...rows.map(r => [r.month, r.income, r.incomeGross, r.expenses, r.expensesGross, r.result, r.cumulative ?? '', r.open] as Cell[]),
       ['סה״כ שנתי', totals.income, totals.incomeGross, totals.expenses, totals.expensesGross, result, result, totals.open],
+      ...(average.months ? [[`ממוצע חודשי (${average.label})`, avg.income, avg.incomeGross, avg.expenses, avg.expensesGross, avg.result, '', avg.open] as Cell[]] : []),
       [],
-      ['הוצאה חודשית ממוצעת (לפני מע״מ)', avgExpenses],
-      ['הכנסה חודשית ממוצעת (לפני מע״מ)', avgIncome],
       ...(result < 0 ? [['הכנסה נוספת שנדרשת כדי לכסות את ההפסד', -result] as Cell[]] : []),
       [],
       ['רווח והפסד מחושב לפני מע״מ: מע״מ שנגבה מלקוחות שייך למדינה, ומע״מ על הוצאות מקוזז.'],
@@ -69,14 +69,14 @@ export default function ProfitLossTab({ orders, expenses, year, basis, expensesR
           <ul className="space-y-2 text-sm" style={{ color: C.text }}>
             {avgExpenses > 0 && (
               <li>
-                ההוצאה החודשית הממוצעת היא <b>{money(avgExpenses)}</b> לפני מע״מ. כדי לא להפסיד צריך להכניס לפחות{' '}
+                ההוצאה החודשית הממוצעת ({average.label}) היא <b>{money(avgExpenses)}</b> לפני מע״מ. כדי לא להפסיד צריך להכניס לפחות{' '}
                 <b style={{ color: C.brand }}>{money(avgExpenses)}</b> בחודש לפני מע״מ
                 <span style={{ color: C.sub }}> (כ-{money(withVat(avgExpenses))} כולל מע״מ)</span>.
               </li>
             )}
             {avgIncome > 0 && avgExpenses > 0 && (
               <li>
-                ההכנסה החודשית הממוצעת היא <b>{money(avgIncome)}</b> לפני מע״מ —{' '}
+                ההכנסה החודשית הממוצעת ({average.label}) היא <b>{money(avgIncome)}</b> לפני מע״מ —{' '}
                 {monthlyGap > 0
                   ? <>חסרים בממוצע <b style={{ color: C.red }}>{money(monthlyGap)}</b> בחודש (כ-{money(withVat(monthlyGap))} כולל מע״מ).</>
                   : <>יותר מההוצאות בממוצע ב-<b style={{ color: C.green }}>{money(-monthlyGap)}</b> בחודש.</>}
@@ -133,6 +133,21 @@ export default function ProfitLossTab({ orders, expenses, year, basis, expensesR
                 <Td className="font-bold tabular-nums" style={{ color: result >= 0 ? C.green : C.red }}>{result < 0 ? '−' : ''}{money(Math.abs(result))}</Td>
                 <Td className="font-bold tabular-nums" style={{ color: C.amber }}>{money(totals.open)}</Td>
               </tr>
+              {average.months > 0 && (
+                <tr style={{ borderTop: `1px solid ${C.border}`, backgroundColor: '#FBF6EE' }}>
+                  <Td className="font-semibold">
+                    ממוצע חודשי
+                    <div className="text-xs font-normal" style={{ color: C.sub }}>{average.label}</div>
+                  </Td>
+                  <Td className="font-semibold tabular-nums" style={{ color: C.green }}>{money(avg.income)}</Td>
+                  <Td className="font-semibold tabular-nums">{money(avg.incomeGross)}</Td>
+                  <Td className="font-semibold tabular-nums" style={{ color: C.red }}>{money(avg.expenses)}</Td>
+                  <Td className="font-semibold tabular-nums">{money(avg.expensesGross)}</Td>
+                  <Td className="font-semibold tabular-nums" style={{ color: avg.result >= 0 ? C.green : C.red }}>{signed(avg.result)}</Td>
+                  <Td />
+                  <Td className="font-semibold tabular-nums" style={{ color: C.amber }}>{money(avg.open)}</Td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

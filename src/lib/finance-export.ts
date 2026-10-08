@@ -131,7 +131,8 @@ function tableHtml(sec: ReportSection, rows: Cell[][], withTotal: boolean): stri
   const head = t.headers.map(h => `<th>${esc(h)}</th>`).join('');
   const cells = (r: Cell[]) => r.map((v, i) => `<td class="${cellClass(v, t.moneyCols.includes(i))}">${cellHtml(v, t.moneyCols.includes(i))}</td>`).join('');
   const body = rows.map(r => `<tr>${cells(r)}</tr>`).join('');
-  const total = withTotal && t.total ? `<tr class="total">${cells(t.total)}</tr>` : '';
+  const total = (withTotal && t.total ? `<tr class="total">${cells(t.total)}</tr>` : '')
+    + (withTotal && t.average ? `<tr class="avg">${cells(t.average)}</tr>` : '');
   const wide = t.headers.length >= 8 ? ' class="wide"' : '';
   return `<table${wide}><thead><tr>${head}</tr></thead><tbody>${body}${total}</tbody></table>`;
 }
@@ -152,6 +153,7 @@ const REPORT_CSS = `
   .blk th { background:#FAF7F0; color:#8A7664; font-weight:bold; text-align:right; padding:5px 5px; border-bottom:1px solid #EAE0D4; white-space: nowrap; }
   .blk td { padding:4px 5px; border-bottom:1px solid #F0EAE2; text-align:right; white-space: nowrap; }
   .blk td.wrap { white-space: normal; }
+  .blk tr.avg td { font-weight:bold; background:#FBF6EE; color:#5C3410; }
   .blk td.num { white-space: nowrap; direction: ltr; text-align: right; unicode-bidi: plaintext; }
   .blk tr.total td { font-weight:bold; background:#FAF7F0; border-top:2px solid #C9A46A; }
   .blk .notes { margin-top: 6px; font-size: 11px; color:#8A7664; }
