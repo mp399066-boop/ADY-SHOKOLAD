@@ -2669,7 +2669,7 @@ export default function OrderDetailPage() {
                     style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
                   >
                     <option value="">—</option>
-                    {['מזומן', 'כרטיס אשראי', 'העברה בנקאית', 'bit', 'PayBox', 'PayPal', 'אחר'].map(m => (
+                    {['מזומן', 'כרטיס אשראי', 'העברה בנקאית', 'bit', 'PayBox', 'PayPal', 'בארטר', 'אחר'].map(m => (
                       <option key={m} value={m}>{m}</option>
                     ))}
                   </select>

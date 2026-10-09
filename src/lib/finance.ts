@@ -73,6 +73,24 @@ export interface FinanceOrder {
   paid: boolean;
 }
 
+export const BARTER = 'בארטר';
+/** Payment methods that don't say money was received (a barter customer's order with one of these is barter). */
+const NON_MONEY_METHODS = new Set(['', 'אחר', BARTER]);
+
+/**
+ * One rule for "barter" (no money changes hands) across every finance view:
+ *   • payment status = בארטר, or
+ *   • payment method = בארטר, or
+ *   • the customer is a barter customer (סוג_לקוח = בארטר) and no real money
+ *     method was recorded (empty / אחר). Marking such an order "שולם" flips its
+ *     status, so the customer type is what still marks it as barter.
+ */
+export function isBarterOrder(r: Pick<FinanceOrderSource, 'סטטוס_תשלום' | 'אופן_תשלום' | 'לקוחות'>): boolean {
+  const method = (r.אופן_תשלום ?? '').trim();
+  if (r.סטטוס_תשלום === BARTER || method === BARTER) return true;
+  return r.לקוחות?.סוג_לקוח === BARTER && NON_MONEY_METHODS.has(method);
+}
+
 /** Order statuses that never count as income. */
 const EXCLUDED_ORDER_STATUSES = new Set(['בוטלה', 'טיוטה']);
 
@@ -109,7 +127,7 @@ export function toFinanceOrder(r: FinanceOrderSource): FinanceOrder {
     vatMode: mode,
     paymentStatus: r.סטטוס_תשלום ?? '',
     paymentMethod: r.אופן_תשלום,
-    barter: r.סטטוס_תשלום === 'בארטר',
+    barter: isBarterOrder(r),
     grossTotal,
     grossShipping,
     grossNoShipping: round2(grossTotal - grossShipping),

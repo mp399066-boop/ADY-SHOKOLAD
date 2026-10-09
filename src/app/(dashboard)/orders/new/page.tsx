@@ -469,6 +469,7 @@ export default function NewOrderPage() {
         }
         if (linkedCustomer.סוג_לקוח === 'בארטר') {
           setPaymentStatus('בארטר');
+          setPaymentMethod('בארטר');
         }
       }
     });
@@ -613,8 +614,10 @@ export default function NewOrderPage() {
     // Barter customer: auto-set payment status to בארטר (no receipt/invoice will fire)
     if (cust?.סוג_לקוח === 'בארטר') {
       setPaymentStatus('בארטר');
-    } else if (paymentStatus === 'בארטר') {
-      setPaymentStatus('ממתין');
+      setPaymentMethod('בארטר');
+    } else {
+      if (paymentStatus === 'בארטר') setPaymentStatus('ממתין');
+      if (paymentMethod === 'בארטר') setPaymentMethod(systemConfig.default_payment_method || 'מזומן');
     }
     // Auto-fill recipient from customer when in "customer" mode.
     // Address/city/instructions populate from the customer's saved address

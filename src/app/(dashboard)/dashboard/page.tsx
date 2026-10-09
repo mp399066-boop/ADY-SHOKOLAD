@@ -44,7 +44,7 @@ type OrderStatus = 'חדשה' | 'בהכנה' | 'מוכנה למשלוח' | 'נש
 const STOCK_ALERT_STATES = ['מלאי נמוך', 'קריטי', 'אזל מהמלאי'];
 
 const PAYMENT_METHODS = [
-  'מזומן', 'כרטיס אשראי', 'העברה בנקאית', 'bit', 'PayBox', 'PayPal', 'המחאה', 'אחר',
+  'מזומן', 'כרטיס אשראי', 'העברה בנקאית', 'bit', 'PayBox', 'PayPal', 'המחאה', 'בארטר', 'אחר',
 ] as const;
 
 const ORDER_STATUS_OPTIONS: { value: OrderStatus }[] = [

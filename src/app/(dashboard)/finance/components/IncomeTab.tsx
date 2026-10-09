@@ -245,6 +245,7 @@ function Footnote({ summary, undatedCount }: { summary: MoneySummary; undatedCou
       {summary.barterCount > 0 && (
         <div>{summary.barterCount} הזמנות בארטר (שווי {money(summary.barterTotal)} ללא משלוח, לפני מע״מ) לא נכללו — לא נכנס עליהן כסף.</div>
       )}
+      <div>הזמנה נחשבת בארטר כשסטטוס התשלום או אמצעי התשלום הוא &quot;בארטר&quot;, או כשהלקוח מסוג בארטר ולא נרשם אמצעי תשלום של כסף (ריק / אחר).</div>
       {undatedCount > 0 && (
         <div style={{ color: C.amber }}>{undatedCount} הזמנות ללא תאריך אספקה אינן מופיעות בתצוגה לפי תאריך אספקה.</div>
       )}

@@ -45,7 +45,7 @@ export const OPTION_LISTS: OptionListDef[] = [
     key: 'payment_methods',
     label: 'אמצעי תשלום',
     description: 'אמצעי התשלום שניתן לבחור בהזמנה.',
-    defaults: ['מזומן', 'כרטיס אשראי', 'העברה בנקאית', 'bit', 'PayBox', 'PayPal', 'המחאה', 'אחר'],
+    defaults: ['מזומן', 'כרטיס אשראי', 'העברה בנקאית', 'bit', 'PayBox', 'PayPal', 'המחאה', 'בארטר', 'אחר'],
     usage: [
       { table: 'הזמנות', column: 'אופן_תשלום' },
       { table: 'תשלומים', column: 'אמצעי_תשלום' },
