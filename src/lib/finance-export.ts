@@ -139,7 +139,7 @@ function tableHtml(sec: ReportSection, rows: Cell[][], withTotal: boolean): stri
 
 const REPORT_CSS = `
   .blk, .blk * { box-sizing: border-box; }
-  .blk { width:${PDF_W}px; padding: 10px 34px; background:#fff; direction: rtl; font-family: Arial, Helvetica, sans-serif; color:#3A2A1A; }
+  .blk { width: max-content; min-width:${PDF_W}px; padding: 10px 34px; background:#fff; direction: rtl; font-family: Arial, Helvetica, sans-serif; color:#3A2A1A; }
   .blk h1 { font-size: 22px; margin: 0 0 4px; color:#5C3410; }
   .blk h2 { font-size: 15px; margin: 6px 0 8px; color:#5C3410; border-bottom: 2px solid #C9A46A; padding-bottom: 4px; }
   .blk .meta { font-size: 12px; color:#8A7664; }
@@ -190,7 +190,7 @@ export async function buildReportPdf(r: FinanceReport, businessName: string): Pr
   const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import('html2canvas'), import('jspdf')]);
 
   const host = document.createElement('div');
-  host.style.cssText = `position:fixed;left:-100000px;top:0;width:${PDF_W}px;z-index:-1;background:#fff`;
+  host.style.cssText = `position:fixed;left:-100000px;top:0;width:max-content;z-index:-1;background:#fff`;
   host.innerHTML = `<style>${REPORT_CSS}</style>`;
   document.body.appendChild(host);
 
@@ -205,7 +205,9 @@ export async function buildReportPdf(r: FinanceReport, businessName: string): Pr
       el.className = 'blk';
       el.innerHTML = html;
       host.appendChild(el);
-      const canvas = await html2canvas(el, { backgroundColor: '#FFFFFF', scale: 1.6, logging: false, width: PDF_W, windowWidth: PDF_W });
+      const blockW = Math.max(PDF_W, Math.ceil(el.scrollWidth));
+      // Wider blocks are rendered sharper so they stay readable after scaling down.
+      const canvas = await html2canvas(el, { backgroundColor: '#FFFFFF', scale: 1.6 * (blockW / PDF_W), logging: false, width: blockW, windowWidth: blockW });
       host.removeChild(el);
       let h = (canvas.height / canvas.width) * pageW;
       let w = pageW;

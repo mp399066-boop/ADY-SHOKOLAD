@@ -135,6 +135,8 @@ export function orderBasisDate(o: FinanceOrder, basis: DateBasis): string | null
 export interface IncomeMoney {
   /** נכנס לכיס — without delivery, before VAT. */
   pocket: number;
+  /** Without delivery, VAT included — products as the customer paid them. */
+  pocketGross: number;
   shippingNet: number;
   shippingGross: number;
   /** All VAT in the amount (products + delivery). */
@@ -149,7 +151,8 @@ export interface IncomeMoney {
 export type IncomeMoneyKey = keyof IncomeMoney;
 
 export const INCOME_COLUMNS: { key: IncomeMoneyKey; label: string; short: string }[] = [
-  { key: 'pocket',        label: 'נכנס לכיס (ללא משלוח, לפני מע״מ)', short: 'נכנס לכיס' },
+  { key: 'pocket',        label: 'נכנס לכיס — ללא משלוח, לפני מע״מ',  short: 'ללא משלוח לפני מע״מ (לכיס)' },
+  { key: 'pocketGross',   label: 'ללא משלוח — כולל מע״מ',             short: 'ללא משלוח כולל מע״מ' },
   { key: 'shippingNet',   label: 'דמי משלוח — לפני מע״מ',             short: 'משלוח לפני מע״מ' },
   { key: 'shippingGross', label: 'דמי משלוח — כולל מע״מ',             short: 'משלוח כולל מע״מ' },
   { key: 'vat',           label: 'מע״מ',                              short: 'מע״מ' },
@@ -161,7 +164,7 @@ export const INCOME_COLUMNS: { key: IncomeMoneyKey; label: string; short: string
 export const incomeValues = (m: IncomeMoney): number[] => INCOME_COLUMNS.map(c => m[c.key]);
 
 export function emptyIncome(): IncomeMoney {
-  return { pocket: 0, shippingNet: 0, shippingGross: 0, vat: 0, grossTotal: 0, openNet: 0, openGross: 0 };
+  return { pocket: 0, pocketGross: 0, shippingNet: 0, shippingGross: 0, vat: 0, grossTotal: 0, openNet: 0, openGross: 0 };
 }
 
 /** One order's income figures (barter orders carry no money). */
@@ -169,6 +172,7 @@ export function orderIncome(o: FinanceOrder): IncomeMoney {
   if (o.barter) return emptyIncome();
   return {
     pocket: o.netNoShipping,
+    pocketGross: o.grossNoShipping,
     shippingNet: o.netShipping,
     shippingGross: o.grossShipping,
     vat: round2(o.grossTotal - o.netTotal),
@@ -372,7 +376,7 @@ export function buildPnl(orders: FinanceOrder[], expenses: Expense[], year: numb
     const counts = key <= currentMonth || hasData;
     if (counts) running = round2(running + result);
     return {
-      key, month: HEBREW_MONTHS[i], income: s.pocket, incomeGross: round2(s.grossTotal - s.shippingGross), open: s.openNet,
+      key, month: HEBREW_MONTHS[i], income: s.pocket, incomeGross: s.pocketGross, open: s.openNet,
       expenses: exp, expensesGross: expGross, result, cumulative: counts ? running : null, hasData,
     };
   });

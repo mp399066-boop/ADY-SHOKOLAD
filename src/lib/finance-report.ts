@@ -87,6 +87,7 @@ export function buildFinanceReport(opts: {
       ...(!key && yearAvg.months
         ? [{ label: `ממוצע חודשי לכיס (${yearAvg.label})`, value: averageOf(s.pocket, yearAvg), money: true }]
         : [{ label: 'מספר הזמנות', value: s.count }]),
+      { label: 'ללא משלוח — כולל מע״מ', value: s.pocketGross, money: true },
       { label: 'סה״כ שהלקוחות שילמו — כולל מע״מ', value: s.grossTotal, money: true },
       { label: 'דמי משלוח — לפני מע״מ', value: s.shippingNet, money: true },
       { label: 'דמי משלוח — כולל מע״מ', value: s.shippingGross, money: true },

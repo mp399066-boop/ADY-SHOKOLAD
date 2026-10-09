@@ -18,7 +18,7 @@ import { C, money, StatCard, ExportButtons, Th, Td, EmptyNote } from './shared';
 // screen, the Excel and the PDF report always show the same columns.
 
 const BASIS_LABEL: Record<DateBasis, string> = { order: 'לפי תאריך הזמנה', delivery: 'לפי תאריך אספקה' };
-const POCKET_NOTE = '"נכנס לכיס" = סכום ההזמנות ללא דמי משלוח ולפני מע״מ — זה מה שנשאר אצלך. דמי משלוח ומע״מ אינם הכנסה ומוצגים בנפרד. נכנס לכיס + משלוח לפני מע״מ + מע״מ = מה שהלקוחות שילמו.';
+const POCKET_NOTE = '"נכנס לכיס" = סכום ההזמנות ללא דמי משלוח ולפני מע״מ — זה מה שנשאר אצלך. "ללא משלוח כולל מע״מ" = אותו סכום כפי שהלקוחות שילמו אותו. דמי משלוח ומע״מ אינם הכנסה ומוצגים בנפרד. נכנס לכיס + משלוח לפני מע״מ + מע״מ = מה שהלקוחות שילמו.';
 
 /** Per-order columns: the open balance is shown by the status column instead. */
 const ORDER_COLUMNS = INCOME_COLUMNS.filter(c => c.key !== 'openNet' && c.key !== 'openGross');
@@ -138,8 +138,9 @@ export default function IncomeTab({ orders, year, basis, undatedCount }: {
   return (
     <div className="space-y-5">
       <div ref={yearRef} className="space-y-5 bg-white sm:bg-transparent">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
           <StatCard label={`נכנס לכיס ${year} — ללא משלוח, לפני מע״מ`} value={money(y.pocket)} sub={`${y.count} הזמנות`} tone="green" />
+          <StatCard label="ללא משלוח — כולל מע״מ" value={money(y.pocketGross)} />
           <StatCard label="ממוצע חודשי לכיס" value={money(avgMoney.pocket)} sub={average.months ? average.label : undefined} tone="brand" />
           <StatCard label="דמי משלוח — לפני מע״מ" value={money(y.shippingNet)} />
           <StatCard label="דמי משלוח — כולל מע״מ" value={money(y.shippingGross)} />
@@ -327,6 +328,7 @@ function MonthDetailModal({ monthKeyStr, orders, basis, onClose }: {
       <div ref={ref} className="space-y-4 bg-white">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
           <StatCard label="נכנס לכיס — ללא משלוח, לפני מע״מ" value={money(s.pocket)} sub={`${s.count} הזמנות`} tone="green" />
+          <StatCard label="ללא משלוח — כולל מע״מ" value={money(s.pocketGross)} />
           <StatCard label="דמי משלוח — לפני מע״מ" value={money(s.shippingNet)} />
           <StatCard label="דמי משלוח — כולל מע״מ" value={money(s.shippingGross)} />
           <StatCard label="מע״מ" value={money(s.vat)} />
