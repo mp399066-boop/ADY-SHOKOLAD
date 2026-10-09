@@ -11,7 +11,7 @@ import {
   type FieldKey, type RawCell,
 } from '@/lib/finance-import-parse';
 import { fmtDate } from '@/lib/finance-export';
-import { C, money, Th, Td } from './shared';
+import { C, money, Th, Td, THEAD_STYLE } from './shared';
 
 const selectCls = 'w-full px-2 py-1.5 text-sm rounded-lg border border-[#E8DED2] bg-white focus:outline-none focus:border-[#C9A46A]';
 const FIELDS: FieldKey[] = ['date', 'amount', 'payee', 'category', 'description', 'vat', 'net', 'docNumber'];
@@ -177,7 +177,7 @@ export default function ExpenseImportModal({ open, onClose, onImported }: {
 
             <div className="rounded-xl overflow-auto" style={{ border: `1px solid ${C.border}`, maxHeight: '38vh' }}>
               <table className="w-full">
-                <thead className="sticky top-0" style={{ backgroundColor: C.soft }}>
+                <thead className="sticky top-0" style={THEAD_STYLE}>
                   <tr><Th>שורה</Th><Th>תאריך</Th><Th>ספק / שם</Th><Th>קטגוריה</Th><Th>תיאור</Th><Th>סכום</Th><Th>מע״מ</Th><Th>מס׳ מסמך</Th></tr>
                 </thead>
                 <tbody>

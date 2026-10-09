@@ -2,12 +2,13 @@
 
 import { useMemo, useRef } from 'react';
 import { Card } from '@/components/ui/Card';
+import { Wallet, Receipt, TrendingDown, CreditCard, Scale, Hourglass } from 'lucide-react';
 import {
   buildPnl, round2, VAT_RATE,
   type FinanceOrder, type Expense, type DateBasis,
 } from '@/lib/finance';
 import { downloadExcel, downloadElementPng, type Cell } from '@/lib/finance-export';
-import { C, money, StatCard, ExportButtons, Th, Td, EmptyNote } from './shared';
+import { C, money, StatCard, ExportButtons, Th, Td, EmptyNote, THEAD_STYLE, TOTAL_ROW_STYLE, ROW_CLS } from './shared';
 
 export default function ProfitLossTab({ orders, expenses, year, basis, expensesReady }: {
   orders: FinanceOrder[];
@@ -45,7 +46,7 @@ export default function ProfitLossTab({ orders, expenses, year, basis, expensesR
   return (
     <div ref={ref} className="space-y-5 bg-white sm:bg-transparent">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold" style={{ color: C.text }}>רווח והפסד — {year}</h2>
+        <h2 className="text-base font-bold" style={{ color: C.text }}>רווח והפסד — {year}</h2>
         <ExportButtons onExcel={exportExcel} onImage={() => ref.current ? downloadElementPng(ref.current, `רווח_והפסד_${year}`) : undefined} />
       </div>
 
@@ -57,12 +58,12 @@ export default function ProfitLossTab({ orders, expenses, year, basis, expensesR
       )}
 
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-        <StatCard label="נכנס לכיס — ללא משלוח, לפני מע״מ" value={money(totals.income)} tone="green" />
-        <StatCard label="נכנס לכיס — ללא משלוח, כולל מע״מ" value={money(totals.incomeGross)} />
-        <StatCard label="הוצאות — לפני מע״מ" value={money(totals.expenses)} tone="red" />
-        <StatCard label="הוצאות — כולל מע״מ (שולם בפועל)" value={money(totals.expensesGross)} />
-        <StatCard label={result >= 0 ? 'רווח — לפני מע״מ' : 'הפסד — לפני מע״מ'} value={money(Math.abs(result))} tone={result >= 0 ? 'green' : 'red'} sub={`${active.length} חודשים עם פעילות`} />
-        <StatCard label="טרם נגבה מלקוחות — לפני מע״מ" value={money(totals.open)} tone={totals.open ? 'amber' : undefined} sub="כל סכום ההזמנה" />
+        <StatCard label="נכנס לכיס — ללא משלוח, לפני מע״מ" value={money(totals.income)} tone="green" icon={Wallet} />
+        <StatCard label="נכנס לכיס — ללא משלוח, כולל מע״מ" value={money(totals.incomeGross)} icon={Receipt} />
+        <StatCard label="הוצאות — לפני מע״מ" value={money(totals.expenses)} tone="red" icon={TrendingDown} />
+        <StatCard label="הוצאות — כולל מע״מ (שולם בפועל)" value={money(totals.expensesGross)} icon={CreditCard} />
+        <StatCard label={result >= 0 ? 'רווח — לפני מע״מ' : 'הפסד — לפני מע״מ'} value={money(Math.abs(result))} tone={result >= 0 ? 'green' : 'red'} sub={`${active.length} חודשים עם פעילות`} icon={Scale} />
+        <StatCard label="טרם נגבה מלקוחות — לפני מע״מ" value={money(totals.open)} tone={totals.open ? 'amber' : undefined} sub="כל סכום ההזמנה" icon={Hourglass} />
       </div>
 
       {(avgExpenses > 0 || result < 0) && (
@@ -99,7 +100,7 @@ export default function ProfitLossTab({ orders, expenses, year, basis, expensesR
       <Card className="!p-0 overflow-hidden">
         <div className="overflow-x-auto" data-export-expand>
           <table className="w-full">
-            <thead style={{ backgroundColor: C.soft }}>
+            <thead style={THEAD_STYLE}>
               <tr>
                 <Th>חודש</Th><Th>נכנס לכיס לפני מע״מ</Th><Th>נכנס לכיס כולל מע״מ</Th><Th>הוצאות לפני מע״מ</Th><Th>הוצאות כולל מע״מ</Th>
                 <Th>רווח / הפסד</Th><Th>מצטבר</Th><Th>טרם נגבה</Th>
@@ -109,7 +110,7 @@ export default function ProfitLossTab({ orders, expenses, year, basis, expensesR
               {rows.map(r => {
                 const future = r.cumulative === null;
                 return (
-                  <tr key={r.key} style={{ borderTop: `1px solid ${C.border}`, opacity: future ? 0.45 : 1 }}>
+                  <tr key={r.key} className={ROW_CLS} style={{ borderTop: `1px solid ${C.border}`, opacity: future ? 0.45 : 1 }}>
                     <Td className="font-medium">{r.month}</Td>
                     <Td className="tabular-nums" style={{ color: r.income ? C.green : C.faint }}>{money(r.income)}</Td>
                     <Td className="tabular-nums" style={{ color: r.incomeGross ? C.text : C.faint }}>{money(r.incomeGross)}</Td>
@@ -125,7 +126,7 @@ export default function ProfitLossTab({ orders, expenses, year, basis, expensesR
                   </tr>
                 );
               })}
-              <tr style={{ borderTop: `2px solid ${C.gold}`, backgroundColor: C.soft }}>
+              <tr style={TOTAL_ROW_STYLE}>
                 <Td className="font-bold">סה״כ שנתי</Td>
                 <Td className="font-bold tabular-nums" style={{ color: C.green }}>{money(totals.income)}</Td>
                 <Td className="font-bold tabular-nums">{money(totals.incomeGross)}</Td>

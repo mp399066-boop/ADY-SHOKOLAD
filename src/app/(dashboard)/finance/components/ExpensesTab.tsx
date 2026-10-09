@@ -9,7 +9,8 @@ import {
   expenseNet, expenseSupplierName, paymentMethodLabel, round2, HEBREW_MONTHS, todayJerusalem, type Expense,
 } from '@/lib/finance';
 import { downloadExcel, downloadElementPng, fmtDate, type Cell } from '@/lib/finance-export';
-import { C, money, StatCard, ExportButtons, Th, Td, EmptyNote } from './shared';
+import { C, money, StatCard, ExportButtons, Th, Td, EmptyNote, THEAD_STYLE, TOTAL_ROW_STYLE } from './shared';
+import { TrendingDown, Percent, CreditCard, Users } from 'lucide-react';
 import ExpenseFormModal, { type SupplierOption } from './ExpenseFormModal';
 import ExpenseImportModal from './ExpenseImportModal';
 import SalaryModal, { type EmployeeOption } from './SalaryModal';
@@ -180,10 +181,10 @@ export default function ExpensesTab({ expenses, suppliers, employees, salariesRe
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <StatCard label="הוצאות — לפני מע״מ" value={money(totals.net)} sub={`${filtered.length} הוצאות`} tone="red" />
-          <StatCard label="מע״מ (מוכר)" value={money(totals.vat)} />
-          <StatCard label="הוצאות — כולל מע״מ (שולם בפועל)" value={money(totals.gross)} />
-          <StatCard label="ספקים / מקבלים" value={String(bySupplier.length)} />
+          <StatCard label="הוצאות — לפני מע״מ" value={money(totals.net)} sub={`${filtered.length} הוצאות`} tone="red" icon={TrendingDown} />
+          <StatCard label="מע״מ (מוכר)" value={money(totals.vat)} icon={Percent} />
+          <StatCard label="הוצאות — כולל מע״מ (שולם בפועל)" value={money(totals.gross)} icon={CreditCard} />
+          <StatCard label="ספקים / מקבלים" value={String(bySupplier.length)} icon={Users} />
         </div>
 
         <SalariesMatrix expenses={expenses} employees={employees} year={year} />
@@ -202,7 +203,7 @@ export default function ExpensesTab({ expenses, suppliers, employees, salariesRe
           <Card className="!p-0 overflow-hidden">
             <div className="overflow-auto" style={{ maxHeight: 560 }} data-export-expand>
               <table className="w-full">
-                <thead className="sticky top-0" style={{ backgroundColor: C.soft }}>
+                <thead className="sticky top-0" style={THEAD_STYLE}>
                   <tr><Th>תאריך</Th><Th>ספק / שם</Th><Th>קטגוריה</Th><Th>תיאור</Th><Th>לפני מע״מ</Th><Th>מע״מ</Th><Th>כולל מע״מ</Th><Th>אמצעי תשלום</Th><Th>מס׳ מסמך</Th><Th /></tr>
                 </thead>
                 <tbody>
@@ -226,7 +227,7 @@ export default function ExpensesTab({ expenses, suppliers, employees, salariesRe
                       </Td>
                     </tr>
                   ))}
-                  <tr style={{ borderTop: `2px solid ${C.gold}`, backgroundColor: C.soft }}>
+                  <tr style={TOTAL_ROW_STYLE}>
                     <Td className="font-bold">סה״כ</Td><Td /><Td />
                     <Td className="font-bold">{filtered.length} הוצאות</Td>
                     <Td className="font-bold tabular-nums">{money(totals.net)}</Td>
@@ -268,7 +269,7 @@ function GroupTable({ title, groups, total, onPick }: {
       <div className="px-5 py-3 text-sm font-semibold" style={{ color: C.text, borderBottom: `1px solid ${C.border}` }}>{title}</div>
       <div className="overflow-auto" style={{ maxHeight: 380 }} data-export-expand>
         <table className="w-full">
-          <thead className="sticky top-0" style={{ backgroundColor: C.soft }}>
+          <thead className="sticky top-0" style={THEAD_STYLE}>
             <tr><Th>שם</Th><Th>הוצאות</Th><Th>לפני מע״מ</Th><Th>כולל מע״מ</Th><Th>%</Th></tr>
           </thead>
           <tbody>
@@ -281,7 +282,7 @@ function GroupTable({ title, groups, total, onPick }: {
                 <Td className="tabular-nums" style={{ color: C.sub }}>{total.gross ? Math.round((g.gross / total.gross) * 100) : 0}%</Td>
               </tr>
             ))}
-            <tr style={{ borderTop: `2px solid ${C.gold}`, backgroundColor: C.soft }}>
+            <tr style={TOTAL_ROW_STYLE}>
               <Td className="font-bold">סה״כ</Td>
               <Td className="font-bold">{groups.reduce((t, g) => t + g.count, 0)}</Td>
               <Td className="font-bold tabular-nums">{money(total.net)}</Td>
@@ -314,7 +315,7 @@ function SalariesMatrix({ expenses, employees, year }: { expenses: Expense[]; em
       </div>
       <div className="overflow-x-auto" data-export-expand>
         <table className="w-full">
-          <thead style={{ backgroundColor: C.soft }}>
+          <thead style={THEAD_STYLE}>
             <tr><Th>עובד</Th>{months.map(m => <Th key={m}>{HEBREW_MONTHS[Number(m.slice(5)) - 1]}</Th>)}<Th>סה״כ</Th></tr>
           </thead>
           <tbody>
@@ -325,7 +326,7 @@ function SalariesMatrix({ expenses, employees, year }: { expenses: Expense[]; em
                 <Td className="font-semibold tabular-nums">{money(rowTotal(emp))}</Td>
               </tr>
             ))}
-            <tr style={{ borderTop: `2px solid ${C.gold}`, backgroundColor: C.soft }}>
+            <tr style={TOTAL_ROW_STYLE}>
               <Td className="font-bold">סה״כ</Td>
               {months.map(m => <Td key={m} className="font-bold tabular-nums">{money(colTotal(m))}</Td>)}
               <Td className="font-bold tabular-nums">{money(grand)}</Td>

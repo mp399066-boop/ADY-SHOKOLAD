@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Tabs } from '@/components/ui/Tabs';
+import { FileDown, CalendarDays, ListFilter, ChevronDown } from 'lucide-react';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { todayJerusalem, type FinanceOrder, type Expense, type DateBasis } from '@/lib/finance';
 import IncomeTab from './components/IncomeTab';
@@ -14,7 +14,17 @@ import { C } from './components/shared';
 
 type TabKey = 'income' | 'expenses' | 'pnl';
 
-const selectCls = 'px-3 py-1.5 text-sm rounded-lg border border-[#E8DED2] bg-white focus:outline-none focus:border-[#C9A46A]';
+const selectCls = 'h-9 pr-8 pl-8 text-sm font-medium rounded-lg border border-[#E2D6C6] bg-white text-[#2A1C10] shadow-sm appearance-none cursor-pointer hover:border-[#C9A46A] focus:outline-none focus:ring-2 focus:ring-[#C9A46A]/30 focus:border-[#C9A46A]';
+
+function FilterSelect({ icon: Icon, children, ...rest }: React.SelectHTMLAttributes<HTMLSelectElement> & { icon: typeof CalendarDays }) {
+  return (
+    <div className="relative">
+      <Icon size={15} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: C.sub }} />
+      <select className={selectCls} {...rest}>{children}</select>
+      <ChevronDown size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: C.sub }} />
+    </div>
+  );
+}
 
 export default function FinancePage() {
   const [role, setRole] = useState<string | null | undefined>(undefined);
@@ -110,38 +120,54 @@ export default function FinancePage() {
     <div className="space-y-5" dir="rtl">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold" style={{ color: C.text }}>פיננסים</h1>
-          <p className="text-sm mt-0.5" style={{ color: C.sub }}>כמה נכנס, כמה יצא, ומה נשאר — לפי חודש ולפי שנה</p>
+          <h1 className="text-2xl font-bold tracking-tight" style={{ color: C.text }}>פיננסים</h1>
+          <p className="text-sm mt-1" style={{ color: C.sub }}>כמה נכנס, כמה יצא, ומה נשאר — לפי חודש ולפי שנה</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <select className={selectCls} value={year} onChange={e => setYear(Number(e.target.value))} aria-label="שנה">
+          <FilterSelect icon={CalendarDays} value={year} onChange={e => setYear(Number(e.target.value))} aria-label="שנה">
             {years.map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
+          </FilterSelect>
           <button
             onClick={() => setReportOpen(true)}
             disabled={incomeLoading || expensesLoading || !!incomeError}
-            className="px-3 py-1.5 text-sm font-medium rounded-lg text-white disabled:opacity-50"
-            style={{ backgroundColor: C.brand }}>
-            ⬇ דוח מלא (PDF / אקסל)
+            className="inline-flex items-center gap-2 h-9 px-4 text-sm font-semibold rounded-lg text-white shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
+            style={{ background: `linear-gradient(135deg, ${C.brand}, ${C.choc})` }}>
+            <FileDown size={16} />
+            דוח מלא (PDF / אקסל)
           </button>
           {tab !== 'expenses' && (
-            <select className={selectCls} value={basis} onChange={e => setBasis(e.target.value as DateBasis)} aria-label="שיוך הזמנה לחודש">
+            <FilterSelect icon={ListFilter} value={basis} onChange={e => setBasis(e.target.value as DateBasis)} aria-label="שיוך הזמנה לחודש">
               <option value="order">הזמנות לפי תאריך הזמנה</option>
               <option value="delivery">הזמנות לפי תאריך אספקה</option>
-            </select>
+            </FilterSelect>
           )}
         </div>
       </div>
 
-      <Tabs
-        tabs={[
+      <div className="inline-flex gap-1 p-1 rounded-xl" style={{ backgroundColor: '#F1E9DD' }} role="tablist">
+        {([
           { key: 'income', label: 'הכנסות' },
           { key: 'expenses', label: 'הוצאות', count: expensesReady ? expenses.length : undefined },
           { key: 'pnl', label: 'רווח והפסד' },
-        ]}
-        activeTab={tab}
-        onChange={k => setTab(k as TabKey)}
-      />
+        ] as { key: TabKey; label: string; count?: number }[]).map(t => {
+          const active = tab === t.key;
+          return (
+            <button key={t.key} role="tab" aria-selected={active} onClick={() => setTab(t.key)}
+              className="inline-flex items-center gap-1.5 px-4 py-1.5 text-sm rounded-lg transition-all"
+              style={active
+                ? { backgroundColor: '#fff', color: C.text, fontWeight: 600, boxShadow: '0 1px 4px rgba(58,38,24,0.12)' }
+                : { color: C.sub, fontWeight: 500 }}>
+              {t.label}
+              {t.count !== undefined && (
+                <span className="px-1.5 rounded-full text-xs tabular-nums"
+                  style={{ backgroundColor: active ? '#F5ECDF' : 'rgba(255,255,255,0.6)', color: C.brand }}>
+                  {t.count}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
 
       {incomeError && tab !== 'expenses' ? (
         <div className="rounded-xl p-4 text-sm" style={{ backgroundColor: C.redBg, color: C.red }}>{incomeError}</div>

@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { HEBREW_MONTHS, round2, todayJerusalem, type Expense } from '@/lib/finance';
-import { C, money, Th, Td } from './shared';
+import { C, money, Th, Td, THEAD_STYLE, TOTAL_ROW_STYLE } from './shared';
 
 export interface EmployeeOption { id: string; שם_עובד: string; פעיל: boolean; תפקיד?: string | null }
 
@@ -104,7 +104,7 @@ export default function SalaryModal({ open, onClose, onSaved, year, employees, e
         ) : (
           <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${C.border}` }}>
             <table className="w-full">
-              <thead style={{ backgroundColor: C.soft }}>
+              <thead style={THEAD_STYLE}>
                 <tr><Th>עובד</Th><Th>תפקיד</Th><Th>ברוטו (₪)</Th></tr>
               </thead>
               <tbody>
@@ -121,7 +121,7 @@ export default function SalaryModal({ open, onClose, onSaved, year, employees, e
                     </Td>
                   </tr>
                 ))}
-                <tr style={{ borderTop: `2px solid ${C.gold}`, backgroundColor: C.soft }}>
+                <tr style={TOTAL_ROW_STYLE}>
                   <Td className="font-bold">סה״כ ברוטו</Td><Td />
                   <Td className="font-bold tabular-nums">{money(total)}</Td>
                 </tr>

@@ -3,13 +3,14 @@
 import { useMemo, useRef, useState } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Modal } from '@/components/ui/Modal';
+import { Wallet, Receipt, CalendarRange, Truck, Percent, Coins, Hourglass } from 'lucide-react';
 import {
   summarize, summarizeByCustomer, summarizeByPaymentMethod, paymentMethodLabel, orderBasisDate, orderIncome,
   monthKey, monthLabel, HEBREW_MONTHS, averageBasis, averageOf, round2, INCOME_COLUMNS, incomeValues, incomeAverageValues,
   type FinanceOrder, type DateBasis, type MoneySummary, type IncomeMoney, type IncomeMoneyKey,
 } from '@/lib/finance';
 import { downloadExcel, downloadElementPng, fmtDate, type Cell } from '@/lib/finance-export';
-import { C, money, StatCard, ExportButtons, Th, Td, EmptyNote } from './shared';
+import { C, money, StatCard, ExportButtons, Th, Td, EmptyNote, THEAD_STYLE, TOTAL_ROW_STYLE, ROW_CLS } from './shared';
 
 // Owner's definition: delivery fees and VAT are NOT income. "נכנס לכיס" is the
 // order amount without delivery and before VAT. Delivery (before / with VAT),
@@ -136,22 +137,22 @@ export default function IncomeTab({ orders, year, basis, undatedCount }: {
   return (
     <div className="space-y-5">
       <div ref={yearRef} className="space-y-5 bg-white sm:bg-transparent">
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          <StatCard label={`נכנס לכיס ${year} — ללא משלוח, לפני מע״מ`} value={money(y.pocket)} sub={`${y.count} הזמנות`} tone="green" />
-          <StatCard label="ללא משלוח — כולל מע״מ" value={money(y.pocketGross)} />
-          <StatCard label="ממוצע חודשי לכיס" value={money(avgPocket)} sub={average.months ? `${average.label} · ללא משלוח ומע״מ` : undefined} tone="brand" />
-          <StatCard label="דמי משלוח — לפני מע״מ" value={money(y.shippingNet)} />
-          <StatCard label="דמי משלוח — כולל מע״מ" value={money(y.shippingGross)} />
-          <StatCard label="מע״מ" value={money(y.vat)} />
-          <StatCard label="סה״כ שהלקוחות שילמו — כולל מע״מ" value={money(y.grossTotal)} />
-          <StatCard label="טרם שולם — לפני מע״מ" value={money(y.openNet)} sub={`${y.openCount} הזמנות`} tone={y.openNet > 0 ? 'amber' : undefined} />
-          <StatCard label="טרם שולם — כולל מע״מ" value={money(y.openGross)} tone={y.openGross > 0 ? 'amber' : undefined} />
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+          <StatCard label={`נכנס לכיס ${year} — ללא משלוח, לפני מע״מ`} value={money(y.pocket)} sub={`${y.count} הזמנות`} tone="green" icon={Wallet} />
+          <StatCard label="ללא משלוח — כולל מע״מ" value={money(y.pocketGross)} icon={Receipt} />
+          <StatCard label="ממוצע חודשי לכיס" value={money(avgPocket)} sub={average.months ? `${average.label} · ללא משלוח ומע״מ` : undefined} tone="brand" icon={CalendarRange} />
+          <StatCard label="דמי משלוח — לפני מע״מ" value={money(y.shippingNet)} icon={Truck} />
+          <StatCard label="דמי משלוח — כולל מע״מ" value={money(y.shippingGross)} icon={Truck} />
+          <StatCard label="מע״מ" value={money(y.vat)} icon={Percent} />
+          <StatCard label="סה״כ שהלקוחות שילמו — כולל מע״מ" value={money(y.grossTotal)} icon={Coins} />
+          <StatCard label="טרם שולם — לפני מע״מ" value={money(y.openNet)} sub={`${y.openCount} הזמנות`} tone={y.openNet > 0 ? 'amber' : undefined} icon={Hourglass} />
+          <StatCard label="טרם שולם — כולל מע״מ" value={money(y.openGross)} tone={y.openGross > 0 ? 'amber' : undefined} icon={Hourglass} />
         </div>
 
         <Card className="!p-0 overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-3" style={{ borderBottom: `1px solid ${C.border}` }}>
             <div>
-              <h2 className="text-sm font-semibold" style={{ color: C.text }}>הכנסות לפי חודש — {year}</h2>
+              <h2 className="text-base font-bold" style={{ color: C.text }}>הכנסות לפי חודש — {year}</h2>
               <p className="text-xs mt-0.5" style={{ color: C.sub }}>
                 {BASIS_LABEL[basis]} · לחיצה על חודש פותחת פירוט מלא של כל ההזמנות
               </p>
@@ -163,7 +164,7 @@ export default function IncomeTab({ orders, year, basis, undatedCount }: {
           </div>
           <div className="overflow-x-auto" data-export-expand>
             <table className="w-full">
-              <thead style={{ backgroundColor: C.soft }}>
+              <thead style={THEAD_STYLE}>
                 <tr><Th>חודש</Th><Th>הזמנות</Th><MoneyHeaders /><Th /></tr>
               </thead>
               <tbody>
@@ -172,9 +173,9 @@ export default function IncomeTab({ orders, year, basis, undatedCount }: {
                   return (
                     <tr key={key}
                       onClick={() => has && setOpenMonth(key)}
-                      className={has ? 'cursor-pointer hover:bg-[#FBF6EE]' : ''}
+                      className={`${ROW_CLS} ${has ? 'cursor-pointer hover:!bg-[#F8F0E3]' : ''}`}
                       style={{ borderTop: `1px solid ${C.border}` }}>
-                      <Td className="font-medium">{HEBREW_MONTHS[Number(key.slice(5)) - 1]}</Td>
+                      <Td className="font-semibold">{HEBREW_MONTHS[Number(key.slice(5)) - 1]}</Td>
                       <Td style={{ color: s.count ? C.text : C.faint }}>{s.count}</Td>
                       <MoneyCells m={s} />
                       <Td className="text-xs" style={{ color: C.gold }}>
@@ -183,7 +184,7 @@ export default function IncomeTab({ orders, year, basis, undatedCount }: {
                     </tr>
                   );
                 })}
-                <tr style={{ borderTop: `2px solid ${C.gold}`, backgroundColor: C.soft }}>
+                <tr style={TOTAL_ROW_STYLE}>
                   <Td className="font-bold">סה״כ</Td>
                   <Td className="font-bold">{y.count}</Td>
                   <MoneyCells m={y} bold="bold" />
@@ -213,7 +214,7 @@ export default function IncomeTab({ orders, year, basis, undatedCount }: {
 
       <Card className="!p-0 overflow-hidden">
         <div className="px-5 py-3" style={{ borderBottom: `1px solid ${C.border}` }}>
-          <h2 className="text-sm font-semibold" style={{ color: C.text }}>לקוחות — סיכום {year}</h2>
+          <h2 className="text-base font-bold" style={{ color: C.text }}>לקוחות — סיכום {year}</h2>
           <p className="text-xs mt-0.5" style={{ color: C.sub }}>כמה נכנס לכיס מכל לקוח במהלך השנה (מהגבוה לנמוך)</p>
         </div>
         {orders.length === 0 ? (
@@ -227,7 +228,7 @@ export default function IncomeTab({ orders, year, basis, undatedCount }: {
 
       <Card className="!p-0 overflow-hidden">
         <div className="px-5 py-3" style={{ borderBottom: `1px solid ${C.border}` }}>
-          <h2 className="text-sm font-semibold" style={{ color: C.text }}>לפי אמצעי תשלום — {year}</h2>
+          <h2 className="text-base font-bold" style={{ color: C.text }}>לפי אמצעי תשלום — {year}</h2>
         </div>
         <div className="overflow-x-auto">
           <GroupTable title="אמצעי תשלום" rows={summarizeByPaymentMethod(orders).map(m => ({ key: m.method, name: m.method, count: m.count, m }))} total={y} />
@@ -264,18 +265,18 @@ function GroupTable({ title, rows, total }: {
   if (!rows.length) return <div className="p-5"><EmptyNote>אין הזמנות</EmptyNote></div>;
   return (
     <table className="w-full">
-      <thead className="sticky top-0" style={{ backgroundColor: C.soft }}>
+      <thead className="sticky top-0" style={THEAD_STYLE}>
         <tr><Th>{title}</Th><Th>הזמנות</Th><MoneyHeaders /></tr>
       </thead>
       <tbody>
         {rows.map(r => (
-          <tr key={r.key} style={{ borderTop: `1px solid ${C.border}` }}>
+          <tr key={r.key} className={ROW_CLS} style={{ borderTop: `1px solid ${C.border}` }}>
             <Td className="font-medium">{r.name}</Td>
             <Td>{r.count}</Td>
             <MoneyCells m={r.m} />
           </tr>
         ))}
-        <tr style={{ borderTop: `2px solid ${C.gold}`, backgroundColor: C.soft }}>
+        <tr style={TOTAL_ROW_STYLE}>
           <Td className="font-bold">סה״כ</Td>
           <Td className="font-bold">{total.count}</Td>
           <MoneyCells m={total} bold="bold" />
@@ -330,14 +331,14 @@ function MonthDetailModal({ monthKeyStr, orders, basis, onClose }: {
     <Modal open={!!monthKeyStr} onClose={onClose} title={`פירוט הכנסות — ${label}`} size="xl">
       <div ref={ref} className="space-y-4 bg-white">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-          <StatCard label="נכנס לכיס — ללא משלוח, לפני מע״מ" value={money(s.pocket)} sub={`${s.count} הזמנות`} tone="green" />
-          <StatCard label="ללא משלוח — כולל מע״מ" value={money(s.pocketGross)} />
-          <StatCard label="דמי משלוח — לפני מע״מ" value={money(s.shippingNet)} />
-          <StatCard label="דמי משלוח — כולל מע״מ" value={money(s.shippingGross)} />
-          <StatCard label="מע״מ" value={money(s.vat)} />
-          <StatCard label="סה״כ שהלקוחות שילמו — כולל מע״מ" value={money(s.grossTotal)} />
-          <StatCard label="טרם שולם — לפני מע״מ" value={money(s.openNet)} sub={s.openCount ? `${s.openCount} הזמנות` : undefined} tone={s.openNet ? 'amber' : undefined} />
-          <StatCard label="טרם שולם — כולל מע״מ" value={money(s.openGross)} tone={s.openGross ? 'amber' : undefined} />
+          <StatCard label="נכנס לכיס — ללא משלוח, לפני מע״מ" value={money(s.pocket)} sub={`${s.count} הזמנות`} tone="green" icon={Wallet} />
+          <StatCard label="ללא משלוח — כולל מע״מ" value={money(s.pocketGross)} icon={Receipt} />
+          <StatCard label="דמי משלוח — לפני מע״מ" value={money(s.shippingNet)} icon={Truck} />
+          <StatCard label="דמי משלוח — כולל מע״מ" value={money(s.shippingGross)} icon={Truck} />
+          <StatCard label="מע״מ" value={money(s.vat)} icon={Percent} />
+          <StatCard label="סה״כ שהלקוחות שילמו — כולל מע״מ" value={money(s.grossTotal)} icon={Coins} />
+          <StatCard label="טרם שולם — לפני מע״מ" value={money(s.openNet)} sub={s.openCount ? `${s.openCount} הזמנות` : undefined} tone={s.openNet ? 'amber' : undefined} icon={Hourglass} />
+          <StatCard label="טרם שולם — כולל מע״מ" value={money(s.openGross)} tone={s.openGross ? 'amber' : undefined} icon={Hourglass} />
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -359,14 +360,14 @@ function MonthDetailModal({ monthKeyStr, orders, basis, onClose }: {
             <GroupTable title="אמצעי תשלום" rows={summarizeByPaymentMethod(sorted).map(m => ({ key: m.method, name: m.method, count: m.count, m }))} total={s} />
           ) : (
             <table className="w-full">
-              <thead className="sticky top-0" style={{ backgroundColor: C.soft }}>
+              <thead className="sticky top-0" style={THEAD_STYLE}>
                 <tr>
                   <Th>תאריך</Th><Th>מס׳ הזמנה</Th><Th>לקוח</Th><MoneyHeaders cols={ORDER_COLUMNS} /><Th>אמצעי תשלום</Th><Th>סטטוס</Th>
                 </tr>
               </thead>
               <tbody>
                 {sorted.map(o => (
-                  <tr key={o.id} style={{ borderTop: `1px solid ${C.border}`, opacity: o.barter ? 0.55 : 1 }}>
+                  <tr key={o.id} className={ROW_CLS} style={{ borderTop: `1px solid ${C.border}`, opacity: o.barter ? 0.55 : 1 }}>
                     <Td>{fmtDate(orderBasisDate(o, basis))}</Td>
                     <Td>
                       <a href={`/orders/${o.id}`} target="_blank" rel="noreferrer" className="hover:underline" style={{ color: C.brand }}>
@@ -388,7 +389,7 @@ function MonthDetailModal({ monthKeyStr, orders, basis, onClose }: {
                     </Td>
                   </tr>
                 ))}
-                <tr style={{ borderTop: `2px solid ${C.gold}`, backgroundColor: C.soft }}>
+                <tr style={TOTAL_ROW_STYLE}>
                   <Td className="font-bold">סה״כ</Td><Td /><Td className="font-bold">{s.count} הזמנות</Td>
                   <MoneyCells m={s} cols={ORDER_COLUMNS} bold="bold" />
                   <Td /><Td />
