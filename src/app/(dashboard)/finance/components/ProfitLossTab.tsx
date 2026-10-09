@@ -30,7 +30,7 @@ export default function ProfitLossTab({ orders, expenses, year, basis, expensesR
 
   async function exportExcel() {
     const sheet: Cell[][] = [
-      ['חודש', 'הכנסות לפני מע״מ', 'הכנסות כולל מע״מ', 'הוצאות לפני מע״מ', 'הוצאות כולל מע״מ', 'רווח / הפסד (לפני מע״מ)', 'מצטבר מתחילת השנה', 'טרם נגבה (לפני מע״מ)'],
+      ['חודש', 'נכנס לכיס (ללא משלוח) לפני מע״מ', 'נכנס לכיס (ללא משלוח) כולל מע״מ', 'הוצאות לפני מע״מ', 'הוצאות כולל מע״מ', 'רווח / הפסד (לפני מע״מ)', 'מצטבר מתחילת השנה', 'טרם נגבה (לפני מע״מ)'],
       ...rows.map(r => [r.month, r.income, r.incomeGross, r.expenses, r.expensesGross, r.result, r.cumulative ?? '', r.open] as Cell[]),
       ['סה״כ שנתי', totals.income, totals.incomeGross, totals.expenses, totals.expensesGross, result, result, totals.open],
       ...(average.months ? [[`ממוצע חודשי (${average.label})`, avg.income, avg.incomeGross, avg.expenses, avg.expensesGross, avg.result, '', avg.open] as Cell[]] : []),
@@ -57,12 +57,12 @@ export default function ProfitLossTab({ orders, expenses, year, basis, expensesR
       )}
 
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-        <StatCard label="הכנסות — לפני מע״מ" value={money(totals.income)} tone="green" />
-        <StatCard label="הכנסות — כולל מע״מ" value={money(totals.incomeGross)} />
+        <StatCard label="נכנס לכיס — ללא משלוח, לפני מע״מ" value={money(totals.income)} tone="green" />
+        <StatCard label="נכנס לכיס — ללא משלוח, כולל מע״מ" value={money(totals.incomeGross)} />
         <StatCard label="הוצאות — לפני מע״מ" value={money(totals.expenses)} tone="red" />
         <StatCard label="הוצאות — כולל מע״מ (שולם בפועל)" value={money(totals.expensesGross)} />
         <StatCard label={result >= 0 ? 'רווח — לפני מע״מ' : 'הפסד — לפני מע״מ'} value={money(Math.abs(result))} tone={result >= 0 ? 'green' : 'red'} sub={`${active.length} חודשים עם פעילות`} />
-        <StatCard label="טרם נגבה מלקוחות — לפני מע״מ" value={money(totals.open)} tone={totals.open ? 'amber' : undefined} sub="כלול בהכנסות" />
+        <StatCard label="טרם נגבה מלקוחות — לפני מע״מ" value={money(totals.open)} tone={totals.open ? 'amber' : undefined} sub="כל סכום ההזמנה" />
       </div>
 
       {(avgExpenses > 0 || result < 0) && (
@@ -78,7 +78,7 @@ export default function ProfitLossTab({ orders, expenses, year, basis, expensesR
             )}
             {avgIncome > 0 && avgExpenses > 0 && (
               <li>
-                ההכנסה החודשית הממוצעת ({average.label}) היא <b>{money(avgIncome)}</b> לפני מע״מ —{' '}
+                הממוצע החודשי שנכנס לכיס ({average.label}) הוא <b>{money(avgIncome)}</b> לפני מע״מ —{' '}
                 {monthlyGap > 0
                   ? <>חסרים בממוצע <b style={{ color: C.red }}>{money(monthlyGap)}</b> בחודש (כ-{money(withVat(monthlyGap))} כולל מע״מ).</>
                   : <>יותר מההוצאות בממוצע ב-<b style={{ color: C.green }}>{money(-monthlyGap)}</b> בחודש.</>}
@@ -101,7 +101,7 @@ export default function ProfitLossTab({ orders, expenses, year, basis, expensesR
           <table className="w-full">
             <thead style={{ backgroundColor: C.soft }}>
               <tr>
-                <Th>חודש</Th><Th>הכנסות לפני מע״מ</Th><Th>הכנסות כולל מע״מ</Th><Th>הוצאות לפני מע״מ</Th><Th>הוצאות כולל מע״מ</Th>
+                <Th>חודש</Th><Th>נכנס לכיס לפני מע״מ</Th><Th>נכנס לכיס כולל מע״מ</Th><Th>הוצאות לפני מע״מ</Th><Th>הוצאות כולל מע״מ</Th>
                 <Th>רווח / הפסד</Th><Th>מצטבר</Th><Th>טרם נגבה</Th>
               </tr>
             </thead>
@@ -155,7 +155,7 @@ export default function ProfitLossTab({ orders, expenses, year, basis, expensesR
         </div>
         <div className="px-5 py-3 text-xs" style={{ color: C.sub, borderTop: `1px solid ${C.border}` }}>
           רווח / הפסד מחושב לפני מע״מ — המע״מ שהלקוחות משלמים שייך למדינה, והמע״מ על ההוצאות מקוזז, ולכן זה הרווח האמיתי. עמודות &quot;כולל מע״מ&quot; מראות את הסכומים כפי שחויבו / שולמו בפועל.
-          ההכנסות {basis === 'order' ? 'לפי תאריך ההזמנה' : 'לפי תאריך האספקה'} (כולל הזמנות שטרם שולמו, ללא בארטר ובוטלו).
+          &quot;נכנס לכיס&quot; = סכום ההזמנות ללא דמי משלוח (דמי משלוח אינם הכנסה), {basis === 'order' ? 'לפי תאריך ההזמנה' : 'לפי תאריך האספקה'}, כולל הזמנות שטרם שולמו, ללא בארטר ובוטלו.
         </div>
       </Card>
     </div>

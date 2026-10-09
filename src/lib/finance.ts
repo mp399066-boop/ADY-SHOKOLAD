@@ -126,110 +126,126 @@ export function orderBasisDate(o: FinanceOrder, basis: DateBasis): string | null
   return basis === 'delivery' ? o.deliveryDate : o.orderDate;
 }
 
-// All summary amounts are BEFORE VAT, for every customer type — the money
-// that is really the business's (VAT collected belongs to the state). The
-// only VAT-inclusive figure is grossTotal: what customers were charged.
-export interface MoneySummary {
-  count: number;
-  /** Before VAT, without delivery fees. */
-  noShipping: number;
-  /** Delivery fees, before VAT. */
-  shipping: number;
-  /** Before VAT, including delivery — "כמה נכנס אליי". */
-  total: number;
-  paidTotal: number;
-  openTotal: number;
-  openCount: number;
+// ── Income money: one column set for every income view ──────────────────────
+// Owner's definition: delivery fees and VAT are NOT income. What really goes
+// into her pocket is the order amount WITHOUT delivery and BEFORE VAT. Delivery
+// and VAT are still shown (before and with VAT) so she knows how much they are.
+//   pocket + shippingNet + vat = grossTotal   (what customers paid)
+
+export interface IncomeMoney {
+  /** נכנס לכיס — without delivery, before VAT. */
+  pocket: number;
+  shippingNet: number;
+  shippingGross: number;
+  /** All VAT in the amount (products + delivery). */
+  vat: number;
   /** What customers were charged, VAT included. */
   grossTotal: number;
-  barterCount: number;
-  barterTotal: number;
+  /** Still unpaid (whole order amount). */
+  openNet: number;
+  openGross: number;
 }
 
-export function emptySummary(): MoneySummary {
+export type IncomeMoneyKey = keyof IncomeMoney;
+
+export const INCOME_COLUMNS: { key: IncomeMoneyKey; label: string; short: string }[] = [
+  { key: 'pocket',        label: 'נכנס לכיס (ללא משלוח, לפני מע״מ)', short: 'נכנס לכיס' },
+  { key: 'shippingNet',   label: 'דמי משלוח — לפני מע״מ',             short: 'משלוח לפני מע״מ' },
+  { key: 'shippingGross', label: 'דמי משלוח — כולל מע״מ',             short: 'משלוח כולל מע״מ' },
+  { key: 'vat',           label: 'מע״מ',                              short: 'מע״מ' },
+  { key: 'grossTotal',    label: 'סה״כ שהלקוחות שילמו — כולל מע״מ',   short: 'סה״כ כולל מע״מ' },
+  { key: 'openNet',       label: 'טרם שולם — לפני מע״מ',              short: 'טרם שולם לפני מע״מ' },
+  { key: 'openGross',     label: 'טרם שולם — כולל מע״מ',              short: 'טרם שולם כולל מע״מ' },
+];
+
+export const incomeValues = (m: IncomeMoney): number[] => INCOME_COLUMNS.map(c => m[c.key]);
+
+export function emptyIncome(): IncomeMoney {
+  return { pocket: 0, shippingNet: 0, shippingGross: 0, vat: 0, grossTotal: 0, openNet: 0, openGross: 0 };
+}
+
+/** One order's income figures (barter orders carry no money). */
+export function orderIncome(o: FinanceOrder): IncomeMoney {
+  if (o.barter) return emptyIncome();
   return {
-    count: 0, noShipping: 0, shipping: 0, total: 0, paidTotal: 0, openTotal: 0,
-    openCount: 0, grossTotal: 0, barterCount: 0, barterTotal: 0,
+    pocket: o.netNoShipping,
+    shippingNet: o.netShipping,
+    shippingGross: o.grossShipping,
+    vat: round2(o.grossTotal - o.netTotal),
+    grossTotal: o.grossTotal,
+    openNet: o.paid ? 0 : o.netTotal,
+    openGross: o.paid ? 0 : o.grossTotal,
   };
+}
+
+function addIncome(acc: IncomeMoney, o: FinanceOrder) {
+  const m = orderIncome(o);
+  for (const c of INCOME_COLUMNS) acc[c.key] = round2(acc[c.key] + m[c.key]);
+}
+
+export interface MoneySummary extends IncomeMoney {
+  count: number;
+  openCount: number;
+  barterCount: number;
+  /** Barter value before VAT, without delivery (not counted anywhere). */
+  barterTotal: number;
 }
 
 /** Sums orders. Barter orders are counted separately and NOT in the money. */
 export function summarize(orders: FinanceOrder[]): MoneySummary {
-  const s = emptySummary();
+  const s: MoneySummary = { ...emptyIncome(), count: 0, openCount: 0, barterCount: 0, barterTotal: 0 };
   for (const o of orders) {
     if (o.barter) {
       s.barterCount++;
-      s.barterTotal += o.netTotal;
+      s.barterTotal = round2(s.barterTotal + o.netNoShipping);
       continue;
     }
     s.count++;
-    s.noShipping += o.netNoShipping;
-    s.shipping += o.netShipping;
-    s.total += o.netTotal;
-    s.grossTotal += o.grossTotal;
-    if (o.paid) s.paidTotal += o.netTotal;
-    else { s.openTotal += o.netTotal; s.openCount++; }
+    if (!o.paid) s.openCount++;
+    addIncome(s, o);
   }
-  (Object.keys(s) as (keyof MoneySummary)[]).forEach(k => { s[k] = round2(s[k]); });
   return s;
 }
 
-export interface CustomerSummary {
+export interface CustomerSummary extends IncomeMoney {
   customerId: string;
   customerName: string;
   count: number;
-  noShipping: number;
-  shipping: number;
-  total: number;
-  /** VAT included — what the customer was charged. */
-  grossTotal: number;
-  openTotal: number;
 }
 
-/** Per-customer totals, before VAT (plus the VAT-inclusive total). */
+/** Per-customer income (barter excluded), largest "pocket" first. */
 export function summarizeByCustomer(orders: FinanceOrder[]): CustomerSummary[] {
   const map = new Map<string, CustomerSummary>();
   for (const o of orders) {
     if (o.barter) continue;
     const key = o.customerId ?? `name:${o.customerName}`;
-    const cur = map.get(key) ?? {
-      customerId: key, customerName: o.customerName, count: 0, noShipping: 0, shipping: 0, total: 0, grossTotal: 0, openTotal: 0,
-    };
+    const cur = map.get(key) ?? { ...emptyIncome(), customerId: key, customerName: o.customerName, count: 0 };
     cur.count++;
-    cur.noShipping = round2(cur.noShipping + o.netNoShipping);
-    cur.shipping = round2(cur.shipping + o.netShipping);
-    cur.total = round2(cur.total + o.netTotal);
-    cur.grossTotal = round2(cur.grossTotal + o.grossTotal);
-    if (!o.paid) cur.openTotal = round2(cur.openTotal + o.netTotal);
+    addIncome(cur, o);
     map.set(key, cur);
   }
-  return Array.from(map.values()).sort((a, b) => b.total - a.total);
+  return Array.from(map.values()).sort((a, b) => b.pocket - a.pocket);
 }
 
-export interface PaymentMethodSummary {
+export interface PaymentMethodSummary extends IncomeMoney {
   method: string;
   count: number;
-  total: number;
-  grossTotal: number;
-  openTotal: number;
 }
 
 export const paymentMethodLabel = (m: string | null | undefined) => (m ?? '').trim() || 'לא צוין';
 
-/** Per-payment-method totals of orders, before VAT (barter excluded). */
+/** Per-payment-method income (barter excluded). */
 export function summarizeByPaymentMethod(orders: FinanceOrder[]): PaymentMethodSummary[] {
   const map = new Map<string, PaymentMethodSummary>();
   for (const o of orders) {
     if (o.barter) continue;
     const k = paymentMethodLabel(o.paymentMethod);
-    const cur = map.get(k) ?? { method: k, count: 0, total: 0, grossTotal: 0, openTotal: 0 };
+    const cur = map.get(k) ?? { ...emptyIncome(), method: k, count: 0 };
     cur.count++;
-    cur.total = round2(cur.total + o.netTotal);
-    cur.grossTotal = round2(cur.grossTotal + o.grossTotal);
-    if (!o.paid) cur.openTotal = round2(cur.openTotal + o.netTotal);
+    addIncome(cur, o);
     map.set(k, cur);
   }
-  return Array.from(map.values()).sort((a, b) => b.total - a.total);
+  return Array.from(map.values()).sort((a, b) => b.pocket - a.pocket);
 }
 
 // ── Expenses ────────────────────────────────────────────────────────────────
@@ -320,8 +336,8 @@ export const averageOf = (total: number, basis: AverageBasis) => (basis.months ?
 export interface PnlMonth {
   key: string;
   month: string;
-  income: number;        // net of VAT
-  incomeGross: number;   // what customers pay
+  income: number;        // into the pocket: without delivery, before VAT
+  incomeGross: number;   // the same, with VAT
   open: number;          // net of VAT, not yet paid
   expenses: number;      // net of VAT
   expensesGross: number; // what was paid
@@ -351,12 +367,12 @@ export function buildPnl(orders: FinanceOrder[], expenses: Expense[], year: numb
     const ex = expenses.filter(e => e.תאריך.slice(0, 7) === key);
     const exp = round2(ex.reduce((t, e) => t + expenseNet(e), 0));
     const expGross = round2(ex.reduce((t, e) => t + (Number(e.סכום) || 0), 0));
-    const result = round2(s.total - exp);
+    const result = round2(s.pocket - exp);
     const hasData = s.count > 0 || ex.length > 0;
     const counts = key <= currentMonth || hasData;
     if (counts) running = round2(running + result);
     return {
-      key, month: HEBREW_MONTHS[i], income: s.total, incomeGross: s.grossTotal, open: s.openTotal,
+      key, month: HEBREW_MONTHS[i], income: s.pocket, incomeGross: round2(s.grossTotal - s.shippingGross), open: s.openNet,
       expenses: exp, expensesGross: expGross, result, cumulative: counts ? running : null, hasData,
     };
   });

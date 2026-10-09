@@ -3,7 +3,8 @@
 // the two files always contain the same numbers as the /finance screens.
 
 import {
-  summarize, summarizeByCustomer, summarizeByPaymentMethod, paymentMethodLabel, buildPnl, averageBasis, averageOf, orderBasisDate, expenseNet, expenseSupplierName,
+  summarize, summarizeByCustomer, summarizeByPaymentMethod, paymentMethodLabel, buildPnl, averageBasis, averageOf,
+  INCOME_COLUMNS, incomeValues, orderIncome, orderBasisDate, expenseNet, expenseSupplierName,
   monthKey, monthLabel, round2, HEBREW_MONTHS, todayJerusalem,
   type FinanceOrder, type Expense, type DateBasis,
 } from '@/lib/finance';
@@ -68,7 +69,11 @@ export function buildFinanceReport(opts: {
   const expGross = round2(expenses.reduce((t, e) => t + (Number(e.סכום) || 0), 0));
   const expVat = round2(expenses.reduce((t, e) => t + (Number(e.מעמ) || 0), 0));
   const expNet = round2(expGross - expVat);
-  const result = round2(s.total - expNet);
+  const result = round2(s.pocket - expNet);
+  // Income money columns, in the shared order (see INCOME_COLUMNS).
+  const incomeHeaders = INCOME_COLUMNS.map(c => c.short);
+  const orderCols = INCOME_COLUMNS.filter(c => c.key !== 'openNet' && c.key !== 'openGross');
+  const moneyRange = (from: number, n: number) => Array.from({ length: n }, (_, i) => from + i);
 
   const sections: ReportSection[] = [];
 
@@ -77,26 +82,29 @@ export function buildFinanceReport(opts: {
     sheet: 'סיכום',
     title: `סיכום — ${periodLabel}`,
     kpis: [
-      { label: `סה״כ נכנס אלייך (לפני מע״מ) · ${s.count} הזמנות`, value: s.total, money: true, tone: 'green' },
-      { label: 'סה״כ הכנסות כולל מע״מ', value: s.grossTotal, money: true },
+      { label: `נכנס לכיס — ללא משלוח, לפני מע״מ · ${s.count} הזמנות`, value: s.pocket, money: true, tone: 'green' },
       // Whole year: monthly average (same rule as the screens); single month: order count.
       ...(!key && yearAvg.months
-        ? [{ label: `ממוצע חודשי לפני מע״מ (${yearAvg.label})`, value: averageOf(s.total, yearAvg), money: true }]
+        ? [{ label: `ממוצע חודשי לכיס (${yearAvg.label})`, value: averageOf(s.pocket, yearAvg), money: true }]
         : [{ label: 'מספר הזמנות', value: s.count }]),
-      { label: 'מתוכו ללא משלוחים (לפני מע״מ)', value: s.noShipping, money: true },
-      { label: 'מתוכו דמי משלוח (לפני מע״מ)', value: s.shipping, money: true },
-      { label: 'מתוכו טרם שולם (לפני מע״מ)', value: s.openTotal, money: true, tone: s.openTotal ? 'amber' : undefined },
+      { label: 'סה״כ שהלקוחות שילמו — כולל מע״מ', value: s.grossTotal, money: true },
+      { label: 'דמי משלוח — לפני מע״מ', value: s.shippingNet, money: true },
+      { label: 'דמי משלוח — כולל מע״מ', value: s.shippingGross, money: true },
+      { label: 'מע״מ', value: s.vat, money: true },
+      { label: 'טרם שולם — לפני מע״מ', value: s.openNet, money: true, tone: s.openNet ? 'amber' : undefined },
+      { label: 'טרם שולם — כולל מע״מ', value: s.openGross, money: true, tone: s.openGross ? 'amber' : undefined },
       ...(expensesReady ? [
-        { label: 'הוצאות לפני מע״מ', value: expNet, money: true, tone: 'red' as const },
-        { label: 'הוצאות כולל מע״מ (שולם בפועל)', value: expGross, money: true },
-        { label: result >= 0 ? 'רווח (לפני מע״מ)' : 'הפסד (לפני מע״מ)', value: Math.abs(result), money: true, tone: result >= 0 ? 'green' as const : 'red' as const },
+        { label: 'הוצאות — לפני מע״מ', value: expNet, money: true, tone: 'red' as const },
+        { label: 'הוצאות — כולל מע״מ (שולם בפועל)', value: expGross, money: true },
+        { label: result >= 0 ? 'רווח — לפני מע״מ' : 'הפסד — לפני מע״מ', value: Math.abs(result), money: true, tone: result >= 0 ? 'green' as const : 'red' as const },
       ] : []),
     ],
     notes: [
       basisLabel + '.',
-      '"לפני מע״מ" = הכסף שנכנס אלייך בפועל, לכל הלקוחות (המע״מ שייך למדינה). "כולל מע״מ" = מה שהלקוחות חויבו. כולל הזמנות שטרם שולמו; ללא הזמנות שבוטלו, טיוטות ובארטר.',
-      ...(s.barterCount ? [`${s.barterCount} הזמנות בארטר (שווי ₪${s.barterTotal.toLocaleString('he-IL')} לפני מע״מ) לא נכללו — לא נכנס עליהן כסף.`] : []),
-      'הוצאות: "שולם" = הסכום שיצא בפועל; "לפני מע״מ" = אחרי קיזוז המע״מ. רווח והפסד מחושב לפני מע״מ.',
+      '"נכנס לכיס" = סכום ההזמנות ללא דמי משלוח ולפני מע״מ. דמי משלוח ומע״מ אינם הכנסה ומוצגים בנפרד. נכנס לכיס + משלוח לפני מע״מ + מע״מ = מה שהלקוחות שילמו.',
+      'כולל הזמנות שטרם שולמו; ללא הזמנות שבוטלו, טיוטות ובארטר.',
+      ...(s.barterCount ? [`${s.barterCount} הזמנות בארטר (שווי ₪${s.barterTotal.toLocaleString('he-IL')} ללא משלוח, לפני מע״מ) לא נכללו — לא נכנס עליהן כסף.`] : []),
+      'רווח / הפסד = נכנס לכיס פחות ההוצאות, שניהם לפני מע״מ.',
       ...(!expensesReady ? ['טבלת ההוצאות עדיין לא הופעלה (מיגרציה 057) — הדוח כולל הכנסות בלבד.'] : []),
     ],
   });
@@ -113,13 +121,13 @@ export function buildFinanceReport(opts: {
       sheet: 'הכנסות לפי חודש',
       title: `הכנסות לפי חודש — ${year}`,
       table: {
-        headers: ['חודש', 'הזמנות', 'ללא משלוח', 'דמי משלוח', 'סה״כ לפני מע״מ', 'סה״כ כולל מע״מ', 'שולם', 'טרם שולם'],
-        rows: monthly.map(({ m, s: x }) => [m, x.count, x.noShipping, x.shipping, x.total, x.grossTotal, x.paidTotal, x.openTotal]),
-        total: ['סה״כ', s.count, s.noShipping, s.shipping, s.total, s.grossTotal, s.paidTotal, s.openTotal],
+        headers: ['חודש', 'הזמנות', ...incomeHeaders],
+        rows: monthly.map(({ m, s: x }) => [m, x.count, ...incomeValues(x)]),
+        total: ['סה״כ', s.count, ...incomeValues(s)],
         average: incomeAvg.months
-          ? [`ממוצע חודשי (${incomeAvg.label})`, round2(s.count / incomeAvg.months), ...[s.noShipping, s.shipping, s.total, s.grossTotal, s.paidTotal, s.openTotal].map(n => averageOf(n, incomeAvg))]
+          ? [`ממוצע חודשי (${incomeAvg.label})`, round2(s.count / incomeAvg.months), ...incomeValues(s).map(n => averageOf(n, incomeAvg))]
           : undefined,
-        moneyCols: [2, 3, 4, 5, 6, 7],
+        moneyCols: moneyRange(2, INCOME_COLUMNS.length),
       },
     });
     if (expensesReady) {
@@ -128,7 +136,7 @@ export function buildFinanceReport(opts: {
         sheet: 'רווח והפסד',
         title: `רווח והפסד לפי חודש — ${year} (רווח / הפסד לפני מע״מ)`,
         table: {
-          headers: ['חודש', 'הכנסות לפני מע״מ', 'הכנסות כולל מע״מ', 'הוצאות לפני מע״מ', 'הוצאות כולל מע״מ', 'רווח / הפסד', 'מצטבר', 'טרם נגבה'],
+          headers: ['חודש', 'נכנס לכיס לפני מע״מ', 'נכנס לכיס כולל מע״מ', 'הוצאות לפני מע״מ', 'הוצאות כולל מע״מ', 'רווח / הפסד', 'מצטבר', 'טרם נגבה'],
           rows: pnl.months.map(r => [r.month, r.income, r.incomeGross, r.expenses, r.expensesGross, r.result, r.cumulative, r.open]),
           total: ['סה״כ', t.income, t.incomeGross, t.expenses, t.expensesGross, t.result, t.result, t.open],
           average: pnl.average.months
@@ -138,7 +146,8 @@ export function buildFinanceReport(opts: {
         },
         notes: [
           ...(pnl.avgExpenses > 0 ? [`הוצאה חודשית ממוצעת (${pnl.average.label}): ₪${pnl.avgExpenses.toLocaleString('he-IL')} לפני מע״מ — זו ההכנסה המינימלית לחודש כדי לא להפסיד.`] : []),
-          ...(pnl.avgIncome > 0 ? [`הכנסה חודשית ממוצעת (${pnl.average.label}): ₪${pnl.avgIncome.toLocaleString('he-IL')} לפני מע״מ.`] : []),
+          ...(pnl.avgIncome > 0 ? [`ממוצע חודשי לכיס (${pnl.average.label}): ₪${pnl.avgIncome.toLocaleString('he-IL')} ללא משלוח, לפני מע״מ.`] : []),
+          'ההכנסות ברווח והפסד = נכנס לכיס (ללא דמי משלוח, לפני מע״מ).',
           'ממוצע חודשי: בשנה שהסתיימה — סה״כ השנה ÷ 12. בשנה הנוכחית — ÷ מספר החודשים מהחודש הראשון עם פעילות ועד החודש הנוכחי (מתעדכן כל חודש).',
           ...(t.result < 0 ? [`כדי לכסות את ההפסד המצטבר צריך עוד ₪${(-t.result).toLocaleString('he-IL')} רווח מעבר להוצאות.`] : []),
         ],
@@ -182,10 +191,10 @@ export function buildFinanceReport(opts: {
     sheet: 'הכנסות לפי לקוח',
     title: `הכנסות לפי לקוח — ${periodLabel}`,
     table: {
-      headers: ['לקוח', 'הזמנות', 'ללא משלוח', 'דמי משלוח', 'סה״כ לפני מע״מ', 'סה״כ כולל מע״מ', 'טרם שולם'],
-      rows: summarizeByCustomer(orders).map(c => [c.customerName, c.count, c.noShipping, c.shipping, c.total, c.grossTotal, c.openTotal]),
-      total: ['סה״כ', s.count, s.noShipping, s.shipping, s.total, s.grossTotal, s.openTotal],
-      moneyCols: [2, 3, 4, 5, 6],
+      headers: ['לקוח', 'הזמנות', ...incomeHeaders],
+      rows: summarizeByCustomer(orders).map(c => [c.customerName, c.count, ...incomeValues(c)]),
+      total: ['סה״כ', s.count, ...incomeValues(s)],
+      moneyCols: moneyRange(2, INCOME_COLUMNS.length),
     },
   });
 
@@ -194,10 +203,10 @@ export function buildFinanceReport(opts: {
     sheet: 'הכנסות לפי אמצעי תשלום',
     title: `הכנסות לפי אמצעי תשלום — ${periodLabel}`,
     table: {
-      headers: ['אמצעי תשלום', 'הזמנות', 'סה״כ לפני מע״מ', 'סה״כ כולל מע״מ', 'טרם שולם'],
-      rows: summarizeByPaymentMethod(orders).map(m => [m.method, m.count, m.total, m.grossTotal, m.openTotal]),
-      total: ['סה״כ', s.count, s.total, s.grossTotal, s.openTotal],
-      moneyCols: [2, 3, 4],
+      headers: ['אמצעי תשלום', 'הזמנות', ...incomeHeaders],
+      rows: summarizeByPaymentMethod(orders).map(m => [m.method, m.count, ...incomeValues(m)]),
+      total: ['סה״כ', s.count, ...incomeValues(s)],
+      moneyCols: moneyRange(2, INCOME_COLUMNS.length),
     },
   });
 
@@ -208,14 +217,14 @@ export function buildFinanceReport(opts: {
     sheet: 'כל ההזמנות',
     title: `כל ההזמנות — ${periodLabel}`,
     table: {
-      headers: [basis === 'order' ? 'תאריך הזמנה' : 'תאריך אספקה', 'מס׳ הזמנה', 'לקוח', 'ללא משלוח', 'דמי משלוח', 'לפני מע״מ', 'כולל מע״מ', 'אמצעי תשלום', 'סטטוס'],
+      headers: [basis === 'order' ? 'תאריך הזמנה' : 'תאריך אספקה', 'מס׳ הזמנה', 'לקוח', ...orderCols.map(c => c.short), 'אמצעי תשלום', 'סטטוס'],
       rows: sortedOrders.map(o => [
         fmtD(orderBasisDate(o, basis)), o.orderNumber, o.customerName,
-        ...(o.barter ? [null, null, null, null] : [o.netNoShipping, o.netShipping, o.netTotal, o.grossTotal]),
+        ...orderCols.map(c => (o.barter ? null : orderIncome(o)[c.key])),
         paymentMethodLabel(o.paymentMethod), o.barter ? 'בארטר (לא נספר)' : o.paymentStatus,
       ]),
-      total: ['סה״כ', '', `${s.count} הזמנות`, s.noShipping, s.shipping, s.total, s.grossTotal, '', ''],
-      moneyCols: [3, 4, 5, 6],
+      total: ['סה״כ', '', `${s.count} הזמנות`, ...orderCols.map(c => s[c.key]), '', ''],
+      moneyCols: moneyRange(3, orderCols.length),
     },
   });
 
