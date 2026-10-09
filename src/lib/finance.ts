@@ -359,6 +359,17 @@ export function averageBasis(year: number, activeMonthKeys: string[], today = to
 
 export const averageOf = (total: number, basis: AverageBasis) => (basis.months ? round2(total / basis.months) : 0);
 
+/**
+ * Owner's rule: delivery fees and VAT are an expense, not income — a monthly
+ * average is only ever taken of "נכנס לכיס" (without delivery, before VAT).
+ * Every other income column (delivery, VAT, anything "כולל מע״מ", open
+ * balances) is left out of the average row (null).
+ */
+export const AVERAGED_INCOME_KEYS: ReadonlySet<IncomeMoneyKey> = new Set<IncomeMoneyKey>(['pocket']);
+
+export const incomeAverageValues = (m: IncomeMoney, basis: AverageBasis): (number | null)[] =>
+  INCOME_COLUMNS.map(c => (AVERAGED_INCOME_KEYS.has(c.key) ? averageOf(m[c.key], basis) : null));
+
 // ── Profit & loss ───────────────────────────────────────────────────────────
 
 export interface PnlMonth {
@@ -378,9 +389,10 @@ export interface PnlMonth {
 export interface Pnl {
   months: PnlMonth[];
   totals: { income: number; incomeGross: number; open: number; expenses: number; expensesGross: number; result: number };
-  /** Monthly averages (see averageBasis) — same divisor for every column. */
+  /** Monthly averages (see averageBasis) — same divisor for every column.
+   *  Income is averaged only as "נכנס לכיס" (no delivery, no VAT). */
   average: AverageBasis;
-  avg: { income: number; incomeGross: number; expenses: number; expensesGross: number; result: number; open: number };
+  avg: { income: number; expenses: number; expensesGross: number; result: number };
   avgExpenses: number;
   avgIncome: number;
 }
@@ -413,11 +425,9 @@ export function buildPnl(orders: FinanceOrder[], expenses: Expense[], year: numb
   const average = averageBasis(year, months.filter(m => m.hasData).map(m => m.key), today);
   const avg = {
     income: averageOf(totals.income, average),
-    incomeGross: averageOf(totals.incomeGross, average),
     expenses: averageOf(totals.expenses, average),
     expensesGross: averageOf(totals.expensesGross, average),
     result: averageOf(totals.result, average),
-    open: averageOf(totals.open, average),
   };
   return {
     months,

@@ -5,7 +5,7 @@ import { Card } from '@/components/ui/Card';
 import { Modal } from '@/components/ui/Modal';
 import {
   summarize, summarizeByCustomer, summarizeByPaymentMethod, paymentMethodLabel, orderBasisDate, orderIncome,
-  monthKey, monthLabel, HEBREW_MONTHS, averageBasis, averageOf, round2, INCOME_COLUMNS, incomeValues,
+  monthKey, monthLabel, HEBREW_MONTHS, averageBasis, averageOf, round2, INCOME_COLUMNS, incomeValues, incomeAverageValues,
   type FinanceOrder, type DateBasis, type MoneySummary, type IncomeMoney, type IncomeMoneyKey,
 } from '@/lib/finance';
 import { downloadExcel, downloadElementPng, fmtDate, type Cell } from '@/lib/finance-export';
@@ -18,7 +18,7 @@ import { C, money, StatCard, ExportButtons, Th, Td, EmptyNote } from './shared';
 // screen, the Excel and the PDF report always show the same columns.
 
 const BASIS_LABEL: Record<DateBasis, string> = { order: 'לפי תאריך הזמנה', delivery: 'לפי תאריך אספקה' };
-const POCKET_NOTE = '"נכנס לכיס" = סכום ההזמנות ללא דמי משלוח ולפני מע״מ — זה מה שנשאר אצלך. "ללא משלוח כולל מע״מ" = אותו סכום כפי שהלקוחות שילמו אותו. דמי משלוח ומע״מ אינם הכנסה ומוצגים בנפרד. נכנס לכיס + משלוח לפני מע״מ + מע״מ = מה שהלקוחות שילמו.';
+const POCKET_NOTE = '"נכנס לכיס" = סכום ההזמנות ללא דמי משלוח ולפני מע״מ — זה מה שנשאר אצלך. "ללא משלוח כולל מע״מ" = אותו סכום כפי שהלקוחות שילמו אותו. דמי משלוח ומע״מ הם הוצאה ולא הכנסה — הם מוצגים בנפרד ולא נכנסים לממוצע החודשי (הממוצע = נכנס לכיס בלבד). נכנס לכיס + משלוח לפני מע״מ + מע״מ = מה שהלקוחות שילמו.';
 
 /** Per-order columns: the open balance is shown by the status column instead. */
 const ORDER_COLUMNS = INCOME_COLUMNS.filter(c => c.key !== 'openNet' && c.key !== 'openGross');
@@ -42,9 +42,6 @@ function MoneyCells({ m, cols = INCOME_COLUMNS, bold }: { m: IncomeMoney; cols?:
 
 const MoneyHeaders = ({ cols = INCOME_COLUMNS }: { cols?: typeof INCOME_COLUMNS }) =>
   <>{cols.map(c => <Th key={c.key}>{c.short}</Th>)}</>;
-
-const scale = (m: IncomeMoney, f: (n: number) => number): IncomeMoney =>
-  Object.fromEntries(INCOME_COLUMNS.map(c => [c.key, f(m[c.key])])) as unknown as IncomeMoney;
 
 // ── Excel builders ──────────────────────────────────────────────────────────
 
@@ -113,7 +110,8 @@ export default function IncomeTab({ orders, year, basis, undatedCount }: {
     () => averageBasis(year, monthRows.filter(m => m.s.count + m.s.barterCount > 0).map(m => m.key)),
     [year, monthRows],
   );
-  const avgMoney = scale(y, n => averageOf(n, average));
+  // Only "נכנס לכיס" is averaged — delivery and VAT are an expense, not income.
+  const avgPocket = averageOf(y.pocket, average);
   const avgCount = average.months ? round2(y.count / average.months) : 0;
 
   async function exportYearExcel() {
@@ -121,7 +119,7 @@ export default function IncomeTab({ orders, year, basis, undatedCount }: {
       ['חודש', 'מס׳ הזמנות', ...moneyHeaders],
       ...monthRows.map(m => [monthLabel(m.key), m.s.count, ...incomeValues(m.s)] as Cell[]),
       ['סה״כ שנתי', y.count, ...incomeValues(y)],
-      ...(average.months ? [[`ממוצע חודשי (${average.label})`, avgCount, ...incomeValues(avgMoney)] as Cell[]] : []),
+      ...(average.months ? [[`ממוצע חודשי (${average.label})`, avgCount, ...incomeAverageValues(y, average)] as Cell[]] : []),
       [],
       [`${POCKET_NOTE} ${BASIS_LABEL[basis]}. הזמנות שבוטלו, טיוטות והזמנות בארטר אינן נספרות.`],
     ];
@@ -141,7 +139,7 @@ export default function IncomeTab({ orders, year, basis, undatedCount }: {
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
           <StatCard label={`נכנס לכיס ${year} — ללא משלוח, לפני מע״מ`} value={money(y.pocket)} sub={`${y.count} הזמנות`} tone="green" />
           <StatCard label="ללא משלוח — כולל מע״מ" value={money(y.pocketGross)} />
-          <StatCard label="ממוצע חודשי לכיס" value={money(avgMoney.pocket)} sub={average.months ? average.label : undefined} tone="brand" />
+          <StatCard label="ממוצע חודשי לכיס" value={money(avgPocket)} sub={average.months ? `${average.label} · ללא משלוח ומע״מ` : undefined} tone="brand" />
           <StatCard label="דמי משלוח — לפני מע״מ" value={money(y.shippingNet)} />
           <StatCard label="דמי משלוח — כולל מע״מ" value={money(y.shippingGross)} />
           <StatCard label="מע״מ" value={money(y.vat)} />
@@ -198,7 +196,11 @@ export default function IncomeTab({ orders, year, basis, undatedCount }: {
                       <div className="text-xs font-normal" style={{ color: C.sub }}>{average.label}</div>
                     </Td>
                     <Td className="font-semibold">{avgCount.toLocaleString('he-IL')}</Td>
-                    <MoneyCells m={avgMoney} bold="semi" />
+                    {INCOME_COLUMNS.map(c => (
+                      <Td key={c.key} className="tabular-nums font-semibold" style={{ color: c.key === 'pocket' ? C.green : C.faint }}>
+                        {c.key === 'pocket' ? money(avgPocket) : '—'}
+                      </Td>
+                    ))}
                     <Td />
                   </tr>
                 )}

@@ -33,7 +33,7 @@ export default function ProfitLossTab({ orders, expenses, year, basis, expensesR
       ['חודש', 'נכנס לכיס (ללא משלוח) לפני מע״מ', 'נכנס לכיס (ללא משלוח) כולל מע״מ', 'הוצאות לפני מע״מ', 'הוצאות כולל מע״מ', 'רווח / הפסד (לפני מע״מ)', 'מצטבר מתחילת השנה', 'טרם נגבה (לפני מע״מ)'],
       ...rows.map(r => [r.month, r.income, r.incomeGross, r.expenses, r.expensesGross, r.result, r.cumulative ?? '', r.open] as Cell[]),
       ['סה״כ שנתי', totals.income, totals.incomeGross, totals.expenses, totals.expensesGross, result, result, totals.open],
-      ...(average.months ? [[`ממוצע חודשי (${average.label})`, avg.income, avg.incomeGross, avg.expenses, avg.expensesGross, avg.result, '', avg.open] as Cell[]] : []),
+      ...(average.months ? [[`ממוצע חודשי (${average.label})`, avg.income, '', avg.expenses, avg.expensesGross, avg.result, '', ''] as Cell[]] : []),
       [],
       ...(result < 0 ? [['הכנסה נוספת שנדרשת כדי לכסות את ההפסד', -result] as Cell[]] : []),
       [],
@@ -142,12 +142,12 @@ export default function ProfitLossTab({ orders, expenses, year, basis, expensesR
                     <div className="text-xs font-normal" style={{ color: C.sub }}>{average.label}</div>
                   </Td>
                   <Td className="font-semibold tabular-nums" style={{ color: C.green }}>{money(avg.income)}</Td>
-                  <Td className="font-semibold tabular-nums">{money(avg.incomeGross)}</Td>
+                  <Td className="font-semibold tabular-nums" style={{ color: C.faint }}>—</Td>
                   <Td className="font-semibold tabular-nums" style={{ color: C.red }}>{money(avg.expenses)}</Td>
                   <Td className="font-semibold tabular-nums">{money(avg.expensesGross)}</Td>
                   <Td className="font-semibold tabular-nums" style={{ color: avg.result >= 0 ? C.green : C.red }}>{signed(avg.result)}</Td>
                   <Td />
-                  <Td className="font-semibold tabular-nums" style={{ color: C.amber }}>{money(avg.open)}</Td>
+                  <Td className="font-semibold tabular-nums" style={{ color: C.faint }}>—</Td>
                 </tr>
               )}
             </tbody>
@@ -155,7 +155,7 @@ export default function ProfitLossTab({ orders, expenses, year, basis, expensesR
         </div>
         <div className="px-5 py-3 text-xs" style={{ color: C.sub, borderTop: `1px solid ${C.border}` }}>
           רווח / הפסד מחושב לפני מע״מ — המע״מ שהלקוחות משלמים שייך למדינה, והמע״מ על ההוצאות מקוזז, ולכן זה הרווח האמיתי. עמודות &quot;כולל מע״מ&quot; מראות את הסכומים כפי שחויבו / שולמו בפועל.
-          &quot;נכנס לכיס&quot; = סכום ההזמנות ללא דמי משלוח (דמי משלוח אינם הכנסה), {basis === 'order' ? 'לפי תאריך ההזמנה' : 'לפי תאריך האספקה'}, כולל הזמנות שטרם שולמו, ללא בארטר ובוטלו.
+          &quot;נכנס לכיס&quot; = סכום ההזמנות ללא דמי משלוח (דמי משלוח ומע״מ הם הוצאה ולא הכנסה, ולכן גם הממוצע החודשי מחושב רק על נכנס לכיס), {basis === 'order' ? 'לפי תאריך ההזמנה' : 'לפי תאריך האספקה'}, כולל הזמנות שטרם שולמו, ללא בארטר ובוטלו.
         </div>
       </Card>
     </div>

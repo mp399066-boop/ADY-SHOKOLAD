@@ -4,7 +4,7 @@
 
 import {
   summarize, summarizeByCustomer, summarizeByPaymentMethod, paymentMethodLabel, buildPnl, averageBasis, averageOf,
-  INCOME_COLUMNS, incomeValues, orderIncome, orderBasisDate, expenseNet, expenseSupplierName,
+  INCOME_COLUMNS, incomeValues, incomeAverageValues, orderIncome, orderBasisDate, expenseNet, expenseSupplierName,
   monthKey, monthLabel, round2, HEBREW_MONTHS, todayJerusalem,
   type FinanceOrder, type Expense, type DateBasis,
 } from '@/lib/finance';
@@ -36,6 +36,8 @@ export interface FinanceReport {
   fileBase: string;
   sections: ReportSection[];
 }
+
+const AVERAGE_NOTE = 'דמי משלוח ומע״מ הם הוצאה ולא הכנסה — הממוצע החודשי מחושב רק על "נכנס לכיס" (ללא משלוח, לפני מע״מ).';
 
 const fmtD = (iso: string | null | undefined) => {
   if (!iso) return '';
@@ -126,10 +128,11 @@ export function buildFinanceReport(opts: {
         rows: monthly.map(({ m, s: x }) => [m, x.count, ...incomeValues(x)]),
         total: ['סה״כ', s.count, ...incomeValues(s)],
         average: incomeAvg.months
-          ? [`ממוצע חודשי (${incomeAvg.label})`, round2(s.count / incomeAvg.months), ...incomeValues(s).map(n => averageOf(n, incomeAvg))]
+          ? [`ממוצע חודשי (${incomeAvg.label})`, round2(s.count / incomeAvg.months), ...incomeAverageValues(s, incomeAvg)]
           : undefined,
         moneyCols: moneyRange(2, INCOME_COLUMNS.length),
       },
+      notes: [AVERAGE_NOTE],
     });
     if (expensesReady) {
       const t = pnl.totals;
@@ -141,7 +144,7 @@ export function buildFinanceReport(opts: {
           rows: pnl.months.map(r => [r.month, r.income, r.incomeGross, r.expenses, r.expensesGross, r.result, r.cumulative, r.open]),
           total: ['סה״כ', t.income, t.incomeGross, t.expenses, t.expensesGross, t.result, t.result, t.open],
           average: pnl.average.months
-            ? [`ממוצע חודשי (${pnl.average.label})`, pnl.avg.income, pnl.avg.incomeGross, pnl.avg.expenses, pnl.avg.expensesGross, pnl.avg.result, null, pnl.avg.open]
+            ? [`ממוצע חודשי (${pnl.average.label})`, pnl.avg.income, null, pnl.avg.expenses, pnl.avg.expensesGross, pnl.avg.result, null, null]
             : undefined,
           moneyCols: [1, 2, 3, 4, 5, 6, 7],
         },
@@ -149,6 +152,7 @@ export function buildFinanceReport(opts: {
           ...(pnl.avgExpenses > 0 ? [`הוצאה חודשית ממוצעת (${pnl.average.label}): ₪${pnl.avgExpenses.toLocaleString('he-IL')} לפני מע״מ — זו ההכנסה המינימלית לחודש כדי לא להפסיד.`] : []),
           ...(pnl.avgIncome > 0 ? [`ממוצע חודשי לכיס (${pnl.average.label}): ₪${pnl.avgIncome.toLocaleString('he-IL')} ללא משלוח, לפני מע״מ.`] : []),
           'ההכנסות ברווח והפסד = נכנס לכיס (ללא דמי משלוח, לפני מע״מ).',
+          AVERAGE_NOTE,
           'ממוצע חודשי: בשנה שהסתיימה — סה״כ השנה ÷ 12. בשנה הנוכחית — ÷ מספר החודשים מהחודש הראשון עם פעילות ועד החודש הנוכחי (מתעדכן כל חודש).',
           ...(t.result < 0 ? [`כדי לכסות את ההפסד המצטבר צריך עוד ₪${(-t.result).toLocaleString('he-IL')} רווח מעבר להוצאות.`] : []),
         ],
