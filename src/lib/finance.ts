@@ -268,7 +268,13 @@ export interface Expense {
   הערות: string | null;
   מקור: string | null;
   תאריך_יצירה?: string;
+  /** Payslip (migration 059): the employee and the pay month 'YYYY-MM'. */
+  עובד_id?: string | null;
+  חודש_שכר?: string | null;
 }
+
+/** Category every payslip (תלוש שכר) is filed under. */
+export const SALARY_CATEGORY = 'משכורות ועובדים';
 
 
 // Category names live in the managed list "expense_categories" (src/lib/option-lists.ts).

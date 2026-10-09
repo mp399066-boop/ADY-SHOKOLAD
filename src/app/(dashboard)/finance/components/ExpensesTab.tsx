@@ -12,6 +12,7 @@ import { downloadExcel, downloadElementPng, fmtDate, type Cell } from '@/lib/fin
 import { C, money, StatCard, ExportButtons, Th, Td, EmptyNote } from './shared';
 import ExpenseFormModal, { type SupplierOption } from './ExpenseFormModal';
 import ExpenseImportModal from './ExpenseImportModal';
+import SalaryModal, { type EmployeeOption } from './SalaryModal';
 
 interface Group { name: string; count: number; gross: number; vat: number; net: number }
 
@@ -31,9 +32,12 @@ function groupBy(list: Expense[], keyOf: (e: Expense) => string): Group[] {
 
 const selectCls = 'px-3 py-1.5 text-sm rounded-lg border border-[#E8DED2] bg-white focus:outline-none focus:border-[#C9A46A]';
 
-export default function ExpensesTab({ expenses, suppliers, year, tableReady, hint, reload }: {
+export default function ExpensesTab({ expenses, suppliers, employees, salariesReady, year, tableReady, hint, reload }: {
   expenses: Expense[];
   suppliers: SupplierOption[];
+  employees: EmployeeOption[];
+  /** false until migration 059 (payslip fields) has been run. */
+  salariesReady: boolean;
   year: number;
   tableReady: boolean;
   hint: string | null;
@@ -48,6 +52,7 @@ export default function ExpensesTab({ expenses, suppliers, year, tableReady, hin
   const [formOpen, setFormOpen] = useState(false);
   const [formInitial, setFormInitial] = useState<Partial<Expense> | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [salaryOpen, setSalaryOpen] = useState(false);
   const [toDelete, setToDelete] = useState<Expense | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -145,6 +150,9 @@ export default function ExpensesTab({ expenses, suppliers, year, tableReady, hin
       <div className="flex flex-wrap items-center gap-2">
         <Button onClick={openNew}>+ הוצאה חדשה</Button>
         <Button variant="outline" onClick={() => setImportOpen(true)}>ייבוא מקובץ הנהלת חשבונות</Button>
+        <Button variant="outline" onClick={() => (salariesReady ? setSalaryOpen(true) : toast.error('יש להריץ את מיגרציה 059 ב-Supabase כדי להזין תלושי משכורת'))}>
+          תלושי משכורת (ברוטו)
+        </Button>
         <div className="flex-1" />
         <select className={selectCls} value={month} onChange={e => setMonth(e.target.value === 'all' ? 'all' : Number(e.target.value))}>
           <option value="all">כל השנה</option>
@@ -177,6 +185,8 @@ export default function ExpensesTab({ expenses, suppliers, year, tableReady, hin
           <StatCard label="הוצאות — כולל מע״מ (שולם בפועל)" value={money(totals.gross)} />
           <StatCard label="ספקים / מקבלים" value={String(bySupplier.length)} />
         </div>
+
+        <SalariesMatrix expenses={expenses} employees={employees} year={year} />
 
         {expenses.length === 0 ? (
           <EmptyNote>עוד לא הוזנו הוצאות לשנת {year}. אפשר להוסיף ידנית או לייבא קובץ מהנהלת החשבונות.</EmptyNote>
@@ -233,6 +243,7 @@ export default function ExpensesTab({ expenses, suppliers, year, tableReady, hin
 
       <ExpenseFormModal open={formOpen} initial={formInitial} suppliers={suppliers} onClose={() => setFormOpen(false)} onSaved={reload} />
       <ExpenseImportModal open={importOpen} onClose={() => setImportOpen(false)} onImported={reload} />
+      <SalaryModal open={salaryOpen} onClose={() => setSalaryOpen(false)} onSaved={reload} year={year} employees={employees} expenses={expenses} />
       <ConfirmModal
         open={!!toDelete}
         onClose={() => setToDelete(null)}
@@ -276,6 +287,48 @@ function GroupTable({ title, groups, total, onPick }: {
               <Td className="font-bold tabular-nums">{money(total.net)}</Td>
               <Td className="font-bold tabular-nums">{money(total.gross)}</Td>
               <Td className="font-bold">100%</Td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
+/** Gross salary per employee per month (payslips), with totals both ways. */
+function SalariesMatrix({ expenses, employees, year }: { expenses: Expense[]; employees: EmployeeOption[]; year: number }) {
+  const slips = expenses.filter(e => e.עובד_id && e.חודש_שכר?.startsWith(`${year}-`));
+  if (!slips.length) return null;
+  const months = Array.from(new Set(slips.map(e => e.חודש_שכר!))).sort();
+  const nameOf = (id: string) => employees.find(x => x.id === id)?.שם_עובד ?? slips.find(e => e.עובד_id === id)?.שם_ספק ?? '—';
+  const empIds = Array.from(new Set(slips.map(e => e.עובד_id!))).sort((a, b) => nameOf(a).localeCompare(nameOf(b), 'he'));
+  const cell = (emp: string, m: string) => round2(slips.filter(e => e.עובד_id === emp && e.חודש_שכר === m).reduce((t, e) => t + Number(e.סכום), 0));
+  const rowTotal = (emp: string) => round2(months.reduce((t, m) => t + cell(emp, m), 0));
+  const colTotal = (m: string) => round2(empIds.reduce((t, emp) => t + cell(emp, m), 0));
+  const grand = round2(months.reduce((t, m) => t + colTotal(m), 0));
+  return (
+    <Card className="!p-0 overflow-hidden">
+      <div className="px-5 py-3" style={{ borderBottom: `1px solid ${C.border}` }}>
+        <h3 className="text-sm font-semibold" style={{ color: C.text }}>משכורות ברוטו לפי עובד — {year}</h3>
+        <p className="text-xs mt-0.5" style={{ color: C.sub }}>מתוך תלושי המשכורת שהוזנו (ללא מע״מ)</p>
+      </div>
+      <div className="overflow-x-auto" data-export-expand>
+        <table className="w-full">
+          <thead style={{ backgroundColor: C.soft }}>
+            <tr><Th>עובד</Th>{months.map(m => <Th key={m}>{HEBREW_MONTHS[Number(m.slice(5)) - 1]}</Th>)}<Th>סה״כ</Th></tr>
+          </thead>
+          <tbody>
+            {empIds.map(emp => (
+              <tr key={emp} style={{ borderTop: `1px solid ${C.border}` }}>
+                <Td className="font-medium">{nameOf(emp)}</Td>
+                {months.map(m => <Td key={m} className="tabular-nums" style={{ color: cell(emp, m) ? C.text : C.faint }}>{money(cell(emp, m))}</Td>)}
+                <Td className="font-semibold tabular-nums">{money(rowTotal(emp))}</Td>
+              </tr>
+            ))}
+            <tr style={{ borderTop: `2px solid ${C.gold}`, backgroundColor: C.soft }}>
+              <Td className="font-bold">סה״כ</Td>
+              {months.map(m => <Td key={m} className="font-bold tabular-nums">{money(colTotal(m))}</Td>)}
+              <Td className="font-bold tabular-nums">{money(grand)}</Td>
             </tr>
           </tbody>
         </table>

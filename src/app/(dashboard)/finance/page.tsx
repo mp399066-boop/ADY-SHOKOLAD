@@ -9,6 +9,7 @@ import ExpensesTab from './components/ExpensesTab';
 import ProfitLossTab from './components/ProfitLossTab';
 import FullReportModal from './components/FullReportModal';
 import type { SupplierOption } from './components/ExpenseFormModal';
+import type { EmployeeOption } from './components/SalaryModal';
 import { C } from './components/shared';
 
 type TabKey = 'income' | 'expenses' | 'pnl';
@@ -30,6 +31,8 @@ export default function FinancePage() {
 
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [expensesReady, setExpensesReady] = useState(true);
+  const [salariesReady, setSalariesReady] = useState(true);
+  const [employees, setEmployees] = useState<EmployeeOption[]>([]);
   const [expensesHint, setExpensesHint] = useState<string | null>(null);
   const [expensesLoading, setExpensesLoading] = useState(true);
 
@@ -69,6 +72,7 @@ export default function FinancePage() {
       setExpenses(json.data ?? []);
       setExpensesReady(json.tableReady !== false);
       setExpensesHint(json.hint ?? null);
+      setSalariesReady(json.salariesReady !== false);
     } catch {
       setExpenses([]);
     } finally {
@@ -83,6 +87,9 @@ export default function FinancePage() {
     fetch('/api/suppliers').then(r => (r.ok ? r.json() : null)).then(j => {
       const list = ((j?.data ?? []) as SupplierOption[]).filter(s => s.פעיל !== false);
       setSuppliers(list);
+    }).catch(() => {});
+    fetch('/api/employees').then(r => (r.ok ? r.json() : null)).then(j => {
+      setEmployees((j?.data ?? []) as EmployeeOption[]);
     }).catch(() => {});
   }, [isAdmin]);
 
@@ -143,7 +150,7 @@ export default function FinancePage() {
       ) : tab === 'income' ? (
         <IncomeTab orders={orders} year={year} basis={basis} undatedCount={undatedCount} />
       ) : tab === 'expenses' ? (
-        <ExpensesTab expenses={expenses} suppliers={suppliers} year={year} tableReady={expensesReady} hint={expensesHint} reload={loadExpenses} />
+        <ExpensesTab expenses={expenses} suppliers={suppliers} employees={employees} salariesReady={salariesReady} year={year} tableReady={expensesReady} hint={expensesHint} reload={loadExpenses} />
       ) : (
         <ProfitLossTab orders={orders} expenses={expenses} year={year} basis={basis} expensesReady={expensesReady} />
       )}

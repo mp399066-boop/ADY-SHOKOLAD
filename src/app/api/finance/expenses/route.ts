@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { requireAdminUser, forbiddenResponse } from '@/lib/auth/requireAuthorizedUser';
 import { todayJerusalem } from '@/lib/finance';
 import { expenseInputSchema, isMissingTable, EXPENSES_MIGRATION_HINT } from '@/lib/finance-expense-schema';
+import { missingColumnMessage } from '@/lib/db-error';
 
 // GET  /api/finance/expenses?year=2026 → { data, tableReady }
 // POST /api/finance/expenses           → create one expense
@@ -19,12 +20,16 @@ export async function GET(req: NextRequest) {
   if (!/^\d{4}$/.test(yearRaw)) return NextResponse.json({ error: 'שנה לא תקינה' }, { status: 400 });
 
   const supabase = createAdminClient();
+  // Payslip fields (migration 059). Until it is run, fall back to the base
+  // columns so the expenses list keeps working.
+  let columns = `${COLUMNS}, עובד_id, חודש_שכר`;
+  let salariesReady = true;
   const all: Record<string, unknown>[] = [];
   const pageSize = 1000;
   for (let offset = 0; offset < 100_000; offset += pageSize) {
     const { data, error } = await supabase
       .from('הוצאות')
-      .select(COLUMNS)
+      .select(columns)
       .gte('תאריך', `${yearRaw}-01-01`)
       .lte('תאריך', `${yearRaw}-12-31`)
       .order('תאריך', { ascending: false })
@@ -32,6 +37,12 @@ export async function GET(req: NextRequest) {
       .range(offset, offset + pageSize - 1);
     if (error) {
       if (isMissingTable(error)) return NextResponse.json({ data: [], tableReady: false, hint: EXPENSES_MIGRATION_HINT });
+      if (salariesReady && missingColumnMessage(error)) {
+        salariesReady = false;
+        columns = COLUMNS;
+        offset -= pageSize; // retry this page without the payslip fields
+        continue;
+      }
       console.error('[finance/expenses GET]', { code: error.code });
       return NextResponse.json({ error: 'שגיאה בטעינת ההוצאות' }, { status: 500 });
     }
@@ -40,7 +51,7 @@ export async function GET(req: NextRequest) {
   }
 
   const data = all.map(r => ({ ...r, סכום: Number(r['סכום']) || 0, מעמ: Number(r['מעמ']) || 0 }));
-  return NextResponse.json({ data, tableReady: true });
+  return NextResponse.json({ data, tableReady: true, salariesReady });
 }
 
 export async function POST(req: NextRequest) {
