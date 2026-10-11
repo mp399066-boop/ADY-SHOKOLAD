@@ -16,6 +16,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { logActivity, getActorFromRequest } from '@/lib/activity-log';
+import { dbErrorResponse } from '@/lib/api-error';
 import {
   OPTION_LIST_KEYS,
   isValidListKey,
@@ -54,7 +55,7 @@ export async function GET(req: NextRequest) {
       const rows = keys.flatMap((k) => defaultRowsFor(k));
       return NextResponse.json({ data: rows, tableReady: false });
     }
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return dbErrorResponse(error, 'admin/option-lists');
   }
 
   return NextResponse.json({ data: (data as OptionListRow[]) ?? [], tableReady: true });
@@ -102,7 +103,7 @@ export async function POST(req: NextRequest) {
     if (error.code === '23505') {
       return NextResponse.json({ error: `הערך "${value}" כבר קיים ברשימה` }, { status: 409 });
     }
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return dbErrorResponse(error, 'admin/option-lists');
   }
 
   await logActivity({

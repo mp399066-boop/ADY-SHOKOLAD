@@ -9,6 +9,7 @@ import {
   type StockAvailabilityItem,
 } from '@/lib/inventory-deduct';
 import { fetchOrderRecipients } from '@/lib/order-recipients';
+import { dbErrorResponse, dbStepErrorResponse } from '@/lib/api-error';
 
 // GET: return items for a single order (used by inline order expansion on the list page)
 export async function GET(_: NextRequest, props: { params: Promise<{ id: string }> }) {
@@ -23,7 +24,7 @@ export async function GET(_: NextRequest, props: { params: Promise<{ id: string 
     .eq('הזמנה_id', params.id)
     .order('סדר_תצוגה', { ascending: true });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbErrorResponse(error, 'orders/[id]/items');
 
   const { data: payments } = await supabase
     .from('תשלומים')
@@ -84,7 +85,7 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
 
   if (fetchExistingError) {
     console.error('[items PUT] failed to fetch existing items:', fetchExistingError);
-    return NextResponse.json({ error: `שגיאה בטעינת פריטים קיימים: ${fetchExistingError.message}` }, { status: 500 });
+    return dbStepErrorResponse(fetchExistingError, 'orders/[id]/items', 'שגיאה בטעינת פריטים קיימים');
   }
 
   const existingIds = (existingItems || []).map((i: { id: string }) => i.id);
@@ -126,7 +127,7 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
 
     if (prodsError) {
       console.error('[items PUT] product validation query failed:', prodsError);
-      return NextResponse.json({ error: `ולידציית מוצרים נכשלה: ${prodsError.message}` }, { status: 500 });
+      return dbStepErrorResponse(prodsError, 'orders/[id]/items', 'ולידציית מוצרים נכשלה');
     }
 
     for (const prod of existingProds || []) {
@@ -209,7 +210,7 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
 
     if (pfDeleteError) {
       console.error('[items PUT] failed to delete petit-four selections:', pfDeleteError);
-      return NextResponse.json({ error: `מחיקת בחירות פטיפורים נכשלה: ${pfDeleteError.message}` }, { status: 500 });
+      return dbStepErrorResponse(pfDeleteError, 'orders/[id]/items', 'מחיקת בחירות פטיפורים נכשלה');
     }
     console.log('[items PUT] deleted petit-four selections for', existingIds.length, 'items');
   }
@@ -222,7 +223,7 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
 
   if (deleteError) {
     console.error('[items PUT] failed to delete order items:', deleteError);
-    return NextResponse.json({ error: `מחיקת פריטי הזמנה נכשלה: ${deleteError.message}` }, { status: 500 });
+    return dbStepErrorResponse(deleteError, 'orders/[id]/items', 'מחיקת פריטי הזמנה נכשלה');
   }
   console.log('[items PUT] deleted existing order items');
 
@@ -250,7 +251,7 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
     });
     if (error) {
       console.error('[items PUT] failed to insert product row:', error, item);
-      return NextResponse.json({ error: `הוספת מוצר נכשלה: ${error.message}` }, { status: 500 });
+      return dbStepErrorResponse(error, 'orders/[id]/items', 'הוספת מוצר נכשלה');
     }
     console.log('[items PUT] inserted product row, מוצר_id:', item.מוצר_id, 'סהכ:', lineTotal);
   }
@@ -278,7 +279,7 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
 
     if (pkgError) {
       console.error('[items PUT] failed to insert package row:', pkgError, pkg);
-      return NextResponse.json({ error: `הוספת מארז נכשלה: ${pkgError.message}` }, { status: 500 });
+      return dbStepErrorResponse(pkgError, 'orders/[id]/items', 'הוספת מארז נכשלה');
     }
     console.log('[items PUT] inserted package row id:', pkgRow?.id, 'גודל:', pkg.גודל_מארז, 'סהכ:', lineTotal);
 
@@ -291,7 +292,7 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
         });
         if (pfError) {
           console.error('[items PUT] failed to insert petit-four selection:', pfError, pf);
-          return NextResponse.json({ error: `הוספת פטיפור נכשלה: ${pfError.message}` }, { status: 500 });
+          return dbStepErrorResponse(pfError, 'orders/[id]/items', 'הוספת פטיפור נכשלה');
         }
       }
     }
@@ -320,7 +321,7 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
     });
     if (error) {
       console.error('[items PUT] failed to insert custom item:', error, item);
-      return NextResponse.json({ error: `הוספת פריט ידני נכשלה: ${error.message}` }, { status: 500 });
+      return dbStepErrorResponse(error, 'orders/[id]/items', 'הוספת פריט ידני נכשלה');
     }
     console.log('[items PUT] inserted custom item:', lineType, name, 'סהכ:', lineTotal);
   }
@@ -350,7 +351,7 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
 
   if (updateError) {
     console.error('[items PUT] failed to update order totals:', updateError);
-    return NextResponse.json({ error: `עדכון סכומי הזמנה נכשל: ${updateError.message}` }, { status: 500 });
+    return dbStepErrorResponse(updateError, 'orders/[id]/items', 'עדכון סכומי הזמנה נכשל');
   }
 
   // ── Inventory reconciliation ─────────────────────────────────────────

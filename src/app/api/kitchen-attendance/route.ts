@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
+import { dbErrorResponse } from '@/lib/api-error';
 
 const TZ = 'Asia/Jerusalem';
 
@@ -54,9 +55,9 @@ export async function GET(req: NextRequest) {
       .order('תאריך', { ascending: false }),
   ]);
 
-  if (workersRes.error) return NextResponse.json({ error: workersRes.error.message }, { status: 500 });
-  if (todayRes.error) return NextResponse.json({ error: todayRes.error.message }, { status: 500 });
-  if (staleOpenRes.error) return NextResponse.json({ error: staleOpenRes.error.message }, { status: 500 });
+  if (workersRes.error) return dbErrorResponse(workersRes.error, 'kitchen-attendance');
+  if (todayRes.error) return dbErrorResponse(todayRes.error, 'kitchen-attendance');
+  if (staleOpenRes.error) return dbErrorResponse(staleOpenRes.error, 'kitchen-attendance');
 
   let reportQuery = supabase
     .from('נוכחות_עובדות')
@@ -68,7 +69,7 @@ export async function GET(req: NextRequest) {
   if (workerId) reportQuery = reportQuery.eq('עובדת_id', workerId);
 
   const { data: report, error: reportErr } = await reportQuery;
-  if (reportErr) return NextResponse.json({ error: reportErr.message }, { status: 500 });
+  if (reportErr) return dbErrorResponse(reportErr, 'kitchen-attendance');
 
   return NextResponse.json({
     workers: workersRes.data || [],
@@ -95,7 +96,7 @@ export async function POST(req: NextRequest) {
     .select('id, פעילה')
     .eq('id', workerId)
     .maybeSingle();
-  if (workerErr) return NextResponse.json({ error: workerErr.message }, { status: 500 });
+  if (workerErr) return dbErrorResponse(workerErr, 'kitchen-attendance');
   if (!worker || worker.פעילה === false) return NextResponse.json({ error: 'עובדת לא פעילה' }, { status: 400 });
 
   const { data: openRows, error: openErr } = await supabase
@@ -104,7 +105,7 @@ export async function POST(req: NextRequest) {
     .eq('עובדת_id', workerId)
     .eq('סטטוס', 'פתוח')
     .limit(1);
-  if (openErr) return NextResponse.json({ error: openErr.message }, { status: 500 });
+  if (openErr) return dbErrorResponse(openErr, 'kitchen-attendance');
   if ((openRows || []).length > 0) {
     return NextResponse.json({ error: 'כבר קיימת כניסה פתוחה לעובדת הזו' }, { status: 409 });
   }
@@ -122,6 +123,6 @@ export async function POST(req: NextRequest) {
     .select('*, עובדות_מטבח(שם_עובדת)')
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbErrorResponse(error, 'kitchen-attendance');
   return NextResponse.json({ data }, { status: 201 });
 }

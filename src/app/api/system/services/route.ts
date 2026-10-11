@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireAdminUser, forbiddenAdminResponse, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { SERVICE_KEYS, SERVICE_FALLBACK_LABELS, type ServiceKey } from '@/lib/system-services';
+import { dbErrorResponse } from '@/lib/api-error';
 
 // GET /api/system/services
 //
@@ -31,7 +32,7 @@ export async function GET() {
     .order('display_name', { ascending: true });
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return dbErrorResponse(error, 'system/services');
   }
 
   type Row = {

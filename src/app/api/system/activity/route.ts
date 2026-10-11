@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireAdminUser, forbiddenAdminResponse, unauthorizedResponse, requireAuthorizedUser } from '@/lib/auth/requireAuthorizedUser';
+import { dbErrorResponse } from '@/lib/api-error';
 
 // GET /api/system/activity
 //
@@ -76,7 +77,7 @@ export async function GET(req: NextRequest) {
 
   const { data, count, error } = await query;
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return dbErrorResponse(error, 'system/activity');
   }
 
   return NextResponse.json({

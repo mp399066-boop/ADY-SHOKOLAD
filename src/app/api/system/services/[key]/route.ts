@@ -6,6 +6,7 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { requireAdminUser, forbiddenAdminResponse, unauthorizedResponse, requireAuthorizedUser } from '@/lib/auth/requireAuthorizedUser';
 import { SERVICE_KEYS, SERVICE_FALLBACK_LABELS, type ServiceKey } from '@/lib/system-services';
 import { logActivity, userActor } from '@/lib/activity-log';
+import { dbErrorResponse } from '@/lib/api-error';
 
 // PATCH /api/system/services/[key]
 //
@@ -67,7 +68,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ key: st
 
   if (error) {
     console.error('[system/services PATCH] failed:', error.message);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return dbErrorResponse(error, 'system/services/[key]');
   }
 
   console.log(

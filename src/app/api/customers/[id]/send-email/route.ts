@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { logActivity, userActor } from '@/lib/activity-log';
 import { sendEmail } from '@/lib/email-transport';
+import { dbErrorResponse } from '@/lib/api-error';
 
 export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -62,7 +63,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     .select()
     .single();
 
-  if (logError) return NextResponse.json({ error: logError.message }, { status: 500 });
+  if (logError) return dbErrorResponse(logError, 'customers/[id]/send-email');
 
   void logActivity({
     actor:        userActor(auth),

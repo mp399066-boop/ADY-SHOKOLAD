@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
+import { dbErrorResponse } from '@/lib/api-error';
 import {
   forbiddenResponse,
   requireManagementUser,
@@ -33,6 +34,6 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
     .eq('id', params.id)
     .select()
     .single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbErrorResponse(error, 'kitchen-attendance/workers/[id]');
   return NextResponse.json({ data });
 }

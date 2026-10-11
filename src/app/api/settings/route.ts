@@ -3,13 +3,14 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
+import { dbErrorResponse } from '@/lib/api-error';
 
 export async function GET() {
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
   const { data, error } = await supabase.from('business_settings').select('*').single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbErrorResponse(error, 'settings');
   return NextResponse.json({ data });
 }
 
@@ -37,7 +38,7 @@ export async function PATCH(req: NextRequest) {
       .single();
   }
 
-  if (result.error) return NextResponse.json({ error: result.error.message }, { status: 500 });
+  if (result.error) return dbErrorResponse(result.error, 'settings');
   return NextResponse.json({ data: result.data });
 }
 

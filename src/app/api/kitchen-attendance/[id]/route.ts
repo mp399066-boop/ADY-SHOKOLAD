@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
+import { dbErrorResponse } from '@/lib/api-error';
 import {
   forbiddenResponse,
   requireManagementUser,
@@ -56,7 +57,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
       .select('*')
       .eq('id', params.id)
       .maybeSingle();
-    if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 });
+    if (fetchErr) return dbErrorResponse(fetchErr, 'kitchen-attendance/[id]');
     if (!row) return NextResponse.json({ error: 'רשומת נוכחות לא נמצאה' }, { status: 404 });
     if (row.סטטוס !== 'פתוח' || row.שעת_יציאה) {
       return NextResponse.json({ error: 'אין כניסה פתוחה לסגירה' }, { status: 409 });
@@ -75,7 +76,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
       .eq('id', params.id)
       .select('*, עובדות_מטבח(שם_עובדת)')
       .single();
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return dbErrorResponse(error, 'kitchen-attendance/[id]');
     return NextResponse.json({ data });
   }
 
@@ -103,6 +104,6 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
     .eq('id', params.id)
     .select('*, עובדות_מטבח(שם_עובדת)')
     .single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbErrorResponse(error, 'kitchen-attendance/[id]');
   return NextResponse.json({ data });
 }

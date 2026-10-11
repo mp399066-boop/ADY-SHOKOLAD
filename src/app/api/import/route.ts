@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { recordStockMovement } from '@/lib/inventory-movements';
+import { missingColumnMessage } from '@/lib/db-error';
 
 const TABLE_MAP: Record<string, string> = {
   לקוחות: 'לקוחות',
@@ -242,7 +243,7 @@ export async function POST(req: NextRequest) {
         .update({ כמות_במלאי: qty })
         .eq('id', prod.id);
 
-      if (upErr) { failed.push({ row: i + 1, error: upErr.message }); continue; }
+      if (upErr) { failed.push({ row: i + 1, error: missingColumnMessage(upErr) ?? `שגיאת שמירה (${upErr.code ?? 'db'})` }); continue; }
       updated++;
       if (before !== qty) {
         await recordStockMovement(supabase, {

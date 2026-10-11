@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { generateOrderNumber } from '@/lib/utils';
+import { dbErrorResponse, serverErrorResponse } from '@/lib/api-error';
 
 export async function GET(req: NextRequest) {
   const auth = await requireManagementUser();
@@ -125,12 +126,12 @@ export async function GET(req: NextRequest) {
     }
 
     const { data, error, count } = await query;
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return dbErrorResponse(error, 'orders');
 
     return NextResponse.json({ data, count });
   } catch (err: any) {
     console.error('[orders] unexpected error:', err?.message ?? err);
-    return NextResponse.json({ error: err?.message ?? 'שגיאת שרת' }, { status: 500 });
+    return serverErrorResponse(err, 'orders');
   }
 }
 
@@ -170,7 +171,7 @@ export async function POST(req: NextRequest) {
   }
 
   const { data, error } = await supabase.from('הזמנות').insert(order).select().single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbErrorResponse(error, 'orders');
 
   return NextResponse.json({ data }, { status: 201 });
 }

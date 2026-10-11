@@ -13,6 +13,7 @@ import {
   type EmailContext,
 } from '@/lib/email';
 import { logActivity, userActor } from '@/lib/activity-log';
+import { dbStepErrorResponse } from '@/lib/api-error';
 import {
   deductOrderInventory,
   checkOrderStockAvailability,
@@ -142,7 +143,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     })
     .eq('id', orderId);
 
-  if (updateErr) return NextResponse.json({ error: `עדכון הזמנה נכשל: ${updateErr.message}` }, { status: 500 });
+  if (updateErr) return dbStepErrorResponse(updateErr, 'orders/[id]/finalize-draft', 'עדכון הזמנה נכשל');
 
   // 2b. Replace the recipients before the item lines, so each line can be
   // stamped with its נמען_id.
@@ -174,7 +175,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
       סדר_תצוגה: sortIdx++,
       ...itemRecipientColumns(recipientMap, item),
     });
-    if (itemErr) return NextResponse.json({ error: `יצירת פריט נכשלה: ${itemErr.message}` }, { status: 500 });
+    if (itemErr) return dbStepErrorResponse(itemErr, 'orders/[id]/finalize-draft', 'יצירת פריט נכשלה');
   }
 
   for (const pkg of מארזי_פטיפורים) {
@@ -190,7 +191,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
       סדר_תצוגה: sortIdx++,
       ...itemRecipientColumns(recipientMap, pkg),
     }).select().single();
-    if (pkgErr) return NextResponse.json({ error: `יצירת מארז נכשל: ${pkgErr.message}` }, { status: 500 });
+    if (pkgErr) return dbStepErrorResponse(pkgErr, 'orders/[id]/finalize-draft', 'יצירת מארז נכשל');
     if (pkg.פטיפורים && pkgRow) {
       for (const pf of pkg.פטיפורים) {
         await supabase.from('בחירת_פטיפורים_בהזמנה').insert({
@@ -222,7 +223,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
       סדר_תצוגה: sortIdx++,
       ...itemRecipientColumns(recipientMap, item),
     });
-    if (itemErr) return NextResponse.json({ error: `יצירת פריט ידני נכשלה: ${itemErr.message}` }, { status: 500 });
+    if (itemErr) return dbStepErrorResponse(itemErr, 'orders/[id]/finalize-draft', 'יצירת פריט ידני נכשלה');
   }
 
   // 4. Create delivery record if needed.

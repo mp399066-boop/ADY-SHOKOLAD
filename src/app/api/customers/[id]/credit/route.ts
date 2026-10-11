@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
+import { dbErrorResponse } from '@/lib/api-error';
 
 type CreditType = 'credit_added' | 'credit_used' | 'credit_adjustment';
 
@@ -16,7 +17,7 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ id: stri
     .eq('לקוח_id', params.id)
     .order('תאריך_יצירה', { ascending: false });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbErrorResponse(error, 'customers/[id]/credit');
 
   const transactions = data ?? [];
   const balance = transactions.reduce((sum: number, t: { סכום?: number | string | null }) => sum + Number(t['סכום'] ?? 0), 0);
@@ -59,6 +60,6 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     .select()
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbErrorResponse(error, 'customers/[id]/credit');
   return NextResponse.json({ data });
 }

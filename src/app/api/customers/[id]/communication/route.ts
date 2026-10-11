@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
+import { dbErrorResponse } from '@/lib/api-error';
 
 export async function GET(_: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -14,7 +15,7 @@ export async function GET(_: NextRequest, props: { params: Promise<{ id: string 
     .select('*')
     .eq('לקוח_id', params.id)
     .order('תאריך', { ascending: false });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbErrorResponse(error, 'customers/[id]/communication');
   return NextResponse.json({ data });
 }
 
@@ -44,6 +45,6 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     })
     .select()
     .single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbErrorResponse(error, 'customers/[id]/communication');
   return NextResponse.json({ data }, { status: 201 });
 }

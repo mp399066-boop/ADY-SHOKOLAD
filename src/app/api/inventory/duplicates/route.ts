@@ -9,6 +9,7 @@ import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { findDuplicatePairs, type DedupMaterial } from '@/lib/inventory-dedup';
+import { dbErrorResponse, serverErrorResponse } from '@/lib/api-error';
 
 interface MaterialRow {
   id: string;
@@ -61,7 +62,7 @@ export async function GET() {
     ]);
     return NextResponse.json({ data, linked });
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : 'שגיאה' }, { status: 500 });
+    return serverErrorResponse(e, 'inventory/duplicates');
   }
 }
 
@@ -75,7 +76,7 @@ export async function POST() {
     .from('מלאי_חומרי_גלם')
     .select('id, שם_חומר_גלם')
     .limit(2000);
-  if (matErr) return NextResponse.json({ error: matErr.message }, { status: 500 });
+  if (matErr) return dbErrorResponse(matErr, 'inventory/duplicates');
 
   const materials: DedupMaterial[] = (mats ?? []).map((m: { id: string; שם_חומר_גלם: string }) => ({
     id: m.id, name: m.שם_חומר_גלם,
@@ -109,7 +110,7 @@ export async function POST() {
         reason: p.reason,
         status: 'pending',
       })));
-    if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 });
+    if (insErr) return dbErrorResponse(insErr, 'inventory/duplicates');
   }
 
   try {
@@ -119,6 +120,6 @@ export async function POST() {
     ]);
     return NextResponse.json({ data, linked, scanned: materials.length });
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : 'שגיאה' }, { status: 500 });
+    return serverErrorResponse(e, 'inventory/duplicates');
   }
 }

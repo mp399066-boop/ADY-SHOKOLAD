@@ -14,6 +14,7 @@ import {
   type EmailContext,
 } from '@/lib/email';
 import { logActivity, userActor } from '@/lib/activity-log';
+import { dbStepErrorResponse, dbErrorDetail } from '@/lib/api-error';
 import {
   deductOrderInventory,
   checkOrderStockAvailability,
@@ -104,7 +105,7 @@ export async function POST(req: NextRequest) {
       .insert(לקוח)
       .select('id')
       .single();
-    if (error) return NextResponse.json({ error: `יצירת לקוח נכשלה: ${error.message}` }, { status: 500 });
+    if (error) return dbStepErrorResponse(error, 'orders/create-full', 'יצירת לקוח נכשלה');
     customerId = created!.id;
   }
 
@@ -173,7 +174,7 @@ export async function POST(req: NextRequest) {
     .select()
     .single();
 
-  if (orderError) return NextResponse.json({ error: `יצירת הזמנה נכשלה: ${orderError.message}` }, { status: 500 });
+  if (orderError) return dbStepErrorResponse(orderError, 'orders/create-full', 'יצירת הזמנה נכשלה');
 
   console.log('[create-full] STEP 4: order inserted successfully', { orderId: order!.id, orderNumber: order!.מספר_הזמנה });
 
@@ -293,7 +294,7 @@ export async function POST(req: NextRequest) {
       סדר_תצוגה: sortIdx++,
       ...itemRecipientColumns(recipientMap, item),
     });
-    if (itemError) return NextResponse.json({ error: `יצירת פריט נכשלה: ${itemError.message}` }, { status: 500 });
+    if (itemError) return dbStepErrorResponse(itemError, 'orders/create-full', 'יצירת פריט נכשלה');
   }
 
   // 6. Create package lines + petit-four selections
@@ -312,7 +313,7 @@ export async function POST(req: NextRequest) {
       ...itemRecipientColumns(recipientMap, pkg),
     }).select().single();
 
-    if (pkgError) return NextResponse.json({ error: `יצירת מארז נכשלה: ${pkgError.message}` }, { status: 500 });
+    if (pkgError) return dbStepErrorResponse(pkgError, 'orders/create-full', 'יצירת מארז נכשלה');
 
     if (pkg.פטיפורים && pkgRow) {
       for (const pf of pkg.פטיפורים) {
@@ -321,7 +322,7 @@ export async function POST(req: NextRequest) {
           פטיפור_id: pf.פטיפור_id,
           כמות: pf.כמות || 1,
         });
-        if (pfError) return NextResponse.json({ error: `יצירת בחירת פטיפור נכשלה: ${pfError.message}` }, { status: 500 });
+        if (pfError) return dbStepErrorResponse(pfError, 'orders/create-full', 'יצירת בחירת פטיפור נכשלה');
       }
     }
   }
@@ -346,7 +347,7 @@ export async function POST(req: NextRequest) {
       סדר_תצוגה: sortIdx++,
       ...itemRecipientColumns(recipientMap, item),
     });
-    if (itemError) return NextResponse.json({ error: `יצירת פריט ידני נכשלה: ${itemError.message}` }, { status: 500 });
+    if (itemError) return dbStepErrorResponse(itemError, 'orders/create-full', 'יצירת פריט ידני נכשלה');
   }
 
   console.log('[create-full] STEP 5: order lines created, creating delivery/payment records');
@@ -374,7 +375,7 @@ export async function POST(req: NextRequest) {
         // Real failure: undo the bare order (lines cascade), return a clear error
         await supabase.from('הזמנות').delete().eq('id', order!.id);
         return NextResponse.json(
-          { error: `ניכוי זיכוי לקוח נכשל: ${creditError.message}` },
+          { error: `ניכוי זיכוי לקוח נכשל: ${dbErrorDetail(creditError, 'orders/create-full')}` },
           { status: 500 },
         );
       }

@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { recordStockMovement } from '@/lib/inventory-movements';
+import { dbErrorResponse, dbErrorDetail } from '@/lib/api-error';
 
 // In-memory idempotency store — same pattern as /api/orders/create-full.
 // A kitchen tablet on a flaky connection can show a network error for a
@@ -29,7 +30,7 @@ export async function GET() {
     .from('ייצור')
     .select('*, מוצרים_למכירה(שם_מוצר), מתכונים(id, שם_מתכון)')
     .order('תאריך_ייצור', { ascending: false });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbErrorResponse(error, 'production');
   return NextResponse.json({ data });
 }
 
@@ -225,7 +226,7 @@ export async function POST(req: NextRequest) {
 
   if (prodError || !production) {
     return NextResponse.json(
-      { error: prodError?.message || 'שגיאה ביצירת רשומת ייצור' },
+      { error: 'שגיאה ביצירת רשומת ייצור — ' + dbErrorDetail(prodError, 'production') },
       { status: 500 },
     );
   }
@@ -250,7 +251,7 @@ export async function POST(req: NextRequest) {
     .eq('id', targetId);
   if (finUpdateError) {
     return NextResponse.json(
-      { error: `לא הצלחנו לעדכן את מלאי המוצר — לא הופחתו חומרי גלם. ${finUpdateError.message}` },
+      { error: `לא הצלחנו לעדכן את מלאי המוצר — לא הופחתו חומרי גלם. ${dbErrorDetail(finUpdateError, 'production')}` },
       { status: 500 },
     );
   }

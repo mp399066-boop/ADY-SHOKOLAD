@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
+import { dbErrorResponse } from '@/lib/api-error';
 
 export async function GET() {
   const auth = await requireManagementUser();
@@ -12,7 +13,7 @@ export async function GET() {
     .from('מתכונים')
     .select('*, מוצרים_למכירה(שם_מוצר), רכיבי_מתכון(*, מלאי_חומרי_גלם(שם_חומר_גלם, יחידת_מידה))')
     .order('שם_מתכון');
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbErrorResponse(error, 'recipes');
   return NextResponse.json({ data });
 }
 
@@ -33,7 +34,7 @@ export async function POST(req: NextRequest) {
     .select()
     .single();
 
-  if (recipeError) return NextResponse.json({ error: recipeError.message }, { status: 500 });
+  if (recipeError) return dbErrorResponse(recipeError, 'recipes');
 
   const validIngredients = (רכיבים || []).filter(
     (r: { חומר_גלם_id: string }) => r.חומר_גלם_id && r.חומר_גלם_id !== '',
@@ -46,7 +47,7 @@ export async function POST(req: NextRequest) {
       יחידת_מידה: r.יחידת_מידה,
     }));
     const { error: ingError } = await supabase.from('רכיבי_מתכון').insert(ingredients);
-    if (ingError) return NextResponse.json({ error: ingError.message }, { status: 500 });
+    if (ingError) return dbErrorResponse(ingError, 'recipes');
   }
 
   return NextResponse.json({ data: recipe }, { status: 201 });

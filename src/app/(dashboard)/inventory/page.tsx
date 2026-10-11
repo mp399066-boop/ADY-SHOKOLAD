@@ -386,7 +386,7 @@ export default function InventoryPage() {
       if (!res.ok) {
         // Same FK fallback shape as raw-material delete — products that already
         // appear in past orders / recipes / price-list rows can't be hard-deleted.
-        const isFK = (json.error || '').includes('foreign key') || (json.error || '').includes('violates');
+        const isFK = json.code === '23503'; // Postgres foreign_key_violation
         toast.error(isFK ? 'לא ניתן למחוק כי קיימות הזמנות/מתכונים/מחירונים שמקושרים למוצר' : (json.error || 'שגיאה במחיקה'));
         return;
       }

@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { logActivity, userActor } from '@/lib/activity-log';
+import { dbErrorResponse } from '@/lib/api-error';
 
 export async function GET(req: NextRequest) {
   const auth = await requireManagementUser();
@@ -42,7 +43,7 @@ export async function GET(req: NextRequest) {
   }
 
   const { data, error, count } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbErrorResponse(error, 'customers');
 
   return NextResponse.json({ data, count });
 }
@@ -78,7 +79,7 @@ export async function POST(req: NextRequest) {
   }
 
   const { data, error } = await supabase.from('לקוחות').insert(customer).select().single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbErrorResponse(error, 'customers');
 
   void logActivity({
     actor:        userActor(auth),

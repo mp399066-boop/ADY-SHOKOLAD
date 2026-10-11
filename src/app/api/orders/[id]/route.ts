@@ -6,6 +6,7 @@ import { AUTO_CREATE_MORNING_DOCUMENTS } from '@/lib/morning';
 import { restoreOrderInventory, deductOrderInventory, DEDUCT_INVENTORY_ON_ORDER_STATUS } from '@/lib/inventory-deduct';
 import { logActivity, userActor } from '@/lib/activity-log';
 import { fetchOrderRecipients } from '@/lib/order-recipients';
+import { dbErrorResponse, dbErrorDetail } from '@/lib/api-error';
 // deploy trigger
 
 export async function GET(_: NextRequest, props: { params: Promise<{ id: string }> }) {
@@ -183,7 +184,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
     .select()
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbErrorResponse(error, 'orders/[id]');
 
   // ── Sync delivery row when delivery-relevant order fields change ─────
   // Without this, editing an order's תאריך_אספקה / שעת_אספקה / address
@@ -406,7 +407,7 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
       request:      req,
     });
     return NextResponse.json(
-      { error: isFK ? 'לא ניתן למחוק כי קיימות רשומות מקושרות' : error.message },
+      { error: isFK ? 'לא ניתן למחוק כי קיימות רשומות מקושרות' : dbErrorDetail(error, 'orders/[id]') },
       { status: isFK ? 409 : 500 },
     );
   }

@@ -4,6 +4,7 @@ import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireA
 import { sendSatmarSummaryEmail } from '@/lib/satmar-email';
 import { AUTO_CREATE_MORNING_DOCUMENTS } from '@/lib/morning';
 import { logActivity, userActor } from '@/lib/activity-log';
+import { dbErrorResponse } from '@/lib/api-error';
 
 // Dedicated endpoint to mark an order as paid.
 // Reads order + customer from DB only — never accepts amounts from the client.
@@ -49,7 +50,7 @@ export async function POST(_req: NextRequest, props: { params: Promise<{ id: str
 
   if (updErr) {
     console.error('[mark-paid] DB update failed:', updErr.message);
-    return NextResponse.json({ error: updErr.message }, { status: 500 });
+    return dbErrorResponse(updErr, 'orders/[id]/mark-paid');
   }
 
   // Receipt issuance is *always* manual now. Even when AUTO_CREATE_MORNING_DOCUMENTS

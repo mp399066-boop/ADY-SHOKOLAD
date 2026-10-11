@@ -294,7 +294,7 @@ export default function RecipesPage() {
       const res = await fetch(`/api/recipes/${id}`, { method: 'DELETE' });
       const json = await res.json();
       if (!res.ok) {
-        const isFK = (json.error || '').includes('foreign key') || (json.error || '').includes('violates');
+        const isFK = json.code === '23503'; // Postgres foreign_key_violation
         toast.error(isFK ? 'לא ניתן למחוק כי קיימות רשומות מקושרות' : (json.error || 'שגיאה במחיקה'));
         return;
       }

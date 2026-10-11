@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
+import { dbErrorResponse } from '@/lib/api-error';
 import {
   requireManagementUser,
   unauthorizedResponse,
@@ -70,7 +71,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
 
   if (error) {
     console.error('[users/id] PATCH error:', error.message);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return dbErrorResponse(error, 'users/[id]');
   }
   console.log('[users/id] updated:', target.email, updates);
   return NextResponse.json({ data });

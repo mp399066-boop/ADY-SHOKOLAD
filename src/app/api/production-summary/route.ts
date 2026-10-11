@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
+import { dbErrorResponse } from '@/lib/api-error';
 
 export const dynamic = 'force-dynamic';
 
@@ -91,7 +92,7 @@ export async function GET(req: NextRequest) {
 
   if (error) {
     console.error('[production-summary] query error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return dbErrorResponse(error, 'production-summary');
   }
 
   // ── Aggregation ─────────────────────────────────────────────────────────

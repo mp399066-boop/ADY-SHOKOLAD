@@ -8,6 +8,7 @@ import { logActivity, userActor } from '@/lib/activity-log';
 import { buildCourierWhatsAppMessage } from '@/lib/courier-notification';
 import { fetchDeliveryRecipient } from '@/lib/order-recipients';
 import { randomBytes } from 'crypto';
+import { dbErrorResponse, dbErrorDetail } from '@/lib/api-error';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -91,7 +92,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
 
       if (createErr || !created) {
         console.error('[delivery PATCH] auto-create failed:', createErr?.message);
-        return NextResponse.json({ error: createErr?.message || 'שגיאה ביצירת משלוח' }, { status: 500 });
+        return NextResponse.json({ error: 'שגיאה ביצירת משלוח — ' + dbErrorDetail(createErr, 'deliveries/[id]') }, { status: 500 });
       }
 
       deliveryId = created.id;
@@ -122,7 +123,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
       .eq('id', deliveryId)
       .select()
       .single();
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return dbErrorResponse(error, 'deliveries/[id]');
     // Log status changes (e.g. operator marking 'נמסר' from the desk).
     if (newStatus && pre && newStatus !== pre.סטטוס_משלוח) {
       void logActivity({
@@ -175,7 +176,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
 
   if (fetchErr) {
     console.error('[delivery PATCH] fetch error:', fetchErr.message, '| delivery id:', deliveryId);
-    return NextResponse.json({ error: fetchErr.message }, { status: 500 });
+    return dbErrorResponse(fetchErr, 'deliveries/[id]');
   }
   if (!existing) {
     console.error('[delivery PATCH] delivery not found for id:', deliveryId);
@@ -204,7 +205,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
       .eq('id', deliveryId)
       .select()
       .single();
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return dbErrorResponse(error, 'deliveries/[id]');
     return NextResponse.json({
       data,
       whatsapp_url: null,
@@ -363,7 +364,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
 
   if (updateErr) {
     console.error('[delivery PATCH] update failed:', updateErr.message);
-    return NextResponse.json({ error: updateErr.message }, { status: 500 });
+    return dbErrorResponse(updateErr, 'deliveries/[id]');
   }
 
   console.log('[delivery PATCH] update saved | whatsapp_url:', !!whatsappUrl, '| send_error:', sendError);
@@ -466,7 +467,7 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
 
   if (fetchErr) {
     console.error('[delivery DELETE] fetch failed:', fetchErr.message);
-    return NextResponse.json({ error: fetchErr.message }, { status: 500 });
+    return dbErrorResponse(fetchErr, 'deliveries/[id]');
   }
   if (!existing) {
     return NextResponse.json({ error: 'המשלוח לא נמצא' }, { status: 404 });
@@ -490,7 +491,7 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
     if (hideErr) {
       console.error('[delivery DELETE] order hide_from_deliveries flag failed:', hideErr.message);
       return NextResponse.json(
-        { error: `לא ניתן למחוק את המשלוח: עדכון ההזמנה נכשל (${hideErr.message})` },
+        { error: `לא ניתן למחוק את המשלוח: עדכון ההזמנה נכשל (${dbErrorDetail(hideErr, 'deliveries/[id]')})` },
         { status: 500 },
       );
     }
@@ -520,7 +521,7 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
     return NextResponse.json(
       { error: isFK
         ? 'לא ניתן למחוק — קיים קישור פעיל למשלוח. ייתכן שצריך migration.'
-        : `לא ניתן למחוק את המשלוח: ${deleteErr.message}` },
+        : `לא ניתן למחוק את המשלוח: ${dbErrorDetail(deleteErr, 'deliveries/[id]')}` },
       { status: isFK ? 409 : 500 },
     );
   }

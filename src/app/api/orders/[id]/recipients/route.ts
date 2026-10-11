@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { logActivity, userActor } from '@/lib/activity-log';
+import { dbErrorResponse, dbStepErrorResponse } from '@/lib/api-error';
 import {
   normalizeRecipients,
   fetchOrderRecipients,
@@ -54,7 +55,7 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
   if (orderErr && isMissingRecipientSchema(orderErr)) {
     return NextResponse.json({ error: MISSING_SCHEMA_MESSAGE }, { status: 500 });
   }
-  if (orderErr) return NextResponse.json({ error: orderErr.message }, { status: 500 });
+  if (orderErr) return dbErrorResponse(orderErr, 'orders/[id]/recipients');
   if (!order) return NextResponse.json({ error: 'הזמנה לא נמצאה' }, { status: 404 });
 
   // The client sends the id of an existing row in `key`; a row with no
@@ -91,7 +92,7 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
         .eq('הזמנה_id', orderId)
         .select()
         .single();
-      if (error) return NextResponse.json({ error: `עדכון נמען נכשל: ${error.message}` }, { status: 500 });
+      if (error) return dbStepErrorResponse(error, 'orders/[id]/recipients', 'עדכון נמען נכשל');
       keptIds.add(r.key);
       finalRows.push(data as RecipientRow);
       continue;
@@ -106,7 +107,7 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
       if (isMissingRecipientSchema(error)) {
         return NextResponse.json({ error: MISSING_SCHEMA_MESSAGE }, { status: 500 });
       }
-      return NextResponse.json({ error: `יצירת נמען נכשלה: ${error.message}` }, { status: 500 });
+      return dbStepErrorResponse(error, 'orders/[id]/recipients', 'יצירת נמען נכשלה');
     }
     finalRows.push(data as RecipientRow);
   }
@@ -143,7 +144,7 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
       .delete()
       .eq('id', r.id)
       .eq('הזמנה_id', orderId);
-    if (error) return NextResponse.json({ error: `מחיקת נמען נכשלה: ${error.message}` }, { status: 500 });
+    if (error) return dbStepErrorResponse(error, 'orders/[id]/recipients', 'מחיקת נמען נכשלה');
   }
 
   const hasRecipients = finalRows.length > 0;

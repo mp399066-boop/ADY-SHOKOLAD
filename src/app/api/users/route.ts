@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
+import { dbErrorResponse } from '@/lib/api-error';
 import {
   requireManagementUser,
   unauthorizedResponse,
@@ -21,7 +22,7 @@ export async function GET() {
 
   if (error) {
     console.error('[users] GET error:', error.message);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return dbErrorResponse(error, 'users');
   }
   return NextResponse.json({ data });
 }
@@ -65,7 +66,7 @@ export async function POST(req: NextRequest) {
 
   if (error) {
     console.error('[users] POST error:', error.message);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return dbErrorResponse(error, 'users');
   }
   console.log('[users] added:', email, role);
   return NextResponse.json({ data }, { status: 201 });

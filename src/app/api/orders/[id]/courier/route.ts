@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
+import { dbErrorResponse } from '@/lib/api-error';
 
 // Assigns / clears a courier on the existing משלוחים row for this order.
 // Updates ONLY the `courier_id` column — no other delivery fields touched,
@@ -32,7 +33,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
     .eq('הזמנה_id', params.id);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return dbErrorResponse(error, 'orders/[id]/courier');
   }
   return NextResponse.json({ ok: true });
 }
