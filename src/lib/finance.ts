@@ -289,6 +289,10 @@ export interface Expense {
   /** Payslip (migration 059): the employee and the pay month 'YYYY-MM'. */
   עובד_id?: string | null;
   חודש_שכר?: string | null;
+  /** Long-term investment (migration 062): equipment that isn't used up —
+   *  fridge, oven, tables… Kept out of the regular monthly expenses and the
+   *  monthly average; shown separately in profit & loss. */
+  השקעה_לטווח_ארוך?: boolean | null;
 }
 
 /** Category every payslip (תלוש שכר) is filed under. */
@@ -305,6 +309,10 @@ export function vatFromGross(gross: number): number {
 }
 
 export const expenseNet = (e: Pick<Expense, 'סכום' | 'מעמ'>) => round2((Number(e.סכום) || 0) - (Number(e.מעמ) || 0));
+
+export const LONG_TERM_LABEL = 'השקעה לטווח ארוך';
+
+export const isLongTermExpense = (e: Pick<Expense, 'השקעה_לטווח_ארוך'>) => e.השקעה_לטווח_ארוך === true;
 
 export const expenseSupplierName = (e: Pick<Expense, 'שם_ספק'>) => (e.שם_ספק ?? '').trim() || 'ללא ספק';
 
@@ -378,9 +386,11 @@ export interface PnlMonth {
   income: number;        // into the pocket: without delivery, before VAT
   incomeGross: number;   // the same, with VAT
   open: number;          // net of VAT, not yet paid
-  expenses: number;      // net of VAT
-  expensesGross: number; // what was paid
-  result: number;
+  expenses: number;      // regular expenses, net of VAT (long-term investments excluded)
+  expensesGross: number; // what was paid (regular expenses)
+  longTerm: number;      // long-term investments, net of VAT
+  longTermGross: number; // long-term investments, what was paid
+  result: number;        // income − regular expenses (investments excluded)
   /** Running result from January; null for future months with no data. */
   cumulative: number | null;
   hasData: boolean;
@@ -388,9 +398,15 @@ export interface PnlMonth {
 
 export interface Pnl {
   months: PnlMonth[];
-  totals: { income: number; incomeGross: number; open: number; expenses: number; expensesGross: number; result: number };
+  totals: {
+    income: number; incomeGross: number; open: number; expenses: number; expensesGross: number; result: number;
+    longTerm: number; longTermGross: number;
+    /** result − long-term investments: what is left after paying for them too. */
+    resultAfterLongTerm: number;
+  };
   /** Monthly averages (see averageBasis) — same divisor for every column.
-   *  Income is averaged only as "נכנס לכיס" (no delivery, no VAT). */
+   *  Income is averaged only as "נכנס לכיס" (no delivery, no VAT); long-term
+   *  investments are never averaged. */
   average: AverageBasis;
   avg: { income: number; expenses: number; expensesGross: number; result: number };
   avgExpenses: number;
@@ -404,24 +420,30 @@ export function buildPnl(orders: FinanceOrder[], expenses: Expense[], year: numb
   const months: PnlMonth[] = Array.from({ length: 12 }, (_, i) => {
     const key = monthKey(year, i);
     const s = summarize(orders.filter(o => orderBasisDate(o, basis)?.slice(0, 7) === key));
-    const ex = expenses.filter(e => e.תאריך.slice(0, 7) === key);
+    const inMonth = expenses.filter(e => e.תאריך.slice(0, 7) === key);
+    const ex = inMonth.filter(e => !isLongTermExpense(e));
+    const lt = inMonth.filter(isLongTermExpense);
     const exp = round2(ex.reduce((t, e) => t + expenseNet(e), 0));
     const expGross = round2(ex.reduce((t, e) => t + (Number(e.סכום) || 0), 0));
+    const longTerm = round2(lt.reduce((t, e) => t + expenseNet(e), 0));
+    const longTermGross = round2(lt.reduce((t, e) => t + (Number(e.סכום) || 0), 0));
     const result = round2(s.pocket - exp);
-    const hasData = s.count > 0 || ex.length > 0;
+    const hasData = s.count > 0 || inMonth.length > 0;
     const counts = key <= currentMonth || hasData;
     if (counts) running = round2(running + result);
     return {
       key, month: HEBREW_MONTHS[i], income: s.pocket, incomeGross: s.pocketGross, open: s.openNet,
-      expenses: exp, expensesGross: expGross, result, cumulative: counts ? running : null, hasData,
+      expenses: exp, expensesGross: expGross, longTerm, longTermGross, result, cumulative: counts ? running : null, hasData,
     };
   });
   const sum = (f: (m: PnlMonth) => number) => round2(months.reduce((t, m) => t + f(m), 0));
   const totals = {
     income: sum(m => m.income), incomeGross: sum(m => m.incomeGross), open: sum(m => m.open),
     expenses: sum(m => m.expenses), expensesGross: sum(m => m.expensesGross), result: 0,
+    longTerm: sum(m => m.longTerm), longTermGross: sum(m => m.longTermGross), resultAfterLongTerm: 0,
   };
   totals.result = round2(totals.income - totals.expenses);
+  totals.resultAfterLongTerm = round2(totals.result - totals.longTerm);
   const average = averageBasis(year, months.filter(m => m.hasData).map(m => m.key), today);
   const avg = {
     income: averageOf(totals.income, average),

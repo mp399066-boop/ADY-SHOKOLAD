@@ -23,6 +23,8 @@ export const expenseInputSchema = z.object({
   מספר_מסמך:   optText(100),
   אמצעי_תשלום: optText(100),
   הערות:       optText(1000),
+  // Migration 062. Sent only once the column exists (see GET longTermReady).
+  השקעה_לטווח_ארוך: z.boolean().optional(),
 }).refine(e => e.מעמ <= e.סכום, { message: 'המע"מ לא יכול להיות גדול מהסכום', path: ['מעמ'] });
 
 export type ExpenseInput = z.infer<typeof expenseInputSchema>;

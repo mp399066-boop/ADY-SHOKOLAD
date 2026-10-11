@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import {
-  expenseNet, expenseSupplierName, paymentMethodLabel, round2, HEBREW_MONTHS, todayJerusalem, type Expense,
+  expenseNet, expenseSupplierName, isLongTermExpense, paymentMethodLabel, round2, LONG_TERM_LABEL, HEBREW_MONTHS, todayJerusalem, type Expense,
 } from '@/lib/finance';
 import { downloadExcel, downloadElementPng, fmtDate, type Cell } from '@/lib/finance-export';
 import { C, money, StatCard, ExportButtons, Th, Td, EmptyNote, THEAD_STYLE, TOTAL_ROW_STYLE } from './shared';
@@ -34,12 +34,14 @@ function groupBy(list: Expense[], keyOf: (e: Expense) => string): Group[] {
 
 const selectCls = 'px-3 py-1.5 text-sm rounded-lg border border-[#E8DED2] bg-white focus:outline-none focus:border-[#C9A46A]';
 
-export default function ExpensesTab({ expenses, suppliers, employees, salariesReady, year, tableReady, hint, reload }: {
+export default function ExpensesTab({ expenses, suppliers, employees, salariesReady, longTermReady, year, tableReady, hint, reload }: {
   expenses: Expense[];
   suppliers: SupplierOption[];
   employees: EmployeeOption[];
   /** false until migration 059 (payslip fields) has been run. */
   salariesReady: boolean;
+  /** false until migration 062 (long-term flag) has been run. */
+  longTermReady: boolean;
   year: number;
   tableReady: boolean;
   hint: string | null;
@@ -50,6 +52,7 @@ export default function ExpensesTab({ expenses, suppliers, employees, salariesRe
   const [category, setCategory] = useState('');
   const [supplier, setSupplier] = useState('');
   const [method, setMethod] = useState('');
+  const [kind, setKind] = useState<'' | 'regular' | 'longTerm'>('');
   const [search, setSearch] = useState('');
   const [formOpen, setFormOpen] = useState(false);
   const [formInitial, setFormInitial] = useState<Partial<Expense> | null>(null);
@@ -69,9 +72,10 @@ export default function ExpensesTab({ expenses, suppliers, employees, salariesRe
       (!category || e.קטגוריה === category) &&
       (!supplier || expenseSupplierName(e) === supplier) &&
       (!method || paymentMethodLabel(e.אמצעי_תשלום) === method) &&
+      (!kind || (kind === 'longTerm') === isLongTermExpense(e)) &&
       (!q || [e.שם_ספק, e.תיאור, e.מספר_מסמך, e.הערות, e.קטגוריה, e.אמצעי_תשלום].some(v => (v ?? '').toLowerCase().includes(q))),
     );
-  }, [inMonth, category, supplier, method, search]);
+  }, [inMonth, category, supplier, method, kind, search]);
 
   const byCategory = useMemo(() => groupBy(filtered, e => e.קטגוריה || 'אחר'), [filtered]);
   const bySupplier = useMemo(() => groupBy(filtered, expenseSupplierName), [filtered]);
@@ -80,6 +84,8 @@ export default function ExpensesTab({ expenses, suppliers, employees, salariesRe
     gross: round2(filtered.reduce((s, e) => s + Number(e.סכום), 0)),
     vat: round2(filtered.reduce((s, e) => s + Number(e.מעמ), 0)),
     net: round2(filtered.reduce((s, e) => s + expenseNet(e), 0)),
+    longTermNet: round2(filtered.filter(isLongTermExpense).reduce((s, e) => s + expenseNet(e), 0)),
+    longTermCount: filtered.filter(isLongTermExpense).length,
   }), [filtered]);
 
   const allCategories = useMemo(() => Array.from(new Set(inMonth.map(e => e.קטגוריה))).sort(), [inMonth]);
@@ -122,12 +128,12 @@ export default function ExpensesTab({ expenses, suppliers, employees, salariesRe
       {
         name: 'כל ההוצאות',
         rows: [
-          ['תאריך', 'ספק / שם', 'קטגוריה', 'תיאור', 'לפני מע״מ', 'מע״מ', 'כולל מע״מ', 'מס׳ מסמך', 'אמצעי תשלום', 'הערות'],
+          ['תאריך', 'ספק / שם', 'קטגוריה', 'תיאור', 'לפני מע״מ', 'מע״מ', 'כולל מע״מ', 'מס׳ מסמך', 'אמצעי תשלום', 'הערות', 'סוג'],
           ...[...filtered].sort((a, b) => a.תאריך.localeCompare(b.תאריך)).map(e => [
             fmtDate(e.תאריך), expenseSupplierName(e), e.קטגוריה, e.תיאור ?? '', expenseNet(e), Number(e.מעמ), Number(e.סכום),
-            e.מספר_מסמך ?? '', paymentMethodLabel(e.אמצעי_תשלום), e.הערות ?? '',
+            e.מספר_מסמך ?? '', paymentMethodLabel(e.אמצעי_תשלום), e.הערות ?? '', isLongTermExpense(e) ? LONG_TERM_LABEL : 'שוטפת',
           ] as Cell[]),
-          ['סה״כ', '', '', `${filtered.length} הוצאות`, totals.net, totals.vat, totals.gross, '', '', ''],
+          ['סה״כ', '', '', `${filtered.length} הוצאות`, totals.net, totals.vat, totals.gross, '', '', '', ''],
         ],
       },
       { name: 'לפי קטגוריה', rows: groupRows(byCategory, 'קטגוריה') },
@@ -174,17 +180,24 @@ export default function ExpensesTab({ expenses, suppliers, employees, salariesRe
           <option value="">כל אמצעי התשלום</option>
           {allMethods.map(m => <option key={m} value={m}>{m}</option>)}
         </select>
+        {longTermReady && (
+          <select className={selectCls} value={kind} onChange={e => setKind(e.target.value as typeof kind)}>
+            <option value="">שוטפות + השקעות</option>
+            <option value="regular">הוצאות שוטפות בלבד</option>
+            <option value="longTerm">השקעות לטווח ארוך בלבד</option>
+          </select>
+        )}
         <input className={selectCls} placeholder="חיפוש…" value={search} onChange={e => setSearch(e.target.value)} />
       </div>
 
       <div ref={ref} className="space-y-5 bg-white sm:bg-transparent">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold" style={{ color: C.text }}>הוצאות — {periodLabel}{category ? ` · ${category}` : ''}{supplier ? ` · ${supplier}` : ''}{method ? ` · ${method}` : ''}</h2>
+          <h2 className="text-sm font-semibold" style={{ color: C.text }}>הוצאות — {periodLabel}{category ? ` · ${category}` : ''}{supplier ? ` · ${supplier}` : ''}{method ? ` · ${method}` : ''}{kind === 'regular' ? ' · שוטפות' : kind === 'longTerm' ? ' · השקעות לטווח ארוך' : ''}</h2>
           <ExportButtons onExcel={exportExcel} onImage={() => ref.current ? downloadElementPng(ref.current, `הוצאות_${periodLabel}`) : undefined} />
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <StatCard label="הוצאות — לפני מע״מ" value={money(totals.net)} sub={`${filtered.length} הוצאות`} tone="red" icon={TrendingDown} />
+          <StatCard label="הוצאות — לפני מע״מ" value={money(totals.net)} sub={totals.longTermCount && kind !== 'longTerm' ? `${filtered.length} הוצאות · מתוכן ${money(totals.longTermNet)} השקעות לטווח ארוך` : `${filtered.length} הוצאות`} tone="red" icon={TrendingDown} />
           <StatCard label="מע״מ (מוכר)" value={money(totals.vat)} icon={Percent} />
           <StatCard label="הוצאות — כולל מע״מ (שולם בפועל)" value={money(totals.gross)} icon={CreditCard} />
           <StatCard label="ספקים / מקבלים" value={String(bySupplier.length)} icon={Users} />
@@ -214,7 +227,14 @@ export default function ExpensesTab({ expenses, suppliers, employees, salariesRe
                     <tr key={e.id} style={{ borderTop: `1px solid ${C.border}` }}>
                       <Td>{fmtDate(e.תאריך)}</Td>
                       <Td className="font-medium">{expenseSupplierName(e)}</Td>
-                      <Td>{e.קטגוריה}</Td>
+                      <Td>
+                        {e.קטגוריה}
+                        {isLongTermExpense(e) && (
+                          <span className="block mt-0.5 w-fit text-[11px] px-1.5 py-0.5 rounded" style={{ backgroundColor: '#F3E7D3', color: C.brand }} title="לא נכללת בהוצאות החודשיות ובממוצע החודשי">
+                            {LONG_TERM_LABEL}
+                          </span>
+                        )}
+                      </Td>
                       <Td className="max-w-[260px] truncate" style={{ color: C.sub }}>{e.תיאור ?? ''}</Td>
                       <Td className="font-semibold tabular-nums">{money(expenseNet(e))}</Td>
                       <Td className="tabular-nums" style={{ color: C.sub }}>{money(Number(e.מעמ))}</Td>
@@ -245,7 +265,7 @@ export default function ExpensesTab({ expenses, suppliers, employees, salariesRe
         )}
       </div>
 
-      <ExpenseFormModal open={formOpen} initial={formInitial} suppliers={suppliers} onClose={() => setFormOpen(false)} onSaved={reload} />
+      <ExpenseFormModal open={formOpen} initial={formInitial} suppliers={suppliers} longTermReady={longTermReady} onClose={() => setFormOpen(false)} onSaved={reload} />
       <ExpenseImportModal open={importOpen} onClose={() => setImportOpen(false)} onImported={reload} />
       <MorningSyncModal open={morningOpen} onClose={() => setMorningOpen(false)} onSynced={reload} year={year} />
       <SalaryModal open={salaryOpen} onClose={() => setSalaryOpen(false)} onSaved={reload} year={year} employees={employees} expenses={expenses} />

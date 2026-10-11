@@ -4,7 +4,7 @@
 
 import {
   summarize, summarizeByCustomer, summarizeByPaymentMethod, paymentMethodLabel, buildPnl, averageBasis, averageOf,
-  INCOME_COLUMNS, incomeValues, incomeAverageValues, orderIncome, orderBasisDate, expenseNet, expenseSupplierName,
+  INCOME_COLUMNS, incomeValues, incomeAverageValues, orderIncome, orderBasisDate, expenseNet, expenseSupplierName, isLongTermExpense, LONG_TERM_LABEL,
   monthKey, monthLabel, round2, HEBREW_MONTHS, todayJerusalem,
   type FinanceOrder, type Expense, type DateBasis,
 } from '@/lib/finance';
@@ -71,7 +71,12 @@ export function buildFinanceReport(opts: {
   const expGross = round2(expenses.reduce((t, e) => t + (Number(e.סכום) || 0), 0));
   const expVat = round2(expenses.reduce((t, e) => t + (Number(e.מעמ) || 0), 0));
   const expNet = round2(expGross - expVat);
-  const result = round2(s.pocket - expNet);
+  // Long-term investments (equipment) are listed with all expenses but kept out
+  // of the regular expenses, the profit / loss and every monthly average.
+  const longTermNet = round2(expenses.filter(isLongTermExpense).reduce((t, e) => t + expenseNet(e), 0));
+  const regularNet = round2(expNet - longTermNet);
+  const result = round2(s.pocket - regularNet);
+  const resultAfterLongTerm = round2(result - longTermNet);
   // Income money columns, in the shared order (see INCOME_COLUMNS).
   const incomeHeaders = INCOME_COLUMNS.map(c => c.short);
   const orderCols = INCOME_COLUMNS.filter(c => c.key !== 'openNet' && c.key !== 'openGross');
@@ -97,9 +102,13 @@ export function buildFinanceReport(opts: {
       { label: 'טרם שולם — לפני מע״מ', value: s.openNet, money: true, tone: s.openNet ? 'amber' : undefined },
       { label: 'טרם שולם — כולל מע״מ', value: s.openGross, money: true, tone: s.openGross ? 'amber' : undefined },
       ...(expensesReady ? [
-        { label: 'הוצאות — לפני מע״מ', value: expNet, money: true, tone: 'red' as const },
-        { label: 'הוצאות — כולל מע״מ (שולם בפועל)', value: expGross, money: true },
+        { label: 'הוצאות שוטפות — לפני מע״מ', value: regularNet, money: true, tone: 'red' as const },
+        { label: 'כל ההוצאות — כולל מע״מ (שולם בפועל)', value: expGross, money: true },
         { label: result >= 0 ? 'רווח — לפני מע״מ' : 'הפסד — לפני מע״מ', value: Math.abs(result), money: true, tone: result >= 0 ? 'green' as const : 'red' as const },
+        ...(longTermNet ? [
+          { label: 'השקעות לטווח ארוך — לפני מע״מ', value: longTermNet, money: true },
+          { label: resultAfterLongTerm >= 0 ? 'רווח אחרי ההשקעות' : 'הפסד אחרי ההשקעות', value: Math.abs(resultAfterLongTerm), money: true, tone: resultAfterLongTerm >= 0 ? 'green' as const : 'red' as const },
+        ] : []),
       ] : []),
     ],
     notes: [
@@ -107,7 +116,7 @@ export function buildFinanceReport(opts: {
       '"נכנס לכיס" = סכום ההזמנות ללא דמי משלוח ולפני מע״מ. דמי משלוח ומע״מ אינם הכנסה ומוצגים בנפרד. נכנס לכיס + משלוח לפני מע״מ + מע״מ = מה שהלקוחות שילמו.',
       'כולל הזמנות שטרם שולמו; ללא הזמנות שבוטלו, טיוטות ובארטר.',
       ...(s.barterCount ? [`${s.barterCount} הזמנות בארטר (שווי ₪${s.barterTotal.toLocaleString('he-IL')} ללא משלוח, לפני מע״מ) לא נכללו — לא נכנס עליהן כסף.`] : []),
-      'רווח / הפסד = נכנס לכיס פחות ההוצאות, שניהם לפני מע״מ.',
+      'רווח / הפסד = נכנס לכיס פחות ההוצאות השוטפות, שניהם לפני מע״מ. השקעות לטווח ארוך (ציוד שלא מתכלה) מוצגות בנפרד ואינן נכללות ברווח / הפסד ובממוצעים.',
       ...(!expensesReady ? ['טבלת ההוצאות עדיין לא הופעלה (מיגרציה 057) — הדוח כולל הכנסות בלבד.'] : []),
     ],
   });
@@ -136,17 +145,18 @@ export function buildFinanceReport(opts: {
     });
     if (expensesReady) {
       const t = pnl.totals;
+      const lt = t.longTermGross > 0;
       sections.push({
         sheet: 'רווח והפסד',
         title: `רווח והפסד לפי חודש — ${year} (רווח / הפסד לפני מע״מ)`,
         table: {
-          headers: ['חודש', 'נכנס לכיס לפני מע״מ', 'נכנס לכיס כולל מע״מ', 'הוצאות לפני מע״מ', 'הוצאות כולל מע״מ', 'רווח / הפסד', 'מצטבר', 'טרם נגבה'],
-          rows: pnl.months.map(r => [r.month, r.income, r.incomeGross, r.expenses, r.expensesGross, r.result, r.cumulative, r.open]),
-          total: ['סה״כ', t.income, t.incomeGross, t.expenses, t.expensesGross, t.result, t.result, t.open],
+          headers: ['חודש', 'נכנס לכיס לפני מע״מ', 'נכנס לכיס כולל מע״מ', 'הוצאות לפני מע״מ', 'הוצאות כולל מע״מ', ...(lt ? ['השקעות לטווח ארוך'] : []), 'רווח / הפסד', 'מצטבר', 'טרם נגבה'],
+          rows: pnl.months.map(r => [r.month, r.income, r.incomeGross, r.expenses, r.expensesGross, ...(lt ? [r.longTerm] : []), r.result, r.cumulative, r.open]),
+          total: ['סה״כ', t.income, t.incomeGross, t.expenses, t.expensesGross, ...(lt ? [t.longTerm] : []), t.result, t.result, t.open],
           average: pnl.average.months
-            ? [`ממוצע חודשי (${pnl.average.label})`, pnl.avg.income, null, pnl.avg.expenses, pnl.avg.expensesGross, pnl.avg.result, null, null]
+            ? [`ממוצע חודשי (${pnl.average.label})`, pnl.avg.income, null, pnl.avg.expenses, pnl.avg.expensesGross, ...(lt ? [null] : []), pnl.avg.result, null, null]
             : undefined,
-          moneyCols: [1, 2, 3, 4, 5, 6, 7],
+          moneyCols: lt ? [1, 2, 3, 4, 5, 6, 7, 8] : [1, 2, 3, 4, 5, 6, 7],
         },
         notes: [
           ...(pnl.avgExpenses > 0 ? [`הוצאה חודשית ממוצעת (${pnl.average.label}): ₪${pnl.avgExpenses.toLocaleString('he-IL')} לפני מע״מ — זו ההכנסה המינימלית לחודש כדי לא להפסיד.`] : []),
@@ -154,6 +164,7 @@ export function buildFinanceReport(opts: {
           'ההכנסות ברווח והפסד = נכנס לכיס (ללא דמי משלוח, לפני מע״מ).',
           AVERAGE_NOTE,
           'ממוצע חודשי: בשנה שהסתיימה — סה״כ השנה ÷ 12. בשנה הנוכחית — ÷ מספר החודשים מהחודש הראשון עם פעילות ועד החודש הנוכחי (מתעדכן כל חודש).',
+          ...(lt ? [`השקעות לטווח ארוך (ציוד שלא מתכלה): ₪${t.longTerm.toLocaleString('he-IL')} לפני מע״מ — לא נכללות בהוצאות, ברווח / הפסד ובממוצע. ${t.resultAfterLongTerm >= 0 ? 'רווח' : 'הפסד'} אחרי ההשקעות: ₪${Math.abs(t.resultAfterLongTerm).toLocaleString('he-IL')}.`] : []),
           ...(t.result < 0 ? [`כדי לכסות את ההפסד המצטבר צריך עוד ₪${(-t.result).toLocaleString('he-IL')} רווח מעבר להוצאות.`] : []),
         ],
       });
@@ -239,12 +250,13 @@ export function buildFinanceReport(opts: {
       sheet: 'כל ההוצאות',
       title: `כל ההוצאות — ${periodLabel}`,
       table: {
-        headers: ['תאריך', 'ספק / מקבל', 'קטגוריה', 'תיאור', 'לפני מע״מ', 'מע״מ', 'כולל מע״מ', 'אמצעי תשלום', 'מס׳ מסמך'],
+        headers: ['תאריך', 'ספק / מקבל', 'קטגוריה', 'תיאור', 'לפני מע״מ', 'מע״מ', 'כולל מע״מ', 'אמצעי תשלום', 'מס׳ מסמך', 'סוג'],
         rows: [...expenses].sort((a, b) => a.תאריך.localeCompare(b.תאריך)).map(e => [
           fmtD(e.תאריך), expenseSupplierName(e), e.קטגוריה, e.תיאור ?? '',
           expenseNet(e), Number(e.מעמ), Number(e.סכום), paymentMethodLabel(e.אמצעי_תשלום), e.מספר_מסמך ?? '',
+          isLongTermExpense(e) ? LONG_TERM_LABEL : 'שוטפת',
         ]),
-        total: ['סה״כ', '', '', `${expenses.length} הוצאות`, expNet, expVat, expGross, '', ''],
+        total: ['סה״כ', '', '', `${expenses.length} הוצאות`, expNet, expVat, expGross, '', '', ''],
         moneyCols: [4, 5, 6],
       },
     });

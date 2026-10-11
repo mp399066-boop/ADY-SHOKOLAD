@@ -15,11 +15,13 @@ type VatMode = 'included' | 'none' | 'manual';
 
 const selectCls = 'w-full px-3 py-2 text-sm rounded-lg border border-[#E8DED2] bg-white focus:outline-none focus:border-[#C9A46A]';
 
-export default function ExpenseFormModal({ open, initial, suppliers, onClose, onSaved }: {
+export default function ExpenseFormModal({ open, initial, suppliers, longTermReady, onClose, onSaved }: {
   open: boolean;
   /** Existing expense to edit (has id) or a template to duplicate (no id). */
   initial: Partial<Expense> | null;
   suppliers: SupplierOption[];
+  /** false until migration 062 (long-term flag) has been run. */
+  longTermReady: boolean;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -37,6 +39,7 @@ export default function ExpenseFormModal({ open, initial, suppliers, onClose, on
   const [docNumber, setDocNumber] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('');
   const [notes, setNotes] = useState('');
+  const [longTerm, setLongTerm] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const editing = !!initial?.id;
@@ -60,6 +63,7 @@ export default function ExpenseFormModal({ open, initial, suppliers, onClose, on
     setDocNumber(i.מספר_מסמך ?? '');
     setPaymentMethod(i.אמצעי_תשלום ?? '');
     setNotes(i.הערות ?? '');
+    setLongTerm(i.השקעה_לטווח_ארוך === true);
   }, [open, initial]);
 
   const amountNum = Number(amount) || 0;
@@ -88,6 +92,7 @@ export default function ExpenseFormModal({ open, initial, suppliers, onClose, on
         מספר_מסמך: docNumber,
         אמצעי_תשלום: paymentMethod,
         הערות: notes,
+        ...(longTermReady ? { השקעה_לטווח_ארוך: longTerm } : {}),
       };
       const res = await fetch(editing ? `/api/finance/expenses/${initial!.id}` : '/api/finance/expenses', {
         method: editing ? 'PATCH' : 'POST',
@@ -155,6 +160,19 @@ export default function ExpenseFormModal({ open, initial, suppliers, onClose, on
         </div>
         <div className="sm:col-span-2">
           <Input label="הערות" value={notes} onChange={e => setNotes(e.target.value)} />
+        </div>
+        <div className="sm:col-span-2 rounded-lg px-3 py-2.5" style={{ border: `1px solid ${C.border}`, backgroundColor: longTerm ? '#FBF6EE' : undefined }}>
+          <label className="flex items-start gap-2 text-sm" style={{ color: longTermReady ? C.text : C.faint, cursor: longTermReady ? 'pointer' : 'not-allowed' }}>
+            <input type="checkbox" className="mt-0.5" checked={longTerm} disabled={!longTermReady} onChange={e => setLongTerm(e.target.checked)} />
+            <span>
+              <b>השקעה לטווח ארוך</b> — ציוד שלא מתכלה (מקרר, תנור, שולחנות, מכונות…)
+              <span className="block text-xs mt-0.5" style={{ color: C.sub }}>
+                {longTermReady
+                  ? 'לא נכנסת להוצאות החודשיות ולממוצע החודשי — מוצגת בנפרד ברווח והפסד.'
+                  : 'כדי לסמן — יש להריץ את מיגרציה 062 ב-Supabase SQL Editor.'}
+              </span>
+            </span>
+          </label>
         </div>
       </div>
       <div className="flex justify-end gap-2 mt-5">

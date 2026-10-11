@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireAdminUser, forbiddenResponse } from '@/lib/auth/requireAuthorizedUser';
 import { expenseInputSchema, isMissingTable, EXPENSES_MIGRATION_HINT } from '@/lib/finance-expense-schema';
+import { missingColumnMessage } from '@/lib/db-error';
 
 // PATCH  /api/finance/expenses/[id] → replace the editable fields of one expense
 // DELETE /api/finance/expenses/[id] → delete one expense
@@ -40,6 +41,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   if (error) {
     if (isMissingTable(error)) return NextResponse.json({ error: EXPENSES_MIGRATION_HINT }, { status: 400 });
+    const missing = missingColumnMessage(error);
+    if (missing) return NextResponse.json({ error: missing }, { status: 400 });
     console.error('[finance/expenses PATCH]', { id: params.id, code: error.code });
     return NextResponse.json({ error: 'עדכון ההוצאה נכשל' }, { status: 500 });
   }

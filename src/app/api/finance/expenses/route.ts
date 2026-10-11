@@ -20,10 +20,16 @@ export async function GET(req: NextRequest) {
   if (!/^\d{4}$/.test(yearRaw)) return NextResponse.json({ error: 'שנה לא תקינה' }, { status: 400 });
 
   const supabase = createAdminClient();
-  // Payslip fields (migration 059). Until it is run, fall back to the base
-  // columns so the expenses list keeps working.
-  let columns = `${COLUMNS}, עובד_id, חודש_שכר`;
-  let salariesReady = true;
+  // Optional columns from later migrations, newest first: long-term flag (062),
+  // payslip fields (059). Until a migration is run, fall back to the older
+  // column set so the expenses list keeps working.
+  const columnSets = [
+    `${COLUMNS}, עובד_id, חודש_שכר, השקעה_לטווח_ארוך`,
+    `${COLUMNS}, עובד_id, חודש_שכר`,
+    COLUMNS,
+  ];
+  let level = 0;
+  let columns = columnSets[level];
   const all: Record<string, unknown>[] = [];
   const pageSize = 1000;
   for (let offset = 0; offset < 100_000; offset += pageSize) {
@@ -37,10 +43,10 @@ export async function GET(req: NextRequest) {
       .range(offset, offset + pageSize - 1);
     if (error) {
       if (isMissingTable(error)) return NextResponse.json({ data: [], tableReady: false, hint: EXPENSES_MIGRATION_HINT });
-      if (salariesReady && missingColumnMessage(error)) {
-        salariesReady = false;
-        columns = COLUMNS;
-        offset -= pageSize; // retry this page without the payslip fields
+      if (level < columnSets.length - 1 && missingColumnMessage(error)) {
+        columns = columnSets[++level];
+        all.length = 0;
+        offset = -pageSize; // restart with the older column set
         continue;
       }
       console.error('[finance/expenses GET]', { code: error.code });
@@ -51,7 +57,7 @@ export async function GET(req: NextRequest) {
   }
 
   const data = all.map(r => ({ ...r, סכום: Number(r['סכום']) || 0, מעמ: Number(r['מעמ']) || 0 }));
-  return NextResponse.json({ data, tableReady: true, salariesReady });
+  return NextResponse.json({ data, tableReady: true, salariesReady: level <= 1, longTermReady: level === 0 });
 }
 
 export async function POST(req: NextRequest) {
@@ -82,6 +88,8 @@ export async function POST(req: NextRequest) {
 
   if (error) {
     if (isMissingTable(error)) return NextResponse.json({ error: EXPENSES_MIGRATION_HINT }, { status: 400 });
+    const missing = missingColumnMessage(error);
+    if (missing) return NextResponse.json({ error: missing }, { status: 400 });
     console.error('[finance/expenses POST]', { code: error.code });
     return NextResponse.json({ error: 'שמירת ההוצאה נכשלה' }, { status: 500 });
   }
