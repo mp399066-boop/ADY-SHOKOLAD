@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { FileDown, CalendarDays, ListFilter, ChevronDown } from 'lucide-react';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { todayJerusalem, type FinanceOrder, type Expense, type DateBasis } from '@/lib/finance';
+import type { ManualIncome } from '@/lib/finance-manual-income';
 import IncomeTab from './components/IncomeTab';
 import ExpensesTab from './components/ExpensesTab';
 import ProfitLossTab from './components/ProfitLossTab';
@@ -36,6 +37,8 @@ export default function FinancePage() {
 
   const [orders, setOrders] = useState<FinanceOrder[]>([]);
   const [undatedCount, setUndatedCount] = useState(0);
+  const [manualIncomes, setManualIncomes] = useState<ManualIncome[]>([]);
+  const [manualReady, setManualReady] = useState(true);
   const [incomeLoading, setIncomeLoading] = useState(true);
   const [incomeError, setIncomeError] = useState<string | null>(null);
 
@@ -65,6 +68,8 @@ export default function FinancePage() {
       if (!res.ok) throw new Error(json.error || 'שגיאה בטעינת ההכנסות');
       setOrders(json.orders ?? []);
       setUndatedCount(json.undatedCount ?? 0);
+      setManualIncomes(json.manualIncomes ?? []);
+      setManualReady(json.manualReady !== false);
       if (Array.isArray(json.years) && json.years.length) setYears(json.years);
     } catch (e) {
       setIncomeError(e instanceof Error ? e.message : 'שגיאה בטעינת ההכנסות');
@@ -176,7 +181,7 @@ export default function FinancePage() {
       ) : loading ? (
         <div className="flex justify-center py-16"><LoadingSpinner /></div>
       ) : tab === 'income' ? (
-        <IncomeTab orders={orders} year={year} basis={basis} undatedCount={undatedCount} />
+        <IncomeTab orders={orders} year={year} basis={basis} undatedCount={undatedCount} manualIncomes={manualIncomes} manualReady={manualReady} reload={loadIncome} />
       ) : tab === 'expenses' ? (
         <ExpensesTab expenses={expenses} suppliers={suppliers} employees={employees} salariesReady={salariesReady} longTermReady={longTermReady} year={year} tableReady={expensesReady} hint={expensesHint} reload={loadExpenses} />
       ) : (

@@ -86,6 +86,13 @@ export const OPTION_LISTS: OptionListDef[] = [
     ],
     usage: [{ table: 'הוצאות', column: 'קטגוריה' }],
   },
+  {
+    key: 'income_categories',
+    label: 'קטגוריות הכנסה',
+    description: 'סיווג הכנסות שהוזנו ידנית בעמוד פיננסים (סדנאות, אירועים וכו׳).',
+    defaults: ['סדנאות', 'אירועים', 'מכירה ישירה / דוכן', 'החזרים וזיכויים', 'מענקים', 'אחר'],
+    usage: [{ table: 'הכנסות_ידניות', column: 'קטגוריה' }],
+  },
   // ── Text presets (Phase 2) ────────────────────────────────────────────────
   // Content-only quick-pick snippets. They are NOT stored as enums on any
   // record, so there is no usage table and nothing to seed — they start empty

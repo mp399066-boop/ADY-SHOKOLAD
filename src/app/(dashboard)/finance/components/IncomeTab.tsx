@@ -1,14 +1,19 @@
 'use client';
 
 import { useMemo, useRef, useState } from 'react';
+import toast from 'react-hot-toast';
 import { Card } from '@/components/ui/Card';
 import { Modal } from '@/components/ui/Modal';
+import { Button } from '@/components/ui/Button';
+import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { Wallet, Receipt, CalendarRange, Truck, Percent, Coins, Hourglass } from 'lucide-react';
 import {
   summarize, summarizeByCustomer, summarizeByPaymentMethod, paymentMethodLabel, orderBasisDate, orderIncome,
-  monthKey, monthLabel, HEBREW_MONTHS, averageBasis, averageOf, round2, INCOME_COLUMNS, incomeValues, incomeAverageValues,
+  monthKey, monthLabel, HEBREW_MONTHS, todayJerusalem, averageBasis, averageOf, round2, INCOME_COLUMNS, incomeValues, incomeAverageValues,
   type FinanceOrder, type DateBasis, type MoneySummary, type IncomeMoney, type IncomeMoneyKey,
 } from '@/lib/finance';
+import { isManualIncomeOrder, manualIncomeName, type ManualIncome } from '@/lib/finance-manual-income';
+import ManualIncomeFormModal from './ManualIncomeFormModal';
 import { downloadExcel, downloadElementPng, fmtDate, type Cell } from '@/lib/finance-export';
 import { C, money, StatCard, ExportButtons, Th, Td, EmptyNote, THEAD_STYLE, TOTAL_ROW_STYLE, ROW_CLS } from './shared';
 
@@ -81,14 +86,55 @@ function methodsExcelRows(orders: FinanceOrder[]): Cell[][] {
 
 // ── Tab ─────────────────────────────────────────────────────────────────────
 
-export default function IncomeTab({ orders, year, basis, undatedCount }: {
+export default function IncomeTab({ orders, year, basis, undatedCount, manualIncomes, manualReady, reload }: {
   orders: FinanceOrder[];
   year: number;
   basis: DateBasis;
   undatedCount: number;
+  /** Manual income of the year (already included in `orders`). */
+  manualIncomes: ManualIncome[];
+  /** false until migration 063 (manual income) has been run. */
+  manualReady: boolean;
+  reload: () => void;
 }) {
   const yearRef = useRef<HTMLDivElement>(null);
   const [openMonth, setOpenMonth] = useState<string | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
+  const [formInitial, setFormInitial] = useState<Partial<ManualIncome> | null>(null);
+  const [toDelete, setToDelete] = useState<ManualIncome | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  function openNew() {
+    if (!manualReady) {
+      toast.error('כדי להוסיף הכנסה — יש להריץ את מיגרציה 063 ב-Supabase SQL Editor');
+      return;
+    }
+    setFormInitial(null);
+    setFormOpen(true);
+  }
+  function openEdit(m: ManualIncome) { setFormInitial(m); setFormOpen(true); }
+  function openDuplicate(m: ManualIncome) {
+    const { id: _id, ...rest } = m;
+    setFormInitial({ ...rest, תאריך: todayJerusalem(), מספר_מסמך: null });
+    setFormOpen(true);
+  }
+
+  async function confirmDelete() {
+    if (!toDelete) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/finance/manual-income/${toDelete.id}`, { method: 'DELETE' });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || 'המחיקה נכשלה');
+      toast.success('ההכנסה נמחקה');
+      setToDelete(null);
+      reload();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'המחיקה נכשלה');
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   const byMonth = useMemo(() => {
     const map = new Map<string, FinanceOrder[]>();
@@ -136,6 +182,13 @@ export default function IncomeTab({ orders, year, basis, undatedCount }: {
 
   return (
     <div className="space-y-5">
+      <div className="flex flex-wrap items-center gap-2">
+        <Button onClick={openNew}>+ הכנסה חדשה</Button>
+        <span className="text-xs" style={{ color: C.sub }}>
+          הכנסה שלא דרך הזמנה במערכת (סדנה, דוכן, מכירה חד-פעמית…) — נספרת בכל הסיכומים וברווח והפסד.
+        </span>
+      </div>
+
       <div ref={yearRef} className="space-y-5 bg-white sm:bg-transparent">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
           <StatCard label={`נכנס לכיס ${year} — ללא משלוח, לפני מע״מ`} value={money(y.pocket)} sub={`${y.count} הזמנות`} tone="green" icon={Wallet} />
@@ -235,6 +288,63 @@ export default function IncomeTab({ orders, year, basis, undatedCount }: {
         </div>
       </Card>
 
+      {manualIncomes.length > 0 && (
+        <Card className="!p-0 overflow-hidden">
+          <div className="px-5 py-3" style={{ borderBottom: `1px solid ${C.border}` }}>
+            <h2 className="text-base font-bold" style={{ color: C.text }}>הכנסות שהוזנו ידנית — {year}</h2>
+            <p className="text-xs mt-0.5" style={{ color: C.sub }}>כבר כלולות בכל הטבלאות למעלה ובלשונית רווח והפסד</p>
+          </div>
+          <div className="overflow-auto" style={{ maxHeight: 480 }}>
+            <table className="w-full">
+              <thead className="sticky top-0" style={THEAD_STYLE}>
+                <tr>
+                  <Th>תאריך</Th><Th>ממי / מקור</Th><Th>קטגוריה</Th><Th>תיאור</Th><Th>לכיס (לפני מע״מ)</Th><Th>מע״מ</Th>
+                  <Th>כולל מע״מ</Th><Th>אמצעי תשלום</Th><Th>סטטוס</Th><Th />
+                </tr>
+              </thead>
+              <tbody>
+                {manualIncomes.map(m => (
+                  <tr key={m.id} className={ROW_CLS} style={{ borderTop: `1px solid ${C.border}` }}>
+                    <Td>{fmtDate(m.תאריך)}</Td>
+                    <Td className="font-medium">{manualIncomeName(m)}</Td>
+                    <Td>{m.קטגוריה}</Td>
+                    <Td className="text-xs" style={{ color: C.sub }}>{m.תיאור ?? ''}</Td>
+                    <Td className="tabular-nums font-semibold" style={{ color: C.green }}>{money(round2(m.סכום - m.מעמ))}</Td>
+                    <Td className="tabular-nums" style={{ color: m.מעמ ? C.text : C.faint }}>{money(m.מעמ)}</Td>
+                    <Td className="tabular-nums">{money(m.סכום)}</Td>
+                    <Td>{paymentMethodLabel(m.אמצעי_תשלום)}</Td>
+                    <Td>
+                      <span className="text-xs px-2 py-0.5 rounded-full"
+                        style={m.שולם ? { backgroundColor: C.greenBg, color: C.green } : { backgroundColor: C.amberBg, color: C.amber }}>
+                        {m.שולם ? 'שולם' : 'טרם שולם'}
+                      </span>
+                    </Td>
+                    <Td>
+                      <div className="flex gap-2 text-xs">
+                        <button onClick={() => openEdit(m)} style={{ color: C.brand }}>עריכה</button>
+                        <button onClick={() => openDuplicate(m)} style={{ color: C.sub }} title="יצירת הכנסה זהה">שכפול</button>
+                        <button onClick={() => setToDelete(m)} style={{ color: C.red }}>מחיקה</button>
+                      </div>
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
+      <ManualIncomeFormModal open={formOpen} initial={formInitial} onClose={() => setFormOpen(false)} onSaved={reload} />
+      <ConfirmModal
+        open={!!toDelete}
+        onClose={() => setToDelete(null)}
+        onConfirm={confirmDelete}
+        title="מחיקת הכנסה"
+        description={toDelete ? `למחוק את ההכנסה "${manualIncomeName(toDelete)}" על סך ${money(toDelete.סכום)} מ-${fmtDate(toDelete.תאריך)}?` : ''}
+        confirmLabel="מחיקה"
+        loading={deleting}
+      />
+
       <MonthDetailModal monthKeyStr={openMonth} orders={openList} basis={basis} onClose={() => setOpenMonth(null)} />
     </div>
   );
@@ -244,7 +354,7 @@ function Footnote({ summary, undatedCount }: { summary: MoneySummary; undatedCou
   return (
     <div className="px-5 py-3 text-xs space-y-0.5" style={{ color: C.sub, borderTop: `1px solid ${C.border}` }}>
       <div>{POCKET_NOTE}</div>
-      <div>כולל הזמנות שטרם שולמו (מופיעות גם בעמודות &quot;טרם שולם&quot;). הזמנות שבוטלו וטיוטות לא נספרות.</div>
+      <div>כולל הזמנות שטרם שולמו (מופיעות גם בעמודות &quot;טרם שולם&quot;) וכולל הכנסות שהוזנו ידנית (נספרות כאן כהזמנות). הזמנות שבוטלו וטיוטות לא נספרות.</div>
       {summary.barterCount > 0 && (
         <div>{summary.barterCount} הזמנות בארטר (שווי {money(summary.barterTotal)} ללא משלוח, לפני מע״מ) לא נכללו — לא נכנס עליהן כסף.</div>
       )}
@@ -370,9 +480,13 @@ function MonthDetailModal({ monthKeyStr, orders, basis, onClose }: {
                   <tr key={o.id} className={ROW_CLS} style={{ borderTop: `1px solid ${C.border}`, opacity: o.barter ? 0.55 : 1 }}>
                     <Td>{fmtDate(orderBasisDate(o, basis))}</Td>
                     <Td>
-                      <a href={`/orders/${o.id}`} target="_blank" rel="noreferrer" className="hover:underline" style={{ color: C.brand }}>
-                        {o.orderNumber}
-                      </a>
+                      {isManualIncomeOrder(o) ? (
+                        <span className="text-xs" style={{ color: C.sub }}>{o.orderNumber}</span>
+                      ) : (
+                        <a href={`/orders/${o.id}`} target="_blank" rel="noreferrer" className="hover:underline" style={{ color: C.brand }}>
+                          {o.orderNumber}
+                        </a>
+                      )}
                     </Td>
                     <Td className="font-medium">{o.customerName}</Td>
                     {o.barter

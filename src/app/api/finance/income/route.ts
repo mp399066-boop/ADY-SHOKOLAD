@@ -7,12 +7,18 @@ import {
   isCountableOrder, toFinanceOrder, todayJerusalem,
   type FinanceOrderSource, type FinanceOrder,
 } from '@/lib/finance';
+import { manualIncomeToFinanceOrder, type ManualIncome } from '@/lib/finance-manual-income';
+import { MANUAL_INCOME_COLUMNS } from '@/lib/finance-income-schema';
+import { isMissingTable } from '@/lib/finance-expense-schema';
 
 // GET /api/finance/income?year=2026&basis=order|delivery
 // Read-only. Returns every countable order of the year (money already
 // computed per src/lib/finance.ts) — the page groups them by month/customer.
 // basis=order (default) dates an order by תאריך_הזמנה, basis=delivery by
 // תאריך_אספקה.
+// Manual income (הכנסות ידניות, migration 063) of the year is returned too —
+// raw in "manualIncomes" (for the list on the income tab) and converted into
+// "orders" so every income view counts it. It has one date, used on both bases.
 
 const SELECT =
   'id, מספר_הזמנה, תאריך_הזמנה, תאריך_אספקה, סטטוס_הזמנה, סטטוס_תשלום, סוג_הזמנה, אופן_תשלום, ' +
@@ -62,6 +68,29 @@ export async function GET(req: NextRequest) {
 
     const orders: FinanceOrder[] = rows.filter(isCountableOrder).map(toFinanceOrder);
 
+    // Manual income — until migration 063 is run the table is missing; the
+    // page then shows a hint instead of the "new income" form.
+    let manualIncomes: ManualIncome[] = [];
+    let manualReady = true;
+    {
+      const { data, error } = await supabase
+        .from('הכנסות_ידניות')
+        .select(MANUAL_INCOME_COLUMNS)
+        .gte('תאריך', `${year}-01-01`)
+        .lte('תאריך', `${year}-12-31`)
+        .order('תאריך', { ascending: false })
+        .limit(5000);
+      if (error) {
+        if (!isMissingTable(error)) throw error;
+        manualReady = false;
+      } else {
+        manualIncomes = ((data ?? []) as unknown as ManualIncome[]).map(m => ({
+          ...m, סכום: Number(m.סכום) || 0, מעמ: Number(m.מעמ) || 0, שולם: m.שולם !== false,
+        }));
+        orders.push(...manualIncomes.map(manualIncomeToFinanceOrder));
+      }
+    }
+
     // Years that have any order, for the year picker.
     const { data: first } = await supabase
       .from('הזמנות')
@@ -87,7 +116,7 @@ export async function GET(req: NextRequest) {
       undatedCount = count ?? 0;
     }
 
-    return NextResponse.json({ year, basis: basisRaw, years, orders, undatedCount });
+    return NextResponse.json({ year, basis: basisRaw, years, orders, undatedCount, manualIncomes, manualReady });
   } catch (err: unknown) {
     const code = (err as { code?: string })?.code ?? 'unknown';
     console.error('[finance/income] query failed', { year, basis: basisRaw, code });
