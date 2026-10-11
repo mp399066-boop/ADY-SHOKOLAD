@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Modal } from '@/components/ui/Modal';
-import { createClient } from '@/lib/supabase/client';
 import { HEBREW_MONTHS, type FinanceOrder, type Expense, type DateBasis } from '@/lib/finance';
 import { buildFinanceReport, type FinanceReport } from '@/lib/finance-report';
 import { buildReportPdf, downloadPdfBlob, downloadReportExcel } from '@/lib/finance-export';
@@ -33,8 +32,10 @@ export default function FullReportModal({ open, onClose, orders, expenses, year,
 
   useEffect(() => {
     if (!open) return;
-    createClient().from('business_settings').select('business_name').single()
-      .then(({ data }: { data: { business_name?: string } | null }) => { if (data?.business_name) setBusinessName(data.business_name); });
+    fetch('/api/settings')
+      .then(r => (r.ok ? r.json() : null))
+      .then(j => { if (j?.data?.business_name) setBusinessName(j.data.business_name); })
+      .catch(() => {});
   }, [open]);
 
   // Free the blob URL when it's replaced or the dialog unmounts.

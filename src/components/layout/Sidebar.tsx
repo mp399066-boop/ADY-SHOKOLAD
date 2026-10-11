@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
-import { createClient } from '@/lib/supabase/client';
 import {
   IconDashboard, IconOrders, IconCustomers, IconProducts,
   IconDeliveries, IconInventory, IconRecipes, IconInvoices,
@@ -47,14 +46,11 @@ export default function Sidebar({ open = true, onClose }: SidebarProps) {
   const [settings, setSettings] = useState<BusinessSettings | null>(null);
 
   useEffect(() => {
-    const supabase = createClient();
-    supabase
-      .from('business_settings')
-      .select('*')
-      .single()
-      .then(({ data }: { data: any }) => {
-        if (data) setSettings(data as BusinessSettings);
-      });
+    // Via the API: business_settings has RLS with no browser policy.
+    fetch('/api/settings')
+      .then(r => (r.ok ? r.json() : null))
+      .then(j => { if (j?.data) setSettings(j.data as BusinessSettings); })
+      .catch(() => {});
   }, []);
 
   function NavItem({ href, label, Icon }: { href: string; label: string; Icon: React.ComponentType<{ className?: string }> }) {
