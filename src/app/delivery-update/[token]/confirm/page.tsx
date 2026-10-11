@@ -35,7 +35,8 @@ const C = {
   redSoft:   '#FBEAEA',
 };
 
-export default async function DeliveryConfirmPage({ params }: { params: { token: string } }) {
+export default async function DeliveryConfirmPage(props: { params: Promise<{ token: string }> }) {
+  const params = await props.params;
   const outcome = await markDeliveryDeliveredByToken(params.token);
 
   let title:    string;

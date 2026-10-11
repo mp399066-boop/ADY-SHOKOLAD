@@ -30,7 +30,8 @@ import {
 
 // Converts a draft order (status=טיוטה) to a real order (status=חדשה).
 // Replaces all items, creates delivery/payment records, sends emails.
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
 

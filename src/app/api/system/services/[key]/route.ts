@@ -21,10 +21,8 @@ const bodySchema = z.object({
   is_enabled: z.boolean(),
 });
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: { key: string } },
-) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ key: string }> }) {
+  const params = await props.params;
   const user = await requireAdminUser();
   if (!user) {
     const anyUser = await requireAuthorizedUser();

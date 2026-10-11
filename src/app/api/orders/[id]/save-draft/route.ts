@@ -7,7 +7,8 @@ import { normalizeRecipients, replaceOrderRecipients, itemRecipientColumns } fro
 
 // PATCH — silently updates a draft order's fields and items.
 // No emails, no Morning, no delivery/payment records. Status stays 'טיוטה'.
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
 

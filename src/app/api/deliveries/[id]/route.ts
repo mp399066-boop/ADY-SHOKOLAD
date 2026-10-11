@@ -33,7 +33,8 @@ function buildWaUrl(
 
 // ─── PATCH ────────────────────────────────────────────────────────────────────
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
@@ -440,7 +441,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 // Synthetic ids (no-record-{orderId}) are rejected: there's no DB row to
 // delete; the dashboard should drop them from local state without calling
 // this endpoint at all.
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
 

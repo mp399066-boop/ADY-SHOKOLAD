@@ -22,7 +22,8 @@ import {
 // having an email address (the image is shareable regardless), and it always
 // renders the clean "סיכום הזמנה" form (isUpdate:false, no "חדש"/"הוסרו"
 // diffing) — it never sends anything and has no side effects.
-export async function GET(_: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();

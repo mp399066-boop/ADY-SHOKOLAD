@@ -11,7 +11,8 @@ import {
 import { fetchOrderRecipients } from '@/lib/order-recipients';
 
 // GET: return items for a single order (used by inline order expansion on the list page)
-export async function GET(_: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
@@ -34,7 +35,8 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
 }
 
 // PUT: replace all order items, recalculate totals
-export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();

@@ -3,7 +3,6 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
-import { v4 as uuidv4 } from 'uuid';
 
 // Server-decided bucket per entity_type. The client used to send `bucket`
 // directly, which let any authenticated employee write to arbitrary
@@ -73,7 +72,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'סיומת קובץ לא נתמכת' }, { status: 415 });
   }
 
-  const fileName = `${entityType}/${entityId}/${uuidv4()}.${rawExt}`;
+  const fileName = `${entityType}/${entityId}/${crypto.randomUUID()}.${rawExt}`;
 
   const arrayBuffer = await file.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);

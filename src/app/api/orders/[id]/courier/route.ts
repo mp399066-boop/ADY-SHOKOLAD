@@ -7,7 +7,8 @@ import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireA
 // no new rows created. If the order has no delivery row yet (e.g. an
 // איסוף עצמי order) the update affects zero rows and the route returns ok
 // — the UI only exposes the picker for orders that already have a משלוח.
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
 

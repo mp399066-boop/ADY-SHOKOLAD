@@ -12,7 +12,8 @@ import { validateCostLinks, isDuplicateName, DUPLICATE_NAME_ERROR } from '@/lib/
 
 const idSchema = z.string().uuid();
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireAdminUser();
   if (!auth) return forbiddenResponse();
   if (!idSchema.safeParse(params.id).success) return NextResponse.json({ error: 'מזהה לא תקין' }, { status: 400 });
@@ -41,7 +42,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   return NextResponse.json({ data: normalizeCostRow(data as Record<string, unknown>) });
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireAdminUser();
   if (!auth) return forbiddenResponse();
   if (!idSchema.safeParse(params.id).success) return NextResponse.json({ error: 'מזהה לא תקין' }, { status: 400 });

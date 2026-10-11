@@ -12,7 +12,8 @@ import { missingColumnMessage } from '@/lib/db-error';
 const COLUMNS = 'id, תאריך, ספק_id, שם_ספק, קטגוריה, תיאור, סכום, מעמ, מספר_מסמך, אמצעי_תשלום, הערות, מקור, תאריך_יצירה';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireAdminUser();
   if (!auth) return forbiddenResponse();
   if (!UUID_RE.test(params.id)) return NextResponse.json({ error: 'מזהה לא תקין' }, { status: 400 });
@@ -50,7 +51,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   return NextResponse.json({ data });
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireAdminUser();
   if (!auth) return forbiddenResponse();
   if (!UUID_RE.test(params.id)) return NextResponse.json({ error: 'מזהה לא תקין' }, { status: 400 });

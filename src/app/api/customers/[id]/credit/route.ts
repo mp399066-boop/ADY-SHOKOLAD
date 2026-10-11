@@ -4,10 +4,8 @@ import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireA
 
 type CreditType = 'credit_added' | 'credit_used' | 'credit_adjustment';
 
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: { id: string } },
-) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
 
@@ -26,10 +24,8 @@ export async function GET(
   return NextResponse.json({ balance: Math.round(balance * 100) / 100, transactions });
 }
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: { id: string } },
-) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
 

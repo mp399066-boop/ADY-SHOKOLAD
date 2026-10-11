@@ -8,7 +8,8 @@ import {
   unauthorizedResponse,
 } from '@/lib/auth/requireAuthorizedUser';
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
   if (auth.role !== 'admin') return forbiddenResponse();

@@ -4,7 +4,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
@@ -18,7 +19,8 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
 // remove). The production-target link is NOT touched here — it has its own
 // PATCH flow below. Ingredient lines are diffed by id so unchanged rows keep
 // their ids; nothing else references רכיבי_מתכון.id.
-export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
@@ -133,7 +135,8 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 // For 'sale_product' targets we also keep מוצר_id in sync so existing UI
 // joins that still rely on the legacy column keep rendering. For
 // 'petit_four' targets מוצר_id is forced to null.
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();

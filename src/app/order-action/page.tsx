@@ -3,13 +3,13 @@ import { performEmployeeReportAction } from '@/lib/employee-report-actions';
 export const dynamic = 'force-dynamic';
 
 type PageProps = {
-  searchParams: {
+  searchParams: Promise<{
     orderId?: string;
     action?: string;
     exp?: string;
     expires?: string;
     sig?: string;
-  };
+  }>;
 };
 
 function messageFor(result: Awaited<ReturnType<typeof performEmployeeReportAction>>) {
@@ -48,7 +48,8 @@ function messageFor(result: Awaited<ReturnType<typeof performEmployeeReportActio
   };
 }
 
-export default async function OrderActionPage({ searchParams }: PageProps) {
+export default async function OrderActionPage(props: PageProps) {
+  const searchParams = await props.searchParams;
   const result = await performEmployeeReportAction({
     orderId: searchParams.orderId || '',
     action: searchParams.action || '',
