@@ -2,16 +2,37 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
+import { parseCatalogPatch, rawMaterialPatchSchema } from '@/lib/catalog-patch-schema';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { recordStockMovement } from '@/lib/inventory-movements';
 import { dbErrorResponse } from '@/lib/api-error';
+
+// Single raw material — lets the shared edit window open from any page
+// (costs, suppliers, cart) that only holds a partial row.
+export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
+  const auth = await requireManagementUser();
+  if (!auth) return unauthorizedResponse();
+  if (!/^[0-9a-f-]{36}$/i.test(params.id)) return NextResponse.json({ error: 'מזהה לא תקין' }, { status: 400 });
+  const supabase = createAdminClient();
+  const { data, error } = await supabase
+    .from('מלאי_חומרי_גלם')
+    .select('*')
+    .eq('id', params.id)
+    .maybeSingle();
+  if (error) return dbErrorResponse(error, 'inventory/[id] GET');
+  if (!data) return NextResponse.json({ error: 'חומר הגלם לא נמצא' }, { status: 404 });
+  return NextResponse.json({ data });
+}
 
 export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
-  const body = await req.json();
+  const parsed = parseCatalogPatch(rawMaterialPatchSchema, await req.json().catch(() => null));
+  if ('error' in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 });
+  const patch = parsed.data;
 
   // Read the current row first so we can log a movement when כמות_במלאי
   // changes. If the body doesn't touch כמות_במלאי this still works — the
@@ -24,7 +45,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
 
   const { data, error } = await supabase
     .from('מלאי_חומרי_גלם')
-    .update(body)
+    .update(patch)
     .eq('id', params.id)
     .select()
     .single();

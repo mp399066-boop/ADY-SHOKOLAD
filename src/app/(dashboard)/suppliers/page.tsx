@@ -3,6 +3,7 @@
 import { Fragment, useState, useEffect, useMemo } from 'react';
 import { IconPlus, IconEdit, IconWhatsApp } from '@/components/icons';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
+import { RawMaterialEditModal } from '@/components/inventory/RawMaterialEditModal';
 
 type PageTab = 'suppliers' | 'settings' | 'cart';
 
@@ -107,6 +108,8 @@ export default function SuppliersPage() {
   const [rowForm, setRowForm] = useState<Partial<PurchaseMaterial>>({});
   const [rowSaving, setRowSaving] = useState(false);
   const [matSearch, setMatSearch] = useState('');
+  // Full raw-material edit (unit, stock, price…) without leaving this page.
+  const [fullEditId, setFullEditId] = useState<string | null>(null);
 
   // ── Cart tab state ───────────────────────────────────────────────────────
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -1086,9 +1089,18 @@ th{background:#F3EDE4}</style></head>
                               </td>
                               <td className="px-4 py-2.5 text-gray-600 text-xs">{mat.יחידת_קניה || <span className="text-gray-300">—</span>}</td>
                               <td className="px-4 py-2.5">
-                                <button onClick={() => startEditRow(mat)} className="text-gray-400 hover:text-[#C7A46B] p-1 transition-colors">
-                                  <IconEdit className="w-4 h-4" />
-                                </button>
+                                <div className="flex items-center gap-1">
+                                  <button onClick={() => startEditRow(mat)} title="עריכת הגדרות רכש בשורה" className="text-gray-400 hover:text-[#C7A46B] p-1 transition-colors">
+                                    <IconEdit className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => setFullEditId(mat.id)}
+                                    title="עריכת כל פרטי חומר הגלם — יחידה, כמות במלאי, מחיר"
+                                    className="px-2 py-0.5 rounded text-xs text-[#8B5E34] border border-[#E8DED2] hover:bg-[#FAF7F2] whitespace-nowrap"
+                                  >
+                                    עריכה מלאה
+                                  </button>
+                                </div>
                               </td>
                             </>
                           )}
@@ -1390,8 +1402,15 @@ th{background:#F3EDE4}</style></head>
                               </div>
 
                               {mat && (
-                                <div className="text-xs text-gray-500 text-left flex-shrink-0">
-                                  במלאי: <span className="font-semibold text-gray-700">{mat.כמות_במלאי}</span> {mat.יחידת_מידה}
+                                <div className="text-xs text-gray-500 text-left flex-shrink-0 flex items-center gap-1">
+                                  <span>במלאי: <span className="font-semibold text-gray-700">{mat.כמות_במלאי}</span> {mat.יחידת_מידה}</span>
+                                  <button
+                                    onClick={() => setFullEditId(mat.id)}
+                                    title="עריכת חומר הגלם — יחידה, כמות במלאי, מחיר, ספק"
+                                    className="text-gray-400 hover:text-[#C7A46B] p-1 transition-colors"
+                                  >
+                                    <IconEdit className="w-3.5 h-3.5" />
+                                  </button>
                                 </div>
                               )}
 
@@ -1445,6 +1464,12 @@ th{background:#F3EDE4}</style></head>
           </div>
         )}
       </div>
+
+      <RawMaterialEditModal
+        materialId={fullEditId}
+        onClose={() => setFullEditId(null)}
+        onSaved={() => { fetchMaterials(); if (tab === 'cart') fetchCart(); }}
+      />
 
       {/* ── Supplier Modal ──────────────────────────────────────────────────── */}
       {showModal && (

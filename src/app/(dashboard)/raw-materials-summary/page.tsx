@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { RawMaterialEditModal } from '@/components/inventory/RawMaterialEditModal';
+import { IconEdit } from '@/components/icons';
 import Link from 'next/link';
 import { IconRawMaterials } from '@/components/icons';
 
@@ -111,6 +113,8 @@ export default function RawMaterialsSummaryPage() {
   const [loading,      setLoading]      = useState(false);
   const [error,        setError]        = useState<string | null>(null);
   const [expanded,     setExpanded]     = useState<Set<string>>(new Set());
+  // Fix a raw material (e.g. its stock unit) right here instead of in /inventory.
+  const [editId,       setEditId]       = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     if (statuses.length === 0) {
@@ -269,6 +273,7 @@ export default function RawMaterialsSummaryPage() {
                 items={data.raw_materials.filter(r => r.missing > 0)}
                 expanded={expanded}
                 toggleExpand={toggleExpand}
+                onEdit={setEditId}
                 rowVariant="missing"
               />
             </Section>
@@ -283,6 +288,7 @@ export default function RawMaterialsSummaryPage() {
                 items={data.raw_materials.filter(r => r.missing === 0)}
                 expanded={expanded}
                 toggleExpand={toggleExpand}
+                onEdit={setEditId}
                 rowVariant="ok"
               />
             </Section>
@@ -306,12 +312,15 @@ export default function RawMaterialsSummaryPage() {
                 items={data.unit_mismatch_items}
                 expanded={expanded}
                 toggleExpand={toggleExpand}
+                onEdit={setEditId}
                 rowVariant="mismatch"
               />
             </Section>
           )}
         </>
       )}
+
+      <RawMaterialEditModal materialId={editId} onClose={() => setEditId(null)} onSaved={() => fetchData()} />
     </div>
   );
 }
@@ -355,10 +364,11 @@ function Section({ title, badge, badgeStyle, headerStyle, children }: {
 
 // ── Raw material table (used for missing, ok, mismatch sections) ──────────
 
-function RawMaterialTable({ items, expanded, toggleExpand, rowVariant }: {
+function RawMaterialTable({ items, expanded, toggleExpand, onEdit, rowVariant }: {
   items: RawMaterialReq[];
   expanded: Set<string>;
   toggleExpand: (key: string) => void;
+  onEdit: (materialId: string) => void;
   rowVariant: 'missing' | 'ok' | 'mismatch';
 }) {
   function missingBadge(item: RawMaterialReq) {
@@ -409,7 +419,19 @@ function RawMaterialTable({ items, expanded, toggleExpand, rowVariant }: {
                 onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#FAFAF6')}
                 onMouseLeave={e => (e.currentTarget.style.backgroundColor = '')}>
                 <td className="py-2.5 px-4 font-semibold" style={{ color: '#2B1A10' }}>
-                  {item.שם}
+                  <span className="inline-flex items-center gap-1.5">
+                    {item.שם}
+                    <button
+                      type="button"
+                      onClick={e => { e.stopPropagation(); onEdit(item.חומר_גלם_id); }}
+                      title="עריכת חומר הגלם — יחידת מידה, כמות במלאי, מחיר"
+                      aria-label={'עריכת ' + item.שם}
+                      className="p-0.5 rounded transition-colors hover:bg-[#F3EDE4]"
+                      style={{ color: '#B0A090' }}
+                    >
+                      <IconEdit className="w-3.5 h-3.5" />
+                    </button>
+                  </span>
                 </td>
                 <td className="py-2.5 px-3 text-center tabular-nums text-sm font-medium" style={{ color: '#2B1A10' }}>
                   {fmtQty(item.required, item.recipe_unit)}

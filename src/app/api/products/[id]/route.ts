@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
+import { parseCatalogPatch, productPatchSchema } from '@/lib/catalog-patch-schema';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { recordStockMovement } from '@/lib/inventory-movements';
 import { missingColumnMessage } from '@/lib/db-error';
@@ -12,7 +13,9 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
-  const body = await req.json();
+  const parsed = parseCatalogPatch(productPatchSchema, await req.json().catch(() => null));
+  if ('error' in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 });
+  const patch = parsed.data;
 
   const { data: prev } = await supabase
     .from('מוצרים_למכירה')
@@ -22,7 +25,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
 
   const { data, error } = await supabase
     .from('מוצרים_למכירה')
-    .update({ ...body, תאריך_עדכון: new Date().toISOString() })
+    .update({ ...patch,תאריך_עדכון: new Date().toISOString() })
     .eq('id', params.id)
     .select()
     .single();

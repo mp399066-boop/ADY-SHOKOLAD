@@ -5,18 +5,23 @@ import toast from 'react-hot-toast';
 import { isSuspiciousPrice, type CostRawMaterial, type CostRecipe, type CostRow } from '@/lib/product-costs';
 import { fmtDate } from '@/lib/finance-export';
 import { C, StatCard, Th, Td, EmptyNote, THEAD_STYLE } from '../../finance/components/shared';
+import { RawMaterialEditModal } from '@/components/inventory/RawMaterialEditModal';
+import { IconEdit } from '@/components/icons';
 
 type Filter = 'used' | 'used_missing' | 'missing' | 'suspicious' | 'all';
 
 const selectCls = 'px-3 py-1.5 text-sm rounded-lg border border-[#E8DED2] bg-white focus:outline-none focus:border-[#C9A46A]';
 
-export default function RawPricesTab({ rawMaterials, recipes, rows, onPriceSaved }: {
+export default function RawPricesTab({ rawMaterials, recipes, rows, onPriceSaved, onMaterialEdited }: {
   rawMaterials: CostRawMaterial[];
   recipes: CostRecipe[];
   rows: CostRow[];
   onPriceSaved: (id: string, price: number | null, updatedAt: string | null) => void;
+  /** Called after the full edit window saved — unit/name may have changed. */
+  onMaterialEdited: () => void;
 }) {
   const [search, setSearch] = useState('');
+  const [editId, setEditId] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>('used');
 
   // material id → recipe names using it, and → cost rows that follow it.
@@ -111,6 +116,7 @@ export default function RawPricesTab({ rawMaterials, recipes, rows, onPriceSaved
                 <Th>מחיר ליחידה</Th>
                 <Th>בשימוש ב</Th>
                 <Th>עודכן</Th>
+                <Th>{''}</Th>
               </tr>
             </thead>
             <tbody>
@@ -130,6 +136,18 @@ export default function RawPricesTab({ rawMaterials, recipes, rows, onPriceSaved
                       ) : <span className="text-xs" style={{ color: C.faint }}>—</span>}
                     </Td>
                     <Td><span className="text-xs" style={{ color: C.faint }}>{m.תאריך_עדכון ? fmtDate(m.תאריך_עדכון) : '—'}</span></Td>
+                    <Td>
+                      <button
+                        type="button"
+                        onClick={() => setEditId(m.id)}
+                        title="עריכת חומר הגלם — יחידה, כמות, מחיר ועוד"
+                        aria-label={`עריכת ${m.שם_חומר_גלם}`}
+                        className="p-1 rounded transition-colors hover:bg-[#FAF7F2]"
+                        style={{ color: C.sub }}
+                      >
+                        <IconEdit className="w-4 h-4" />
+                      </button>
+                    </Td>
                   </tr>
                 );
               })}
@@ -137,6 +155,8 @@ export default function RawPricesTab({ rawMaterials, recipes, rows, onPriceSaved
           </table>
         </div>
       )}
+
+      <RawMaterialEditModal materialId={editId} onClose={() => setEditId(null)} onSaved={onMaterialEdited} />
     </div>
   );
 }
@@ -190,7 +210,7 @@ function PriceCell({ material, onSaved }: {
       </div>
       {isSuspiciousPrice(material) && (
         <div className="text-xs mt-0.5 whitespace-normal max-w-xs" style={{ color: C.amber }}>
-          נראה כמו מחיר לק״ג/ליטר. כדי שהחישוב יהיה נכון — יש לשנות במסך המלאי את יחידת המידה של החומר לק״ג/ליטר (ואת הכמות במלאי בהתאם).
+          נראה כמו מחיר לק״ג/ליטר. כדי שהחישוב יהיה נכון — לחצי על העיפרון בשורה ושני את יחידת המידה לק״ג/ליטר (ואת הכמות במלאי בהתאם).
         </div>
       )}
     </div>

@@ -97,7 +97,7 @@ export default function CostsPage() {
       ) : tab === 'products' ? (
         <ProductCostsTab data={data} rawById={rawById} recipesById={recipesById} reload={() => load(true)} />
       ) : (
-        <RawPricesTab rawMaterials={data.rawMaterials} recipes={data.recipes} rows={data.rows} onPriceSaved={onPriceSaved} />
+        <RawPricesTab rawMaterials={data.rawMaterials} recipes={data.recipes} rows={data.rows} onPriceSaved={onPriceSaved} onMaterialEdited={() => load(true)} />
       )}
     </div>
   );
