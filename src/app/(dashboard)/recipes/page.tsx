@@ -12,7 +12,7 @@ import toast from 'react-hot-toast';
 import { exportToCsv } from '@/lib/exportCsv';
 import { useOptionList } from '@/hooks/useOptionList';
 import { useSystemConfig } from '@/hooks/useSystemConfig';
-import { IconExport, IconTrash } from '@/components/icons';
+import { IconEdit, IconExport, IconTrash } from '@/components/icons';
 import { ActionBtn } from '@/components/ui/RowActions';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import type { Recipe, Product, RawMaterial, Production, RecipeIngredient } from '@/types/database';
@@ -43,8 +43,10 @@ export default function RecipesPage() {
 
   const [recipeForm, setRecipeForm] = useState<{
     שם_מתכון: string; מוצר_id: string; כמות_תוצר: number; הערות: string;
-    רכיבים: { חומר_גלם_id: string; כמות_נדרשת: number; יחידת_מידה: string }[];
+    רכיבים: { id?: string; חומר_גלם_id: string; כמות_נדרשת: number; יחידת_מידה: string }[];
   }>({ שם_מתכון: '', מוצר_id: '', כמות_תוצר: 1, הערות: '', רכיבים: [] });
+  // null → the recipe modal creates a new recipe; an id → it edits that one.
+  const [editingRecipeId, setEditingRecipeId] = useState<string | null>(null);
 
   // Managed units list (with hardcoded fallback) + default unit for new rows.
   const { values: unitOptions } = useOptionList('units_of_measure');
@@ -227,18 +229,53 @@ export default function RecipesPage() {
     });
   };
 
+  const openNewRecipe = () => {
+    setEditingRecipeId(null);
+    setRecipeForm({ שם_מתכון: '', מוצר_id: '', כמות_תוצר: 1, הערות: '', רכיבים: [] });
+    setShowRecipeModal(true);
+  };
+
+  const openEditRecipe = (r: Recipe) => {
+    const ings = (r as Recipe & { רכיבי_מתכון?: RecipeIngredient[] }).רכיבי_מתכון ?? [];
+    setEditingRecipeId(r.id);
+    setRecipeForm({
+      שם_מתכון: r.שם_מתכון,
+      מוצר_id: '',
+      כמות_תוצר: Number(r.כמות_תוצר) || 1,
+      הערות: r.הערות || '',
+      רכיבים: ings.map(i => ({
+        id: i.id,
+        חומר_גלם_id: i.חומר_גלם_id || '',
+        כמות_נדרשת: Number(i.כמות_נדרשת) || 0,
+        יחידת_מידה: i.יחידת_מידה,
+      })),
+    });
+    setShowRecipeModal(true);
+  };
+
   const handleSaveRecipe = async () => {
-    if (!recipeForm.שם_מתכון) { toast.error('שם מתכון הוא שדה חובה'); return; }
+    if (!recipeForm.שם_מתכון.trim()) { toast.error('שם מתכון הוא שדה חובה'); return; }
     setSaving(true);
     try {
-      const res = await fetch('/api/recipes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(recipeForm),
-      });
+      const res = editingRecipeId
+        ? await fetch(`/api/recipes/${editingRecipeId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              שם_מתכון: recipeForm.שם_מתכון,
+              כמות_תוצר: recipeForm.כמות_תוצר,
+              הערות: recipeForm.הערות,
+              רכיבים: recipeForm.רכיבים,
+            }),
+          })
+        : await fetch('/api/recipes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(recipeForm),
+          });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
-      toast.success('מתכון נשמר');
+      toast.success(editingRecipeId ? 'המתכון עודכן' : 'מתכון נשמר');
       setShowRecipeModal(false);
       fetchAll();
     } catch (err: unknown) {
@@ -407,7 +444,7 @@ export default function RecipesPage() {
         )}
         <div className="mr-auto">
           {tab === 'recipes'
-            ? <Button size="sm" onClick={() => setShowRecipeModal(true)}>+ מתכון חדש</Button>
+            ? <Button size="sm" onClick={openNewRecipe}>+ מתכון חדש</Button>
             : <Button size="sm" onClick={() => openProductionModal()}>+ רשום ייצור</Button>}
         </div>
       </div>
@@ -417,7 +454,7 @@ export default function RecipesPage() {
           {/* ── Recipes tab ──────────────────────────────────────────────── */}
           {tab === 'recipes' && (
             recipes.length === 0
-              ? <EmptyState title="אין מתכונים" action={<Button onClick={() => setShowRecipeModal(true)}>+ מתכון חדש</Button>} />
+              ? <EmptyState title="אין מתכונים" action={<Button onClick={openNewRecipe}>+ מתכון חדש</Button>} />
               : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {recipes.map(r => {
@@ -455,6 +492,7 @@ export default function RecipesPage() {
                             >
                               הפק ייצור
                             </button>
+                            <ActionBtn title="עריכת מתכון" onClick={() => openEditRecipe(r)} icon={<IconEdit className="w-4 h-4" />} />
                             <ActionBtn title="מחיקה" variant="danger" onClick={() => setConfirmId(r.id)} icon={<IconTrash className="w-4 h-4" />} />
                           </div>
                         </div>
@@ -581,12 +619,12 @@ export default function RecipesPage() {
       )}
 
       {/* ── Recipe modal ──────────────────────────────────────────────────── */}
-      <Modal open={showRecipeModal} onClose={() => setShowRecipeModal(false)} title="מתכון חדש" size="lg">
+      <Modal open={showRecipeModal} onClose={() => setShowRecipeModal(false)} title={editingRecipeId ? 'עריכת מתכון' : 'מתכון חדש'} size="lg">
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <Input label="שם מתכון *" value={recipeForm.שם_מתכון}
               onChange={e => setRecipeForm(p => ({ ...p, שם_מתכון: e.target.value }))} />
-            <div>
+            {!editingRecipeId && <div>
               <Combobox label="משויך למוצר למכירה" value={recipeForm.מוצר_id}
                 onChange={v => setRecipeForm(p => ({ ...p, מוצר_id: v }))}
                 options={products.map(p => ({ value: p.id, label: p.שם_מוצר }))}
@@ -594,7 +632,7 @@ export default function RecipesPage() {
               <p className="text-[10.5px] mt-1" style={{ color: '#8A735F' }}>
                 שיוך זה מאפשר לרישום ייצור להוסיף מלאי למוצר המוגמר.
               </p>
-            </div>
+            </div>}
             <Input label="כמות תוצר לאצווה" type="number" value={recipeForm.כמות_תוצר}
               onChange={e => setRecipeForm(p => ({ ...p, כמות_תוצר: Number(e.target.value) }))} min={1} />
             <Textarea label="הערות" value={recipeForm.הערות}
@@ -607,13 +645,12 @@ export default function RecipesPage() {
               <Button size="sm" variant="outline" type="button" onClick={addIngredient}>+ הוסף רכיב</Button>
             </div>
             {recipeForm.רכיבים.map((ing, idx) => (
-              <div key={idx} className="grid grid-cols-4 gap-2 mb-2">
+              <div key={ing.id ?? `new-${idx}`} className="grid grid-cols-4 gap-2 mb-2">
                 <div className="col-span-2">
-                  <Select value={ing.חומר_גלם_id}
-                    onChange={e => updateIngredient(idx, 'חומר_גלם_id', e.target.value)}>
-                    <option value="">בחר חומר גלם...</option>
-                    {materials.map(m => <option key={m.id} value={m.id}>{m.שם_חומר_גלם}</option>)}
-                  </Select>
+                  <Combobox value={ing.חומר_גלם_id}
+                    onChange={v => updateIngredient(idx, 'חומר_גלם_id', v)}
+                    options={materials.map(m => ({ value: m.id, label: m.שם_חומר_גלם }))}
+                    placeholder="בחר חומר גלם..." searchPlaceholder="חיפוש חומר גלם..." emptyText="לא נמצאו חומרי גלם" />
                 </div>
                 <Input type="number" value={ing.כמות_נדרשת}
                   onChange={e => updateIngredient(idx, 'כמות_נדרשת', Number(e.target.value))}
@@ -636,7 +673,7 @@ export default function RecipesPage() {
 
           <div className="flex gap-3 justify-end pt-2">
             <Button variant="outline" onClick={() => setShowRecipeModal(false)}>ביטול</Button>
-            <Button onClick={handleSaveRecipe} loading={saving}>שמור מתכון</Button>
+            <Button onClick={handleSaveRecipe} loading={saving}>{editingRecipeId ? 'שמור שינויים' : 'שמור מתכון'}</Button>
           </div>
         </div>
       </Modal>

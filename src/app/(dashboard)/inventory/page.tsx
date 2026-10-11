@@ -329,6 +329,15 @@ export default function InventoryPage() {
         // The server returns a clear Hebrew message (and counts) when the
         // material is still in use — show it as-is.
         toast.error(json.error || 'שגיאה במחיקה');
+        // Still used in recipes/documents → go straight to the replace flow,
+        // which frees the duplicate so the delete can succeed afterwards.
+        if (json.blocked && confirmMaterial) {
+          const m = confirmMaterial;
+          setConfirmMaterial(null);
+          setReplaceMaterial(m);
+          setReplaceTargetId('');
+          setReplaceSearch('');
+        }
         return;
       }
       toast.success('חומר הגלם נמחק');
@@ -356,6 +365,9 @@ export default function InventoryPage() {
       const json = await res.json();
       if (!res.ok) { toast.error(json.error || 'שגיאה בהחלפה'); return; }
       toast.success('השימושים הועברו בהצלחה. עכשיו אפשר למחוק את חומר הגלם המיותר.');
+      if (json.separateUnitLines > 0) {
+        toast('במתכון אחד או יותר החומר מופיע עכשיו בשתי שורות ביחידות שונות — כדאי לאחד אותן בעריכת המתכון.', { icon: 'ℹ️', duration: 8000 });
+      }
       const dup = replaceMaterial;
       setReplaceMaterial(null);
       fetchInventory();

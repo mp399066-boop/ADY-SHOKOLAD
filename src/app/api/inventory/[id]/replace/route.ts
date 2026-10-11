@@ -8,7 +8,10 @@ export const dynamic = 'force-dynamic';
 // References moved:
 //   1. recipe ingredients (רכיבי_מתכון) — repointed; if both materials already
 //      appear in the same recipe, quantities are combined only when the unit
-//      matches, otherwise the whole operation is blocked for manual review.
+//      matches. When the units differ the line is repointed as a separate
+//      ingredient line (nothing combined, nothing lost) so the operator can
+//      fix it in the recipe editor — blocking here left duplicates that could
+//      never be deleted.
 //   2. purchase order items (פריטי_הזמנת_רכש) — repointed.
 //   3. the duplicate name is added as an alias of the target material.
 // Stock quantities, תנועות_מלאי history and recipes themselves are untouched.
@@ -54,24 +57,14 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const tgtByRecipe = new Map<string, { id: string; כמות_נדרשת: number; יחידת_מידה: string | null }>();
   for (const r of tgtRows ?? []) tgtByRecipe.set(r.מתכון_id, r);
 
-  for (const r of dupRows ?? []) {
-    const overlap = tgtByRecipe.get(r.מתכון_id);
-    if (overlap && norm(overlap.יחידת_מידה) !== norm(r.יחידת_מידה)) {
-      return NextResponse.json(
-        {
-          error: 'אותו חומר מופיע במתכון ביחידות שונות — דורש בדיקה ידנית. לא בוצעה החלפה.',
-          needsManualReview: true,
-        },
-        { status: 409 },
-      );
-    }
-  }
-
-  // ── Apply (units already validated) ──
+  // ── Apply ──
   // 1a. Recipes where both appear & units match → combine into target row, drop dup row.
+  //     Different units → left for 1b (kept as its own line, repointed).
+  let separateUnitLines = 0;
   for (const r of dupRows ?? []) {
     const overlap = tgtByRecipe.get(r.מתכון_id);
     if (!overlap) continue;
+    if (norm(overlap.יחידת_מידה) !== norm(r.יחידת_מידה)) { separateUnitLines++; continue; }
     const combined = (Number(overlap.כמות_נדרשת) || 0) + (Number(r.כמות_נדרשת) || 0);
     const { error: upErr } = await supabase.from('רכיבי_מתכון').update({ כמות_נדרשת: combined }).eq('id', overlap.id);
     if (upErr) return NextResponse.json({ error: 'איחוד הכמויות במתכון נכשל. לא הושלמה ההחלפה.' }, { status: 500 });
@@ -113,6 +106,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   return NextResponse.json({
     success: true,
     movedTo: { id: target.id, name: target.שם_חומר_גלם },
+    separateUnitLines,
     duplicate: { id: dup.id, name: dup.שם_חומר_גלם },
   });
 }

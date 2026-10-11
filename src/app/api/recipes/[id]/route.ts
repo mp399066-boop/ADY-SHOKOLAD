@@ -13,6 +13,112 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   return NextResponse.json({ success: true });
 }
 
+// Full recipe edit from the recipe card's "עריכה" button: name, yield,
+// notes and the ingredient lines (change material / quantity / unit, add,
+// remove). The production-target link is NOT touched here — it has its own
+// PATCH flow below. Ingredient lines are diffed by id so unchanged rows keep
+// their ids; nothing else references רכיבי_מתכון.id.
+export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
+  const auth = await requireManagementUser();
+  if (!auth) return unauthorizedResponse();
+  const supabase = createAdminClient();
+
+  type IngIn = { id?: unknown; חומר_גלם_id?: unknown; כמות_נדרשת?: unknown; יחידת_מידה?: unknown };
+  let body: { שם_מתכון?: unknown; כמות_תוצר?: unknown; הערות?: unknown; רכיבים?: unknown };
+  try { body = await req.json(); }
+  catch { return NextResponse.json({ error: 'גוף הבקשה אינו JSON תקין' }, { status: 400 }); }
+
+  const name = typeof body.שם_מתכון === 'string' ? body.שם_מתכון.trim() : '';
+  if (!name) return NextResponse.json({ error: 'שם המתכון הוא שדה חובה' }, { status: 400 });
+  const yieldQty = Number(body.כמות_תוצר);
+  if (!Number.isFinite(yieldQty) || yieldQty <= 0) {
+    return NextResponse.json({ error: 'כמות תוצר חייבת להיות מספר חיובי' }, { status: 400 });
+  }
+  const notes = typeof body.הערות === 'string' ? body.הערות.trim() : '';
+  if (!Array.isArray(body.רכיבים)) return NextResponse.json({ error: 'רשימת רכיבים חסרה' }, { status: 400 });
+
+  // Rows without a chosen material are dropped (same as create); every
+  // remaining row must have a positive quantity and a unit.
+  const lines: { id: string | null; חומר_גלם_id: string; כמות_נדרשת: number; יחידת_מידה: string }[] = [];
+  for (const raw of body.רכיבים as IngIn[]) {
+    const matId = typeof raw?.חומר_גלם_id === 'string' ? raw.חומר_גלם_id.trim() : '';
+    if (!matId) continue;
+    const qty = Number(raw.כמות_נדרשת);
+    const unit = typeof raw.יחידת_מידה === 'string' ? raw.יחידת_מידה.trim() : '';
+    if (!Number.isFinite(qty) || qty <= 0) {
+      return NextResponse.json({ error: 'כל רכיב חייב כמות גדולה מאפס' }, { status: 400 });
+    }
+    if (!unit) return NextResponse.json({ error: 'כל רכיב חייב יחידת מידה' }, { status: 400 });
+    lines.push({ id: typeof raw.id === 'string' && raw.id ? raw.id : null, חומר_גלם_id: matId, כמות_נדרשת: qty, יחידת_מידה: unit });
+  }
+
+  const { data: recipe, error: rErr } = await supabase.from('מתכונים').select('id').eq('id', params.id).maybeSingle();
+  if (rErr) return NextResponse.json({ error: 'טעינת המתכון נכשלה' }, { status: 500 });
+  if (!recipe) return NextResponse.json({ error: 'המתכון לא נמצא' }, { status: 404 });
+
+  // Every referenced material must exist.
+  const matIds = Array.from(new Set(lines.map(l => l.חומר_גלם_id)));
+  if (matIds.length) {
+    const { data: mats, error: mErr } = await supabase.from('מלאי_חומרי_גלם').select('id').in('id', matIds);
+    if (mErr) return NextResponse.json({ error: 'בדיקת חומרי הגלם נכשלה' }, { status: 500 });
+    if ((mats ?? []).length !== matIds.length) {
+      return NextResponse.json({ error: 'אחד מחומרי הגלם לא נמצא במלאי' }, { status: 400 });
+    }
+  }
+
+  // Existing lines of THIS recipe — a client-sent id that isn't one of them
+  // is treated as a new line, never as a write to another recipe's row.
+  const { data: existing, error: eErr } = await supabase.from('רכיבי_מתכון').select('id').eq('מתכון_id', params.id);
+  if (eErr) return NextResponse.json({ error: 'טעינת רכיבי המתכון נכשלה' }, { status: 500 });
+  const existingIds = new Set<string>((existing ?? []).map((r: { id: string }) => r.id));
+
+  const { error: upErr } = await supabase
+    .from('מתכונים')
+    .update({ שם_מתכון: name, כמות_תוצר: yieldQty, הערות: notes || null })
+    .eq('id', params.id);
+  if (upErr) {
+    console.error('[recipes/put] recipe update failed', { recipe: params.id, code: upErr.code });
+    return NextResponse.json({ error: 'שמירת המתכון נכשלה' }, { status: 500 });
+  }
+
+  const keptIds = new Set<string>();
+  const toInsert: { מתכון_id: string; חומר_גלם_id: string; כמות_נדרשת: number; יחידת_מידה: string }[] = [];
+  for (const l of lines) {
+    if (l.id && existingIds.has(l.id) && !keptIds.has(l.id)) {
+      keptIds.add(l.id);
+      const { error } = await supabase
+        .from('רכיבי_מתכון')
+        .update({ חומר_גלם_id: l.חומר_גלם_id, כמות_נדרשת: l.כמות_נדרשת, יחידת_מידה: l.יחידת_מידה })
+        .eq('id', l.id);
+      if (error) {
+        console.error('[recipes/put] ingredient update failed', { recipe: params.id, code: error.code });
+        return NextResponse.json({ error: 'עדכון רכיבי המתכון נכשל' }, { status: 500 });
+      }
+    } else {
+      toInsert.push({ מתכון_id: params.id, חומר_גלם_id: l.חומר_גלם_id, כמות_נדרשת: l.כמות_נדרשת, יחידת_מידה: l.יחידת_מידה });
+    }
+  }
+  if (toInsert.length) {
+    const { error } = await supabase.from('רכיבי_מתכון').insert(toInsert);
+    if (error) {
+      console.error('[recipes/put] ingredient insert failed', { recipe: params.id, code: error.code });
+      return NextResponse.json({ error: 'הוספת רכיבים למתכון נכשלה' }, { status: 500 });
+    }
+  }
+  const toDelete = Array.from(existingIds).filter(id => !keptIds.has(id));
+  if (toDelete.length) {
+    const { error } = await supabase.from('רכיבי_מתכון').delete().in('id', toDelete);
+    if (error) {
+      console.error('[recipes/put] ingredient delete failed', { recipe: params.id, code: error.code });
+      return NextResponse.json({ error: 'הסרת רכיבים מהמתכון נכשלה' }, { status: 500 });
+    }
+  }
+
+  console.log('[recipes/put] recipe:', params.id, '| lines:', lines.length,
+    '| added:', toInsert.length, '| removed:', toDelete.length, '| by:', auth.email);
+  return NextResponse.json({ success: true });
+}
+
 // Manual recipe → production-target link / unlink. Used by the recipe
 // card's "שייכי למלאי" picker. UNLIKE /api/recipes/auto-link-apply (which
 // refuses overwrites by design) this route ALLOWS the operator to change
