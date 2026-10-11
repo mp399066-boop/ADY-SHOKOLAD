@@ -18,7 +18,7 @@ export async function GET() {
   if (!auth) return forbiddenResponse();
   const supabase = createAdminClient();
 
-  const [rowsRes, recipesRes, rawRes, productsRes, pfRes, rateRes] = await Promise.all([
+  const [rowsRes, recipesRes, rawRes, productsRes, pfRes, rateRes, retailRes] = await Promise.all([
     supabase.from('עלויות_מוצרים').select(COST_COLUMNS).order('סדר').order('שם'),
     supabase.from('מתכונים')
       .select('id, שם_מתכון, כמות_תוצר, יחידת_תפוקה, production_target_type, production_target_id, רכיבי_מתכון(חומר_גלם_id, כמות_נדרשת, יחידת_מידה)')
@@ -29,9 +29,10 @@ export async function GET() {
     supabase.from('מוצרים_למכירה').select('id, שם_מוצר, מחיר, פעיל').order('שם_מוצר'),
     supabase.from('סוגי_פטיפורים').select('id, שם_פטיפור, פעיל').order('שם_פטיפור'),
     supabase.from('system_config').select('value').eq('key', 'labor_hourly_rate').maybeSingle(),
+    supabase.from('מחירון').select('מוצר_id, מחיר').eq('price_type', 'retail').eq('פעיל', true).not('מוצר_id', 'is', null),
   ]);
 
-  const firstError = recipesRes.error || rawRes.error || productsRes.error || pfRes.error;
+  const firstError = recipesRes.error || rawRes.error || productsRes.error || pfRes.error || retailRes.error;
   if (firstError) {
     console.error('[costs GET]', { code: firstError.code });
     return NextResponse.json({ error: 'שגיאה בטעינת נתוני העלויות' }, { status: 500 });
@@ -66,8 +67,19 @@ export async function GET() {
     ...m,
     מחיר_ליחידה: m.מחיר_ליחידה == null ? null : Number(m.מחיר_ליחידה),
   }));
+  // Sale price = the product's retail price-list row when it has one, else its
+  // base price — the same order the new-order form resolves a private
+  // customer's price in.
+  const retailByProduct = new Map<string, number>();
+  for (const r of (retailRes.data ?? []) as { מוצר_id: string; מחיר: unknown }[]) {
+    if (!retailByProduct.has(r.מוצר_id) && r.מחיר != null) retailByProduct.set(r.מוצר_id, Number(r.מחיר));
+  }
   const catalog = [
-    ...((productsRes.data ?? []) as ProductRow[]).map(p => ({ type: 'sale_product' as const, id: p.id, name: p.שם_מוצר, price: p.מחיר == null ? null : Number(p.מחיר), active: p.פעיל !== false })),
+    ...((productsRes.data ?? []) as ProductRow[]).map(p => ({
+      type: 'sale_product' as const, id: p.id, name: p.שם_מוצר,
+      price: retailByProduct.get(p.id) ?? (p.מחיר == null ? null : Number(p.מחיר)),
+      active: p.פעיל !== false,
+    })),
     ...((pfRes.data ?? []) as PetitFourRow[]).map(f => ({ type: 'petit_four' as const, id: f.id, name: f.שם_פטיפור, price: null, active: f.פעיל !== false })),
   ];
   const rateNum = Number(rateRes.data?.value);

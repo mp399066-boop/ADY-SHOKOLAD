@@ -37,6 +37,15 @@ export const rawPriceSchema = z.object({
     .transform(v => (v == null ? null : round2(v))),
 });
 
+export const salePriceSchema = z.object({
+  // No coercion of null / '' — an empty field must not silently become ₪0.
+  מחיר: z.preprocess(
+    v => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v),
+    z.number({ required_error: 'יש להזין מחיר', invalid_type_error: 'מחיר לא תקין' }).finite('מחיר לא תקין')
+      .min(0, 'מחיר לא יכול להיות שלילי').max(1_000_000, 'מחיר לא תקין'),
+  ).transform(round2),
+});
+
 export const COSTS_MIGRATION_HINT =
   'טבלת עלויות המוצרים עדיין לא קיימת. יש להריץ את מיגרציה 058 (supabase/migrations/058_product_costs.sql) ב-Supabase SQL Editor.';
 
