@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/Card';
 import { formatDate } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import type { Employee, WorkTask } from '@/types/database';
+import { useConfirm } from '@/components/ui/ConfirmProvider';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -70,6 +71,7 @@ function isOverdue(task: WorkTask) {
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function EmployeesPage() {
+  const confirm = useConfirm();
   const [tab, setTab] = useState<Tab>('board');
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [tasks, setTasks] = useState<WorkTask[]>([]);
@@ -200,7 +202,7 @@ export default function EmployeesPage() {
   }
 
   async function deleteTask(taskId: string) {
-    if (!window.confirm('למחוק את המשימה?')) return;
+    if (!(await confirm('למחוק את המשימה?'))) return;
     const res = await fetch(`/api/tasks/${taskId}`, { method: 'DELETE' });
     if (!res.ok) { toast.error('שגיאה במחיקה'); return; }
     setTasks(prev => prev.filter(t => t.id !== taskId));

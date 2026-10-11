@@ -16,6 +16,7 @@ import Link from 'next/link';
 import { exportToCsv } from '@/lib/exportCsv';
 import { buildCourierWhatsAppMessage, type CourierItem } from '@/lib/courier-notification';
 import toast from 'react-hot-toast';
+import { useConfirm } from '@/components/ui/ConfirmProvider';
 
 // ─── Delivery summary KPI cards (grouped by date → city) ───────────────────
 
@@ -1041,6 +1042,7 @@ function DeliveriesContent() {
 // ─── Couriers tab ──────────────────────────────────────────────────────────
 
 function CouriersContent() {
+  const confirm = useConfirm();
   const [couriers, setCouriers] = useState<CourierWithStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -1102,7 +1104,7 @@ function CouriersContent() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('לסמן שליח זה כלא פעיל?')) return;
+    if (!(await confirm('לסמן שליח זה כלא פעיל?'))) return;
     const res = await fetch(`/api/couriers/${id}`, { method: 'DELETE' });
     if (!res.ok) { toast.error('שגיאה במחיקה'); return; }
     toast.success('שליח הוסר');

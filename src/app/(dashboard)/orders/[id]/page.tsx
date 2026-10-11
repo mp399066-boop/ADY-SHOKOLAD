@@ -17,6 +17,7 @@ import { downloadOrderSummaryPng } from '@/lib/order-summary-png';
 import toast from 'react-hot-toast';
 import type { Order, OrderItem, OrderRecipient, Customer, Product, Package, PetitFourType, Employee, WorkTask } from '@/types/database';
 import { DeliveryTypeCards } from '@/components/orders/DeliveryTypeCards';
+import { useConfirm } from '@/components/ui/ConfirmProvider';
 
 // ─── Interfaces ────────────────────────────────────────────────────────────────
 
@@ -306,6 +307,7 @@ function StatusTimeline({
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function OrderDetailPage() {
+  const confirm = useConfirm();
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const [order, setOrder] = useState<FullOrder | null>(null);
@@ -1533,16 +1535,16 @@ export default function OrderDetailPage() {
               receiptLoading={issuingDocType === 'receipt'}
               busy={issuingDoc || savingManualDoc}
               hasManualMorning={hasManualMorning}
-              onIssueInvoiceReceipt={() => {
-                if (manualWarning && !window.confirm(manualWarning)) return;
+              onIssueInvoiceReceipt={async () => {
+                if (manualWarning && !(await confirm(manualWarning))) return;
                 setPreviewDocType('invoice_receipt');
               }}
-              onIssueReceipt={() => {
-                if (manualWarning && !window.confirm(manualWarning)) return;
+              onIssueReceipt={async () => {
+                if (manualWarning && !(await confirm(manualWarning))) return;
                 setPreviewDocType('receipt');
               }}
-              onIssueTaxInvoice={() => {
-                if (manualWarning && !window.confirm(manualWarning)) return;
+              onIssueTaxInvoice={async () => {
+                if (manualWarning && !(await confirm(manualWarning))) return;
                 setPreviewDocType('tax_invoice');
               }}
               onMarkManualMorning={() => setShowManualMorningModal(true)}
@@ -4285,6 +4287,7 @@ function PaymentMethodModal({
   onClose: () => void;
   onIssue: (paymentMethod: string, force: boolean) => void | Promise<void>;
 }) {
+  const confirm = useConfirm();
   const [payMethod, setPayMethod] = useState<string>('');
   const [customMethod, setCustomMethod] = useState<string>('');
 
@@ -4295,7 +4298,7 @@ function PaymentMethodModal({
   const handleIssue = async () => {
     if (!canSubmit) return;
     if (duplicate) {
-      const ok = window.confirm(`כבר קיים מסמך מסוג ${title} להזמנה. הפקה נוספת עלולה ליצור כפילות. להמשיך?`);
+      const ok = await confirm(`כבר קיים מסמך מסוג ${title} להזמנה. הפקה נוספת עלולה ליצור כפילות. להמשיך?`);
       if (!ok) return;
     }
     await onIssue(effectiveMethod, duplicate);

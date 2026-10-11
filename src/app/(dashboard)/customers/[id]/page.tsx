@@ -14,6 +14,7 @@ import { CustomerCommunication } from '@/components/CustomerCommunication';
 import { formatDate, formatCurrency } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import type { Customer, Order, Invoice, CommunicationLog, CustomerCredit } from '@/types/database';
+import { useConfirm } from '@/components/ui/ConfirmProvider';
 
 /* ─── types ──────────────────────────────────────────────────────────────── */
 type FullCustomer = Customer & {
@@ -246,6 +247,7 @@ function StatusPill({ label, color }: { label: string; color: string }) {
 
 /* ─── page ───────────────────────────────────────────────────────────────── */
 export default function CustomerDetailPage() {
+  const confirm = useConfirm();
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
 
@@ -303,7 +305,7 @@ export default function CustomerDetailPage() {
   };
 
   const handleDelete = async () => {
-    if (!window.confirm('האם למחוק את הלקוח לצמיתות?')) return;
+    if (!(await confirm('האם למחוק את הלקוח לצמיתות?'))) return;
     try {
       const res = await fetch(`/api/customers/${id}`, { method: 'DELETE' });
       const json = await res.json();

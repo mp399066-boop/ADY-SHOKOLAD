@@ -26,6 +26,7 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { PageLoading } from '@/components/ui/LoadingSpinner';
 import toast from 'react-hot-toast';
+import { useConfirm } from '@/components/ui/ConfirmProvider';
 
 const SETTINGS_TABS = [
   { href: '/settings',                     label: 'הגדרות עסק',         adminOnly: false },
@@ -233,6 +234,7 @@ function BackfillSection({
 
 // ── Page ───────────────────────────────────────────────────────────────────
 export default function InventoryBackfillPage() {
+  const confirm = useConfirm();
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(true);
   const [preview, setPreview] = useState<DryRunResponse | null>(null);
@@ -313,7 +315,7 @@ export default function InventoryBackfillPage() {
       toast.error('לא נבחרו הזמנות');
       return;
     }
-    if (!window.confirm(`לבצע ${description} עבור ${orderIds.length} הזמנות?`)) return;
+    if (!(await confirm(`לבצע ${description} עבור ${orderIds.length} הזמנות?`))) return;
     setRunning(true);
     setResult(null);
     try {

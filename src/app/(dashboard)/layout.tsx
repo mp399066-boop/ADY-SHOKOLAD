@@ -6,6 +6,7 @@ import GlobalSearch from '@/components/search/GlobalSearch';
 import DemoBadge from '@/components/demo/DemoBadge';
 import { KitchenTeamChat } from './dashboard/components/KitchenTeamChat';
 import { Toaster } from 'react-hot-toast';
+import { ConfirmProvider } from '@/components/ui/ConfirmProvider';
 
 export default function DashboardLayout({
   children,
@@ -13,6 +14,7 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   return (
+    <ConfirmProvider>
     <div className="flex flex-col h-screen overflow-hidden" style={{ backgroundColor: '#F8F6F2' }}>
       <NavBar />
       <main className="flex-1 overflow-y-auto">
@@ -43,5 +45,6 @@ export default function DashboardLayout({
         }}
       />
     </div>
+    </ConfirmProvider>
   );
 }
