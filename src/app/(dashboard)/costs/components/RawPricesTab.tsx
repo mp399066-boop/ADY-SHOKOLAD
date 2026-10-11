@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import { isSuspiciousPrice, type CostRawMaterial, type CostRecipe, type CostRow } from '@/lib/product-costs';
 import { fmtDate } from '@/lib/finance-export';
-import { C, StatCard, Th, Td, EmptyNote } from '../../finance/components/shared';
+import { C, StatCard, Th, Td, EmptyNote, THEAD_STYLE } from '../../finance/components/shared';
 
 type Filter = 'used' | 'used_missing' | 'missing' | 'suspicious' | 'all';
 
@@ -105,7 +105,7 @@ export default function RawPricesTab({ rawMaterials, recipes, rows, onPriceSaved
       ) : (
         <div className="rounded-xl bg-white overflow-x-auto" style={{ border: `1px solid ${C.border}` }}>
           <table className="w-full">
-            <thead style={{ backgroundColor: C.soft }}>
+            <thead style={THEAD_STYLE}>
               <tr>
                 <Th>חומר גלם</Th>
                 <Th>מחיר ליחידה</Th>

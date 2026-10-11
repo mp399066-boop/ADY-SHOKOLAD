@@ -8,7 +8,7 @@ import {
   type CostRawMaterial, type CostRecipe, type CostRow, type CostsData, type RowCost,
 } from '@/lib/product-costs';
 import { downloadExcel, type Cell } from '@/lib/finance-export';
-import { C, money, StatCard, ExportButtons, Th, Td, EmptyNote } from '../../finance/components/shared';
+import { C, money, StatCard, ExportButtons, Th, Td, EmptyNote, THEAD_STYLE, TOTAL_ROW_STYLE } from '../../finance/components/shared';
 import CostFormModal from './CostFormModal';
 
 type Filter = 'all' | 'missing' | 'recipe' | 'no_time';
@@ -35,7 +35,10 @@ export default function ProductCostsTab({ data, rawById, recipesById, reload }: 
   const computed = useMemo(() => data.rows.map(row => {
     const cost = computeRowCost(row, recipesById, rawById, data.hourlyRate);
     const item = row.סוג_יעד && row.יעד_id ? catalogByKey.get(`${row.סוג_יעד}:${row.יעד_id}`) : undefined;
-    return { row, cost, item, margin: marginPct(item?.price, cost.total) };
+    const price = Number(item?.price);
+    // Profit per unit in ₪ — same basis as the % margin (catalog price − unit cost).
+    const profit = price > 0 && cost.total != null ? Math.round((price - cost.total) * 100) / 100 : null;
+    return { row, cost, item, margin: marginPct(item?.price, cost.total), profit };
   }), [data.rows, data.hourlyRate, recipesById, rawById, catalogByKey]);
 
   const visible = useMemo(() => {
@@ -56,6 +59,16 @@ export default function ProductCostsTab({ data, rawById, recipesById, reload }: 
     withTime: computed.filter(c => c.cost.laborSource === 'time').length,
   }), [computed]);
 
+  // Most worth producing: highest ₪ profit per unit among products whose cost
+  // is complete (partial costs would overstate the profit).
+  const best = useMemo(() => {
+    const ranked = computed
+      .filter(c => c.cost.complete && c.profit != null)
+      .sort((a, b) => (b.profit ?? 0) - (a.profit ?? 0));
+    const byMargin = [...ranked].sort((a, b) => (b.margin ?? 0) - (a.margin ?? 0))[0];
+    return { top: ranked[0], byMargin, count: ranked.length };
+  }, [computed]);
+
   const confirmDelete = async () => {
     if (!toDelete) return;
     setDeleting(true);
@@ -74,13 +87,13 @@ export default function ProductCostsTab({ data, rawById, recipesById, reload }: 
   };
 
   const exportExcel = async () => {
-    const header: Cell[] = ['שם המוצר', 'גודל', 'מוצר בקטלוג', 'עלות חומרים', 'מקור עלות החומרים', 'זמן עבודה (דקות)', 'ליחידות', 'עלות עבודה', 'מקור עלות העבודה', 'עלות ליחידה', 'מחיר מכירה', 'רווח %', 'הערות'];
-    const rows: Cell[][] = computed.map(({ row, cost, item, margin }) => [
+    const header: Cell[] = ['שם המוצר', 'גודל', 'מוצר בקטלוג', 'עלות חומרים', 'מקור עלות החומרים', 'זמן עבודה (דקות)', 'ליחידות', 'עלות עבודה', 'מקור עלות העבודה', 'עלות ליחידה', 'מחיר מכירה', 'רווח ₪', 'רווח %', 'הערות'];
+    const rows: Cell[][] = computed.map(({ row, cost, item, margin, profit }) => [
       row.שם, row.גודל ?? '', item?.name ?? '',
       cost.materials, materialsSourceText(cost),
       row.זמן_עבודה_דקות, row.זמן_עבודה_דקות ? row.יחידות_בזמן_עבודה : null,
       cost.labor, laborSourceText(cost),
-      cost.total, item?.price || null, margin, row.הערות ?? '',
+      cost.total, item?.price || null, profit, margin, row.הערות ?? '',
     ]);
     const meta: Cell[][] = [[`עלות שעת עבודה: ${data.hourlyRate != null ? data.hourlyRate : 'לא הוגדרה'}`], []];
     await downloadExcel(`עלויות_מוצרים_${new Date().toISOString().slice(0, 10)}`, [{ name: 'עלויות מוצרים', rows: [...meta, header, ...rows] }]);
@@ -137,7 +150,7 @@ export default function ProductCostsTab({ data, rawById, recipesById, reload }: 
       ) : (
         <div className="rounded-xl bg-white overflow-x-auto" style={{ border: `1px solid ${C.border}` }}>
           <table className="w-full">
-            <thead style={{ backgroundColor: C.soft }}>
+            <thead style={THEAD_STYLE}>
               <tr>
                 <Th>מוצר</Th>
                 <Th>עלות חומרים</Th>
@@ -150,7 +163,7 @@ export default function ProductCostsTab({ data, rawById, recipesById, reload }: 
               </tr>
             </thead>
             <tbody>
-              {visible.map(({ row, cost, item, margin }) => (
+              {visible.map(({ row, cost, item, margin, profit }) => (
                 <tr key={row.id} className="border-t hover:bg-[#FDFBF7] cursor-pointer" style={{ borderColor: C.border }} onClick={() => setEditing(row)}>
                   <Td>
                     <div className="font-medium">{row.שם}</div>
@@ -181,7 +194,10 @@ export default function ProductCostsTab({ data, rawById, recipesById, reload }: 
                   <Td><span className="tabular-nums">{item?.price ? money(item.price) : '—'}</span></Td>
                   <Td>
                     {margin == null ? <span style={{ color: C.faint }}>—</span> : (
-                      <span className="tabular-nums font-medium" style={{ color: margin >= 0 ? C.green : C.red }}>{margin}%</span>
+                      <div className="tabular-nums" style={{ color: margin >= 0 ? C.green : C.red }}>
+                        <div className="font-semibold">{profit != null && profit < 0 ? '−' : ''}{money(Math.abs(profit ?? 0))}</div>
+                        <div className="text-xs">{margin}%</div>
+                      </div>
                     )}
                   </Td>
                   <Td>
@@ -192,6 +208,26 @@ export default function ProductCostsTab({ data, rawById, recipesById, reload }: 
                   </Td>
                 </tr>
               ))}
+              <tr style={TOTAL_ROW_STYLE}>
+                <td colSpan={8} className="px-4 py-3 text-sm" style={{ color: C.text }}>
+                  {best.top ? (
+                    <>
+                      <span className="font-bold">⭐ הכי שווה לייצר: {best.top.row.שם}{best.top.row.גודל ? ` (${best.top.row.גודל})` : ''}</span>
+                      {' — '}רווח של <b style={{ color: C.green }}>{money(best.top.profit ?? 0)}</b> ליחידה ({best.top.margin}%)
+                      {best.byMargin && best.byMargin !== best.top && (
+                        <span style={{ color: C.sub }}>
+                          {' · '}אחוז הרווח הגבוה ביותר: {best.byMargin.row.שם}{best.byMargin.row.גודל ? ` (${best.byMargin.row.גודל})` : ''} — {best.byMargin.margin}% ({money(best.byMargin.profit ?? 0)})
+                        </span>
+                      )}
+                      <div className="text-xs mt-0.5" style={{ color: C.sub }}>
+                        לפי רווח בש״ח ליחידה (מחיר מכירה פחות עלות ליחידה), מתוך {best.count} מוצרים עם עלות מלאה ומחיר מכירה.
+                      </div>
+                    </>
+                  ) : (
+                    <span style={{ color: C.sub }}>כדי לדעת איזה מוצר הכי שווה לייצר — צריך מוצרים עם עלות מלאה ומחיר מכירה מהקטלוג.</span>
+                  )}
+                </td>
+              </tr>
             </tbody>
           </table>
         </div>
