@@ -59,6 +59,14 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
     דמי_משלוח: number;
   };
 
+  // Same guard as create-full: staff set prices, but never negative ones.
+  const nonNegative = (v: unknown) => Number.isFinite(Number(v)) && Number(v) >= 0;
+  const badLine = [...(מוצרים ?? []), ...(מארזים ?? []), ...(פריטים_ידניים ?? [])].some(l =>
+    !(Number(l.כמות ?? 1) > 0) || !nonNegative(l.מחיר_ליחידה ?? 0));
+  if (badLine || !nonNegative(ערך_הנחה) || !nonNegative(דמי_משלוח)) {
+    return NextResponse.json({ error: 'כמות, מחיר, הנחה או דמי משלוח לא תקינים' }, { status: 400 });
+  }
+
   // Replacing the item rows would otherwise drop which recipient each line
   // belongs to. The client sends נמען_id back per line; we accept it only
   // when it names a recipient OF THIS ORDER — never a client-supplied id we

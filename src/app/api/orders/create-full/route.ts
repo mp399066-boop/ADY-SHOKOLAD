@@ -84,6 +84,16 @@ export async function POST(req: NextRequest) {
 
   if (!לקוח) return NextResponse.json({ error: 'פרטי לקוח הם חובה' }, { status: 400 });
 
+  // Prices are entered by staff (manual per-order pricing is allowed), but a
+  // negative or non-numeric quantity/price would silently lower the total.
+  const lines = [...מוצרים, ...מארזי_פטיפורים, ...(פריטים_ידניים as Record<string, unknown>[])];
+  const badLine = lines.some((l: Record<string, unknown>) => {
+    const qty = l.כמות == null ? 1 : Number(l.כמות);
+    const price = l.מחיר_ליחידה == null ? 0 : Number(l.מחיר_ליחידה);
+    return !Number.isFinite(qty) || qty <= 0 || !Number.isFinite(price) || price < 0;
+  });
+  if (badLine) return NextResponse.json({ error: 'כמות או מחיר לא תקינים באחד הפריטים' }, { status: 400 });
+
   // Multi-recipient orders (הזמנה לכמה נמענים): one customer pays, several
   // people receive. The financial side stays single (one total / invoice /
   // payment); only fulfilment fans out. normalizeRecipients validates and
