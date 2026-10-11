@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClient } from '@/lib/supabase/client';
 import type { AssistantResponse, Block, ClarifyOption, ConversationContext, Filters, ListItem, OrderSummary, ParsedIntent, Range, Tone } from '@/lib/assistant/types';
 import { CONTEXT_TTL_MS } from '@/lib/assistant/types';
 
@@ -134,11 +133,10 @@ export default function AssistantDrawer() {
 
   // Fetch brand logo from business_settings (same source as NavBar)
   useEffect(() => {
-    const supabase = createClient();
-    supabase.from('business_settings').select('logo_url').single()
-      .then(({ data }: { data: { logo_url: string | null } | null }) => {
-        if (data?.logo_url) setLogoUrl(data.logo_url);
-      });
+    fetch('/api/settings')
+      .then(r => (r.ok ? r.json() : null))
+      .then(j => { if (j?.data?.logo_url) setLogoUrl(j.data.logo_url); })
+      .catch(() => {});
   }, []);
 
   const openOrder = (id: string) => {

@@ -4,11 +4,13 @@ import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireA
 import { sendSatmarSummaryEmail } from '@/lib/satmar-email';
 import { AUTO_CREATE_MORNING_DOCUMENTS } from '@/lib/morning';
 import { logActivity, userActor } from '@/lib/activity-log';
+import { dbErrorResponse } from '@/lib/api-error';
 
 // Dedicated endpoint to mark an order as paid.
 // Reads order + customer from DB only — never accepts amounts from the client.
 // Skips invoice for satmar (sends summary email instead) and for barter (no document).
-export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
@@ -48,7 +50,7 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
 
   if (updErr) {
     console.error('[mark-paid] DB update failed:', updErr.message);
-    return NextResponse.json({ error: updErr.message }, { status: 500 });
+    return dbErrorResponse(updErr, 'orders/[id]/mark-paid');
   }
 
   // Receipt issuance is *always* manual now. Even when AUTO_CREATE_MORNING_DOCUMENTS
@@ -79,7 +81,7 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
   // already has a 'יציאה' ledger entry from creation), but the call is
   // removed for clarity and to keep the policy explicit in code.
   // void isSatmar, isBarter — referenced in logs above, no inventory branch.
-  void isSatmar; void isBarter;
+  void isSatmar;void isBarter;
 
   void logActivity({
     actor:        userActor(auth),

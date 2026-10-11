@@ -31,6 +31,7 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
+import { dbErrorResponse } from '@/lib/api-error';
 
 const ACTIVE_ORDER_STATUSES = ['חדשה', 'בהכנה', 'מוכנה למשלוח'];
 const FORWARD_WINDOW_DAYS   = 14;
@@ -134,7 +135,7 @@ export async function GET() {
     .lte('תאריך_אספקה', horizonISO);
   if (ordErr) {
     console.error('[kitchen-prep] orders query failed:', ordErr.message);
-    return NextResponse.json({ error: ordErr.message }, { status: 500 });
+    return dbErrorResponse(ordErr, 'dashboard/kitchen-prep');
   }
 
   const orders = (orderRows ?? []) as OrderRow[];
@@ -162,7 +163,7 @@ export async function GET() {
     .in('הזמנה_id', orderIds);
   if (itemsErr) {
     console.error('[kitchen-prep] items query failed:', itemsErr.message);
-    return NextResponse.json({ error: itemsErr.message }, { status: 500 });
+    return dbErrorResponse(itemsErr, 'dashboard/kitchen-prep');
   }
 
   const items = (itemRows ?? []) as unknown as ItemRow[];

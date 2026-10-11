@@ -43,7 +43,8 @@ function resolveDownloadUrl(stored: string): { downloadUrl: string; source: stri
   return { downloadUrl: trimmed, source: 'plain' };
 }
 
-export async function GET(_: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
   try {

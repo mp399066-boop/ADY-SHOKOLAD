@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
+import { dbErrorResponse } from '@/lib/api-error';
 
 // GET /api/purchasing           → items where כמות_במלאי <= כמות_מינימום (needed to order)
 // GET /api/purchasing?all=1     → ALL raw materials with purchasing fields (for settings tab)
@@ -23,7 +24,7 @@ export async function GET(req: NextRequest) {
   }
 
   const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbErrorResponse(error, 'purchasing');
 
   let result = data ?? [];
   if (!all) {

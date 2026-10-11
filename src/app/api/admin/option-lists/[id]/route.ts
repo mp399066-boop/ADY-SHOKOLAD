@@ -12,6 +12,7 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { logActivity, getActorFromRequest } from '@/lib/activity-log';
 import { getListDef } from '@/lib/option-lists';
+import { dbErrorResponse } from '@/lib/api-error';
 
 const UNDEFINED_TABLE = '42P01';
 const MIGRATION_HINT = 'טבלת הרשימות אינה קיימת עדיין. יש להריץ את מיגרציה 049 ב-Supabase.';
@@ -38,7 +39,8 @@ async function valueUsageCount(
   return total;
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
@@ -90,7 +92,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   if (error) {
     if (error.code === '23505') return NextResponse.json({ error: 'ערך זהה כבר קיים ברשימה' }, { status: 409 });
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return dbErrorResponse(error, 'admin/option-lists/[id]');
   }
 
   const wasDisabled = body.is_active === false && row.is_active === true;
@@ -111,7 +113,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   return NextResponse.json({ data });
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
@@ -142,7 +145,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
   }
 
   const { error } = await supabase.from('system_option_lists').delete().eq('id', params.id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbErrorResponse(error, 'admin/option-lists/[id]');
 
   await logActivity({
     actor: (await getActorFromRequest()) ?? undefined,

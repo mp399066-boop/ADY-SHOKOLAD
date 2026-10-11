@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
+import { dbErrorResponse } from '@/lib/api-error';
 
 export async function GET() {
   const auth = await requireManagementUser();
@@ -13,7 +14,7 @@ export async function GET() {
     .select('*, משלוחים!courier_id(סטטוס_משלוח)')
     .order('שם_שליח', { ascending: true });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbErrorResponse(error, 'couriers');
 
   const result = (data || []).map((courier: Record<string, unknown>) => {
     const deliveries = (courier.משלוחים as { סטטוס_משלוח: string }[]) || [];
@@ -64,7 +65,7 @@ export async function POST(req: NextRequest) {
     .single();
   if (error) {
     console.error('[couriers POST] error:', error.message);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return dbErrorResponse(error, 'couriers');
   }
   return NextResponse.json({ data }, { status: 201 });
 }

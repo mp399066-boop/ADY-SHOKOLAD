@@ -6,6 +6,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
+import { dbErrorResponse } from '@/lib/api-error';
 
 export async function GET(req: NextRequest) {
   const auth = await requireManagementUser();
@@ -20,7 +21,7 @@ export async function GET(req: NextRequest) {
     .eq('raw_material_id', materialId)
     .order('created_at', { ascending: true });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbErrorResponse(error, 'inventory/aliases');
   return NextResponse.json({ data });
 }
 
@@ -47,7 +48,7 @@ export async function POST(req: NextRequest) {
     if ((error.code || '') === '23505') {
       return NextResponse.json({ error: 'שם חלופי זה כבר קיים' }, { status: 409 });
     }
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return dbErrorResponse(error, 'inventory/aliases');
   }
   return NextResponse.json({ data }, { status: 201 });
 }

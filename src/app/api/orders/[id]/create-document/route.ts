@@ -113,7 +113,8 @@ const bodySchema = z.object({
   clientTaxId: z.string().max(20).regex(/^[\d\s-]*$/, 'מספר זהות / ח.פ יכול להכיל ספרות, רווחים ומקפים בלבד').optional(),
 });
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
 

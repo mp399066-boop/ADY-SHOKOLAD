@@ -9,7 +9,8 @@ import { rawPriceSchema } from '@/lib/product-costs-schema';
 // PATCH /api/costs/raw-materials/:id { מחיר_ליחידה } → updates ONLY the price
 // of a raw material (per its own יחידת_מידה). Stock quantities are untouched.
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireAdminUser();
   if (!auth) return forbiddenResponse();
   if (!z.string().uuid().safeParse(params.id).success) return NextResponse.json({ error: 'מזהה לא תקין' }, { status: 400 });

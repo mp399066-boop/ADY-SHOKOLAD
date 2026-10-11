@@ -335,6 +335,7 @@ function RecipeImportFlow() {
             </span>
             ייבוא מתכונים
           </CardTitle>
+          {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- file download from an API route, not page navigation */}
           <a
             href="/api/recipes/import-template"
             className="text-xs px-3 py-1.5 rounded-lg border font-medium"

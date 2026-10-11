@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { logActivity, getActorFromRequest } from '@/lib/activity-log';
+import { dbErrorResponse } from '@/lib/api-error';
 import {
   isValidConfigKey,
   configDefaultsMap,
@@ -35,7 +36,7 @@ export async function GET() {
     if (error.code === UNDEFINED_TABLE) {
       return NextResponse.json({ data: configDefaultsMap(), tableReady: false });
     }
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return dbErrorResponse(error, 'admin/system-config');
   }
 
   // DB values merged over defaults so any unseeded key still resolves.
@@ -89,7 +90,7 @@ export async function PATCH(req: NextRequest) {
   const { error } = await supabase.from('system_config').upsert(rows, { onConflict: 'key' });
   if (error) {
     if (error.code === UNDEFINED_TABLE) return NextResponse.json({ error: MIGRATION_HINT }, { status: 400 });
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return dbErrorResponse(error, 'admin/system-config');
   }
 
   await logActivity({

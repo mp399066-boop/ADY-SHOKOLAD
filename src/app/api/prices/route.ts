@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse, forbiddenResponse } from '@/lib/auth/requireAuthorizedUser';
+import { dbErrorResponse } from '@/lib/api-error';
 
 const VALID_PRICE_TYPES = ['retail', 'retail_quantity', 'business_fixed', 'business_quantity'] as const;
 type PriceType = typeof VALID_PRICE_TYPES[number];
@@ -43,7 +44,7 @@ export async function GET(req: NextRequest) {
       .select('*, מוצרים_למכירה(שם_מוצר)')
       .order('price_type')
       .order('product_name_snapshot');
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return dbErrorResponse(error, 'prices');
     return NextResponse.json({ data: data || [] });
   }
 
@@ -53,7 +54,7 @@ export async function GET(req: NextRequest) {
     .select('id, מוצר_id, price_type, מחיר, min_quantity, includes_vat')
     .eq('פעיל', true)
     .order('price_type');
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbErrorResponse(error, 'prices');
   return NextResponse.json({ data: data || [] });
 }
 
@@ -106,7 +107,7 @@ export async function POST(req: NextRequest) {
     .select('id, שם_מוצר, sku')
     .eq('id', productId)
     .maybeSingle();
-  if (productErr) return NextResponse.json({ error: productErr.message }, { status: 500 });
+  if (productErr) return dbErrorResponse(productErr, 'prices');
   if (!product) return NextResponse.json({ error: 'המוצר לא נמצא' }, { status: 404 });
 
   // Avoid a confusing duplicate active row for the exact same product/type/tier —
@@ -139,6 +140,6 @@ export async function POST(req: NextRequest) {
     })
     .select('*, מוצרים_למכירה(שם_מוצר)')
     .single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbErrorResponse(error, 'prices');
   return NextResponse.json({ data });
 }

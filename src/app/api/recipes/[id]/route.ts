@@ -3,13 +3,15 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
+import { dbErrorResponse } from '@/lib/api-error';
 
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
   const { error } = await supabase.from('מתכונים').delete().eq('id', params.id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbErrorResponse(error, 'recipes/[id]');
   return NextResponse.json({ success: true });
 }
 
@@ -18,7 +20,8 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
 // remove). The production-target link is NOT touched here — it has its own
 // PATCH flow below. Ingredient lines are diffed by id so unchanged rows keep
 // their ids; nothing else references רכיבי_מתכון.id.
-export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
@@ -133,7 +136,8 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 // For 'sale_product' targets we also keep מוצר_id in sync so existing UI
 // joins that still rely on the legacy column keep rendering. For
 // 'petit_four' targets מוצר_id is forced to null.
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
@@ -205,7 +209,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     .eq('id', params.id)
     .select('id, מוצר_id, production_target_type, production_target_id')
     .single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbErrorResponse(error, 'recipes/[id]');
 
   console.log('[recipes/patch] recipe:', params.id,
     '| targetType:', targetType ?? 'null',

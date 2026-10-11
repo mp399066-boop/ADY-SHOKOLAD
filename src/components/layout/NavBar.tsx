@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
-import { createClient } from '@/lib/supabase/client';
 import {
   IconDashboard, IconOrders, IconCustomers, IconProducts,
   IconDeliveries, IconInventory, IconRecipes, IconInvoices,
@@ -40,9 +39,11 @@ export default function NavBar() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
-    const supabase = createClient();
-    supabase.from('business_settings').select('*').single()
-      .then(({ data }: { data: any }) => { if (data) setSettings(data as BusinessSettings); });
+    // Via the API: business_settings has RLS with no browser policy.
+    fetch('/api/settings')
+      .then(r => (r.ok ? r.json() : null))
+      .then(j => { if (j?.data) setSettings(j.data as BusinessSettings); })
+      .catch(() => {});
   }, []);
 
   const isActive = (href: string) =>

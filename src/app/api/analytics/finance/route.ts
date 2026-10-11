@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
+import { dbErrorResponse } from '@/lib/api-error';
 
 // GET /api/analytics/finance?range=today|week|month|30days
 // Read-only — returns aggregated revenue data. Never writes to DB.
@@ -88,7 +89,7 @@ export async function GET(req: NextRequest) {
     const firstErr = e1 ?? e2 ?? e3;
     if (firstErr) {
       console.error('[analytics/finance]', firstErr.message);
-      return NextResponse.json({ error: firstErr.message }, { status: 500 });
+      return dbErrorResponse(firstErr, 'analytics/finance');
     }
 
     const paid   = (paidRows   ?? []) as Record<string, unknown>[];

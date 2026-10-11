@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { recordStockMovement } from '@/lib/inventory-movements';
+import { serverErrorResponse } from '@/lib/api-error';
 
 export async function POST(req: NextRequest) {
   const auth = await requireManagementUser();
@@ -78,6 +79,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'פעולה לא נתמכת' }, { status: 400 });
   } catch (err) {
     console.error('[bulk-inventory] error:', err);
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    return serverErrorResponse(err, 'inventory/bulk');
   }
 }

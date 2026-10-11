@@ -15,7 +15,7 @@ export interface AuthorizedUser {
  */
 export async function requireAuthorizedUser(): Promise<AuthorizedUser | null> {
   try {
-    const supabase = createClient();
+    const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user?.email) return null;
 

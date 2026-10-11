@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
+import { dbErrorResponse } from '@/lib/api-error';
 
 export const dynamic = 'force-dynamic';
 
@@ -81,7 +82,7 @@ export async function GET(req: NextRequest) {
   const { data: orders, error } = await query.order('תאריך_אספקה', { ascending: true });
   if (error) {
     console.error('[raw-materials-summary] orders query error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return dbErrorResponse(error, 'raw-materials-summary');
   }
 
   // ── 2. Build product-needs and petit-four-needs maps ─────────────────────
@@ -145,7 +146,7 @@ export async function GET(req: NextRequest) {
 
   if (recipeErr) {
     console.error('[raw-materials-summary] recipes query error:', recipeErr);
-    return NextResponse.json({ error: recipeErr.message }, { status: 500 });
+    return dbErrorResponse(recipeErr, 'raw-materials-summary');
   }
 
   // product_id → recipe details

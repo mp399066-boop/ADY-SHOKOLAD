@@ -17,6 +17,7 @@ import toast from 'react-hot-toast';
 import type { Customer, Product, PetitFourType, Package } from '@/types/database';
 import { DeliveryTypeCards } from '@/components/orders/DeliveryTypeCards';
 import { PayPlusModal } from '@/components/orders/PayPlusModal';
+import { useConfirm } from '@/components/ui/ConfirmProvider';
 
 interface OrderItem {
   מוצר_id: string;
@@ -204,6 +205,7 @@ function SectionHeader({ number, title }: { number: number; title: string }) {
 }
 
 export default function NewOrderPage() {
+  const confirm = useConfirm();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   // Synchronous lock — prevents double-submit before React re-renders the disabled button
@@ -876,7 +878,7 @@ export default function NewOrderPage() {
    * ten rows of one — which is what the quantity price tiers and the stock
    * check need to see.
    */
-  const copyRecipientItemsToAll = (sourceKey: string) => {
+  const copyRecipientItemsToAll = async (sourceKey: string) => {
     const others = recipients.filter(r => r.key !== sourceKey);
     if (others.length === 0) {
       toast.error('יש להוסיף עוד נמענים כדי לשכפל אליהם');
@@ -893,9 +895,9 @@ export default function NewOrderPage() {
     const targetsWithItems = others.filter(r =>
       orderItems.some(i => i.נמען_key === r.key) || packageItems.some(i => i.נמען_key === r.key),
     );
-    if (targetsWithItems.length > 0 && !window.confirm(
+    if (targetsWithItems.length > 0 && !(await confirm(
       `הפריטים של ${targetsWithItems.length} נמענים אחרים יוחלפו. להמשיך?`,
-    )) return;
+    ))) return;
 
     const otherKeys = new Set(others.map(r => r.key));
     const fanOut = <T extends { נמען_key?: string }>(prev: T[], src: T[]): T[] => [

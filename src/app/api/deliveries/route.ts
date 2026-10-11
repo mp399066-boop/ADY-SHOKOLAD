@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { attachDeliveryRecipients } from '@/lib/order-recipients';
+import { dbErrorResponse } from '@/lib/api-error';
 
 interface OrderRow {
   id: string;
@@ -63,7 +64,7 @@ export async function GET(req: NextRequest) {
       `)
       .eq('סטטוס_משלוח', 'נמסר')
       .order('delivered_at', { ascending: false });
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return dbErrorResponse(error, 'deliveries');
     const withRecipients = await attachDeliveryRecipients(
       supabase,
       (data || []) as Record<string, unknown>[],
@@ -105,7 +106,7 @@ export async function GET(req: NextRequest) {
   if (date) activeDeliveriesQuery = activeDeliveriesQuery.eq('תאריך_משלוח', date);
 
   const { data: activeDeliveriesRaw, error: activeErr } = await activeDeliveriesQuery;
-  if (activeErr) return NextResponse.json({ error: activeErr.message }, { status: 500 });
+  if (activeErr) return dbErrorResponse(activeErr, 'deliveries');
 
   type ActiveDeliveryRaw = DeliveryRow & { הזמנות?: OrderRow & { סטטוס_הזמנה?: string } | null };
   const activeDeliveries = ((activeDeliveriesRaw || []) as unknown as ActiveDeliveryRaw[])
@@ -129,7 +130,7 @@ export async function GET(req: NextRequest) {
   if (date) placeholderOrdersQuery = placeholderOrdersQuery.eq('תאריך_אספקה', date);
 
   const { data: placeholderOrdersRaw, error: placeholderErr } = await placeholderOrdersQuery;
-  if (placeholderErr) return NextResponse.json({ error: placeholderErr.message }, { status: 500 });
+  if (placeholderErr) return dbErrorResponse(placeholderErr, 'deliveries');
   const placeholderOrders = (placeholderOrdersRaw || []) as OrderRow[];
 
   // Drop any order that already has an active delivery row (we'll show the
@@ -221,7 +222,7 @@ export async function POST(req: NextRequest) {
       console.log('[deliveries POST] race-loss — UNIQUE rejected; returning existing for order', body.הזמנה_id);
       return NextResponse.json({ data: winner, deduped: true }, { status: 200 });
     }
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return dbErrorResponse(error, 'deliveries');
   }
   console.log(
     '[deliveries POST] created delivery.',

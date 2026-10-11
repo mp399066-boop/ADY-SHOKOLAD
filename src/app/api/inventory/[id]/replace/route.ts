@@ -22,7 +22,8 @@ import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireA
 
 const norm = (u: string | null | undefined) => (u ?? '').trim();
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();

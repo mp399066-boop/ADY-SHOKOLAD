@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { randomBytes } from 'crypto';
+import { dbErrorResponse } from '@/lib/api-error';
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
@@ -25,7 +27,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       .from('משלוחים')
       .update({ delivery_token: token })
       .eq('id', params.id);
-    if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 });
+    if (updateError) return dbErrorResponse(updateError, 'deliveries/[id]/token');
   }
 
   const origin = req.headers.get('origin') || process.env.NEXT_PUBLIC_APP_URL || '';

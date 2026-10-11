@@ -9,9 +9,11 @@ import {
   type StockAvailabilityItem,
 } from '@/lib/inventory-deduct';
 import { fetchOrderRecipients } from '@/lib/order-recipients';
+import { dbErrorResponse, dbStepErrorResponse } from '@/lib/api-error';
 
 // GET: return items for a single order (used by inline order expansion on the list page)
-export async function GET(_: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
@@ -22,7 +24,7 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
     .eq('הזמנה_id', params.id)
     .order('סדר_תצוגה', { ascending: true });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbErrorResponse(error, 'orders/[id]/items');
 
   const { data: payments } = await supabase
     .from('תשלומים')
@@ -34,7 +36,8 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
 }
 
 // PUT: replace all order items, recalculate totals
-export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
@@ -55,6 +58,14 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     ערך_הנחה: number;
     דמי_משלוח: number;
   };
+
+  // Same guard as create-full: staff set prices, but never negative ones.
+  const nonNegative = (v: unknown) => Number.isFinite(Number(v)) && Number(v) >= 0;
+  const badLine = [...(מוצרים ?? []), ...(מארזים ?? []), ...(פריטים_ידניים ?? [])].some(l =>
+    !(Number(l.כמות ?? 1) > 0) || !nonNegative(l.מחיר_ליחידה ?? 0));
+  if (badLine || !nonNegative(ערך_הנחה) || !nonNegative(דמי_משלוח)) {
+    return NextResponse.json({ error: 'כמות, מחיר, הנחה או דמי משלוח לא תקינים' }, { status: 400 });
+  }
 
   // Replacing the item rows would otherwise drop which recipient each line
   // belongs to. The client sends נמען_id back per line; we accept it only
@@ -82,7 +93,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 
   if (fetchExistingError) {
     console.error('[items PUT] failed to fetch existing items:', fetchExistingError);
-    return NextResponse.json({ error: `שגיאה בטעינת פריטים קיימים: ${fetchExistingError.message}` }, { status: 500 });
+    return dbStepErrorResponse(fetchExistingError, 'orders/[id]/items', 'שגיאה בטעינת פריטים קיימים');
   }
 
   const existingIds = (existingItems || []).map((i: { id: string }) => i.id);
@@ -124,7 +135,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 
     if (prodsError) {
       console.error('[items PUT] product validation query failed:', prodsError);
-      return NextResponse.json({ error: `ולידציית מוצרים נכשלה: ${prodsError.message}` }, { status: 500 });
+      return dbStepErrorResponse(prodsError, 'orders/[id]/items', 'ולידציית מוצרים נכשלה');
     }
 
     for (const prod of existingProds || []) {
@@ -207,7 +218,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 
     if (pfDeleteError) {
       console.error('[items PUT] failed to delete petit-four selections:', pfDeleteError);
-      return NextResponse.json({ error: `מחיקת בחירות פטיפורים נכשלה: ${pfDeleteError.message}` }, { status: 500 });
+      return dbStepErrorResponse(pfDeleteError, 'orders/[id]/items', 'מחיקת בחירות פטיפורים נכשלה');
     }
     console.log('[items PUT] deleted petit-four selections for', existingIds.length, 'items');
   }
@@ -220,7 +231,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 
   if (deleteError) {
     console.error('[items PUT] failed to delete order items:', deleteError);
-    return NextResponse.json({ error: `מחיקת פריטי הזמנה נכשלה: ${deleteError.message}` }, { status: 500 });
+    return dbStepErrorResponse(deleteError, 'orders/[id]/items', 'מחיקת פריטי הזמנה נכשלה');
   }
   console.log('[items PUT] deleted existing order items');
 
@@ -248,7 +259,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     });
     if (error) {
       console.error('[items PUT] failed to insert product row:', error, item);
-      return NextResponse.json({ error: `הוספת מוצר נכשלה: ${error.message}` }, { status: 500 });
+      return dbStepErrorResponse(error, 'orders/[id]/items', 'הוספת מוצר נכשלה');
     }
     console.log('[items PUT] inserted product row, מוצר_id:', item.מוצר_id, 'סהכ:', lineTotal);
   }
@@ -276,7 +287,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 
     if (pkgError) {
       console.error('[items PUT] failed to insert package row:', pkgError, pkg);
-      return NextResponse.json({ error: `הוספת מארז נכשלה: ${pkgError.message}` }, { status: 500 });
+      return dbStepErrorResponse(pkgError, 'orders/[id]/items', 'הוספת מארז נכשלה');
     }
     console.log('[items PUT] inserted package row id:', pkgRow?.id, 'גודל:', pkg.גודל_מארז, 'סהכ:', lineTotal);
 
@@ -289,7 +300,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
         });
         if (pfError) {
           console.error('[items PUT] failed to insert petit-four selection:', pfError, pf);
-          return NextResponse.json({ error: `הוספת פטיפור נכשלה: ${pfError.message}` }, { status: 500 });
+          return dbStepErrorResponse(pfError, 'orders/[id]/items', 'הוספת פטיפור נכשלה');
         }
       }
     }
@@ -318,7 +329,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     });
     if (error) {
       console.error('[items PUT] failed to insert custom item:', error, item);
-      return NextResponse.json({ error: `הוספת פריט ידני נכשלה: ${error.message}` }, { status: 500 });
+      return dbStepErrorResponse(error, 'orders/[id]/items', 'הוספת פריט ידני נכשלה');
     }
     console.log('[items PUT] inserted custom item:', lineType, name, 'סהכ:', lineTotal);
   }
@@ -348,7 +359,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 
   if (updateError) {
     console.error('[items PUT] failed to update order totals:', updateError);
-    return NextResponse.json({ error: `עדכון סכומי הזמנה נכשל: ${updateError.message}` }, { status: 500 });
+    return dbStepErrorResponse(updateError, 'orders/[id]/items', 'עדכון סכומי הזמנה נכשל');
   }
 
   // ── Inventory reconciliation ─────────────────────────────────────────

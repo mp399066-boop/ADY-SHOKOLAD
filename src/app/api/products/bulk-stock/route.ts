@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { recordStockMovement } from '@/lib/inventory-movements';
+import { serverErrorResponse } from '@/lib/api-error';
 
 // Bulk update כמות_במלאי for finished products (מוצרים_למכירה)
 export async function POST(req: NextRequest) {
@@ -56,6 +57,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ succeeded, failed });
   } catch (err) {
     console.error('[bulk-products-stock] error:', err);
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    return serverErrorResponse(err, 'products/bulk-stock');
   }
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
+import { dbErrorResponse } from '@/lib/api-error';
 
 // One-time fix: replace Morning download-API URLs with browser-viewable viewer URLs.
 // The Morning download URL is: https://www.greeninvoice.co.il/api/v1/documents/download?d={docId}
@@ -19,7 +20,7 @@ export async function POST() {
     .select('id, מספר_חשבונית, קישור_חשבונית, סטטוס, תאריך_יצירה');
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return dbErrorResponse(error, 'admin/fix-invoice-urls');
   }
 
   const results: object[] = [];

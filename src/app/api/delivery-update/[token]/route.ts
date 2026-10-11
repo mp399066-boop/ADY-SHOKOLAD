@@ -31,7 +31,8 @@ type ItemRow = {
   בחירת_פטיפורים_בהזמנה?: Array<{ כמות: number | null; סוגי_פטיפורים?: { שם_פטיפור?: string | null } | null }> | null;
 };
 
-export async function GET(_req: NextRequest, { params }: { params: { token: string } }) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ token: string }> }) {
+  const params = await props.params;
   if (!params.token) return NextResponse.json({ error: 'לא תקין' }, { status: 400 });
 
   const supabase = createAdminClient();
@@ -131,7 +132,8 @@ export async function GET(_req: NextRequest, { params }: { params: { token: stri
   });
 }
 
-export async function POST(req: NextRequest, { params }: { params: { token: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ token: string }> }) {
+  const params = await props.params;
   // All marking logic lives in markDeliveryDeliveredByToken so the JSON
   // POST endpoint and the GET confirm page (used by the email button)
   // can't drift apart.

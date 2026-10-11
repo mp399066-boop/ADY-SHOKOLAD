@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
+import { serverErrorResponse } from '@/lib/api-error';
 
 export async function GET() {
   const auth = await requireManagementUser();
@@ -163,6 +164,6 @@ export async function GET() {
       },
     });
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message ?? 'שגיאת שרת' }, { status: 500 });
+    return serverErrorResponse(err, 'dashboard');
   }
 }

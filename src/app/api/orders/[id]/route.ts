@@ -6,9 +6,23 @@ import { AUTO_CREATE_MORNING_DOCUMENTS } from '@/lib/morning';
 import { restoreOrderInventory, deductOrderInventory, DEDUCT_INVENTORY_ON_ORDER_STATUS } from '@/lib/inventory-deduct';
 import { logActivity, userActor } from '@/lib/activity-log';
 import { fetchOrderRecipients } from '@/lib/order-recipients';
+import { dbErrorResponse, dbErrorDetail } from '@/lib/api-error';
+
+// Order header fields the screens may change through PATCH. Anything else
+// (totals, ids, invoice/Morning fields, archive flag…) is set by the server
+// only — סך_הכל_לתשלום is recomputed below when דמי_משלוח changes.
+const PATCHABLE_ORDER_FIELDS = new Set([
+  'סטטוס_הזמנה', 'סטטוס_תשלום', 'אופן_תשלום',
+  'הזמנה_דחופה', 'סוג_הזמנה', 'סוג_אספקה', 'מקור_ההזמנה',
+  'תאריך_אספקה', 'שעת_אספקה', 'delivery_time_flexible',
+  'ברכה_טקסט', 'הערות_להזמנה',
+  'שם_מקבל', 'טלפון_מקבל', 'כתובת_מקבל_ההזמנה', 'עיר', 'הוראות_משלוח',
+  'דמי_משלוח', 'delivery_recipient_type', 'hide_from_deliveries',
+]);
 // deploy trigger
 
-export async function GET(_: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
@@ -120,14 +134,26 @@ async function callMorning(orderId: string, documentType: 'tax_invoice'): Promis
   }
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
-  const body = await req.json();
+  const raw = await req.json().catch(() => null);
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return NextResponse.json({ error: 'נתונים לא תקינים' }, { status: 400 });
+  }
+  const rejected = Object.keys(raw).filter(k => !PATCHABLE_ORDER_FIELDS.has(k));
+  if (rejected.length) {
+    console.warn('[order PATCH] rejected fields', { order: params.id, fields: rejected });
+    return NextResponse.json({ error: 'ניסיון לעדכן שדה שאינו ניתן לעריכה' }, { status: 400 });
+  }
+  if (raw.דמי_משלוח != null && !(Number.isFinite(Number(raw.דמי_משלוח)) && Number(raw.דמי_משלוח) >= 0)) {
+    return NextResponse.json({ error: 'דמי משלוח לא תקינים' }, { status: 400 });
+  }
+  const body = raw; // validated above: only PATCHABLE_ORDER_FIELDS keys
 
   console.log('[invoice] PATCH called — order:', params.id, '| body keys:', Object.keys(body).join(','), '| סטטוס_תשלום:', body.סטטוס_תשלום);
-  console.log('[invoice] env — SUPABASE_URL:', process.env.SUPABASE_URL ? 'set' : 'MISSING', '| WEBHOOK_SECRET:', process.env.WEBHOOK_SECRET ? `set(${process.env.WEBHOOK_SECRET.length}chars)` : 'MISSING');
 
   // Fetch current state BEFORE update — needed for inventory check + invoice/satmar trigger
   const needPrev = body.סטטוס_הזמנה === 'בהכנה'
@@ -181,7 +207,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     .select()
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbErrorResponse(error, 'orders/[id]');
 
   // ── Sync delivery row when delivery-relevant order fields change ─────
   // Without this, editing an order's תאריך_אספקה / שעת_אספקה / address
@@ -349,7 +375,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   return NextResponse.json({ data });
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
@@ -403,7 +430,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
       request:      req,
     });
     return NextResponse.json(
-      { error: isFK ? 'לא ניתן למחוק כי קיימות רשומות מקושרות' : error.message },
+      { error: isFK ? 'לא ניתן למחוק כי קיימות רשומות מקושרות' : dbErrorDetail(error, 'orders/[id]') },
       { status: isFK ? 409 : 500 },
     );
   }

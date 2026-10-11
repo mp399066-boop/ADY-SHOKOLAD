@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
+import { dbErrorResponse } from '@/lib/api-error';
 
 // ─────────────────────────────────────────────────────────────────────────
 //  Auto-link preview — READ-ONLY
@@ -65,7 +66,7 @@ export async function GET() {
     .from('מתכונים')
     .select('id, שם_מתכון, מוצר_id')
     .is('מוצר_id', null);
-  if (recipesErr) return NextResponse.json({ error: recipesErr.message }, { status: 500 });
+  if (recipesErr) return dbErrorResponse(recipesErr, 'recipes/auto-link-preview');
   const recipes = (recipesData ?? []) as RecipeRow[];
 
   // Active products only — never propose linking to inactive products.
@@ -73,7 +74,7 @@ export async function GET() {
     .from('מוצרים_למכירה')
     .select('id, שם_מוצר, פעיל')
     .eq('פעיל', true);
-  if (prodErr) return NextResponse.json({ error: prodErr.message }, { status: 500 });
+  if (prodErr) return dbErrorResponse(prodErr, 'recipes/auto-link-preview');
   const products = (prodData ?? []) as ProductRow[];
 
   // Pre-normalize products once.

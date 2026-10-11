@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { logActivity, userActor } from '@/lib/activity-log';
 import { parseRecipeWorkbook, type ParseResult } from '@/lib/recipe-import';
+import { dbErrorDetail } from '@/lib/api-error';
 
 // POST /api/recipes/import-confirm
 // Re-parses the uploaded workbook (we never trust client-supplied parsed
@@ -97,7 +98,7 @@ export async function POST(req: NextRequest) {
       .single();
     if (createErr || !created) {
       return NextResponse.json({
-        error: `שגיאה ביצירת חומר גלם "${raw.name}": ${createErr?.message ?? 'unknown'}`,
+        error: `שגיאה ביצירת חומר גלם "${raw.name}": ${dbErrorDetail(createErr, 'recipes/import-confirm')}`,
       }, { status: 500 });
     }
     rawByKey.set(raw.nameKey, { id: created.id as string, unit: raw.unit || null });
@@ -152,7 +153,7 @@ export async function POST(req: NextRequest) {
         .eq('id', existingId);
       if (updErr) {
         return NextResponse.json({
-          error: `שגיאה בעדכון מתכון "${rec.name}" (${rec.code}): ${updErr.message}`,
+          error: `שגיאה בעדכון מתכון "${rec.name}" (${rec.code}): ${dbErrorDetail(updErr, 'recipes/import-confirm')}`,
         }, { status: 500 });
       }
       recipeIdByCode.set(rec.code, existingId);
@@ -177,7 +178,7 @@ export async function POST(req: NextRequest) {
         .single();
       if (insErr || !ins) {
         return NextResponse.json({
-          error: `שגיאה ביצירת מתכון "${rec.name}" (${rec.code}): ${insErr?.message ?? 'unknown'}`,
+          error: `שגיאה ביצירת מתכון "${rec.name}" (${rec.code}): ${dbErrorDetail(insErr, 'recipes/import-confirm')}`,
         }, { status: 500 });
       }
       recipeIdByCode.set(rec.code, ins.id as string);
@@ -210,7 +211,7 @@ export async function POST(req: NextRequest) {
       .in('מתכון_id', allRecipeIds);
     if (delErr) {
       return NextResponse.json({
-        error: `שגיאה במחיקת רכיבים קיימים: ${delErr.message}`,
+        error: `שגיאה במחיקת רכיבים קיימים: ${dbErrorDetail(delErr, 'recipes/import-confirm')}`,
       }, { status: 500 });
     }
   }
@@ -236,7 +237,7 @@ export async function POST(req: NextRequest) {
       .insert(ingredientRows);
     if (insErr) {
       return NextResponse.json({
-        error: `שגיאה בהוספת רכיבי מתכון: ${insErr.message}`,
+        error: `שגיאה בהוספת רכיבי מתכון: ${dbErrorDetail(insErr, 'recipes/import-confirm')}`,
       }, { status: 500 });
     }
   }

@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
+import { dbErrorResponse } from '@/lib/api-error';
 
 export async function GET(req: NextRequest) {
   const auth = await requireManagementUser();
@@ -15,7 +16,7 @@ export async function GET(req: NextRequest) {
   if (status) query = query.eq('סטטוס_מלאי', status);
 
   const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbErrorResponse(error, 'inventory');
   return NextResponse.json({ data });
 }
 
@@ -30,6 +31,6 @@ export async function POST(req: NextRequest) {
     .insert(body)
     .select()
     .single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbErrorResponse(error, 'inventory');
   return NextResponse.json({ data }, { status: 201 });
 }

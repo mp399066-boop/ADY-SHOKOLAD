@@ -3,18 +3,18 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
-import { v4 as uuidv4 } from 'uuid';
 
 // Server-decided bucket per entity_type. The client used to send `bucket`
 // directly, which let any authenticated employee write to arbitrary
 // Supabase storage buckets (and learn their existence). The mapping is
 // authoritative — unknown entity_type → reject.
+//
+// Only the business logo is uploaded today, and it must be public (it is shown
+// in customer emails), so it goes to the public `images` bucket. Customer /
+// order / employee files are deliberately not accepted: they would need a
+// private bucket served through signed URLs, which does not exist yet.
 const BUCKET_BY_ENTITY_TYPE: Record<string, string> = {
-  business: 'brand-assets',
-  order:    'orders-files',
-  customer: 'orders-files',
-  employee: 'orders-files',
-  supplier: 'orders-files',
+  business: 'images',
 };
 
 // MIME + extension allowlists. SVG is intentionally excluded — it can carry
@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'סיומת קובץ לא נתמכת' }, { status: 415 });
   }
 
-  const fileName = `${entityType}/${entityId}/${uuidv4()}.${rawExt}`;
+  const fileName = `${entityType}/${entityId}/${crypto.randomUUID()}.${rawExt}`;
 
   const arrayBuffer = await file.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);

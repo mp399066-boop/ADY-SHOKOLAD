@@ -2,6 +2,7 @@
 
 import { Fragment, useState, useEffect, useMemo } from 'react';
 import { IconPlus, IconEdit, IconWhatsApp } from '@/components/icons';
+import { useConfirm } from '@/components/ui/ConfirmProvider';
 
 type PageTab = 'suppliers' | 'settings' | 'cart';
 
@@ -85,6 +86,7 @@ function toExportLines(items: CartItem[]): ExportLine[] {
 const EMPTY_FORM = { שם_ספק: '', טלפון: '', אימייל: '', איש_קשר: '', הערות: '', פעיל: true as boolean };
 
 export default function SuppliersPage() {
+  const confirm = useConfirm();
   const [tab, setTab] = useState<PageTab>('suppliers');
 
   // ── Suppliers tab state ──────────────────────────────────────────────────
@@ -306,7 +308,7 @@ export default function SuppliersPage() {
   }
 
   async function clearCart() {
-    if (!window.confirm('לרוקן את כל הסל?')) return;
+    if (!(await confirm('לרוקן את כל הסל?'))) return;
     setClearing(true);
     try {
       const res = await fetch('/api/purchasing/cart?all=1', { method: 'DELETE' });

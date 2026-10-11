@@ -4,13 +4,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { missingColumnMessage } from '@/lib/db-error';
+import { dbErrorResponse, dbErrorDetail } from '@/lib/api-error';
 
 export async function GET() {
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
   const { data, error } = await supabase.from('סוגי_פטיפורים').select('*').eq('פעיל', true).order('שם_פטיפור');
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbErrorResponse(error, 'petit-four-types');
   return NextResponse.json({ data });
 }
 
@@ -27,7 +28,7 @@ export async function POST(req: NextRequest) {
     .single();
   if (error) {
     const missing = missingColumnMessage(error);
-    return NextResponse.json({ error: missing ?? error.message }, { status: missing ? 400 : 500 });
+    return NextResponse.json({ error: missing ?? dbErrorDetail(error, 'petit-four-types') }, { status: missing ? 400 : 500 });
   }
   return NextResponse.json({ data }, { status: 201 });
 }

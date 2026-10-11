@@ -2,7 +2,6 @@
 
 import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
-import { createClient } from '@/lib/supabase/client';
 import { IconMenu } from '@/components/icons';
 import type { BusinessSettings } from '@/types/database';
 
@@ -29,9 +28,11 @@ export default function TopBar({ onMenuToggle }: TopBarProps) {
   const [settings, setSettings] = useState<BusinessSettings | null>(null);
 
   useEffect(() => {
-    const supabase = createClient();
-    supabase.from('business_settings').select('*').single()
-      .then(({ data }: { data: any }) => { if (data) setSettings(data as BusinessSettings); });
+    // Via the API: business_settings has RLS with no browser policy.
+    fetch('/api/settings')
+      .then(r => (r.ok ? r.json() : null))
+      .then(j => { if (j?.data) setSettings(j.data as BusinessSettings); })
+      .catch(() => {});
   }, []);
   const title =
     PAGE_TITLES[pathname] ||

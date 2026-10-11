@@ -114,7 +114,7 @@ export function useNewWebsiteOrderNotifications() {
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'הזמנות' },
-        (payload) => {
+        (payload: { new: Record<string, unknown> }) => {
           const row = payload.new as Record<string, unknown>;
 
           // Filter: WooCommerce source only
