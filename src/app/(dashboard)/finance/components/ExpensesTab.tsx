@@ -14,6 +14,7 @@ import { TrendingDown, Percent, CreditCard, Users } from 'lucide-react';
 import ExpenseFormModal, { type SupplierOption } from './ExpenseFormModal';
 import ExpenseImportModal from './ExpenseImportModal';
 import SalaryModal, { type EmployeeOption } from './SalaryModal';
+import MorningSyncModal from './MorningSyncModal';
 
 interface Group { name: string; count: number; gross: number; vat: number; net: number }
 
@@ -54,6 +55,7 @@ export default function ExpensesTab({ expenses, suppliers, employees, salariesRe
   const [formInitial, setFormInitial] = useState<Partial<Expense> | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [salaryOpen, setSalaryOpen] = useState(false);
+  const [morningOpen, setMorningOpen] = useState(false);
   const [toDelete, setToDelete] = useState<Expense | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -150,6 +152,7 @@ export default function ExpensesTab({ expenses, suppliers, employees, salariesRe
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-2">
         <Button onClick={openNew}>+ הוצאה חדשה</Button>
+        <Button variant="secondary" onClick={() => setMorningOpen(true)}>סנכרון ממורנינג</Button>
         <Button variant="outline" onClick={() => setImportOpen(true)}>ייבוא מקובץ הנהלת חשבונות</Button>
         <Button variant="outline" onClick={() => (salariesReady ? setSalaryOpen(true) : toast.error('יש להריץ את מיגרציה 059 ב-Supabase כדי להזין תלושי משכורת'))}>
           תלושי משכורת (ברוטו)
@@ -244,6 +247,7 @@ export default function ExpensesTab({ expenses, suppliers, employees, salariesRe
 
       <ExpenseFormModal open={formOpen} initial={formInitial} suppliers={suppliers} onClose={() => setFormOpen(false)} onSaved={reload} />
       <ExpenseImportModal open={importOpen} onClose={() => setImportOpen(false)} onImported={reload} />
+      <MorningSyncModal open={morningOpen} onClose={() => setMorningOpen(false)} onSynced={reload} year={year} />
       <SalaryModal open={salaryOpen} onClose={() => setSalaryOpen(false)} onSaved={reload} year={year} employees={employees} expenses={expenses} />
       <ConfirmModal
         open={!!toDelete}
