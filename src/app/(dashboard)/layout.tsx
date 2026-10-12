@@ -1,6 +1,6 @@
 'use client';
 
-import AppSidebar from '@/components/layout/AppSidebar';
+import NavBar from '@/components/layout/NavBar';
 import AssistantDrawer from '@/components/assistant/AssistantDrawer';
 import GlobalSearch from '@/components/search/GlobalSearch';
 import DemoBadge from '@/components/demo/DemoBadge';
@@ -15,9 +15,9 @@ export default function DashboardLayout({
 }) {
   return (
     <ConfirmProvider>
-    <div className="app-shell flex h-[100dvh] overflow-hidden bg-[var(--bg)]">
-      <AppSidebar />
-      <main className="app-main flex-1 min-w-0 overflow-y-auto pt-14 md:pt-0">
+    <div className="app-shell flex flex-col h-[100dvh] overflow-hidden bg-[var(--bg)]">
+      <NavBar />
+      <main className="app-main flex-1 min-w-0 overflow-y-auto">
         <div className="mx-auto w-full max-w-[1440px] px-4 py-5 sm:px-6 md:px-8 md:py-7">
           {children}
         </div>
