@@ -46,8 +46,8 @@ export default function PricesManageTab({ onImportClick }: { onImportClick: () =
   const [addForm, setAddForm] = useState(emptyAddForm);
   const [addSaving, setAddSaving] = useState(false);
 
-  const load = () => {
-    setLoading(true);
+  const load = (quiet = false) => {
+    if (!quiet) setLoading(true);
     fetch('/api/prices?manage=1')
       .then(r => r.json())
       .then(({ data }) => setRows(data || []))
@@ -177,6 +177,8 @@ export default function PricesManageTab({ onImportClick }: { onImportClick: () =
         </div>
       </div>
 
+      {!loading && <UnlinkedPricesPanel rows={rows} products={products} onLinked={() => load(true)} />}
+
       {/* Products with no active price at all — these never show up in the table
           below since it's built from מחירון rows, not from the product catalog. */}
       {!loading && productsWithoutPrice.length > 0 && (
@@ -278,7 +280,14 @@ export default function PricesManageTab({ onImportClick }: { onImportClick: () =
                       key={row.id}
                       style={{ borderBottom: '1px solid #F0EAE0', opacity: inactive ? 0.55 : 1 }}
                     >
-                      <td className="py-2.5 px-3 font-medium" style={{ color: '#2B1A10' }}>{name}</td>
+                      <td className="py-2.5 px-3 font-medium" style={{ color: '#2B1A10' }}>
+                        {name}
+                        {!row.מוצר_id && (
+                          <span className="mr-1.5 text-[10px] px-1.5 py-0.5 rounded-full align-middle" style={{ backgroundColor: '#FDE2DC', color: '#8A2E1E' }}>
+                            לא מקושר
+                          </span>
+                        )}
+                      </td>
                       <td className="py-2.5 px-3 font-mono text-xs" style={{ color: '#9B7A5A' }}>{row.sku || '—'}</td>
                       <td className="py-2.5 px-3">
                         <PriceTypeBadge type={row.price_type} />
@@ -434,6 +443,119 @@ export default function PricesManageTab({ onImportClick }: { onImportClick: () =
           </div>
         </div>
       </Modal>
+    </div>
+  );
+}
+
+// ── Price rows that lost their product ─────────────────────────────────────
+// When a catalog product is deleted its price rows stay but lose מוצר_id, and
+// then no order or cost screen can find them. Grouped by the name the row was
+// imported under. A product is pre-selected only on an exact match once
+// prefixes like "פטיפור" / "עוגת" are ignored (שוהם → פטיפור שוהם) — partial
+// matches guessed wrong (מארז 4 → מארז 4 מגנומים…), so those stay a manual pick.
+
+const normName = (s: string) => s
+  .replace(/["'׳״`.,()\-–]/g, ' ')
+  .replace(/(^|\s)(פטיפור|עוגת|עוגה)(?=\s|$)/g, ' ')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+function suggestProduct(name: string, products: ProductOption[]): string {
+  const n = normName(name);
+  if (!n) return '';
+  const exact = products.filter(p => normName(p.שם_מוצר) === n);
+  return exact.length === 1 ? exact[0].id : '';
+}
+
+function UnlinkedPricesPanel({ rows, products, onLinked }: {
+  rows: PriceRow[];
+  products: ProductOption[];
+  onLinked: () => void;
+}) {
+  const groups = useMemo(() => {
+    const map = new Map<string, PriceRow[]>();
+    for (const r of rows) {
+      if (r.מוצר_id || !r.פעיל) continue;
+      const key = r.product_name_snapshot?.trim() || '';
+      map.set(key, [...(map.get(key) ?? []), r]);
+    }
+    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b, 'he'));
+  }, [rows]);
+  const [choice, setChoice] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState<string | null>(null);
+  const [open, setOpen] = useState(true);
+
+  if (groups.length === 0) return null;
+  const total = groups.reduce((s, [, g]) => s + g.length, 0);
+
+  const link = async (key: string, group: PriceRow[]) => {
+    const productId = choice[key] ?? suggestProduct(key, products);
+    if (!productId) { toast.error('יש לבחור מוצר'); return; }
+    setBusy(key);
+    try {
+      const res = await fetch('/api/prices/link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rowIds: group.map(r => r.id), productId }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || 'הקישור נכשל');
+      const productName = products.find(p => p.id === productId)?.שם_מוצר ?? '';
+      toast.success(json.skipped
+        ? `${json.linked} מחירים קושרו ל"${productName}". ${json.skipped} לא קושרו כי למוצר כבר יש מחיר לאותה רמה.`
+        : `${json.linked} מחירים קושרו ל"${productName}"`);
+      onLinked();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'הקישור נכשל');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div className="rounded-xl border p-4" style={{ backgroundColor: '#FDF2F0', borderColor: '#F0C8BE' }}>
+      <button type="button" onClick={() => setOpen(o => !o)} className="w-full text-right">
+        <p className="text-sm font-semibold" style={{ color: '#8A2E1E' }}>
+          {total} מחירים לא מקושרים למוצר ({groups.length} שמות) {open ? '▴' : '▾'}
+        </p>
+      </button>
+      {open && (
+        <>
+          <p className="text-xs mt-1 mb-3" style={{ color: '#8A7664' }}>
+            המחירים האלה שייכים למוצרים שנמחקו או שונה שמם, ולכן הזמנה חדשה ועמוד העלויות לא רואים אותם.
+            בחרי לכל שם את המוצר המתאים בקטלוג ולחצי ״קישור״ — כל המחירים של אותו שם יתחברו למוצר.
+          </p>
+          <div className="space-y-2">
+            {groups.map(([key, group]) => {
+              const selected = choice[key] ?? suggestProduct(key, products);
+              const summary = group
+                .map(r => `${PRICE_TYPE_LABELS[r.price_type ?? 'retail'] ?? r.price_type}${r.min_quantity ? ` (${r.min_quantity}+)` : ''}: ₪${Number(r.מחיר)}`)
+                .join(' · ');
+              return (
+                <div key={key || '_'} className="flex flex-wrap items-center gap-2 rounded-lg bg-white px-3 py-2 border" style={{ borderColor: '#F0E0D8' }}>
+                  <div className="min-w-[10rem] flex-1">
+                    <div className="text-sm font-medium" style={{ color: '#2B1A10' }}>{key || 'ללא שם'}</div>
+                    <div className="text-xs" style={{ color: '#9B7A5A' }}>{summary}</div>
+                  </div>
+                  <select
+                    value={selected}
+                    onChange={e => setChoice(c => ({ ...c, [key]: e.target.value }))}
+                    aria-label={`מוצר עבור ${key}`}
+                    className="px-2 py-1.5 text-sm border rounded-lg focus:outline-none max-w-[14rem]"
+                    style={{ borderColor: '#DDD0BC', color: '#2B1A10' }}
+                  >
+                    <option value="">בחרי מוצר…</option>
+                    {products.map(p => <option key={p.id} value={p.id}>{p.שם_מוצר}</option>)}
+                  </select>
+                  <Button size="sm" onClick={() => link(key, group)} disabled={!selected || busy !== null}>
+                    {busy === key ? 'מקשר…' : 'קישור'}
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
     </div>
   );
 }
