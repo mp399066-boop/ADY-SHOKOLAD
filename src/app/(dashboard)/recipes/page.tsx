@@ -490,7 +490,7 @@ export default function RecipesPage() {
                               type="button"
                               onClick={() => openProductionModal(r.id)}
                               className="text-xs px-2.5 py-1.5 rounded-lg border font-medium transition-colors hover:bg-amber-50"
-                              style={{ borderColor: '#D4A96A', color: '#8B5E34', backgroundColor: '#FDF6EC' }}
+                              style={{ borderColor: '#C9A46A', color: '#8B5E34', backgroundColor: '#FAF7F0' }}
                               title="הפק ייצור"
                             >
                               הפק ייצור
@@ -507,8 +507,8 @@ export default function RecipesPage() {
                         <div
                           className="flex items-center justify-between gap-2 mb-3 px-2.5 py-2 rounded-lg border"
                           style={isLinked
-                            ? { backgroundColor: '#F1F8EE', borderColor: '#B8D5A8', color: '#2F5C2C' }
-                            : { backgroundColor: '#FFF7ED', borderColor: '#FCD9A8', color: '#92602A' }}
+                            ? { backgroundColor: '#EAF0E7', borderColor: '#B8D5A8', color: '#33623A' }
+                            : { backgroundColor: '#FBF0E4', borderColor: '#EDCF98', color: '#8B5E34' }}
                         >
                           <div className="text-[12px] leading-snug">
                             <span className="font-bold">משויך לייצור: </span>
@@ -522,7 +522,7 @@ export default function RecipesPage() {
                             type="button"
                             onClick={() => openLinkModal(r.id, targetType, targetId)}
                             className="text-[11.5px] px-2.5 py-1 rounded-md font-bold text-white shrink-0"
-                            style={{ backgroundColor: isLinked ? '#7A4A27' : '#A8442D' }}
+                            style={{ backgroundColor: isLinked ? '#7A4820' : '#A8442D' }}
                           >
                             {isLinked ? 'שני שיוך' : 'שייכי למלאי'}
                           </button>
@@ -533,7 +533,7 @@ export default function RecipesPage() {
                           <span className="text-xs font-semibold" style={{ color: '#2B1A10' }}>
                             חומרי גלם במתכון
                           </span>
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium" style={{ backgroundColor: '#F0E8DC', color: '#6B4A2D' }}>
+                          <span className="text-[11px] px-1.5 py-0.5 rounded-full font-medium" style={{ backgroundColor: '#F0EAE0', color: '#6B4A2D' }}>
                             {ings.length > 0 ? `${ings.length} חומרי גלם` : 'אין חומרי גלם'}
                           </span>
                         </div>
@@ -571,10 +571,10 @@ export default function RecipesPage() {
                                     <span style={{ color: '#6B4A2D' }}>{ing.כמות_נדרשת} {ing.יחידת_מידה}</span>
                                     {stock !== null && (
                                       <span
-                                        className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
+                                        className="text-[11px] px-1.5 py-0.5 rounded-full font-medium"
                                         style={enough
-                                          ? { backgroundColor: '#E8F5EE', color: '#2A7A4F' }
-                                          : { backgroundColor: '#FDE8E7', color: '#A0362C' }}
+                                          ? { backgroundColor: '#E4EEE8', color: '#2A7A4F' }
+                                          : { backgroundColor: '#FEE2E2', color: '#A0362C' }}
                                       >
                                         {stock} {mat?.יחידת_מידה}
                                       </span>
@@ -644,7 +644,7 @@ export default function RecipesPage() {
                 onChange={v => setRecipeForm(p => ({ ...p, מוצר_id: v }))}
                 options={products.map(p => ({ value: p.id, label: p.שם_מוצר }))}
                 placeholder="ללא שיוך" searchPlaceholder="חיפוש מוצר..." emptyText="לא נמצאו מוצרים" />
-              <p className="text-[10.5px] mt-1" style={{ color: '#8A735F' }}>
+              <p className="text-[11.5px] mt-1" style={{ color: '#8A7664' }}>
                 שיוך זה מאפשר לרישום ייצור להוסיף מלאי למוצר המוגמר.
               </p>
             </div>}
@@ -754,10 +754,10 @@ export default function RecipesPage() {
                 </thead>
                 <tbody>
                   {ingredientChecks.map(c => (
-                    <tr key={c.id} className="border-t" style={{ borderColor: '#F0E5D8' }}>
+                    <tr key={c.id} className="border-t" style={{ borderColor: '#E8DED2' }}>
                       <td className="px-3 py-2" style={{ color: '#2B1A10' }}>{c.name}</td>
                       <td className="px-3 py-2 text-center font-medium" style={{ color: '#2B1A10' }}>{c.required.toFixed(3)}</td>
-                      <td className="px-3 py-2 text-center" style={{ color: c.ok ? '#476D53' : '#9D4B4A' }}>{c.available}</td>
+                      <td className="px-3 py-2 text-center" style={{ color: c.ok ? '#2D6648' : '#9D4B4A' }}>{c.available}</td>
                       <td className="px-3 py-2 text-center" style={{ color: '#6B4A2D' }}>
                         {c.unitMismatch
                           ? <span className="text-orange-600">{c.unit} ≠ {c.stockUnit}</span>
@@ -765,14 +765,14 @@ export default function RecipesPage() {
                       </td>
                       <td className="px-3 py-2 text-center">
                         {c.unitMismatch ? (
-                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold"
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[11px] font-bold"
                             style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}>יחידות שונות</span>
                         ) : c.ok ? (
-                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold"
-                            style={{ backgroundColor: '#E8F5EE', color: '#2A7A4F' }}>✓</span>
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[11px] font-bold"
+                            style={{ backgroundColor: '#E4EEE8', color: '#2A7A4F' }}>✓</span>
                         ) : (
-                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold"
-                            style={{ backgroundColor: '#FDE8E7', color: '#A0362C' }}>חסר {(c.required - c.available).toFixed(3)}</span>
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[11px] font-bold"
+                            style={{ backgroundColor: '#FEE2E2', color: '#A0362C' }}>חסר {(c.required - c.available).toFixed(3)}</span>
                         )}
                       </td>
                     </tr>
@@ -782,7 +782,7 @@ export default function RecipesPage() {
 
               {/* Insufficiency warnings */}
               {hasProblems && (
-                <div className="px-3 py-2 space-y-1" style={{ backgroundColor: '#FDE8E7' }}>
+                <div className="px-3 py-2 space-y-1" style={{ backgroundColor: '#FEE2E2' }}>
                   {ingredientChecks.filter(c => !c.ok).map(c => (
                     <p key={c.id} className="text-xs font-medium" style={{ color: '#A0362C' }}>
                       {c.unitMismatch
@@ -833,31 +833,31 @@ export default function RecipesPage() {
       <Modal open={autoLinkOpen} onClose={() => setAutoLinkOpen(false)} title="שיוך מתכונים למוצרים אוטומטית" size="lg">
         <div className="space-y-4" dir="rtl">
           {autoLinkLoading && (
-            <p className="text-sm py-6 text-center" style={{ color: '#8A735F' }}>טוען הצעות שיוך…</p>
+            <p className="text-sm py-6 text-center" style={{ color: '#8A7664' }}>טוען הצעות שיוך…</p>
           )}
 
           {!autoLinkLoading && autoLinkPreview && (
             <>
-              <p className="text-[11.5px] px-3 py-2 rounded-lg" style={{ backgroundColor: '#FFF7ED', color: '#92602A', border: '1px solid #FCD9A8' }}>
+              <p className="text-[11.5px] px-3 py-2 rounded-lg" style={{ backgroundColor: '#FBF0E4', color: '#8B5E34', border: '1px solid #EDCF98' }}>
                 אופציונלי — מתאים רק כששמות המתכונים והמוצרים זהים וברורים. השיוך הרגיל הוא ידני, ישירות מכרטיס המתכון.
               </p>
               <div className="text-[11.5px] flex flex-wrap gap-x-4 gap-y-1 px-3 py-2 rounded-lg" style={{ backgroundColor: '#FAF7F0', color: '#6B4A2D' }}>
                 <span>מתכונים ללא שיוך: <strong>{autoLinkPreview.totals.unlinkedRecipes}</strong></span>
                 <span>מוצרים פעילים: <strong>{autoLinkPreview.totals.activeProducts}</strong></span>
-                <span style={{ color: '#2F5C2C' }}>מוכן לשיוך: <strong>{autoLinkPreview.totals.safe}</strong></span>
-                <span style={{ color: '#92602A' }}>צריך בדיקה ידנית: <strong>{autoLinkPreview.totals.review}</strong></span>
+                <span style={{ color: '#33623A' }}>מוכן לשיוך: <strong>{autoLinkPreview.totals.safe}</strong></span>
+                <span style={{ color: '#8B5E34' }}>צריך בדיקה ידנית: <strong>{autoLinkPreview.totals.review}</strong></span>
                 <span style={{ color: '#7A2E2E' }}>לא נמצא מוצר: <strong>{autoLinkPreview.totals.unmatched}</strong></span>
               </div>
 
               {/* Ready to link */}
               <section>
-                <h4 className="text-sm font-bold mb-2" style={{ color: '#2F5C2C' }}>מוכן לשיוך</h4>
+                <h4 className="text-sm font-bold mb-2" style={{ color: '#33623A' }}>מוכן לשיוך</h4>
                 {autoLinkPreview.safe.length === 0 ? (
-                  <p className="text-xs px-2 py-3 rounded-lg" style={{ backgroundColor: '#F4F4F4', color: '#8A735F' }}>אין מתכונים שמוכנים לשיוך אוטומטי.</p>
+                  <p className="text-xs px-2 py-3 rounded-lg" style={{ backgroundColor: '#F8F6F2', color: '#8A7664' }}>אין מתכונים שמוכנים לשיוך אוטומטי.</p>
                 ) : (
                   <div className="border rounded-lg overflow-hidden" style={{ borderColor: '#E8DED2' }}>
                     <table className="w-full text-xs">
-                      <thead style={{ backgroundColor: '#F1F8EE' }}>
+                      <thead style={{ backgroundColor: '#EAF0E7' }}>
                         <tr>
                           <th className="px-2 py-2 w-8"></th>
                           <th className="px-2 py-2 text-right font-bold" style={{ color: '#2B1A10' }}>שם מתכון</th>
@@ -867,7 +867,7 @@ export default function RecipesPage() {
                       </thead>
                       <tbody>
                         {autoLinkPreview.safe.map(row => (
-                          <tr key={row.recipeId} className="border-t" style={{ borderColor: '#EDE0CE' }}>
+                          <tr key={row.recipeId} className="border-t" style={{ borderColor: '#E8DED2' }}>
                             <td className="px-2 py-2">
                               <input
                                 type="checkbox"
@@ -877,7 +877,7 @@ export default function RecipesPage() {
                             </td>
                             <td className="px-2 py-2" style={{ color: '#2B1A10' }}>{row.recipeName}</td>
                             <td className="px-2 py-2" style={{ color: '#2B1A10' }}>{row.productName}</td>
-                            <td className="px-2 py-2" style={{ color: '#8A735F' }}>
+                            <td className="px-2 py-2" style={{ color: '#8A7664' }}>
                               {row.matchType === 'exact' ? 'התאמה מדויקת' : 'התאמה לפי הכלה'}
                             </td>
                           </tr>
@@ -891,10 +891,10 @@ export default function RecipesPage() {
               {/* Needs manual review */}
               {autoLinkPreview.review.length > 0 && (
                 <section>
-                  <h4 className="text-sm font-bold mb-2" style={{ color: '#92602A' }}>צריך בדיקה ידנית</h4>
-                  <div className="border rounded-lg overflow-hidden" style={{ borderColor: '#FCD9A8' }}>
+                  <h4 className="text-sm font-bold mb-2" style={{ color: '#8B5E34' }}>צריך בדיקה ידנית</h4>
+                  <div className="border rounded-lg overflow-hidden" style={{ borderColor: '#EDCF98' }}>
                     <table className="w-full text-xs">
-                      <thead style={{ backgroundColor: '#FFF7ED' }}>
+                      <thead style={{ backgroundColor: '#FBF0E4' }}>
                         <tr>
                           <th className="px-2 py-2 text-right font-bold" style={{ color: '#2B1A10' }}>שם מתכון</th>
                           <th className="px-2 py-2 text-right font-bold" style={{ color: '#2B1A10' }}>מועמדים</th>
@@ -902,7 +902,7 @@ export default function RecipesPage() {
                       </thead>
                       <tbody>
                         {autoLinkPreview.review.map(row => (
-                          <tr key={row.recipeId} className="border-t" style={{ borderColor: '#FCD9A8' }}>
+                          <tr key={row.recipeId} className="border-t" style={{ borderColor: '#EDCF98' }}>
                             <td className="px-2 py-2" style={{ color: '#2B1A10' }}>{row.recipeName}</td>
                             <td className="px-2 py-2" style={{ color: '#2B1A10' }}>
                               {row.candidates.map(c => `${c.productName} (${c.matchType === 'exact' ? 'מדויקת' : 'הכלה'})`).join(' · ')}
@@ -919,29 +919,29 @@ export default function RecipesPage() {
               {autoLinkPreview.unmatched.length > 0 && (
                 <section>
                   <h4 className="text-sm font-bold mb-2" style={{ color: '#7A2E2E' }}>לא נמצא מוצר מתאים</h4>
-                  <div className="border rounded-lg overflow-hidden" style={{ borderColor: '#E4C2BE' }}>
+                  <div className="border rounded-lg overflow-hidden" style={{ borderColor: '#D8BCB6' }}>
                     <table className="w-full text-xs">
-                      <thead style={{ backgroundColor: '#FBEDEB' }}>
+                      <thead style={{ backgroundColor: '#F0EAE8' }}>
                         <tr>
                           <th className="px-2 py-2 text-right font-bold" style={{ color: '#2B1A10' }}>שם מתכון</th>
                         </tr>
                       </thead>
                       <tbody>
                         {autoLinkPreview.unmatched.map(row => (
-                          <tr key={row.recipeId} className="border-t" style={{ borderColor: '#E4C2BE' }}>
+                          <tr key={row.recipeId} className="border-t" style={{ borderColor: '#D8BCB6' }}>
                             <td className="px-2 py-2" style={{ color: '#2B1A10' }}>{row.recipeName}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
-                  <p className="text-[11px] mt-1.5" style={{ color: '#8A735F' }}>
+                  <p className="text-[11px] mt-1.5" style={{ color: '#8A7664' }}>
                     יש לפתוח כל מתכון ולשייך אותו ידנית למוצר למכירה דרך טופס המתכון.
                   </p>
                 </section>
               )}
 
-              <div className="flex gap-3 justify-end pt-2 border-t" style={{ borderColor: '#EDE0CE' }}>
+              <div className="flex gap-3 justify-end pt-2 border-t" style={{ borderColor: '#E8DED2' }}>
                 <Button variant="outline" onClick={() => setAutoLinkOpen(false)} disabled={autoLinkApplying}>בטלי</Button>
                 <Button
                   onClick={applyAutoLink}
@@ -986,9 +986,9 @@ export default function RecipesPage() {
                     onClick={() => { setLinkTargetType(opt.value); setLinkSelectedTargetId(''); }}
                     className="text-[13px] font-medium h-10 rounded-lg transition-colors border"
                     style={{
-                      backgroundColor: active ? '#7A4A27' : '#FFFFFF',
+                      backgroundColor: active ? '#7A4820' : '#FFFFFF',
                       color:           active ? '#FFFFFF' : '#2B1A10',
-                      borderColor:     active ? '#7A4A27' : '#E8DED2',
+                      borderColor:     active ? '#7A4820' : '#E8DED2',
                     }}
                   >
                     {opt.label}
@@ -1010,7 +1010,7 @@ export default function RecipesPage() {
                 searchPlaceholder="חיפוש מוצר..."
                 emptyText="לא נמצאו מוצרים"
               />
-              <p className="text-[10.5px] mt-1.5" style={{ color: '#8A735F' }}>
+              <p className="text-[11.5px] mt-1.5" style={{ color: '#8A7664' }}>
                 כשנרשום ייצור למתכון הזה, המערכת תוסיף מלאי למוצר שבחרת כאן.
               </p>
             </div>
@@ -1025,13 +1025,13 @@ export default function RecipesPage() {
                 searchPlaceholder="חיפוש סוג פטיפור..."
                 emptyText="לא נמצאו סוגי פטיפורים פעילים"
               />
-              <p className="text-[10.5px] mt-1.5" style={{ color: '#8A735F' }}>
+              <p className="text-[11.5px] mt-1.5" style={{ color: '#8A7664' }}>
                 כשנרשום ייצור למתכון הזה, המערכת תוסיף מלאי לסוג הפטיפור שבחרת כאן.
               </p>
             </div>
           )}
 
-          <div className="flex gap-3 justify-end pt-2 border-t" style={{ borderColor: '#EDE0CE' }}>
+          <div className="flex gap-3 justify-end pt-2 border-t" style={{ borderColor: '#E8DED2' }}>
             <Button variant="outline" onClick={() => setLinkRecipeId(null)} disabled={linkSaving}>ביטול</Button>
             <Button onClick={saveLink} disabled={linkSaving || !linkSelectedTargetId}>
               {linkSaving ? 'שומרת…' : 'שמירה'}

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface ModalProps {
@@ -10,6 +11,13 @@ interface ModalProps {
   children: React.ReactNode;
   size?: 'sm' | 'md' | 'lg' | 'xl';
 }
+
+const SIZES = {
+  sm: 'sm:max-w-sm',
+  md: 'sm:max-w-lg',
+  lg: 'sm:max-w-2xl',
+  xl: 'sm:max-w-4xl',
+};
 
 export function Modal({ open, onClose, title, children, size = 'md' }: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -33,48 +41,39 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
 
   if (!open) return null;
 
-  const sizes = {
-    sm: 'max-w-sm',
-    md: 'max-w-lg',
-    lg: 'max-w-2xl',
-    xl: 'max-w-4xl',
-  };
-
+  // Phones: a bottom sheet that uses the full width. Larger screens: centered dialog.
   return (
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ backgroundColor: 'rgba(20,12,4,0.22)', backdropFilter: 'blur(2px)' }}
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-[rgba(20,12,4,0.32)] backdrop-blur-[2px]"
       onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}
     >
       <div
-        className={cn('bg-white rounded-2xl w-full', sizes[size])}
-        style={{
-          border: '1px solid #EAE0D4',
-          boxShadow: '0 8px 32px rgba(58,42,26,0.10), 0 1px 0 rgba(255,255,255,0.8)',
-          maxHeight: '92vh', display: 'flex', flexDirection: 'column',
-        }}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className={cn(
+          'flex w-full flex-col bg-white border border-[#E8DED2] shadow-[var(--shadow-lg)]',
+          'max-h-[92dvh] rounded-t-2xl sm:rounded-2xl',
+          SIZES[size],
+        )}
       >
         {title && (
-          <div
-            className="flex items-center justify-between px-6 py-4 border-b flex-shrink-0"
-            style={{ borderColor: '#EAE0D4' }}
-          >
-            <h2 className="text-sm font-semibold" style={{ color: '#3A2A1A', letterSpacing: '0.1px' }}>
+          <div className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-[#F0EAE0] px-5 py-4 sm:px-6">
+            <h2 className="text-base font-bold text-[#2B1A10]">
               {title}
             </h2>
             <button
+              type="button"
               onClick={onClose}
-              className="w-6 h-6 rounded-full flex items-center justify-center transition-colors text-base leading-none"
-              style={{ color: '#B0A090' }}
-              onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#F5F0E8')}
-              onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+              aria-label="סגירה"
+              className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-[#8A7664] hover:bg-[#F5F0E8] hover:text-[#3A2A1A]"
             >
-              ×
+              <X className="h-[18px] w-[18px]" />
             </button>
           </div>
         )}
-        <div className="overflow-y-auto flex-1 p-6">
+        <div className="flex-1 overflow-y-auto p-5 sm:p-6 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
           {children}
         </div>
       </div>

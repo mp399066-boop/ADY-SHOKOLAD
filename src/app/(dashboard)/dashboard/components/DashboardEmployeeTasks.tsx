@@ -63,7 +63,7 @@ export function DashboardEmployeeTasks() {
         <h2 className="text-[12.5px] font-bold" style={{ color: C.textSoft }}>משימות עובדים</h2>
         {!loading && (
           <span
-            className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[10px] font-bold"
+            className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[11px] font-bold"
             style={{ backgroundColor: C.brandSoft, color: C.brand }}
           >
             {total}

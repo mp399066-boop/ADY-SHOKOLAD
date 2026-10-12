@@ -12,9 +12,9 @@ import type { WebsiteOrderNotification } from '@/hooks/useNewWebsiteOrderNotific
 // Mirror of theme.ts tokens — imported directly to avoid coupling this
 // component to the dashboard-specific theme import path.
 const T = {
-  amberSoft: '#F4E3C9',
-  gold:      '#C49A6C',
-  espresso:  '#2F1B14',
+  amberSoft: '#EDD9B4',
+  gold:      '#C9A46A',
+  espresso:  '#2B1A10',
   cocoa:     '#7B4A35',
   amber:     '#A8753D',
 };

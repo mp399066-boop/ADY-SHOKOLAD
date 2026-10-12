@@ -61,7 +61,7 @@ export function KitchenInventoryPanel({
               >
                 <div className="mb-1 flex min-w-0 items-start justify-between gap-1.5">
                   <p className="truncate text-xs font-bold leading-5" style={{ color: C.text }}>{item.שם}</p>
-                  <span className="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold" style={{ backgroundColor: colors.bg, color: colors.color }}>
+                  <span className="shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-bold" style={{ backgroundColor: colors.bg, color: colors.color }}>
                     {label}
                   </span>
                 </div>
@@ -71,7 +71,7 @@ export function KitchenInventoryPanel({
                 <button
                   type="button"
                   onClick={() => (onEditItem ? onEditItem({ kind: item.kind, id: item.id }) : onOpenInventory())}
-                  className="flex h-6 w-fit items-center gap-1 rounded-md border px-2 text-[10px] font-bold"
+                  className="flex h-6 w-fit items-center gap-1 rounded-md border px-2 text-[11px] font-bold"
                   style={{ borderColor: C.border, color: C.cocoa, backgroundColor: C.brandSoft }}
                 >
                   <Pencil size={11} />

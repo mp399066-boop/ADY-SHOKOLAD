@@ -15,295 +15,14 @@ import { sumPetitFours, getCapacityInfo } from '@/lib/packageCapacity';
 import { formatDate, formatCurrency } from '@/lib/utils';
 import { downloadOrderSummaryPng } from '@/lib/order-summary-png';
 import toast from 'react-hot-toast';
-import type { Order, OrderItem, OrderRecipient, Customer, Product, Package, PetitFourType, Employee, WorkTask } from '@/types/database';
+import type { Order, OrderItem, Customer, Product, Package, PetitFourType, Employee, WorkTask } from '@/types/database';
 import { DeliveryTypeCards } from '@/components/orders/DeliveryTypeCards';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 import { CustomerEditModal } from '@/components/customers/CustomerEditModal';
-
-// ─── Interfaces ────────────────────────────────────────────────────────────────
-
-interface EditForm {
-  הזמנה_דחופה: boolean;
-  סוג_אספקה: 'משלוח' | 'איסוף עצמי';
-  תאריך_אספקה: string;
-  שעת_אספקה: string;
-  delivery_time_flexible: boolean;
-  מקור_ההזמנה: string;
-  שם_מקבל: string;
-  טלפון_מקבל: string;
-  כתובת_מקבל_ההזמנה: string;
-  עיר: string;
-  הוראות_משלוח: string;
-  דמי_משלוח: string;
-  ברכה_טקסט: string;
-  הערות_להזמנה: string;
-  אופן_תשלום: string;
-  סטטוס_תשלום: Order['סטטוס_תשלום'];
-  סטטוס_הזמנה: Order['סטטוס_הזמנה'];
-  סוג_הנחה: 'ללא' | 'אחוז' | 'סכום';
-  ערך_הנחה: string;
-  סוג_הזמנה: 'רגיל' | 'סאטמר';
-}
-
-interface EditOrderItem {
-  מוצר_id: string;
-  שם_מוצר: string;
-  כמות: number;
-  מחיר_ליחידה: number;
-  סהכ: number;
-  הערות_לשורה: string;
-  /** Recipient this line is for; '' = the order as a whole. */
-  נמען_id?: string;
-}
-
-interface EditPackageItem {
-  _packageId: string;
-  שם_מארז: string;
-  גודל_מארז: number;
-  כמות: number;
-  מחיר_ליחידה: number;
-  סהכ: number;
-  הערות_לשורה: string;
-  נמען_id?: string;
-  פטיפורים: { פטיפור_id: string; שם: string; כמות: number }[];
-}
-
-interface EditCustomItem {
-  שם_פריט_מותאם: string;
-  // UI-only: 'הנחה_תשלום' maps to 'תוספת_תשלום' with a negative מחיר_ליחידה on save.
-  סוג_שורה: 'מוצר_ידני' | 'תוספת_תשלום' | 'הנחה_תשלום';
-  כמות: number;
-  מחיר_ליחידה: number;  // always positive in the editor; negated on save for הנחה_תשלום
-  סהכ: number;           // negative for הנחה_תשלום rows
-  הערות_לשורה: string;
-  נמען_id?: string;
-}
-
-type OrderDeliveryRow = {
-  id?: string;
-  סטטוס_משלוח: string;
-  שם_שליח: string;
-  כתובת?: string | null;
-  עיר: string;
-  courier_id?: string | null;
-  נמען_id?: string | null;
-  שליחים?: { id: string; שם_שליח: string; טלפון_שליח: string | null } | null;
-};
-
-type FullOrder = Order & {
-  לקוחות: Customer;
-  מוצרים_בהזמנה: (OrderItem & { מוצרים_למכירה?: Product })[];
-  משלוח: OrderDeliveryRow | null;
-  /** Every stop of the order — one row per recipient on a multi-recipient order. */
-  משלוחים?: OrderDeliveryRow[];
-  /** The people this order is delivered to; empty on a classic single-stop order. */
-  נמענים?: OrderRecipient[];
-  תשלומים: { id: string; סכום: number; אמצעי_תשלום: string; תאריך_תשלום: string }[];
-  חשבוניות: { id: string; מספר_חשבונית: string; סכום: number; סטטוס: string; קישור_חשבונית?: string | null; סוג_מסמך?: string | null; תאריך_יצירה?: string | null }[];
-};
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-const ORDER_STATUSES = ['חדשה', 'בהכנה', 'מוכנה למשלוח', 'נשלחה', 'הושלמה בהצלחה', 'בוטלה'];
-
-const STATUS_PILL: Record<string, string> = {
-  'חדשה':             'bg-sky-100 text-sky-800 ring-1 ring-sky-300',
-  'בהכנה':            'bg-amber-100 text-amber-800 ring-1 ring-amber-300',
-  'מוכנה למשלוח':     'bg-violet-100 text-violet-800 ring-1 ring-violet-300',
-  'נשלחה':            'bg-indigo-100 text-indigo-800 ring-1 ring-indigo-300',
-  'הושלמה בהצלחה':    'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-300',
-  'בוטלה':            'bg-rose-100 text-rose-700 ring-1 ring-rose-300',
-};
-
-const PAYMENT_PILL: Record<string, string> = {
-  'ממתין': 'bg-amber-100 text-amber-800 ring-1 ring-amber-300',
-  'שולם':  'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-300',
-  'חלקי':  'bg-orange-100 text-orange-800 ring-1 ring-orange-300',
-  'בוטל':  'bg-rose-100 text-rose-700 ring-1 ring-rose-300',
-};
-
-// Static (non-API) PayPlus payment page — a fixed 0/open-amount link where the
-// customer fills in name, phone, order number and amount manually. Used while
-// the PayPlus REST API is not yet enabled for the account.
-const PAYPLUS_STATIC_LINK = process.env.NEXT_PUBLIC_PAYPLUS_STATIC_PAYMENT_LINK ?? '';
-// The API-generated per-order link button is hidden by default because the
-// account currently lacks REST API permission (generateLink returns 422). Set
-// NEXT_PUBLIC_PAYPLUS_API_ENABLED=true once PayPlus enables API access.
-const PAYPLUS_API_ENABLED = process.env.NEXT_PUBLIC_PAYPLUS_API_ENABLED === 'true';
-
-
-// ─── Small field helpers ───────────────────────────────────────────────────────
-
-/**
- * "Who is this line for?" — shown in the item editor only while the order
- * actually has recipients. Keeping the assignment editable here is what stops
- * a routine item edit from quietly detaching every line from its recipient.
- */
-function EditRecipientSelect({ recipients, value, onChange }: {
-  recipients: OrderRecipient[];
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  if (recipients.length === 0) return null;
-  return (
-    <div className="flex items-center gap-2 mb-2">
-      <span className="text-xs font-medium flex-shrink-0" style={{ color: '#6B4A2D' }}>עבור:</span>
-      <select
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        className="border rounded-lg px-2 py-1 text-xs bg-white focus:outline-none"
-        style={{ borderColor: value ? '#DDD0BC' : '#FBBF24', color: '#2B1A10' }}
-      >
-        <option value="">— כל ההזמנה —</option>
-        {recipients.map((r, i) => (
-          <option key={r.id} value={r.id}>{i + 1}. {r.שם_נמען}</option>
-        ))}
-      </select>
-    </div>
-  );
-}
-
-function FieldInput({ label, value, onChange, type = 'text' }: {
-  label: string; value: string; onChange: (v: string) => void; type?: string;
-}) {
-  return (
-    <div>
-      <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>{label}</label>
-      <input
-        type={type}
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
-        style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
-      />
-    </div>
-  );
-}
-
-function FieldSelect({ label, value, onChange, children }: {
-  label: string; value: string; onChange: (v: string) => void; children: React.ReactNode;
-}) {
-  return (
-    <div>
-      <label className="block text-xs font-medium mb-1" style={{ color: '#6B4A2D' }}>{label}</label>
-      <select
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2"
-        style={{ borderColor: '#E7D2A6', color: '#2B1A10' }}
-      >
-        {children}
-      </select>
-    </div>
-  );
-}
-
-// ─── Detail-page UI helpers (presentation only — no business logic) ──────────
-
-// Tiny inline icon set — keeps bundle slim and matches the brand stroke weight.
-function Icon({ name, className = 'w-4 h-4' }: { name: string; className?: string }) {
-  const props = {
-    className,
-    fill: 'none',
-    stroke: 'currentColor',
-    strokeWidth: 1.6,
-    strokeLinecap: 'round' as const,
-    strokeLinejoin: 'round' as const,
-    viewBox: '0 0 24 24',
-    'aria-hidden': true,
-  };
-  switch (name) {
-    case 'user':     return <svg {...props}><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>;
-    case 'phone':    return <svg {...props}><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/></svg>;
-    case 'mail':     return <svg {...props}><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>;
-    case 'truck':    return <svg {...props}><path d="M3 7h11v9H3z"/><path d="M14 10h4l3 3v3h-7"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></svg>;
-    case 'pin':      return <svg {...props}><path d="M12 22s7-7.5 7-13a7 7 0 1 0-14 0c0 5.5 7 13 7 13z"/><circle cx="12" cy="9" r="2.5"/></svg>;
-    case 'calendar': return <svg {...props}><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4M16 3v4"/></svg>;
-    case 'clock':    return <svg {...props}><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>;
-    case 'note':     return <svg {...props}><path d="M5 4h11l4 4v12a1 1 0 0 1-1 1H5z"/><path d="M16 4v4h4M9 12h6M9 16h4"/></svg>;
-    case 'gift':     return <svg {...props}><path d="M3 12h18v9H3z"/><path d="M12 7v14M3 7h18v5H3z"/><path d="M12 7c-2 0-4-1-4-3s2-2 3-1 1 4 1 4zM12 7c2 0 4-1 4-3s-2-2-3-1-1 4-1 4z"/></svg>;
-    case 'edit':     return <svg {...props}><path d="M4 20h4l11-11-4-4L4 16v4z"/><path d="M14 5l4 4"/></svg>;
-    case 'chevron':  return <svg {...props}><path d="m6 9 6 6 6-6"/></svg>;
-    case 'check':    return <svg {...props}><path d="m5 13 4 4 10-10"/></svg>;
-    case 'plus':     return <svg {...props}><path d="M12 5v14M5 12h14"/></svg>;
-    case 'arrow':    return <svg {...props}><path d="m15 6-6 6 6 6"/></svg>;
-    case 'download': return <svg {...props}><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>;
-    default:         return null;
-  }
-}
-
-// One field of an info card: tiny muted icon, tiny muted label, prominent value.
-function InfoField({
-  icon, label, children,
-}: { icon: string; label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex items-start gap-2.5 min-w-0">
-      <span className="flex-shrink-0 mt-0.5" style={{ color: '#9B7A5A' }}><Icon name={icon} /></span>
-      <div className="min-w-0 flex-1">
-        <p className="text-[11px] uppercase tracking-wider mb-0.5" style={{ color: '#9B7A5A' }}>{label}</p>
-        <div className="text-sm leading-snug" style={{ color: '#2B1A10' }}>{children}</div>
-      </div>
-    </div>
-  );
-}
-
-// Vertical timeline of order statuses — current step is filled, prior steps are
-// muted-filled (done), upcoming are hollow. Click any step to update.
-function StatusTimeline({
-  statuses, current, disabled, onPick,
-}: {
-  statuses: string[]; current: string; disabled: boolean; onPick: (s: string) => void;
-}) {
-  const currentIdx = statuses.indexOf(current);
-  return (
-    <ol className="relative" dir="rtl">
-      {statuses.map((s, i) => {
-        const isDone = currentIdx >= 0 && i < currentIdx;
-        const isCurrent = i === currentIdx;
-        const isLast = i === statuses.length - 1;
-        const dotBg = isCurrent ? '#8B5E34' : isDone ? '#C7A46B' : '#FFFFFF';
-        const dotBorder = isCurrent ? '#8B5E34' : isDone ? '#C7A46B' : '#DDD0BC';
-        const labelColor = isCurrent ? '#2B1A10' : isDone ? '#6B4A2D' : '#9B7A5A';
-        const lineColor = isDone ? '#C7A46B' : '#EDE0CE';
-        return (
-          <li key={s} className="relative flex items-start gap-3 pb-4 last:pb-0">
-            {!isLast && (
-              <span
-                aria-hidden
-                className="absolute top-5 right-[9px] w-px"
-                style={{ height: 'calc(100% - 12px)', background: lineColor }}
-              />
-            )}
-            <span
-              aria-hidden
-              className="flex-shrink-0 w-5 h-5 rounded-full mt-0.5 transition-colors flex items-center justify-center"
-              style={{ background: dotBg, border: `2px solid ${dotBorder}` }}
-            >
-              {isDone && <Icon name="check" className="w-3 h-3" />}
-            </span>
-            <button
-              type="button"
-              onClick={() => onPick(s)}
-              disabled={disabled || isCurrent}
-              className="flex-1 text-right text-sm font-medium px-2 py-1 -mx-2 rounded-md transition-colors hover:bg-stone-50 disabled:cursor-default disabled:hover:bg-transparent"
-              style={{ color: labelColor, fontWeight: isCurrent ? 700 : 500 }}
-            >
-              {s}
-              {isCurrent && (
-                <span
-                  className="mr-2 text-[10px] font-semibold px-1.5 py-0.5 rounded"
-                  style={{ backgroundColor: '#EFE4D3', color: '#6B4A2D' }}
-                >
-                  עכשיו
-                </span>
-              )}
-            </button>
-          </li>
-        );
-      })}
-    </ol>
-  );
-}
+import type { EditForm, EditOrderItem, EditPackageItem, EditCustomItem, FullOrder } from './_components/types';
+import { ORDER_STATUSES, PAYMENT_PILL, PAYPLUS_STATIC_LINK, PAYPLUS_API_ENABLED } from './_components/constants';
+import { EditRecipientSelect, FieldInput, FieldSelect, Icon, InfoField, StatusTimeline } from './_components/fields';
+import { FinancialActionsBar, InvRow, FinancialDocumentsList, InvoicePreviewModal } from './_components/financial';
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
@@ -1397,8 +1116,8 @@ export default function OrderDetailPage() {
       <header
         className="rounded-2xl p-4 sm:p-5 flex flex-wrap items-start justify-between gap-4"
         style={{
-          background: 'linear-gradient(180deg,#FFFDF8 0%,#FBF5EA 100%)',
-          border: '1px solid #EAE0D4',
+          background: 'linear-gradient(180deg,#F8F6F2 0%,#FBF5E6 100%)',
+          border: '1px solid #E8DED2',
           boxShadow: '0 1px 6px rgba(58,42,26,0.05)',
         }}
       >
@@ -1426,7 +1145,7 @@ export default function OrderDetailPage() {
               <StatusBadge status={order.סטטוס_הזמנה} type="order" />
               <StatusBadge status={order.סטטוס_תשלום} type="payment" />
               {(order.סוג_הזמנה as string) === 'סאטמר' && (
-                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: '#EDE9FE', color: '#6D28D9' }}>
+                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: '#EFEAF5', color: '#6D28D9' }}>
                   סאטמר
                 </span>
               )}
@@ -1449,7 +1168,7 @@ export default function OrderDetailPage() {
               </div>
             )}
             {order.delivery_time_flexible && (
-              <div className="text-xs mt-1 font-medium" style={{ color: '#476D53' }}>גמיש</div>
+              <div className="text-xs mt-1 font-medium" style={{ color: '#2D6648' }}>גמיש</div>
             )}
           </div>
           <div className="text-right">
@@ -1458,7 +1177,7 @@ export default function OrderDetailPage() {
               {formatCurrency(liveDisplayTotal)}
             </p>
             {isBusinessForVat && (
-              <p className="text-[10px] mt-1" style={{ color: '#9B7A5A' }}>כולל מע״מ</p>
+              <p className="text-[11px] mt-1" style={{ color: '#9B7A5A' }}>כולל מע״מ</p>
             )}
           </div>
           <div className="self-center flex flex-wrap items-center justify-end gap-2">
@@ -1569,9 +1288,9 @@ export default function OrderDetailPage() {
 
           {/* Greeting (highlighted card if set) */}
           {order.ברכה_טקסט && (
-            <Card style={{ background: 'linear-gradient(180deg,#FFFDF8 0%,#FAF1E0 100%)' }}>
+            <Card style={{ background: 'linear-gradient(180deg,#F8F6F2 0%,#FBF5E6 100%)' }}>
               <div className="flex items-start gap-3">
-                <span className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: '#EFE4D3', color: '#8B5E34' }}>
+                <span className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: '#E8DED2', color: '#8B5E34' }}>
                   <Icon name="gift" />
                 </span>
                 <div className="min-w-0 flex-1">
@@ -1632,7 +1351,7 @@ export default function OrderDetailPage() {
               </div>
 
               {/* Delivery column */}
-              <div className="space-y-4 sm:border-r sm:pr-6" style={{ borderColor: '#EDE0CE' }}>
+              <div className="space-y-4 sm:border-r sm:pr-6" style={{ borderColor: '#E8DED2' }}>
                 <p className="text-[11px] uppercase tracking-wider font-semibold" style={{ color: '#8B5E34' }}>אספקה</p>
                 <InfoField icon="truck" label="סוג">
                   <span className="font-medium">{order.סוג_אספקה}</span>
@@ -1645,7 +1364,7 @@ export default function OrderDetailPage() {
                     <span className="font-medium">{orderRecipients.length} נמענים</span>
                     <span
                       className="ms-2 text-[11px] font-medium px-2 py-0.5 rounded-full"
-                      style={{ backgroundColor: '#EDE9FE', color: '#5B21B6' }}
+                      style={{ backgroundColor: '#EFEAF5', color: '#5B21B6' }}
                     >
                       משלוח לכמה כתובות
                     </span>
@@ -1713,7 +1432,7 @@ export default function OrderDetailPage() {
                           {showNewCourier && (
                             <div
                               className="flex flex-col gap-2 p-2.5 rounded-lg border"
-                              style={{ borderColor: '#E8DED2', backgroundColor: '#FDFBF8', minWidth: '12rem' }}
+                              style={{ borderColor: '#E8DED2', backgroundColor: '#F8F6F2', minWidth: '12rem' }}
                             >
                               <span className="text-[12px] font-medium" style={{ color: '#4A2F1B' }}>הוספת שליח חדש</span>
                               <input
@@ -1749,7 +1468,7 @@ export default function OrderDetailPage() {
                                   onClick={createCourierAndAssign}
                                   disabled={creatingCourier || savingCourier}
                                   className="text-[12.5px] font-medium h-9 px-3 rounded-lg text-white transition-colors disabled:opacity-60"
-                                  style={{ backgroundColor: '#8B5E3C' }}
+                                  style={{ backgroundColor: '#8B5E34' }}
                                 >
                                   {creatingCourier ? 'שומר…' : 'שמור ושבץ'}
                                 </button>
@@ -1883,7 +1602,7 @@ export default function OrderDetailPage() {
                     <li
                       key={r.id}
                       className="rounded-xl border p-3 sm:p-4"
-                      style={{ borderColor: '#EAE0D4', backgroundColor: '#FFFFFF' }}
+                      style={{ borderColor: '#E8DED2', backgroundColor: '#FFFFFF' }}
                     >
                       <div className="flex items-start justify-between gap-3 flex-wrap">
                         <div className="min-w-0">
@@ -1918,7 +1637,7 @@ export default function OrderDetailPage() {
                         </div>
                       </div>
 
-                      <div className="mt-2 pt-2 border-t" style={{ borderColor: '#F2EAE0' }}>
+                      <div className="mt-2 pt-2 border-t" style={{ borderColor: '#F0EAE0' }}>
                         {lines.length === 0 ? (
                           <p className="text-xs" style={{ color: '#A8442D' }}>לא שויכו פריטים לנמען זה</p>
                         ) : (
@@ -2002,7 +1721,7 @@ export default function OrderDetailPage() {
                     <li
                       key={item.id}
                       className="rounded-xl border transition-colors"
-                      style={{ borderColor: '#EAE0D4', backgroundColor: '#FFFFFF' }}
+                      style={{ borderColor: '#E8DED2', backgroundColor: '#FFFFFF' }}
                     >
                       <div className="flex items-center gap-3 p-3 sm:p-4">
                         {isPackage ? (
@@ -2029,15 +1748,15 @@ export default function OrderDetailPage() {
                               {name}
                             </span>
                             {isPackage && (
-                              <span className="text-[10px] font-medium px-2 py-0.5 rounded-full" style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}>
+                              <span className="text-[11px] font-medium px-2 py-0.5 rounded-full" style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}>
                                 מארז
                               </span>
                             )}
                             {isMultiRecipient && (
                               <span
-                                className="text-[10px] font-medium px-2 py-0.5 rounded-full"
+                                className="text-[11px] font-medium px-2 py-0.5 rounded-full"
                                 style={item.נמען_id
-                                  ? { backgroundColor: '#EDE9FE', color: '#5B21B6' }
+                                  ? { backgroundColor: '#EFEAF5', color: '#5B21B6' }
                                   : { backgroundColor: '#FEF3C7', color: '#92400E' }}
                               >
                                 {item.נמען_id
@@ -2050,11 +1769,11 @@ export default function OrderDetailPage() {
                               const badgeStyle = isDiscount
                                 ? { backgroundColor: '#DCFCE7', color: '#15803D' }
                                 : item.סוג_שורה === 'תוספת_תשלום'
-                                  ? { backgroundColor: '#FEE2E2', color: '#991B1B' }
-                                  : { backgroundColor: '#EDE9FE', color: '#5B21B6' };
+                                  ? { backgroundColor: '#FEE2E2', color: '#8A3228' }
+                                  : { backgroundColor: '#EFEAF5', color: '#5B21B6' };
                               const badgeLabel = isDiscount ? 'הנחה' : item.סוג_שורה === 'תוספת_תשלום' ? 'תוספת תשלום' : 'מוצר ידני';
                               return (
-                                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full" style={badgeStyle}>
+                                <span className="text-[11px] font-medium px-2 py-0.5 rounded-full" style={badgeStyle}>
                                   {badgeLabel}
                                 </span>
                               );
@@ -2087,7 +1806,7 @@ export default function OrderDetailPage() {
                               <span
                                 key={sel.id}
                                 className="text-xs px-2.5 py-1 rounded-full font-medium"
-                                style={{ backgroundColor: '#EFE4D3', color: '#4A2F1B' }}
+                                style={{ backgroundColor: '#E8DED2', color: '#4A2F1B' }}
                               >
                                 {sel.סוגי_פטיפורים?.שם_פטיפור} <span className="opacity-60">×{sel.כמות}</span>
                               </span>
@@ -2112,7 +1831,7 @@ export default function OrderDetailPage() {
         <aside className="space-y-5 lg:sticky lg:top-5 lg:self-start">
 
           {/* Financial summary — hero card */}
-          <Card style={{ background: 'linear-gradient(180deg,#FFFDF8 0%,#FBF5EA 100%)' }}>
+          <Card style={{ background: 'linear-gradient(180deg,#F8F6F2 0%,#FBF5E6 100%)' }}>
             <p className="text-[11px] uppercase tracking-wider mb-3 font-semibold" style={{ color: '#8B5E34' }}>סיכום כספי</p>
             <dl className="space-y-2 text-sm">
               <div className="flex justify-between">
@@ -2147,7 +1866,7 @@ export default function OrderDetailPage() {
               )}
               {isBusinessForVat && (
                 <>
-                  <div className="flex justify-between pt-2" style={{ borderTop: '1px dashed #EDE0CE' }}>
+                  <div className="flex justify-between pt-2" style={{ borderTop: '1px dashed #E8DED2' }}>
                     <dt style={{ color: '#6B4A2D' }}>סה״כ לפני מע״מ</dt>
                     <dd className="tabular-nums" style={{ color: '#2B1A10' }}>{formatCurrency(baseTotal)}</dd>
                   </div>
@@ -2311,13 +2030,13 @@ export default function OrderDetailPage() {
                 {/* Static (non-API) PayPlus payment page — temporary flow while
                     the PayPlus REST API is not yet enabled for the account. */}
                 {PAYPLUS_STATIC_LINK ? (
-                  <div className="rounded-lg p-2.5 space-y-2" style={{ backgroundColor: '#F0F7F2', border: '1px solid #BFE3CC' }}>
+                  <div className="rounded-lg p-2.5 space-y-2" style={{ backgroundColor: '#EAF0E7', border: '1px solid #B7E0C0' }}>
                     <a
                       href={PAYPLUS_STATIC_LINK}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="block w-full px-3 py-2 rounded-lg text-xs font-semibold text-center"
-                      style={{ backgroundColor: '#166534', color: '#FFFFFF' }}
+                      style={{ backgroundColor: '#33623a', color: '#FFFFFF' }}
                     >
                       פתח דף תשלום PayPlus
                     </a>
@@ -2333,7 +2052,7 @@ export default function OrderDetailPage() {
                             .catch(() => {});
                         }}
                         className="flex-1 py-1.5 rounded-md text-[11px] font-semibold"
-                        style={{ backgroundColor: copiedOrderNum ? '#D1FAE5' : '#FFFFFF', color: '#166534', border: '1px solid #BFE3CC' }}
+                        style={{ backgroundColor: copiedOrderNum ? '#DCFCE7' : '#FFFFFF', color: '#33623a', border: '1px solid #B7E0C0' }}
                       >
                         {copiedOrderNum ? '✓ הועתק' : `מס׳ הזמנה: ${order.מספר_הזמנה ?? ''}`}
                       </button>
@@ -2345,21 +2064,21 @@ export default function OrderDetailPage() {
                             .catch(() => {});
                         }}
                         className="flex-1 py-1.5 rounded-md text-[11px] font-semibold"
-                        style={{ backgroundColor: copiedAmount ? '#D1FAE5' : '#FFFFFF', color: '#166534', border: '1px solid #BFE3CC' }}
+                        style={{ backgroundColor: copiedAmount ? '#DCFCE7' : '#FFFFFF', color: '#33623a', border: '1px solid #B7E0C0' }}
                       >
                         {copiedAmount ? '✓ הועתק' : `סכום: ₪${payplusBalance.toFixed(2)}`}
                       </button>
                     </div>
                     {/* Operator-only debug (no secrets) — verify the live link
                         matches Vercel env after redeploy. */}
-                    <div className="pt-1.5 mt-0.5 text-[10px] leading-4" dir="ltr" style={{ color: '#8FA897', borderTop: '1px dashed #CFE6D6' }}>
+                    <div className="pt-1.5 mt-0.5 text-[11px] leading-4" dir="ltr" style={{ color: '#8FA897', borderTop: '1px dashed #BDD5C0' }}>
                       <div>src: NEXT_PUBLIC_PAYPLUS_STATIC_PAYMENT_LINK</div>
                       <div>host: {payplusDebug.host} · uid…{payplusDebug.suffix} · query: {payplusDebug.hasQuery ? 'yes ⚠' : 'none'}</div>
                       <div>api button: {PAYPLUS_API_ENABLED ? 'enabled' : 'disabled'}</div>
                     </div>
                   </div>
                 ) : (
-                  <p className="text-[11px] text-center px-2 py-2 rounded-lg" style={{ backgroundColor: '#FEF9C3', color: '#92400E', border: '1px solid #FDE68A' }}>
+                  <p className="text-[11px] text-center px-2 py-2 rounded-lg" style={{ backgroundColor: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A' }}>
                     קישור PayPlus לא מוגדר — הוסף NEXT_PUBLIC_PAYPLUS_STATIC_PAYMENT_LINK בהגדרות הסביבה.
                   </p>
                 )}
@@ -2373,14 +2092,14 @@ export default function OrderDetailPage() {
                       onClick={handleCreatePayPlusLink}
                       disabled={creatingPayplusLink}
                       className="w-full px-3 py-2 rounded-lg text-xs font-semibold transition-colors disabled:opacity-60"
-                      style={{ backgroundColor: '#0E5E33', color: '#FFFFFF' }}
+                      style={{ backgroundColor: '#2A5C38', color: '#FFFFFF' }}
                     >
                       {creatingPayplusLink ? 'יוצר קישור…' : 'צור קישור PayPlus (API)'}
                     </button>
 
                     {payplusLink && (
-                      <div className="rounded-lg p-2.5 space-y-2" style={{ backgroundColor: '#F0F7F2', border: '1px solid #BFE3CC' }}>
-                        <p className="text-[11px] font-medium break-all" dir="ltr" style={{ color: '#166534' }}>{payplusLink}</p>
+                      <div className="rounded-lg p-2.5 space-y-2" style={{ backgroundColor: '#EAF0E7', border: '1px solid #B7E0C0' }}>
+                        <p className="text-[11px] font-medium break-all" dir="ltr" style={{ color: '#33623a' }}>{payplusLink}</p>
                         <div className="flex gap-2">
                           <button
                             type="button"
@@ -2390,7 +2109,7 @@ export default function OrderDetailPage() {
                                 .catch(() => {});
                             }}
                             className="flex-1 py-1.5 rounded-md text-xs font-semibold"
-                            style={{ backgroundColor: payplusLinkCopied ? '#D1FAE5' : '#FFFFFF', color: '#166534', border: '1px solid #BFE3CC' }}
+                            style={{ backgroundColor: payplusLinkCopied ? '#DCFCE7' : '#FFFFFF', color: '#33623a', border: '1px solid #B7E0C0' }}
                           >
                             {payplusLinkCopied ? '✓ הועתק' : 'העתק קישור'}
                           </button>
@@ -2399,7 +2118,7 @@ export default function OrderDetailPage() {
                             target="_blank"
                             rel="noopener noreferrer"
                             className="flex-1 py-1.5 rounded-md text-xs font-semibold text-center"
-                            style={{ backgroundColor: '#166534', color: '#FFFFFF' }}
+                            style={{ backgroundColor: '#33623a', color: '#FFFFFF' }}
                           >
                             פתח קישור
                           </a>
@@ -2445,7 +2164,7 @@ export default function OrderDetailPage() {
               <p className="text-[11px] uppercase tracking-wider font-semibold" style={{ color: '#8B5E34' }}>
                 משימות לעובדים
                 {orderTasks.length > 0 && (
-                  <span className="mr-1.5 px-1.5 py-0.5 rounded-full text-[10px]" style={{ backgroundColor: '#F4E8D8', color: '#7A4A27' }}>
+                  <span className="mr-1.5 px-1.5 py-0.5 rounded-full text-[11px]" style={{ backgroundColor: '#F4E8D8', color: '#7A4820' }}>
                     {orderTasks.length}
                   </span>
                 )}
@@ -2453,21 +2172,21 @@ export default function OrderDetailPage() {
               <button
                 onClick={() => setShowAddTaskModal(true)}
                 className="text-[11px] px-2.5 py-1 rounded-lg font-medium"
-                style={{ backgroundColor: '#F4E8D8', color: '#7A4A27', border: '1px solid #E8D2A8' }}
+                style={{ backgroundColor: '#F4E8D8', color: '#7A4820', border: '1px solid #EDD9B4' }}
               >
                 + משימה
               </button>
             </div>
             {orderTasks.length === 0 ? (
-              <p className="text-[12px] text-center py-3" style={{ color: '#B09A84' }}>אין משימות להזמנה זו</p>
+              <p className="text-[12px] text-center py-3" style={{ color: '#B0A090' }}>אין משימות להזמנה זו</p>
             ) : (
               <ul className="space-y-1.5">
                 {orderTasks.map(task => {
                   const sCfg: Record<WorkTask['סטטוס'], { bg: string; fg: string }> = {
-                    'ממתין':  { bg: '#EEF3FB', fg: '#1E4E8C' },
-                    'בעבודה': { bg: '#FFF8E6', fg: '#7A5200' },
-                    'הושלם':  { bg: '#EEF7EE', fg: '#1E5C31' },
-                    'בוטל':   { bg: '#FFF0F0', fg: '#8B1C1C' },
+                    'ממתין':  { bg: '#EAF0F5', fg: '#1E4E8C' },
+                    'בעבודה': { bg: '#FBF5E6', fg: '#7A5820' },
+                    'הושלם':  { bg: '#EAF0E7', fg: '#2A5C38' },
+                    'בוטל':   { bg: '#F0EAE8', fg: '#8A3228' },
                   };
                   const sc = sCfg[task.סטטוס];
                   const isDone = task.סטטוס === 'הושלם' || task.סטטוס === 'בוטל';
@@ -2480,21 +2199,21 @@ export default function OrderDetailPage() {
                       <div className="min-w-0 flex-1">
                         <p className="font-medium leading-snug" style={{ color: '#2B1A10' }}>{task.שם_משימה}</p>
                         {task.עובדים && (
-                          <p className="text-[10.5px] mt-0.5" style={{ color: '#8A735F' }}>{task.עובדים.שם_עובד}</p>
+                          <p className="text-[11.5px] mt-0.5" style={{ color: '#8A7664' }}>{task.עובדים.שם_עובד}</p>
                         )}
                         {task.תאריך_יעד && (
-                          <p className="text-[10.5px]" style={{ color: '#8A735F' }}>{task.שעת_יעד ? `${task.שעת_יעד} · ` : ''}{formatDate(task.תאריך_יעד)}</p>
+                          <p className="text-[11.5px]" style={{ color: '#8A7664' }}>{task.שעת_יעד ? `${task.שעת_יעד} · ` : ''}{formatDate(task.תאריך_יעד)}</p>
                         )}
                       </div>
                       <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: sc.bg, color: sc.fg }}>
+                        <span className="text-[11px] font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: sc.bg, color: sc.fg }}>
                           {task.סטטוס}
                         </span>
                         {!isDone && (
                           <button
                             onClick={() => handleOrderTaskStatusChange(task.id, task.סטטוס === 'ממתין' ? 'בעבודה' : 'הושלם')}
-                            className="text-[10px] px-1.5 py-0.5 rounded"
-                            style={{ backgroundColor: '#F4E8D8', color: '#7A4A27' }}
+                            className="text-[11px] px-1.5 py-0.5 rounded"
+                            style={{ backgroundColor: '#F4E8D8', color: '#7A4820' }}
                           >
                             {task.סטטוס === 'ממתין' ? '← בעבודה' : '← הושלם'}
                           </button>
@@ -2542,7 +2261,7 @@ export default function OrderDetailPage() {
             <h3 className="text-lg font-bold" style={{ color: '#2B1A10' }}>עריכת הזמנה — {order.מספר_הזמנה}</h3>
 
             {/* ── פרטי הזמנה ── */}
-            <section className="rounded-xl border p-4 space-y-4" style={{ borderColor: '#E7D2A6', backgroundColor: '#FDFAF5' }}>
+            <section className="rounded-xl border p-4 space-y-4" style={{ borderColor: '#E7D2A6', backgroundColor: '#F8F6F2' }}>
               <div className="flex items-center justify-between">
                 <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#8B5E34' }}>פרטי הזמנה</p>
                 <div className="flex items-center gap-2">
@@ -2739,7 +2458,7 @@ export default function OrderDetailPage() {
             <h3 className="text-lg font-bold" style={{ color: '#2B1A10' }}>עריכת מוצרים — {order.מספר_הזמנה}</h3>
 
             {/* ── מוצרים ── */}
-            <section className="rounded-xl border p-4 space-y-3" style={{ borderColor: '#E7D2A6', backgroundColor: '#FDFAF5' }}>
+            <section className="rounded-xl border p-4 space-y-3" style={{ borderColor: '#E7D2A6', backgroundColor: '#F8F6F2' }}>
               <div className="flex items-center justify-between">
                 <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#8B5E34' }}>מוצרים</p>
                 <button
@@ -2822,7 +2541,7 @@ export default function OrderDetailPage() {
                       </div>
                       <div className="col-span-2">
                         <label className="block text-xs mb-1" style={{ color: '#6B4A2D' }}>סה״כ</label>
-                        <div className="px-2 py-1.5 text-xs rounded-lg text-center font-semibold" style={{ backgroundColor: '#EDE0CE', color: '#4A2F1B' }}>
+                        <div className="px-2 py-1.5 text-xs rounded-lg text-center font-semibold" style={{ backgroundColor: '#E8DED2', color: '#4A2F1B' }}>
                           ₪{item.סהכ.toFixed(2)}
                         </div>
                       </div>
@@ -2844,7 +2563,7 @@ export default function OrderDetailPage() {
             </section>
 
             {/* ── מארזי פטיפורים ── */}
-            <section className="rounded-xl border p-4 space-y-3" style={{ borderColor: '#E7D2A6', backgroundColor: '#FDFAF5' }}>
+            <section className="rounded-xl border p-4 space-y-3" style={{ borderColor: '#E7D2A6', backgroundColor: '#F8F6F2' }}>
               <div className="flex items-center justify-between">
                 <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#8B5E34' }}>מארזי פטיפורים</p>
                 <button
@@ -2910,17 +2629,17 @@ export default function OrderDetailPage() {
                         const cap = pkg.גודל_מארז;
                         const info = getCapacityInfo(sumPetitFours(pkg.פטיפורים), cap);
                         const counterStyle = info.state === 'over'
-                          ? { backgroundColor: '#FEE2E2', color: '#991B1B', border: '1px solid #FECACA' }
+                          ? { backgroundColor: '#FEE2E2', color: '#8A3228', border: '1px solid #FECACA' }
                           : info.state === 'full'
-                          ? { backgroundColor: '#D5F0E3', color: '#1D6A3D', border: '1px solid #A8DCC0' }
+                          ? { backgroundColor: '#DCFCE7', color: '#33623A', border: '1px solid #B7E0C0' }
                           : info.state === 'under'
-                          ? { backgroundColor: '#FEF3C7', color: '#7C5A1E', border: '1px solid #FCD9A6' }
-                          : { backgroundColor: '#EFE4D3', color: '#6B4A2D', border: '1px solid #DDD0BC' };
+                          ? { backgroundColor: '#FEF3C7', color: '#7A5820', border: '1px solid #EDCF98' }
+                          : { backgroundColor: '#E8DED2', color: '#6B4A2D', border: '1px solid #DDD0BC' };
                         const availableTypes = petitFourTypes.filter(pf =>
                           pf.פעיל && !pkg.פטיפורים.find(x => x.פטיפור_id === pf.id),
                         );
                         return (
-                          <div className="border-t pt-3" style={{ borderColor: '#EDE0CE' }}>
+                          <div className="border-t pt-3" style={{ borderColor: '#E8DED2' }}>
                             <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
                               <div className="flex items-center gap-2">
                                 <span className="text-xs font-semibold" style={{ color: '#4A2F1B' }}>פטיפורים</span>
@@ -3005,7 +2724,7 @@ export default function OrderDetailPage() {
             </section>
 
             {/* ── מוצרים ידניים / תוספות תשלום ── */}
-            <section className="rounded-xl border p-4 space-y-3" style={{ borderColor: '#E7D2A6', backgroundColor: '#FDFAF5' }}>
+            <section className="rounded-xl border p-4 space-y-3" style={{ borderColor: '#E7D2A6', backgroundColor: '#F8F6F2' }}>
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#8B5E34' }}>מוצרים ידניים / תוספות תשלום</p>
@@ -3033,7 +2752,7 @@ export default function OrderDetailPage() {
                       <div key={idx} className="p-3 rounded-xl border space-y-2"
                         style={{
                           borderColor: isDiscount ? '#B7E0C0' : '#DDD0BC',
-                          backgroundColor: isDiscount ? '#F0FAF2' : '#FAF7F0',
+                          backgroundColor: isDiscount ? '#EAF0E7' : '#FAF7F0',
                         }}>
                         <EditRecipientSelect
                           recipients={orderRecipients}
@@ -3123,7 +2842,7 @@ export default function OrderDetailPage() {
             </section>
 
             {/* ── סיכום כספי ── */}
-            <section className="rounded-xl border p-4 space-y-2 text-sm" style={{ borderColor: '#E7D2A6', backgroundColor: '#FDFAF5' }}>
+            <section className="rounded-xl border p-4 space-y-2 text-sm" style={{ borderColor: '#E7D2A6', backgroundColor: '#F8F6F2' }}>
               <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#8B5E34' }}>סיכום כספי</p>
               <div className="flex justify-between" style={{ color: '#6B4A2D' }}>
                 <span>סכום לפני הנחה:</span>
@@ -3178,24 +2897,24 @@ export default function OrderDetailPage() {
         >
           <div
             className="w-full max-w-sm rounded-2xl shadow-2xl p-5 space-y-3"
-            style={{ backgroundColor: '#FFFDF8', border: '1px solid #E8D2A8', direction: 'rtl' }}
+            style={{ backgroundColor: '#F8F6F2', border: '1px solid #EDD9B4', direction: 'rtl' }}
           >
             <h3 className="text-[14px] font-bold" style={{ color: '#2B1A10' }}>הוסף משימה להזמנה</h3>
             <div className="space-y-1">
-              <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#7A4A27' }}>שם משימה *</label>
+              <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#7A4820' }}>שם משימה *</label>
               <input
                 className="w-full rounded-lg border px-3 py-2 text-[13px]"
-                style={{ borderColor: '#E8D2A8', backgroundColor: '#FFFCF7', color: '#2B1A10' }}
+                style={{ borderColor: '#EDD9B4', backgroundColor: '#F8F6F2', color: '#2B1A10' }}
                 placeholder="לדוג׳ הכנת מארז פטיפורים"
                 value={newTaskTitle}
                 onChange={e => setNewTaskTitle(e.target.value)}
               />
             </div>
             <div className="space-y-1">
-              <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#7A4A27' }}>עובד</label>
+              <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#7A4820' }}>עובד</label>
               <select
                 className="w-full rounded-lg border px-3 py-2 text-[13px]"
-                style={{ borderColor: '#E8D2A8', backgroundColor: '#FFFCF7', color: '#2B1A10' }}
+                style={{ borderColor: '#EDD9B4', backgroundColor: '#F8F6F2', color: '#2B1A10' }}
                 value={newTaskEmpId}
                 onChange={e => setNewTaskEmpId(e.target.value)}
               >
@@ -3205,31 +2924,31 @@ export default function OrderDetailPage() {
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
-                <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#7A4A27' }}>תאריך יעד</label>
+                <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#7A4820' }}>תאריך יעד</label>
                 <input
                   type="date"
                   className="w-full rounded-lg border px-3 py-2 text-[13px]"
-                  style={{ borderColor: '#E8D2A8', backgroundColor: '#FFFCF7', color: '#2B1A10' }}
+                  style={{ borderColor: '#EDD9B4', backgroundColor: '#F8F6F2', color: '#2B1A10' }}
                   value={newTaskDate}
                   onChange={e => setNewTaskDate(e.target.value)}
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#7A4A27' }}>שעה</label>
+                <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#7A4820' }}>שעה</label>
                 <input
                   type="time"
                   className="w-full rounded-lg border px-3 py-2 text-[13px]"
-                  style={{ borderColor: '#E8D2A8', backgroundColor: '#FFFCF7', color: '#2B1A10' }}
+                  style={{ borderColor: '#EDD9B4', backgroundColor: '#F8F6F2', color: '#2B1A10' }}
                   value={newTaskTime}
                   onChange={e => setNewTaskTime(e.target.value)}
                 />
               </div>
             </div>
             <div className="space-y-1">
-              <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#7A4A27' }}>עדיפות</label>
+              <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#7A4820' }}>עדיפות</label>
               <select
                 className="w-full rounded-lg border px-3 py-2 text-[13px]"
-                style={{ borderColor: '#E8D2A8', backgroundColor: '#FFFCF7', color: '#2B1A10' }}
+                style={{ borderColor: '#EDD9B4', backgroundColor: '#F8F6F2', color: '#2B1A10' }}
                 value={newTaskPriority}
                 onChange={e => setNewTaskPriority(e.target.value as 'רגיל' | 'דחוף')}
               >
@@ -3242,14 +2961,14 @@ export default function OrderDetailPage() {
                 onClick={handleAddOrderTask}
                 disabled={savingOrderTask || !newTaskTitle.trim()}
                 className="flex-1 rounded-xl py-2.5 text-[13px] font-semibold text-white"
-                style={{ background: (savingOrderTask || !newTaskTitle.trim()) ? '#C5A882' : 'linear-gradient(135deg,#7A4A27,#8B5E34)', cursor: (savingOrderTask || !newTaskTitle.trim()) ? 'not-allowed' : 'pointer' }}
+                style={{ background: (savingOrderTask || !newTaskTitle.trim()) ? '#C5A882' : 'linear-gradient(135deg,#7A4820,#8B5E34)', cursor: (savingOrderTask || !newTaskTitle.trim()) ? 'not-allowed' : 'pointer' }}
               >
                 {savingOrderTask ? 'שומר...' : 'שמור'}
               </button>
               <button
                 onClick={() => setShowAddTaskModal(false)}
                 className="rounded-xl px-4 py-2.5 text-[13px] font-semibold"
-                style={{ backgroundColor: '#F4EDE3', color: '#7A4A27', border: '1px solid #E8D2A8' }}
+                style={{ backgroundColor: '#F0EAE0', color: '#7A4820', border: '1px solid #EDD9B4' }}
               >
                 ביטול
               </button>
@@ -3269,7 +2988,7 @@ export default function OrderDetailPage() {
         >
           <div
             className="w-full max-w-md rounded-2xl shadow-2xl p-6 space-y-4"
-            style={{ backgroundColor: '#FFFDF8', border: '1px solid #E8D2A8' }}
+            style={{ backgroundColor: '#F8F6F2', border: '1px solid #EDD9B4' }}
             dir="rtl"
           >
             <div className="flex items-center justify-between">
@@ -3279,22 +2998,22 @@ export default function OrderDetailPage() {
               <button
                 onClick={() => setShowManualMorningModal(false)}
                 className="text-xl leading-none"
-                style={{ color: '#8A735F' }}
+                style={{ color: '#8A7664' }}
                 aria-label="סגור"
               >×</button>
             </div>
-            <p className="text-[12px]" style={{ color: '#8A735F' }}>
+            <p className="text-[12px]" style={{ color: '#8A7664' }}>
               ההזמנה תסומן כטופלה — החשבונית/קבלה הופקה ישירות במורנינג, לא דרך המערכת.
             </p>
 
             {/* Document type */}
             <div className="space-y-1">
-              <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#7A4A27' }}>
+              <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#7A4820' }}>
                 סוג מסמך *
               </label>
               <select
                 className="w-full rounded-lg border px-3 py-2 text-[13px]"
-                style={{ borderColor: '#E8D2A8', color: '#2B1A10', backgroundColor: '#FFFCF7' }}
+                style={{ borderColor: '#EDD9B4', color: '#2B1A10', backgroundColor: '#F8F6F2' }}
                 value={manualDocType}
                 onChange={e => setManualDocType(e.target.value)}
               >
@@ -3306,13 +3025,13 @@ export default function OrderDetailPage() {
 
             {/* Document number (optional) */}
             <div className="space-y-1">
-              <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#7A4A27' }}>
+              <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#7A4820' }}>
                 מספר מסמך (אופציונלי)
               </label>
               <input
                 type="text"
                 className="w-full rounded-lg border px-3 py-2 text-[13px]"
-                style={{ borderColor: '#E8D2A8', color: '#2B1A10', backgroundColor: '#FFFCF7' }}
+                style={{ borderColor: '#EDD9B4', color: '#2B1A10', backgroundColor: '#F8F6F2' }}
                 placeholder="לדוג׳ 1234"
                 value={manualDocNumber}
                 onChange={e => setManualDocNumber(e.target.value)}
@@ -3321,13 +3040,13 @@ export default function OrderDetailPage() {
 
             {/* Document link (optional) */}
             <div className="space-y-1">
-              <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#7A4A27' }}>
+              <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#7A4820' }}>
                 קישור למסמך (אופציונלי)
               </label>
               <input
                 type="url"
                 className="w-full rounded-lg border px-3 py-2 text-[13px]"
-                style={{ borderColor: '#E8D2A8', color: '#2B1A10', backgroundColor: '#FFFCF7' }}
+                style={{ borderColor: '#EDD9B4', color: '#2B1A10', backgroundColor: '#F8F6F2' }}
                 placeholder="https://..."
                 value={manualDocLink}
                 onChange={e => setManualDocLink(e.target.value)}
@@ -3337,12 +3056,12 @@ export default function OrderDetailPage() {
 
             {/* Note (optional) */}
             <div className="space-y-1">
-              <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#7A4A27' }}>
+              <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#7A4820' }}>
                 הערה (אופציונלי)
               </label>
               <textarea
                 className="w-full rounded-lg border px-3 py-2 text-[13px] resize-none"
-                style={{ borderColor: '#E8D2A8', color: '#2B1A10', backgroundColor: '#FFFCF7' }}
+                style={{ borderColor: '#EDD9B4', color: '#2B1A10', backgroundColor: '#F8F6F2' }}
                 rows={2}
                 placeholder="הערה חופשית..."
                 value={manualDocNote}
@@ -3357,7 +3076,7 @@ export default function OrderDetailPage() {
                 disabled={savingManualDoc}
                 className="flex-1 rounded-xl py-2.5 text-[13px] font-semibold"
                 style={{
-                  background: savingManualDoc ? '#C5A882' : 'linear-gradient(135deg,#7A4A27,#8B5E34)',
+                  background: savingManualDoc ? '#C5A882' : 'linear-gradient(135deg,#7A4820,#8B5E34)',
                   color: '#fff',
                   cursor: savingManualDoc ? 'not-allowed' : 'pointer',
                 }}
@@ -3367,7 +3086,7 @@ export default function OrderDetailPage() {
               <button
                 onClick={() => setShowManualMorningModal(false)}
                 className="rounded-xl px-5 py-2.5 text-[13px] font-semibold"
-                style={{ backgroundColor: '#F4EDE3', color: '#7A4A27', border: '1px solid #E8D2A8' }}
+                style={{ backgroundColor: '#F0EAE0', color: '#7A4820', border: '1px solid #EDD9B4' }}
               >
                 ביטול
               </button>
@@ -3393,1028 +3112,6 @@ export default function OrderDetailPage() {
           }}
         />
       )}
-    </div>
-  );
-}
-
-// ─── FinancialActionsBar ─────────────────────────────────────────────────
-// Horizontal full-width action bar (~110px tall on desktop) — replaces the
-// previous tall card that was tucked into the order-detail aside. Title
-// block sits on the start side (RTL = right) and the three action buttons
-// fill a sub-grid on the end side. Buttons remain the same DocActionButton
-// component used everywhere else; only the layout around them changed.
-
-function FinancialActionsBar({
-  invoiceReceiptLoading,
-  taxInvoiceLoading,
-  receiptLoading,
-  busy,
-  hasManualMorning,
-  onIssueInvoiceReceipt,
-  onIssueTaxInvoice,
-  onIssueReceipt,
-  onMarkManualMorning,
-  canSendInvoice,
-  sendingInvoice,
-  onSendInvoice,
-  downloadingInvoice,
-  onDownloadInvoice,
-}: {
-  invoiceReceiptLoading: boolean;
-  taxInvoiceLoading: boolean;
-  receiptLoading: boolean;
-  busy: boolean;
-  hasManualMorning: boolean;
-  onIssueInvoiceReceipt: () => void;
-  onIssueTaxInvoice: () => void;
-  onIssueReceipt: () => void;
-  onMarkManualMorning: () => void;
-  // Manual "send invoice to customer" / "download invoice" — only actionable
-  // once an issued document with a stored link exists. When false both buttons
-  // render disabled with an explanatory label (no error-prone active button).
-  canSendInvoice: boolean;
-  sendingInvoice: boolean;
-  onSendInvoice: () => void;
-  downloadingInvoice: boolean;
-  onDownloadInvoice: () => void;
-}) {
-  return (
-    <Card style={{ paddingTop: 18, paddingBottom: 18 }}>
-      {/* Warning banner when already marked as manually issued */}
-      {hasManualMorning && (
-        <div
-          className="flex items-start gap-2 mb-4 rounded-lg px-3 py-2.5 text-[12px]"
-          style={{ backgroundColor: '#FFF8E7', border: '1px solid #F0D080', color: '#7A5A10' }}
-        >
-          <span className="mt-px text-base leading-none">⚠️</span>
-          <span>
-            הזמנה זו סומנה כ<strong>הופקה ידנית במורנינג</strong>. הפקה נוספת דרך המערכת עלולה ליצור כפילות.
-          </span>
-        </div>
-      )}
-
-      <div
-        className="grid items-center gap-4"
-        style={{ gridTemplateColumns: 'minmax(0,1fr)' }}
-      >
-        {/* Inner responsive grid — desktop stacks title|buttons horizontally */}
-        <div
-          className="grid gap-4 lg:gap-5"
-          style={{ gridTemplateColumns: 'minmax(220px,260px) 1fr' }}
-        >
-          {/* Title block */}
-          <div className="min-w-0">
-            <div className="flex items-baseline gap-2 mb-1">
-              <h3 className="text-[15px] font-bold leading-tight" style={{ color: '#2B1A10', letterSpacing: '-0.01em' }}>
-                מסמכים פיננסיים
-              </h3>
-              <span
-                className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-md whitespace-nowrap"
-                style={{ backgroundColor: '#F4E8D8', color: '#7A4A27', letterSpacing: '0.06em' }}
-              >
-                ידני בלבד
-              </span>
-            </div>
-            <p className="text-[11.5px] leading-snug" style={{ color: '#8A735F' }}>
-              הפקה ידנית של חשבוניות וקבלות להזמנה
-            </p>
-          </div>
-
-          {/* Action buttons — 3-up at desktop, collapses to 1 col on mobile */}
-          <div className="space-y-2.5">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-              <DocActionButton
-                variant="primary"
-                title="הפק חשבונית מס קבלה"
-                hint="חשבונית וקבלה במסמך אחד"
-                loading={invoiceReceiptLoading}
-                disabled={busy && !invoiceReceiptLoading}
-                onClick={onIssueInvoiceReceipt}
-              />
-              <DocActionButton
-                variant="secondary"
-                title="הפק חשבונית מס"
-                hint="לתיעוד עסקה ללא קבלה"
-                loading={taxInvoiceLoading}
-                disabled={busy && !taxInvoiceLoading}
-                onClick={onIssueTaxInvoice}
-              />
-              <DocActionButton
-                variant="tertiary"
-                title="הפק קבלה"
-                hint="לאישור תשלום שהתקבל"
-                loading={receiptLoading}
-                disabled={busy && !receiptLoading}
-                onClick={onIssueReceipt}
-              />
-            </div>
-
-            {/* Manual-morning marker — separate row, visually distinct */}
-            <button
-              onClick={onMarkManualMorning}
-              disabled={busy}
-              className="w-full text-right rounded-xl px-4 py-2.5 text-[12.5px] font-medium flex items-center gap-2 transition-colors"
-              style={{
-                backgroundColor: hasManualMorning ? '#F0F7EE' : '#F9F4EE',
-                border: `1px dashed ${hasManualMorning ? '#5A9E6E' : '#C5A882'}`,
-                color: hasManualMorning ? '#2E6B42' : '#7A4A27',
-                cursor: busy ? 'not-allowed' : 'pointer',
-                opacity: busy ? 0.6 : 1,
-              }}
-            >
-              <span style={{ fontSize: 15 }}>{hasManualMorning ? '✅' : '📋'}</span>
-              <span>
-                {hasManualMorning
-                  ? 'סומן — הופקה ידנית במורנינג (הוסף עוד)'
-                  : 'סמן שהופקה ידנית במורנינג'}
-              </span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* ── Send / download invoice — full-width footer row of the financial
-          documents card, so it's prominent and clearly part of this area.
-          Always rendered; active only when a sendable document exists,
-          otherwise disabled with an explanatory label (no error-prone click). */}
-      <div className="mt-4 pt-4" style={{ borderTop: '1px solid #EFE3D2' }}>
-        <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2.5">
-          <button
-            onClick={onSendInvoice}
-            disabled={!canSendInvoice || busy || sendingInvoice}
-            title={canSendInvoice ? undefined : 'יש להפיק חשבונית עם קישור לפני שליחה ללקוח'}
-            className="w-full rounded-xl px-4 py-3 text-[13.5px] font-bold flex items-center justify-center gap-2 transition-colors"
-            style={{
-              backgroundColor: canSendInvoice ? '#8B5E34' : '#F2ECE3',
-              color:           canSendInvoice ? '#fff' : '#9B8468',
-              border:          canSendInvoice ? undefined : '1px dashed #D8C7AE',
-              cursor:          !canSendInvoice || busy || sendingInvoice ? 'not-allowed' : 'pointer',
-              opacity:         (busy || sendingInvoice) && canSendInvoice ? 0.6 : 1,
-            }}
-          >
-            <Icon name="mail" />
-            <span>
-              {!canSendInvoice
-                ? 'לא ניתן לשלוח — לא הופקה חשבונית עם קישור'
-                : sendingInvoice
-                  ? 'שולח חשבונית...'
-                  : 'שלח חשבונית ללקוח'}
-            </span>
-          </button>
-          <button
-            onClick={onDownloadInvoice}
-            disabled={!canSendInvoice || downloadingInvoice}
-            title={canSendInvoice ? 'הורד את קובץ ה-PDF של החשבונית' : 'יש להפיק חשבונית עם קישור כדי להוריד'}
-            className="rounded-xl px-4 py-3 text-[13.5px] font-bold flex items-center justify-center gap-2 transition-colors whitespace-nowrap"
-            style={{
-              backgroundColor: '#FFFDF8',
-              color:           canSendInvoice ? '#7A4A27' : '#B7A488',
-              border:          `1px solid ${canSendInvoice ? '#D8C2A0' : '#E7DBC8'}`,
-              cursor:          !canSendInvoice || downloadingInvoice ? 'not-allowed' : 'pointer',
-              opacity:         !canSendInvoice ? 0.6 : downloadingInvoice ? 0.7 : 1,
-            }}
-          >
-            <Icon name="download" />
-            <span>{downloadingInvoice ? 'מוריד...' : 'הורד חשבונית'}</span>
-          </button>
-        </div>
-      </div>
-    </Card>
-  );
-}
-
-// ─── FinancialDocumentsList ──────────────────────────────────────────────
-// Documents list — grouped into the three doc-type categories. Renders
-// nothing more than a tiny one-line empty state when there are no docs,
-// so we don't bloat the page when the order has only just been created.
-
-type InvRow = { id: string; מספר_חשבונית: string; סכום: number; סטטוס: string; קישור_חשבונית?: string | null; סוג_מסמך?: string | null; תאריך_יצירה?: string | null; מקור?: string | null; הערה?: string | null; נוצר_על_ידי?: string | null };
-
-// Strip the internal `manual:` marker from displayed numbers and surface
-// it as a "הופקה ידנית" badge instead. Mirrors the helper on /invoices.
-function prettyDocNumber(raw: string): { display: string; isManual: boolean } {
-  const t = (raw ?? '').trim();
-  if (!t) return { display: '', isManual: false };
-  if (t.startsWith('manual:')) return { display: t.slice('manual:'.length).trim(), isManual: true };
-  return { display: t, isManual: false };
-}
-
-// Per-row Hebrew badge tone. Picked so that two same-numbered docs of
-// different types are immediately distinguishable at a glance.
-const DOC_ROW_BADGE: Record<'receipt' | 'tax_invoice' | 'invoice_receipt' | 'manual_other', { label: string; bg: string; fg: string }> = {
-  receipt:         { label: 'קבלה',            bg: '#E8F4EC', fg: '#1F6B3E' },
-  tax_invoice:     { label: 'חשבונית מס',       bg: '#EAF2FB', fg: '#1E4E8C' },
-  invoice_receipt: { label: 'חשבונית מס קבלה',  bg: '#F4E9DC', fg: '#7A4A27' },
-  manual_other:    { label: 'מסמך ידני',        bg: '#F1ECF7', fg: '#5B3A8C' },
-};
-
-function rowCategory(i: InvRow): keyof typeof DOC_ROW_BADGE {
-  const v = (i.סוג_מסמך ?? '').trim();
-  if (v === 'invoice_receipt' || v === 'חשבונית_מס_קבלה') return 'invoice_receipt';
-  if (v === 'tax_invoice') return 'tax_invoice';
-  if (v === 'receipt') return 'receipt';
-  return 'manual_other';
-}
-
-function FinancialDocumentsList({ invoices }: { invoices: InvRow[] }) {
-  const isInvoiceReceipt = (i: InvRow) => i.סוג_מסמך === 'invoice_receipt' || i.סוג_מסמך === 'חשבונית_מס_קבלה';
-  const isTaxInvoice     = (i: InvRow) => i.סוג_מסמך === 'tax_invoice';
-  const isReceipt        = (i: InvRow) => i.סוג_מסמך === 'receipt';
-  // Fallback bucket: any document whose סוג_מסמך isn't one of the three
-  // known types (legacy values, future types, manually-imported docs)
-  // surfaces under "מסמכים נוספים" instead of vanishing from the UI.
-  const isOther = (i: InvRow) =>
-    !isInvoiceReceipt(i) && !isTaxInvoice(i) && !isReceipt(i);
-  const groups: { label: string; items: InvRow[] }[] = [
-    { label: 'חשבוניות מס קבלה', items: invoices.filter(isInvoiceReceipt) },
-    { label: 'חשבוניות מס',      items: invoices.filter(isTaxInvoice) },
-    { label: 'קבלות',            items: invoices.filter(isReceipt) },
-    { label: 'מסמכים נוספים',    items: invoices.filter(isOther) },
-  ].filter(g => g.items.length > 0);
-
-  if (groups.length === 0) {
-    return (
-      <p className="text-[11.5px] py-1 px-2 text-center" style={{ color: '#8A735F' }}>
-        עדיין לא הופקו מסמכים להזמנה זו.
-      </p>
-    );
-  }
-
-  return (
-    <Card>
-      <p className="text-[10px] uppercase tracking-wider font-semibold mb-3" style={{ color: '#8A735F', letterSpacing: '0.08em' }}>מסמכים שהופקו</p>
-      <div className="space-y-3">
-        {groups.map(g => (
-          <div key={g.label}>
-            <p className="text-[10px] uppercase tracking-wider font-semibold mb-1.5" style={{ color: '#8A735F', letterSpacing: '0.06em' }}>
-              {g.label}
-            </p>
-            <ul className="space-y-1">
-              {g.items.map(inv => {
-                const cat = rowCategory(inv);
-                const tag = DOC_ROW_BADGE[cat];
-                const { display, isManual } = prettyDocNumber(inv.מספר_חשבונית);
-                const hasFile = !!inv.קישור_חשבונית;
-                const isManualMorning = inv.מקור === 'manual_morning';
-                return (
-                  <li
-                    key={inv.id}
-                    className="text-[13px] px-3 py-2 rounded-lg"
-                    style={{
-                      backgroundColor: isManualMorning ? '#F2FAF4' : '#FAF7F0',
-                      border: isManualMorning ? '1px solid #B8DFC4' : undefined,
-                    }}
-                  >
-                    <div className="flex justify-between items-center gap-2">
-                      <div className="min-w-0 flex-1 flex items-center gap-2 flex-wrap">
-                        {/* Per-row Hebrew badge */}
-                        <span
-                          className="inline-block text-[10px] font-bold px-1.5 py-0.5 rounded"
-                          style={{ backgroundColor: tag.bg, color: tag.fg }}
-                        >
-                          {tag.label}
-                        </span>
-
-                        {/* "ידנית במורנינג" badge — prominent green for manual_morning */}
-                        {isManualMorning && (
-                          <span
-                            className="text-[10px] font-bold px-1.5 py-0.5 rounded"
-                            style={{ backgroundColor: '#D4EDDA', color: '#1E5C31', border: '1px solid #A8D5B5' }}
-                          >
-                            הופקה ידנית במורנינג
-                          </span>
-                        )}
-                        {/* Legacy manual: prefix badge (not manual_morning) */}
-                        {isManual && !isManualMorning && (
-                          <span
-                            className="text-[10px] px-1.5 py-0.5 rounded"
-                            style={{ color: '#8B5E34', backgroundColor: '#FBF3E4', border: '1px solid #E8D2A8' }}
-                            title="המסמך הופק ידנית — לא דרך מורנינג"
-                          >
-                            הופקה ידנית
-                          </span>
-                        )}
-
-                        {/* Document number / link */}
-                        {display ? (
-                          hasFile ? (
-                            <a
-                              href={inv.קישור_חשבונית as string}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="font-semibold hover:underline"
-                              style={{ color: '#8B5E34', textUnderlineOffset: '2px' }}
-                            >
-                              #{display}
-                            </a>
-                          ) : (
-                            <span className="font-semibold" style={{ color: '#2B1A10' }}>#{display}</span>
-                          )
-                        ) : (
-                          hasFile && (
-                            <a
-                              href={inv.קישור_חשבונית as string}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-[12px] hover:underline"
-                              style={{ color: '#8B5E34' }}
-                            >
-                              פתח מסמך
-                            </a>
-                          )
-                        )}
-
-                        {inv.תאריך_יצירה && (
-                          <span className="text-[10.5px]" style={{ color: '#8A735F' }}>
-                            {formatDate(inv.תאריך_יצירה)}
-                          </span>
-                        )}
-                        {/* "No file" notice — only for non-manual-morning rows */}
-                        {!hasFile && !isManualMorning && (
-                          <span
-                            className="text-[10px] px-1.5 py-0.5 rounded"
-                            style={{ color: '#8A735F', backgroundColor: '#EAE0D2' }}
-                            title="המסמך הופק ידנית ואין קובץ לצפייה"
-                          >
-                            אין קובץ במערכת
-                          </span>
-                        )}
-                        {inv.נוצר_על_ידי && (
-                          <span className="text-[10px]" style={{ color: '#8A735F' }}>
-                            · {inv.נוצר_על_ידי}
-                          </span>
-                        )}
-                      </div>
-                      {/* Show amount only for non-manual-morning rows (amount is 0/unknown there) */}
-                      {!isManualMorning && (
-                        <span className="font-semibold tabular-nums flex-shrink-0" style={{ color: '#8B5E34' }}>
-                          {formatCurrency(inv.סכום)}
-                        </span>
-                      )}
-                    </div>
-                    {/* Note — shown below the main row when present */}
-                    {isManualMorning && inv.הערה && (
-                      <p className="mt-1 text-[11.5px]" style={{ color: '#4A7A5A' }}>
-                        {inv.הערה}
-                      </p>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        ))}
-      </div>
-    </Card>
-  );
-}
-
-// ─── DocActionButton — premium action bar button for the financial documents
-//
-// Three variants matching the three doc types:
-//   primary   — חשבונית מס קבלה. Mocha → muted-gold gradient, white text.
-//               This is the most-used document; it gets the visual weight.
-//   secondary — חשבונית מס. Cream surface with brown-gold border, brown text.
-//   tertiary  — קבלה. White surface with a soft olive accent ring + brown text.
-//
-// Hover lifts the card by 1px, deepens the shadow, and strengthens the border.
-// Active loading state replaces the title with "מפיק..." and disables the
-// other buttons in the bar (handled by the parent through `disabled`).
-
-type DocVariant = 'primary' | 'secondary' | 'tertiary';
-
-function DocActionButton({
-  variant, title, hint, onClick, loading, disabled,
-}: {
-  variant: DocVariant;
-  title: string;
-  hint: string;
-  onClick: () => void;
-  loading?: boolean;
-  disabled?: boolean;
-}) {
-  // Resting + hover styles per variant. Inline styles only — Tailwind doesn't
-  // help with the gradient + brand colors we want here.
-  const styles: Record<DocVariant, {
-    bg:     string; bgHover: string;
-    border: string; borderHover: string;
-    text:   string; sub: string;
-  }> = {
-    primary: {
-      bg:          'linear-gradient(135deg, #7A4A27 0%, #8B5E34 55%, #A88554 100%)',
-      bgHover:     'linear-gradient(135deg, #6B4022 0%, #7E5230 55%, #B5915E 100%)',
-      border:      '#5C3818',
-      borderHover: '#4A2D14',
-      text:        '#FFFFFF',
-      sub:         'rgba(255, 245, 220, 0.82)',
-    },
-    secondary: {
-      bg:          '#FFFCF7',
-      bgHover:     '#FAF5E9',
-      border:      '#D9B98F',
-      borderHover: '#B89870',
-      text:        '#2B1A10',
-      sub:         '#8A735F',
-    },
-    tertiary: {
-      bg:          '#FBFAF4',
-      bgHover:     '#F4F2E8',
-      border:      '#C9C8A7',
-      borderHover: '#A0A077',
-      text:        '#2B1A10',
-      sub:         '#8A735F',
-    },
-  };
-  const s = styles[variant];
-
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled || loading}
-      className="group text-right rounded-2xl px-4 py-3 transition-all disabled:cursor-not-allowed disabled:opacity-55"
-      style={{
-        background:    s.bg,
-        border:        `1px solid ${s.border}`,
-        boxShadow:     variant === 'primary'
-                         ? '0 2px 6px rgba(122,74,39,0.20), 0 1px 0 rgba(255,255,255,0.05) inset'
-                         : '0 1px 2px rgba(58,42,26,0.04), 0 1px 0 rgba(255,255,255,0.6) inset',
-        minHeight:     60,
-      }}
-      onMouseEnter={e => {
-        if (disabled || loading) return;
-        e.currentTarget.style.background = s.bgHover;
-        e.currentTarget.style.borderColor = s.borderHover;
-        e.currentTarget.style.transform = 'translateY(-1px)';
-        e.currentTarget.style.boxShadow = variant === 'primary'
-          ? '0 4px 12px rgba(122,74,39,0.28), 0 1px 0 rgba(255,255,255,0.08) inset'
-          : '0 3px 10px rgba(58,42,26,0.10), 0 1px 0 rgba(255,255,255,0.6) inset';
-      }}
-      onMouseLeave={e => {
-        e.currentTarget.style.background = s.bg;
-        e.currentTarget.style.borderColor = s.border;
-        e.currentTarget.style.transform = 'translateY(0)';
-        e.currentTarget.style.boxShadow = variant === 'primary'
-          ? '0 2px 6px rgba(122,74,39,0.20), 0 1px 0 rgba(255,255,255,0.05) inset'
-          : '0 1px 2px rgba(58,42,26,0.04), 0 1px 0 rgba(255,255,255,0.6) inset';
-      }}
-    >
-      <div className="text-[13.5px] font-bold leading-tight" style={{ color: s.text, letterSpacing: '-0.01em' }}>
-        {loading ? 'מפיק...' : title}
-      </div>
-      <div className="text-[10.5px] mt-1 leading-snug" style={{ color: s.sub }}>
-        {hint}
-      </div>
-    </button>
-  );
-}
-
-// ─── InvoicePreviewModal ─────────────────────────────────────────────────────
-// Read-only preview shown before any document is issued. Surfaces customer
-// details, line items, VAT breakdown, and (for receipt types) a payment-method
-// picker. "אישור והנפקה" is the only path that triggers issuance.
-
-const DOC_LABEL: Record<'tax_invoice' | 'receipt' | 'invoice_receipt', string> = {
-  tax_invoice:     'חשבונית מס',
-  receipt:         'קבלה',
-  invoice_receipt: 'חשבונית מס קבלה',
-};
-
-// Israeli VAT — used for display only; server-side Morning is authoritative.
-const IL_VAT = 0.18;
-
-function PreviewSec({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <p className="text-[9.5px] font-bold uppercase tracking-widest mb-1.5 pb-1 border-b"
-        style={{ color: '#9B7A5A', borderColor: '#F5ECD8' }}>
-        {title}
-      </p>
-      <div>{children}</div>
-    </div>
-  );
-}
-
-function PreviewRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-start gap-1 text-[12px] leading-5">
-      <span className="shrink-0 pt-px" style={{ color: '#9B7A5A', minWidth: '3.5rem' }}>{label}</span>
-      <span className="font-medium" style={{ color: '#2B1A10' }}>{value}</span>
-    </div>
-  );
-}
-
-function InvoicePreviewModal({
-  order,
-  documentType,
-  loading,
-  onClose,
-  onIssue,
-}: {
-  order: FullOrder;
-  documentType: 'tax_invoice' | 'receipt' | 'invoice_receipt';
-  loading: boolean;
-  onClose: () => void;
-  onIssue: (paymentMethod: string | undefined, force: boolean, invoiceNotes?: string, receiptName?: string, clientTaxId?: string) => void | Promise<void>;
-}) {
-  const [payMethod, setPayMethod]     = useState<string>('');
-  const [customMethod, setCustomMethod] = useState<string>('');
-  // Optional free-text notes printed on the Morning document (remarks).
-  const [invoiceNotes, setInvoiceNotes] = useState<string>('');
-  // "שם לקבלה" — the name the document is made out to. Seeded below with the
-  // ordering customer's name; the operator edits it when the receipt has to
-  // go out to somebody else (spouse, paying company…).
-  const [receiptName, setReceiptName] = useState<string>('');
-  // ת.ז / ח.פ printed on the document. Seeded from the customer card below;
-  // whatever stands here at issuance time is exactly what Morning receives,
-  // so clearing it means the document goes out without a tax id.
-  const [clientTaxId, setClientTaxId] = useState<string>('');
-
-  const needsPayment    = documentType === 'receipt' || documentType === 'invoice_receipt';
-  const effectiveMethod = payMethod === 'אחר' ? customMethod.trim() : payMethod;
-  const canSubmit       = !needsPayment || !!effectiveMethod;
-  const docLabel        = DOC_LABEL[documentType];
-
-  const duplicate = (order.חשבוניות ?? []).some(i =>
-    documentType === 'invoice_receipt'
-      ? (i.סוג_מסמך === 'invoice_receipt' || i.סוג_מסמך === 'חשבונית_מס_קבלה')
-      : i.סוג_מסמך === documentType,
-  );
-
-  const cust     = order.לקוחות;
-  const custName = cust ? `${cust.שם_פרטי} ${cust.שם_משפחה}`.trim() : '';
-  const custTaxId = (cust?.מספר_זהות ?? '').trim();
-  // Pre-fill both document fields from the customer card. The modal is mounted
-  // fresh on every open (it is rendered behind `previewDocType &&`), so these
-  // run once per issuance and never clobber what the operator typed.
-  useEffect(() => { setReceiptName(custName); }, [custName]);
-  useEffect(() => { setClientTaxId(custTaxId); }, [custTaxId]);
-  // Blank means "no override" — the document goes out to the customer.
-  const effectiveReceiptName = receiptName.trim() || custName;
-  const receiptNameChanged   = !!custName && effectiveReceiptName !== custName;
-  const taxIdValue           = clientTaxId.trim();
-  // Israeli ת.ז / ח.פ is 9 digits. A wrong one on a tax document is worse than
-  // none, so flag anything else — as a hint, not a block: foreign customers
-  // and edge cases exist and the operator is the one who knows.
-  const taxIdLooksOdd        = !!taxIdValue && !/^\d{9}$/.test(taxIdValue.replace(/[\s-]/g, ''));
-
-  // Keep the tax id honest as the name changes: the customer's ת.ז belongs to
-  // the customer's name only. Moving away from it drops the card value, moving
-  // back restores it — but anything the operator typed themselves is left be.
-  const handleReceiptNameChange = (next: string) => {
-    setReceiptName(next);
-    const backToCustomer = next.trim() === custName;
-    setClientTaxId(prev => {
-      if (!backToCustomer && prev === custTaxId) return '';
-      if (backToCustomer && prev === '')         return custTaxId;
-      return prev;
-    });
-  };
-  const items    = order.מוצרים_בהזמנה ?? [];
-  const total    = order.סך_הכל_לתשלום ?? 0;
-  const subtotal = order.סכום_לפני_הנחה ?? 0;
-  const discount = order.סכום_הנחה ?? 0;
-  const shipping = order.דמי_משלוח ?? 0;
-  // `סך_הכל_לתשלום` semantics mirror the order screen (isBusinessForVat above):
-  //   • Business (not Satmar): it is the NET — VAT is added on top, final
-  //     payable = total × 1.18. The Morning EF does the same.
-  //   • Private / Satmar: it is already the final GROSS — VAT is extracted
-  //     from it for display only.
-  const isBusinessForVat =
-    (order.סוג_הזמנה as string | undefined) !== 'סאטמר' &&
-    (cust?.סוג_לקוח === 'עסקי' ||
-     cust?.סוג_לקוח === 'עסקי - קבוע' ||
-     cust?.סוג_לקוח === 'עסקי - כמות');
-  const exclVat  = isBusinessForVat ? total : +(total - total * IL_VAT / (1 + IL_VAT)).toFixed(2);
-  const vatAmt   = isBusinessForVat ? +(total * IL_VAT).toFixed(2) : +(total * IL_VAT / (1 + IL_VAT)).toFixed(2);
-  const finalPayable = isBusinessForVat ? +(total * (1 + IL_VAT)).toFixed(2) : total;
-
-  const handleIssue = async () => {
-    if (!canSubmit) return;
-    await onIssue(
-      needsPayment ? effectiveMethod : undefined,
-      duplicate,
-      invoiceNotes.trim() || undefined,
-      // Only send an override when it actually differs from the customer —
-      // otherwise the EF keeps its existing customer-name path (and the ת.ז).
-      receiptNameChanged ? effectiveReceiptName : undefined,
-      // Always sent — the modal is the source of truth for what Morning prints.
-      taxIdValue,
-    );
-  };
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 overflow-y-auto py-8 px-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-white rounded-2xl shadow-xl w-full max-w-lg mb-6"
-        style={{ direction: 'rtl', border: '1px solid #EDE0CE' }}
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="px-6 pt-5 pb-4 border-b" style={{ borderColor: '#EDE0CE' }}>
-          <div className="flex items-baseline justify-between">
-            <h3 className="text-[16px] font-bold" style={{ color: '#2B1A10' }}>תצוגה מקדימה לחשבונית</h3>
-            <span className="font-mono text-[11px] font-semibold" style={{ color: '#B89870' }}>{order.מספר_הזמנה}</span>
-          </div>
-          <p className="text-[12px] mt-0.5" style={{ color: '#8A735F' }}>
-            סוג מסמך: <strong style={{ color: '#7A4A27' }}>{docLabel}</strong>
-          </p>
-        </div>
-
-        <div className="px-6 py-4 space-y-4">
-
-          {/* Validation warnings */}
-          {(!custName || items.length === 0 || total <= 0) && (
-            <div className="rounded-lg px-3 py-2.5 text-[12px] space-y-1"
-              style={{ backgroundColor: '#FFF3CD', border: '1px solid #F0D080', color: '#7A5A10' }}>
-              <p className="font-semibold">שים לב לפני הנפקה:</p>
-              {!custName          && <p>• לקוח לא מזוהה — פרטי לקוח חסרים</p>}
-              {items.length === 0 && <p>• לא נמצאו פריטים בהזמנה</p>}
-              {total <= 0         && <p>• סכום ההזמנה הוא ₪0 — יש לוודא שהמחירים הוזנו</p>}
-            </div>
-          )}
-
-          {/* Existing invoice warning */}
-          {duplicate && (
-            <div className="rounded-lg px-3 py-2.5 text-[12px]"
-              style={{ backgroundColor: '#FFF7ED', border: '1px solid #FCD9A8', color: '#92602A' }}>
-              ⚠ כבר קיים מסמך מסוג <strong>{docLabel}</strong> להזמנה זו. הפקה נוספת תיצור כפילות.
-            </div>
-          )}
-
-          {/* Customer details */}
-          <PreviewSec title="פרטי לקוח">
-            {custName ? (
-              <>
-                <PreviewRow label="שם"     value={custName} />
-                {cust?.טלפון  && <PreviewRow label="טלפון"  value={cust.טלפון} />}
-                {cust?.אימייל && <PreviewRow label="אימייל" value={cust.אימייל} />}
-                {cust?.מספר_זהות && <PreviewRow label="מספר זהות" value={cust.מספר_זהות} />}
-              </>
-            ) : (
-              <p className="text-[12px]" style={{ color: '#C05A3C' }}>לקוח לא מזוהה</p>
-            )}
-          </PreviewSec>
-
-          {/* "שם לקבלה" — the name the document is made out to. Pre-filled
-              with the ordering customer; edited when the receipt has to be
-              issued to someone else. */}
-          <PreviewSec title="שם לקבלה">
-            <input
-              type="text"
-              value={receiptName}
-              onChange={e => handleReceiptNameChange(e.target.value)}
-              maxLength={200}
-              placeholder={custName || 'שם שיודפס על המסמך'}
-              className="w-full px-3 h-9 text-[13px] rounded-lg border focus:outline-none focus:ring-2"
-              style={{ borderColor: '#E8DED2', color: '#2B1A10', backgroundColor: '#FFFCF7' }}
-            />
-            {receiptNameChanged ? (
-              <div className="mt-2 text-[12px] px-3 py-2 rounded-lg"
-                style={{ backgroundColor: '#FFF7ED', color: '#92602A', border: '1px solid #FCD9A8' }}>
-                המסמך יופק על שם <strong>{effectiveReceiptName}</strong> ולא על שם המזמין
-                {custName ? <> ({custName})</> : null}.
-                {custTaxId ? ' מספר הזהות של המזמין הוסר — הזיני למטה את הח.פ של הגורם שעל שמו הקבלה, אם יש.' : ''}
-              </div>
-            ) : (
-              <p className="mt-1.5 text-[11.5px]" style={{ color: '#9B7A5A' }}>
-                ממולא אוטומטית בשם המזמין — ניתן לשנות אם הקבלה צריכה לצאת על שם אחר.
-              </p>
-            )}
-          </PreviewSec>
-
-          {/* ת.ז / ח.פ printed on the document. Pre-filled from the customer
-              card; whatever stands here is exactly what Morning receives. */}
-          <PreviewSec title="מספר זהות / ח.פ">
-            <input
-              type="text"
-              inputMode="numeric"
-              value={clientTaxId}
-              onChange={e => setClientTaxId(e.target.value)}
-              maxLength={20}
-              placeholder="ללא מספר זהות / ח.פ"
-              className="w-full px-3 h-9 text-[13px] rounded-lg border focus:outline-none focus:ring-2"
-              style={{ borderColor: '#E8DED2', color: '#2B1A10', backgroundColor: '#FFFCF7' }}
-            />
-            {taxIdLooksOdd ? (
-              <div className="mt-2 text-[12px] px-3 py-2 rounded-lg"
-                style={{ backgroundColor: '#FFF3CD', color: '#7A5A10', border: '1px solid #F0D080' }}>
-                ת.ז / ח.פ בישראל הוא 9 ספרות — ודאי שהמספר נכון לפני ההפקה.
-              </div>
-            ) : taxIdValue ? (
-              <p className="mt-1.5 text-[11.5px]" style={{ color: '#9B7A5A' }}>
-                יודפס על המסמך: <strong style={{ color: '#7A4A27' }}>{taxIdValue}</strong>
-              </p>
-            ) : (
-              <p className="mt-1.5 text-[11.5px]" style={{ color: '#9B7A5A' }}>
-                ריק — המסמך יופק ללא מספר זהות / ח.פ. אפשר להקליד כאן גם אם לא שמור בכרטיס הלקוח.
-              </p>
-            )}
-          </PreviewSec>
-
-          {/* Order items */}
-          <PreviewSec title={`פריטים (${items.length})`}>
-            {items.length === 0 ? (
-              <p className="text-[12px]" style={{ color: '#9B7A5A' }}>אין פריטים</p>
-            ) : (
-              <div className="space-y-1.5">
-                {items.map((item, idx) => {
-                  const name =
-                    item.סוג_שורה === 'מארז'
-                      ? `מארז ${item.גודל_מארז} פטיפורים`
-                      : item.מוצרים_למכירה?.שם_מוצר ?? item.שם_פריט_מותאם ?? '—';
-                  const qty       = item.כמות ?? 1;
-                  const unitPrice = item.מחיר_ליחידה ?? 0;
-                  const lineTotal = item.סהכ ?? qty * unitPrice;
-                  return (
-                    <div key={item.id ?? idx} className="flex items-center gap-2 text-[12px]">
-                      <span
-                        className="flex-shrink-0 w-6 text-center font-bold rounded text-[10.5px] leading-5"
-                        style={{ backgroundColor: '#F4E8D8', color: '#8B5E34' }}
-                      >
-                        {qty}
-                      </span>
-                      <span className="flex-1 font-medium" style={{ color: '#2B1A10' }}>{name}</span>
-                      {unitPrice > 0 && (
-                        <span className="tabular-nums text-[11px]" style={{ color: '#9B7A5A' }}>₪{unitPrice}</span>
-                      )}
-                      <span className="tabular-nums font-semibold text-[11px]" style={{ color: '#4A3020' }}>
-                        {formatCurrency(lineTotal)}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </PreviewSec>
-
-          {/* Financial summary */}
-          <PreviewSec title="סיכום פיננסי">
-            <div className="space-y-1 text-[12px]">
-              {subtotal > 0 && subtotal !== total && (
-                <div className="flex justify-between">
-                  <span style={{ color: '#9B7A5A' }}>סה״כ לפני הנחה</span>
-                  <span style={{ color: '#2B1A10' }}>{formatCurrency(subtotal)}</span>
-                </div>
-              )}
-              {discount > 0 && (
-                <div className="flex justify-between">
-                  <span style={{ color: '#9B7A5A' }}>הנחה</span>
-                  <span style={{ color: '#476D53' }}>−{formatCurrency(discount)}</span>
-                </div>
-              )}
-              {shipping > 0 && (
-                <div className="flex justify-between">
-                  <span style={{ color: '#9B7A5A' }}>דמי משלוח</span>
-                  <span style={{ color: '#2B1A10' }}>{formatCurrency(shipping)}</span>
-                </div>
-              )}
-              <div className="flex justify-between pt-1" style={{ borderTop: '1px solid #F5ECD8' }}>
-                <span style={{ color: '#9B7A5A' }}>לפני מע״מ</span>
-                <span style={{ color: '#2B1A10' }}>{formatCurrency(exclVat)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span style={{ color: '#9B7A5A' }}>מע״מ 18%</span>
-                <span style={{ color: '#2B1A10' }}>{formatCurrency(vatAmt)}</span>
-              </div>
-              <div className="flex justify-between text-[13px] font-bold pt-1.5"
-                style={{ borderTop: '2px solid #EDE0CE' }}>
-                <span style={{ color: '#2B1A10' }}>{isBusinessForVat ? 'סה״כ כולל מע״מ' : 'סה״כ לתשלום'}</span>
-                <span style={{ color: '#8B5E34' }}>{formatCurrency(finalPayable)}</span>
-              </div>
-            </div>
-          </PreviewSec>
-
-          {/* Payment status */}
-          <div className="flex items-center gap-2 text-[12px]">
-            <span style={{ color: '#9B7A5A' }}>סטטוס תשלום:</span>
-            <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${PAYMENT_PILL[order.סטטוס_תשלום] ?? ''}`}>
-              {order.סטטוס_תשלום}
-            </span>
-          </div>
-
-          {/* Payment method picker — only for receipt / invoice_receipt */}
-          {needsPayment && (
-            <PreviewSec title="אמצעי תשלום *">
-              <div className="grid grid-cols-4 gap-1.5">
-                {PAY_OPTIONS.map(m => {
-                  const active = payMethod === m;
-                  return (
-                    <button
-                      key={m}
-                      type="button"
-                      onClick={() => setPayMethod(m)}
-                      className="text-[11.5px] font-medium h-9 rounded-lg transition-colors border"
-                      style={{
-                        backgroundColor: active ? '#7A4A27' : '#FFFFFF',
-                        color:           active ? '#FFFFFF' : '#2B1A10',
-                        borderColor:     active ? '#7A4A27' : '#E8DED2',
-                      }}
-                    >
-                      {m}
-                    </button>
-                  );
-                })}
-              </div>
-              {payMethod === 'אחר' && (
-                <input
-                  type="text"
-                  value={customMethod}
-                  onChange={e => setCustomMethod(e.target.value)}
-                  placeholder="הקלידי אמצעי תשלום..."
-                  className="mt-2 w-full px-3 h-9 text-[13px] rounded-lg border focus:outline-none focus:ring-2"
-                  style={{ borderColor: '#E8DED2', color: '#2B1A10' }}
-                />
-              )}
-              {effectiveMethod && (
-                <div className="mt-2 text-[12px] px-3 py-2 rounded-lg"
-                  style={{ backgroundColor: '#F1F8EE', color: '#2F5C2C', border: '1px solid #B8D5A8' }}>
-                  ✓ המסמך יופק עם אמצעי תשלום: <strong>{effectiveMethod}</strong>
-                </div>
-              )}
-            </PreviewSec>
-          )}
-
-          {/* Invoice notes — free text printed on the Morning document */}
-          <PreviewSec title="הערות לחשבונית (אופציונלי)">
-            <textarea
-              value={invoiceNotes}
-              onChange={e => setInvoiceNotes(e.target.value)}
-              maxLength={1000}
-              rows={2}
-              placeholder="טקסט חופשי שיודפס על גבי המסמך..."
-              className="w-full px-3 py-2 text-[13px] rounded-lg border focus:outline-none focus:ring-2 resize-none"
-              style={{ borderColor: '#E8DED2', color: '#2B1A10', backgroundColor: '#FFFCF7' }}
-            />
-          </PreviewSec>
-
-        </div>
-
-        {/* Footer */}
-        <div className="px-6 pb-5 pt-3 flex gap-3 justify-end border-t" style={{ borderColor: '#EDE0CE' }}>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={loading}
-            className="px-4 h-10 text-[13px] font-medium rounded-lg border transition-colors disabled:opacity-50"
-            style={{ borderColor: '#E8DED2', color: '#8A735F' }}
-          >
-            ביטול
-          </button>
-          <button
-            type="button"
-            onClick={handleIssue}
-            disabled={!canSubmit || loading}
-            className="px-5 h-10 text-[13px] font-semibold rounded-lg text-white transition-colors disabled:opacity-50"
-            style={{ backgroundColor: '#7A4A27' }}
-          >
-            {loading ? 'מפיק...' : 'אישור והנפקה'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── PaymentMethodModal — slim modal opened only by receipt + invoice_receipt
-// Doc-type is decided by which button was pressed (no doc-type picker here).
-// User picks a payment method and confirms. "אחר" reveals a free-text input;
-// the server canonicalises and rejects unsupported names rather than picking
-// a silent default.
-
-type DocTypeWithPayment = 'receipt' | 'invoice_receipt';
-
-const DOC_TITLE: Record<DocTypeWithPayment, string> = {
-  receipt:         'קבלה',
-  invoice_receipt: 'חשבונית מס קבלה',
-};
-
-const PAY_OPTIONS: readonly string[] = [
-  'כרטיס אשראי', 'מזומן', 'העברה בנקאית', 'ביט', 'PayBox', 'PayPal', 'צ\'ק', 'אחר',
-];
-
-function PaymentMethodModal({
-  orderNumber, documentType, duplicate, loading, onClose, onIssue,
-}: {
-  orderNumber: string;
-  documentType: DocTypeWithPayment;
-  duplicate: boolean;
-  loading: boolean;
-  onClose: () => void;
-  onIssue: (paymentMethod: string, force: boolean) => void | Promise<void>;
-}) {
-  const confirm = useConfirm();
-  const [payMethod, setPayMethod] = useState<string>('');
-  const [customMethod, setCustomMethod] = useState<string>('');
-
-  const effectiveMethod = payMethod === 'אחר' ? customMethod.trim() : payMethod;
-  const canSubmit = !!effectiveMethod;
-  const title = DOC_TITLE[documentType];
-
-  const handleIssue = async () => {
-    if (!canSubmit) return;
-    if (duplicate) {
-      const ok = await confirm(`כבר קיים מסמך מסוג ${title} להזמנה. הפקה נוספת עלולה ליצור כפילות. להמשיך?`);
-      if (!ok) return;
-    }
-    await onIssue(effectiveMethod, duplicate);
-  };
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 overflow-y-auto py-8 px-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 mb-6"
-        style={{ direction: 'rtl' }}
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="flex items-baseline justify-between mb-1">
-          <h3 className="text-lg font-bold" style={{ color: '#2B1A10' }}>הפקת {title}</h3>
-          <span className="font-mono text-[11px] font-semibold" style={{ color: '#B89870', letterSpacing: '0.05em' }}>{orderNumber}</span>
-        </div>
-        <p className="text-[12px] mb-5" style={{ color: '#8A735F' }}>
-          לפני הפקת ה{title} יש לבחור את אמצעי התשלום שיופיע על המסמך.
-        </p>
-
-        <div className="mb-5">
-          <p className="text-[11px] uppercase tracking-wider font-semibold mb-2" style={{ color: '#8A735F', letterSpacing: '0.08em' }}>
-            אמצעי תשלום <span style={{ color: '#A8442D' }}>*</span>
-          </p>
-          <div className="grid grid-cols-2 gap-2">
-            {PAY_OPTIONS.map(m => {
-              const active = payMethod === m;
-              return (
-                <button
-                  key={m}
-                  onClick={() => setPayMethod(m)}
-                  className="text-[13px] font-medium h-10 rounded-lg transition-colors border"
-                  style={{
-                    backgroundColor: active ? '#7A4A27' : '#FFFFFF',
-                    color: active ? '#FFFFFF' : '#2B1A10',
-                    borderColor: active ? '#7A4A27' : '#E8DED2',
-                  }}
-                >
-                  {m}
-                </button>
-              );
-            })}
-          </div>
-          {payMethod === 'אחר' && (
-            <div className="mt-2">
-              <input
-                type="text"
-                value={customMethod}
-                onChange={e => setCustomMethod(e.target.value)}
-                placeholder="הקלידי אמצעי תשלום (PayPlus / Stripe / וכו')"
-                className="w-full px-3 h-10 text-[13px] rounded-lg border focus:outline-none focus:ring-2"
-                style={{ borderColor: '#E8DED2', color: '#2B1A10' }}
-              />
-              <p className="text-[10.5px] mt-1" style={{ color: '#8A735F' }}>
-                הערך יעבור מיפוי לפי הכללים הקיימים. אם לא נתמך — תוצג שגיאה ולא יופק מסמך.
-              </p>
-            </div>
-          )}
-        </div>
-
-        {/* Confirmation strip — visible only after a method is picked.
-            Owner-mandated: the user must see the exact method that will go
-            on the document before clicking "הפק". If this line shows
-            something different from what was picked, do NOT issue. */}
-        {effectiveMethod && (
-          <div className="text-[12px] mb-3 px-3 py-2.5 rounded-lg" style={{ backgroundColor: '#F1F8EE', color: '#2F5C2C', border: '1px solid #B8D5A8' }}>
-            ✓ המסמך יופק עם אמצעי תשלום: <strong>{effectiveMethod}</strong>
-          </div>
-        )}
-
-        {duplicate && (
-          <div className="text-[11.5px] mb-4 px-3 py-2 rounded-lg" style={{ backgroundColor: '#FFF7ED', color: '#92602A', border: '1px solid #FCD9A8' }}>
-            ⚠ קיים כבר מסמך {title} להזמנה זו. הפקה נוספת תיצור כפילות (תידרש אישור נוסף).
-          </div>
-        )}
-
-        <div className="flex gap-3 justify-end">
-          <button
-            onClick={onClose}
-            disabled={loading}
-            className="px-4 h-10 text-[13px] font-medium rounded-lg border transition-colors disabled:opacity-50"
-            style={{ borderColor: '#E8DED2', color: '#8A735F' }}
-          >
-            ביטול
-          </button>
-          <button
-            onClick={handleIssue}
-            disabled={!canSubmit || loading}
-            className="px-5 h-10 text-[13px] font-semibold rounded-lg text-white transition-colors disabled:opacity-50"
-            style={{ backgroundColor: '#7A4A27' }}
-          >
-            {loading ? 'מפיק...' : `הפק ${title}`}
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

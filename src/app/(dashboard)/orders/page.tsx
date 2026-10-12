@@ -89,7 +89,7 @@ interface FullOrderData {
 function ExpSec({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <p className="text-[9px] font-bold uppercase tracking-widest mb-1.5 pb-1 border-b"
+      <p className="text-[11.5px] font-bold uppercase tracking-widest mb-1.5 pb-1 border-b"
         style={{ color: '#9B7A5A', borderColor: '#F5ECD8' }}>
         {title}
       </p>
@@ -101,7 +101,7 @@ function ExpSec({ title, children }: { title: string; children: React.ReactNode 
 function ExpField({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="flex items-start gap-1 leading-4">
-      <span className="text-[10px] shrink-0 pt-px" style={{ color: '#9B7A5A', minWidth: '3.5rem' }}>{label}</span>
+      <span className="text-[11px] shrink-0 pt-px" style={{ color: '#9B7A5A', minWidth: '3.5rem' }}>{label}</span>
       <span className={`text-[11px] font-medium break-words ${mono ? 'font-mono' : ''}`} style={{ color: '#2B1A10' }}>{value}</span>
     </div>
   );
@@ -115,8 +115,8 @@ function ExpBadge({ label, value, colorMap }: {
   const c = colorMap[value] ?? FALLBACK_COLOR;
   return (
     <div className="flex items-center gap-1 leading-4">
-      <span className="text-[10px] shrink-0" style={{ color: '#9B7A5A', minWidth: '3.5rem' }}>{label}</span>
-      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full border"
+      <span className="text-[11px] shrink-0" style={{ color: '#9B7A5A', minWidth: '3.5rem' }}>{label}</span>
+      <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full border"
         style={{ backgroundColor: c.bg, color: c.text, borderColor: c.border }}>
         {value}
       </span>
@@ -208,7 +208,7 @@ function OrderExpansionPanel({ fo }: { fo: FullOrderData }) {
           return (
             <div key={item.id} className="flex items-start gap-2 py-1"
               style={isLast ? undefined : { borderBottom: '1px solid #F5ECD8' }}>
-              <span className="flex-shrink-0 inline-flex items-center justify-center rounded text-[10px] font-bold tabular-nums"
+              <span className="flex-shrink-0 inline-flex items-center justify-center rounded text-[11px] font-bold tabular-nums"
                 style={{ minWidth: '1.5rem', height: '1.5rem', backgroundColor: '#F4E8D8', color: '#8B5E34' }}>
                 {item.כמות}
               </span>
@@ -217,15 +217,15 @@ function OrderExpansionPanel({ fo }: { fo: FullOrderData }) {
                 {pfList.length > 0 && (
                   <div className="flex flex-wrap gap-1 mt-0.5">
                     {pfList.map(pf => (
-                      <span key={pf.id} className="text-[9.5px] px-1 py-0.5 rounded"
-                        style={{ backgroundColor: '#EDE9FE', color: '#5B21B6' }}>
+                      <span key={pf.id} className="text-[11.5px] px-1 py-0.5 rounded"
+                        style={{ backgroundColor: '#EFEAF5', color: '#5B21B6' }}>
                         {pf.סוגי_פטיפורים?.שם_פטיפור} × {pf.כמות}
                       </span>
                     ))}
                   </div>
                 )}
                 {item.הערות_לשורה && (
-                  <p className="text-[10px]" style={{ color: '#9B7A5A' }}>{item.הערות_לשורה}</p>
+                  <p className="text-[11px]" style={{ color: '#9B7A5A' }}>{item.הערות_לשורה}</p>
                 )}
               </div>
             </div>
@@ -233,14 +233,14 @@ function OrderExpansionPanel({ fo }: { fo: FullOrderData }) {
         })}
         {fo.ברכה_טקסט && (
           <div className="pt-1.5" style={{ borderTop: '1px solid #F5ECD8' }}>
-            <span className="text-[10px]" style={{ color: '#9B7A5A' }}>ברכה: </span>
-            <span className="text-[11px] italic" style={{ color: '#4A3020' }}>{fo.ברכה_טקסט}</span>
+            <span className="text-[11px]" style={{ color: '#9B7A5A' }}>ברכה: </span>
+            <span className="text-[11px] italic" style={{ color: '#4A2F1B' }}>{fo.ברכה_טקסט}</span>
           </div>
         )}
         {fo.הערות_להזמנה && (
           <div className="pt-1.5" style={{ borderTop: '1px solid #F5ECD8' }}>
-            <span className="text-[10px]" style={{ color: '#9B7A5A' }}>הערות: </span>
-            <span className="text-[11px]" style={{ color: '#4A3020' }}>{fo.הערות_להזמנה}</span>
+            <span className="text-[11px]" style={{ color: '#9B7A5A' }}>הערות: </span>
+            <span className="text-[11px]" style={{ color: '#4A2F1B' }}>{fo.הערות_להזמנה}</span>
           </div>
         )}
       </ExpSec>
@@ -249,31 +249,31 @@ function OrderExpansionPanel({ fo }: { fo: FullOrderData }) {
       <ExpSec title="תשלום">
         <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
           <div className="flex items-center gap-1">
-            <span className="text-[10px]" style={{ color: '#9B7A5A' }}>סה״כ:</span>
+            <span className="text-[11px]" style={{ color: '#9B7A5A' }}>סה״כ:</span>
             <span className="text-[12px] font-bold tabular-nums" style={{ color: '#2B1A10' }}>{formatCurrency(total)}</span>
           </div>
           {paidAmount > 0 && (
             <div className="flex items-center gap-1">
-              <span className="text-[10px]" style={{ color: '#9B7A5A' }}>שולם:</span>
-              <span className="text-[11px] font-semibold tabular-nums" style={{ color: '#476D53' }}>{formatCurrency(paidAmount)}</span>
+              <span className="text-[11px]" style={{ color: '#9B7A5A' }}>שולם:</span>
+              <span className="text-[11px] font-semibold tabular-nums" style={{ color: '#2D6648' }}>{formatCurrency(paidAmount)}</span>
             </div>
           )}
           {remaining > 0 && fo.סטטוס_תשלום !== 'שולם' && fo.סטטוס_תשלום !== 'בארטר' && (
             <div className="flex items-center gap-1">
-              <span className="text-[10px]" style={{ color: '#9B7A5A' }}>נותר:</span>
+              <span className="text-[11px]" style={{ color: '#9B7A5A' }}>נותר:</span>
               <span className="text-[11px] font-bold tabular-nums" style={{ color: '#9D4B4A' }}>{formatCurrency(remaining)}</span>
             </div>
           )}
           {(fo.דמי_משלוח ?? 0) > 0 && (
             <div className="flex items-center gap-1">
-              <span className="text-[10px]" style={{ color: '#9B7A5A' }}>משלוח:</span>
+              <span className="text-[11px]" style={{ color: '#9B7A5A' }}>משלוח:</span>
               <span className="text-[11px] tabular-nums" style={{ color: '#6B4A2D' }}>{formatCurrency(fo.דמי_משלוח!)}</span>
             </div>
           )}
           {(fo.סכום_הנחה ?? 0) > 0 && (
             <div className="flex items-center gap-1">
-              <span className="text-[10px]" style={{ color: '#9B7A5A' }}>הנחה:</span>
-              <span className="text-[11px] tabular-nums" style={{ color: '#476D53' }}>−{formatCurrency(fo.סכום_הנחה!)}</span>
+              <span className="text-[11px]" style={{ color: '#9B7A5A' }}>הנחה:</span>
+              <span className="text-[11px] tabular-nums" style={{ color: '#2D6648' }}>−{formatCurrency(fo.סכום_הנחה!)}</span>
             </div>
           )}
         </div>
@@ -332,7 +332,7 @@ function InlineStatusPicker({
           top: '50%',
           transform: 'translateY(-50%)',
           pointerEvents: 'none',
-          fontSize: '7px',
+          fontSize: '11.5px',
           color: c.text,
           opacity: 0.7,
         }}
@@ -377,7 +377,7 @@ function SumStat({ label, value }: { label: string; value: number }) {
   );
 }
 function SumDot() {
-  return <span className="text-xs" style={{ color: '#D4C4B0' }}>•</span>;
+  return <span className="text-xs" style={{ color: '#C9B89E' }}>•</span>;
 }
 
 function ProductionSummaryBar() {
@@ -406,7 +406,7 @@ function ProductionSummaryBar() {
 
   return (
     <div className="rounded-xl overflow-hidden"
-      style={{ border: '1px solid #EAE0D4', backgroundColor: '#FFFDF8' }}>
+      style={{ border: '1px solid #E8DED2', backgroundColor: '#F8F6F2' }}>
 
       {/* ── Summary header row ── */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2.5">
@@ -440,7 +440,7 @@ function ProductionSummaryBar() {
             <button
               onClick={() => setOpen(o => !o)}
               className="text-xs px-2.5 py-1 rounded-lg transition-colors"
-              style={{ color: '#8B5E34', backgroundColor: '#F4E8D8', border: '1px solid #E2CDB0' }}>
+              style={{ color: '#8B5E34', backgroundColor: '#F4E8D8', border: '1px solid #EDD9B4' }}>
               {open ? 'הסתר ▲' : 'הצג פירוט ▼'}
             </button>
           )}
@@ -454,12 +454,12 @@ function ProductionSummaryBar() {
 
       {/* ── Expanded breakdown — KPI cards ── */}
       {open && data && !isEmpty && (
-        <div className="border-t px-4 py-4" style={{ borderColor: '#EAE0D4', backgroundColor: '#FAF7F2' }}>
+        <div className="border-t px-4 py-4" style={{ borderColor: '#E8DED2', backgroundColor: '#FAF7F2' }}>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
 
             {/* ── Card 1: מוצרים ── */}
             {data.products.length > 0 && (
-              <div className="rounded-xl px-4 py-3" style={{ backgroundColor: '#FFFDF8', border: '1px solid #EDE0CE' }}>
+              <div className="rounded-xl px-4 py-3" style={{ backgroundColor: '#F8F6F2', border: '1px solid #E8DED2' }}>
                 {/* KPI header */}
                 <div className="flex items-end gap-2 mb-0.5">
                   <span className="text-[28px] font-bold leading-none tabular-nums" style={{ color: '#8B5E34' }}>
@@ -470,14 +470,14 @@ function ProductionSummaryBar() {
                   </span>
                 </div>
                 <p className="text-[11px] font-bold mb-2.5" style={{ color: '#2B1A10' }}>מוצרים</p>
-                <p className="text-[10px] mb-2" style={{ color: '#B09070' }}>
+                <p className="text-[11px] mb-2" style={{ color: '#B09070' }}>
                   {data.products.length} {data.products.length === 1 ? 'סוג' : 'סוגים'}
                 </p>
                 {/* Item list */}
-                <div className="space-y-1 border-t pt-2" style={{ borderColor: '#F0E6D6' }}>
+                <div className="space-y-1 border-t pt-2" style={{ borderColor: '#E8DED2' }}>
                   {data.products.map((p, i) => (
                     <div key={i} className="flex items-center justify-between gap-2">
-                      <span className="text-[11.5px] truncate" style={{ color: '#4A3020' }}>{p.שם_מוצר}</span>
+                      <span className="text-[11.5px] truncate" style={{ color: '#4A2F1B' }}>{p.שם_מוצר}</span>
                       <span className="text-[11px] font-bold tabular-nums shrink-0 px-1.5 py-0.5 rounded"
                         style={{ backgroundColor: '#F4E8D8', color: '#8B5E34' }}>
                         ×{p.כמות_כוללת}
@@ -490,7 +490,7 @@ function ProductionSummaryBar() {
 
             {/* ── Card 2: מארזים ── */}
             {data.packages.length > 0 && (
-              <div className="rounded-xl px-4 py-3" style={{ backgroundColor: '#FFFDF8', border: '1px solid #EDE0CE' }}>
+              <div className="rounded-xl px-4 py-3" style={{ backgroundColor: '#F8F6F2', border: '1px solid #E8DED2' }}>
                 {/* KPI header */}
                 <div className="flex items-end gap-2 mb-0.5">
                   <span className="text-[28px] font-bold leading-none tabular-nums" style={{ color: '#8B5E34' }}>
@@ -501,23 +501,23 @@ function ProductionSummaryBar() {
                   </span>
                 </div>
                 <p className="text-[11px] font-bold mb-2.5" style={{ color: '#2B1A10' }}>מארזים</p>
-                <p className="text-[10px] mb-2" style={{ color: '#B09070' }}>
+                <p className="text-[11px] mb-2" style={{ color: '#B09070' }}>
                   {data.packages.length} {data.packages.length === 1 ? 'גודל' : 'גדלים'}
                   {totalPF > 0 && ` · ${totalPF} פטיפורים`}
                 </p>
                 {/* Package size rows */}
-                <div className="space-y-1 border-t pt-2" style={{ borderColor: '#F0E6D6' }}>
+                <div className="space-y-1 border-t pt-2" style={{ borderColor: '#E8DED2' }}>
                   {data.packages.map(pkg => (
                     <div key={pkg.גודל_מארז} className="space-y-0.5">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-[11.5px]" style={{ color: '#4A3020' }}>מארז {pkg.גודל_מארז}</span>
+                        <span className="text-[11.5px]" style={{ color: '#4A2F1B' }}>מארז {pkg.גודל_מארז}</span>
                         <span className="text-[11px] font-bold tabular-nums shrink-0 px-1.5 py-0.5 rounded"
                           style={{ backgroundColor: '#F4E8D8', color: '#8B5E34' }}>
                           ×{pkg.כמות_כוללת}
                         </span>
                       </div>
                       {pkg.פטיפורים_כוללים > 0 && (
-                        <p className="text-[10px] pr-1" style={{ color: '#A090A0' }}>
+                        <p className="text-[11px] pr-1" style={{ color: '#A090A0' }}>
                           {pkg.פטיפורים_כוללים} פטיפורים
                         </p>
                       )}
@@ -526,15 +526,15 @@ function ProductionSummaryBar() {
                 </div>
                 {/* Petit-four breakdown inside packages card */}
                 {data.petit_fours.length > 0 && (
-                  <div className="mt-2.5 pt-2 space-y-1 border-t" style={{ borderColor: '#EDE9FE' }}>
-                    <p className="text-[9.5px] font-bold uppercase tracking-widest mb-1.5" style={{ color: '#7C5CBF' }}>
+                  <div className="mt-2.5 pt-2 space-y-1 border-t" style={{ borderColor: '#EFEAF5' }}>
+                    <p className="text-[11.5px] font-bold uppercase tracking-widest mb-1.5" style={{ color: '#7C5CBF' }}>
                       סוגי פטיפורים
                     </p>
                     {data.petit_fours.map(pf => (
                       <div key={pf.פטיפור_id} className="flex items-center justify-between gap-2">
-                        <span className="text-[11px] truncate" style={{ color: '#4A3060' }}>{pf.שם_פטיפור}</span>
+                        <span className="text-[11px] truncate" style={{ color: '#4A3868' }}>{pf.שם_פטיפור}</span>
                         <span className="text-[11px] font-bold tabular-nums shrink-0 px-1.5 py-0.5 rounded"
-                          style={{ backgroundColor: '#EDE9FE', color: '#5B21B6' }}>
+                          style={{ backgroundColor: '#EFEAF5', color: '#5B21B6' }}>
                           ×{pf.כמות_כוללת}
                         </span>
                       </div>
@@ -546,7 +546,7 @@ function ProductionSummaryBar() {
 
             {/* ── Card 3: ידניים / תוספות ── */}
             {data.custom_items.length > 0 && (
-              <div className="rounded-xl px-4 py-3" style={{ backgroundColor: '#FFFDF8', border: '1px solid #EDE0CE' }}>
+              <div className="rounded-xl px-4 py-3" style={{ backgroundColor: '#F8F6F2', border: '1px solid #E8DED2' }}>
                 {/* KPI header */}
                 <div className="flex items-end gap-2 mb-0.5">
                   <span className="text-[28px] font-bold leading-none tabular-nums" style={{ color: '#8B5E34' }}>
@@ -557,16 +557,16 @@ function ProductionSummaryBar() {
                   </span>
                 </div>
                 <p className="text-[11px] font-bold mb-2.5" style={{ color: '#2B1A10' }}>ידניים / תוספות</p>
-                <p className="text-[10px] mb-2" style={{ color: '#B09070' }}>
+                <p className="text-[11px] mb-2" style={{ color: '#B09070' }}>
                   {data.custom_items.length} {data.custom_items.length === 1 ? 'פריט' : 'פריטים'}
                 </p>
                 {/* Item list */}
-                <div className="space-y-1 border-t pt-2" style={{ borderColor: '#F0E6D6' }}>
+                <div className="space-y-1 border-t pt-2" style={{ borderColor: '#E8DED2' }}>
                   {data.custom_items.map((item, i) => (
                     <div key={i} className="flex items-center justify-between gap-2">
-                      <span className="text-[11.5px] truncate" style={{ color: '#4A3020' }}>{item.שם_פריט_מותאם}</span>
+                      <span className="text-[11.5px] truncate" style={{ color: '#4A2F1B' }}>{item.שם_פריט_מותאם}</span>
                       <span className="text-[11px] font-bold tabular-nums shrink-0 px-1.5 py-0.5 rounded"
-                        style={{ backgroundColor: '#F3F4F6', color: '#374151' }}>
+                        style={{ backgroundColor: '#EEF0F4', color: '#374151' }}>
                         ×{item.כמות_כוללת}
                       </span>
                     </div>
@@ -891,9 +891,9 @@ function OrdersContent() {
                 className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all border"
                 style={
                   isActive && isArchive
-                    ? { backgroundColor: '#065F46', color: '#fff',     borderColor: '#065F46' }
+                    ? { backgroundColor: '#2D6648', color: '#fff',     borderColor: '#2D6648' }
                     : isArchive
-                    ? { backgroundColor: '#F0FDF4', color: '#065F46',  borderColor: '#A7F3D0' }
+                    ? { backgroundColor: '#E4EEE8', color: '#2D6648',  borderColor: '#BBF7D0' }
                     : isActive
                     ? { backgroundColor: '#8B5E34', color: '#FFFFFF',  borderColor: '#8B5E34' }
                     : { backgroundColor: '#FFFFFF',  color: '#6B4A2D', borderColor: '#DDD0BC' }
@@ -938,7 +938,7 @@ function OrdersContent() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr style={{ backgroundColor: '#FAF7F0', borderBottom: '1px solid #EDE0CE' }}>
+                <tr style={{ backgroundColor: '#FAF7F0', borderBottom: '1px solid #E8DED2' }}>
                   <th className="px-4 py-3" style={{ width: '40px', minWidth: '40px' }}>
                     <input
                       type="checkbox"
@@ -997,7 +997,7 @@ function OrdersContent() {
                               onClick={e => { e.stopPropagation(); applyFieldPatch(order, { הזמנה_דחופה: !order.הזמנה_דחופה }); }}
                               disabled={updatingId === order.id}
                               title={order.הזמנה_דחופה ? 'בטלי סימון דחופה' : 'סמני כדחופה'}
-                              className="text-[10px] px-1.5 py-0.5 rounded-full border transition-opacity opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-amber-50 disabled:opacity-50"
+                              className="text-[11px] px-1.5 py-0.5 rounded-full border transition-opacity opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-amber-50 disabled:opacity-50"
                               style={{ borderColor: '#E8DED2', color: '#9B7A5A' }}
                             >
                               {order.הזמנה_דחופה ? 'לא דחוף' : 'דחוף?'}
@@ -1074,8 +1074,8 @@ function OrdersContent() {
                             className="text-xs px-2 py-0.5 rounded-full border"
                             style={
                               order.סוג_אספקה === 'משלוח'
-                                ? { backgroundColor: '#EFF6FF', color: '#1D4ED8', borderColor: '#BFDBFE' }
-                                : { backgroundColor: '#F9FAFB', color: '#6B7280', borderColor: '#E5E7EB' }
+                                ? { backgroundColor: '#EAF0F5', color: '#1D4ED8', borderColor: '#BFDBFE' }
+                                : { backgroundColor: '#FFFFFF', color: '#6B7280', borderColor: '#EEF0F4' }
                             }
                           >
                             {order.סוג_אספקה}
@@ -1100,7 +1100,7 @@ function OrdersContent() {
                               title="הצג פריטי הזמנה"
                             >
                               {isItemsLoading ? (
-                                <span className="text-[9px]">…</span>
+                                <span className="text-[11.5px]">…</span>
                               ) : (
                                 <svg viewBox="0 0 16 16" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
                                   <path d={isExpanded ? 'M4 10l4-4 4 4' : 'M4 6l4 4 4-4'} />
@@ -1119,7 +1119,7 @@ function OrdersContent() {
                           <td colSpan={10} className="px-4 pt-0 pb-3">
                             <div
                               className="rounded-xl border px-4 py-3"
-                              style={{ backgroundColor: '#FFFDF8', borderColor: '#EDE0CE' }}
+                              style={{ backgroundColor: '#F8F6F2', borderColor: '#E8DED2' }}
                             >
                               {isItemsLoading ? (
                                 <p className="text-xs py-1" style={{ color: '#9B7A5A' }}>טוען...</p>
@@ -1208,7 +1208,7 @@ function OrdersContent() {
         >
           <div
             className="bg-white rounded-2xl w-full max-w-xs p-6"
-            style={{ border: '1px solid #EAE0D4', boxShadow: '0 8px 32px rgba(58,42,26,0.10)' }}
+            style={{ border: '1px solid #E8DED2', boxShadow: '0 8px 32px rgba(58,42,26,0.10)' }}
             onClick={e => e.stopPropagation()}
           >
             <h2 className="text-sm font-semibold mb-4" style={{ color: '#3A2A1A' }}>
@@ -1255,7 +1255,7 @@ function OrdersContent() {
         >
           <div
             className="bg-white rounded-2xl w-full max-w-xs p-6"
-            style={{ border: '1px solid #EAE0D4', boxShadow: '0 8px 32px rgba(58,42,26,0.10)' }}
+            style={{ border: '1px solid #E8DED2', boxShadow: '0 8px 32px rgba(58,42,26,0.10)' }}
             onClick={e => e.stopPropagation()}
           >
             <h2 className="text-sm font-semibold mb-4" style={{ color: '#3A2A1A' }}>

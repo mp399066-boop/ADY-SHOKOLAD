@@ -229,7 +229,7 @@ function EmptyState({ icon, title, text, action }: {
 
 function StatusPill({ label, color }: { label: string; color: string }) {
   const map: Record<string, { bg: string; text: string; border: string }> = {
-    פעיל:  { bg: '#E8F0EB', text: '#2D6648', border: '#BED3C4' },
+    פעיל:  { bg: '#E4EEE8', text: '#2D6648', border: '#BDD5C0' },
     חוזר:  { bg: '#EAF0F5', text: '#2A4C6A', border: '#B6CCDD' },
     פרטי:          { bg: '#F5F1EB', text: '#6B4B32', border: '#E0D4C2' },
     עסקי:          { bg: '#EEEAF4', text: '#4A3868', border: '#CCC4D8' },
@@ -489,7 +489,7 @@ export default function CustomerDetailPage() {
             <Input label="אחוז הנחה (%)" type="number" value={editForm.אחוז_הנחה ?? 0} onChange={e => setEditForm(p => ({ ...p, אחוז_הנחה: Number(e.target.value) }))} />
             {/* לקוח חו"ל — every document for this customer is issued VAT-free. */}
             <label className="sm:col-span-2 flex items-start gap-2 cursor-pointer rounded-lg px-3 py-2.5"
-              style={{ backgroundColor: editForm.פטור_ממעמ ? '#FFF7ED' : '#FBF7F1', border: `1px solid ${editForm.פטור_ממעמ ? '#FCD9A8' : '#EDE0CE'}` }}>
+              style={{ backgroundColor: editForm.פטור_ממעמ ? '#FBF0E4' : '#FAF7F0', border: `1px solid ${editForm.פטור_ממעמ ? '#EDCF98' : '#E8DED2'}` }}>
               <input
                 type="checkbox"
                 checked={editForm.פטור_ממעמ === true}
@@ -589,7 +589,7 @@ export default function CustomerDetailPage() {
                 target="_blank"
                 rel="noopener noreferrer"
                 className="h-9 px-4 rounded-lg flex items-center gap-1.5 font-medium transition-all hover:brightness-105"
-                style={{ backgroundColor: '#22C55E', color: '#fff', fontSize: '13px' }}
+                style={{ backgroundColor: '#25D366', color: '#fff', fontSize: '13px' }}
               >
                 <IconWhatsApp className="w-3.5 h-3.5" />
                 WhatsApp
@@ -622,7 +622,7 @@ export default function CustomerDetailPage() {
               <button
                 onClick={handleDelete}
                 className="h-9 px-4 rounded-lg flex items-center gap-1.5 font-medium border transition-all"
-                style={{ borderColor: '#F0C4C0', color: '#8A3228', fontSize: '13px', backgroundColor: '#fff' }}
+                style={{ borderColor: '#FECACA', color: '#8A3228', fontSize: '13px', backgroundColor: '#fff' }}
                 onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#FDF2F0')}
                 onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#fff')}
               >
@@ -659,7 +659,7 @@ export default function CustomerDetailPage() {
                 <IPhone className="w-4 h-4" />
               </span>
               <span className="flex flex-col" style={{ gap: '1px' }}>
-                <span style={{ fontSize: '10px', fontWeight: 500, color: '#B0A090', letterSpacing: '0.04em' }}>טלפון</span>
+                <span style={{ fontSize: '11px', fontWeight: 500, color: '#B0A090', letterSpacing: '0.04em' }}>טלפון</span>
                 <span dir="ltr" style={{ fontSize: '17px', fontWeight: 700, color: '#3A2A1A', letterSpacing: '0.01em', lineHeight: 1.2 }}>
                   {customer.טלפון}
                 </span>
@@ -688,7 +688,7 @@ export default function CustomerDetailPage() {
                 <IMail className="w-4 h-4" />
               </span>
               <span className="flex flex-col" style={{ gap: '1px', minWidth: 0 }}>
-                <span style={{ fontSize: '10px', fontWeight: 500, color: '#B0A090', letterSpacing: '0.04em' }}>מייל</span>
+                <span style={{ fontSize: '11px', fontWeight: 500, color: '#B0A090', letterSpacing: '0.04em' }}>מייל</span>
                 <span dir="ltr" style={{ fontSize: '14px', fontWeight: 500, color: '#5C4A38', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {customer.אימייל}
                 </span>
@@ -707,8 +707,8 @@ export default function CustomerDetailPage() {
                 <IMap className="w-4 h-4" />
               </span>
               <span className="flex flex-col" style={{ gap: '1px' }}>
-                <span style={{ fontSize: '10px', fontWeight: 500, color: '#B0A090', letterSpacing: '0.04em' }}>מקור הגעה</span>
-                <span style={{ fontSize: '14px', fontWeight: 400, color: '#8E7D6A', lineHeight: 1.2 }}>
+                <span style={{ fontSize: '11px', fontWeight: 500, color: '#B0A090', letterSpacing: '0.04em' }}>מקור הגעה</span>
+                <span style={{ fontSize: '14px', fontWeight: 400, color: '#8A7664', lineHeight: 1.2 }}>
                   {customer.מקור_הגעה}
                 </span>
               </span>
@@ -725,8 +725,8 @@ export default function CustomerDetailPage() {
               <ICalendar className="w-4 h-4" />
             </span>
             <span className="flex flex-col" style={{ gap: '1px' }}>
-              <span style={{ fontSize: '10px', fontWeight: 500, color: '#B0A090', letterSpacing: '0.04em' }}>לקוח מאז</span>
-              <span style={{ fontSize: '14px', fontWeight: 400, color: '#8E7D6A', lineHeight: 1.2 }}>
+              <span style={{ fontSize: '11px', fontWeight: 500, color: '#B0A090', letterSpacing: '0.04em' }}>לקוח מאז</span>
+              <span style={{ fontSize: '14px', fontWeight: 400, color: '#8A7664', lineHeight: 1.2 }}>
                 {formatDate(customer.תאריך_יצירה)}
               </span>
             </span>
@@ -912,7 +912,7 @@ export default function CustomerDetailPage() {
                       <tr
                         key={o.id}
                         className="transition-colors cursor-pointer border-b"
-                        style={{ borderColor: '#F5EEE4' }}
+                        style={{ borderColor: '#F0EAE0' }}
                         onClick={() => router.push(`/orders/${o.id}`)}
                         onMouseEnter={e => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = '#FAF7F2'}
                         onMouseLeave={e => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = ''}
@@ -979,7 +979,7 @@ export default function CustomerDetailPage() {
                   <div
                     key={inv.id}
                     className="flex justify-between items-center px-3 py-2.5 rounded-lg border"
-                    style={{ borderColor: '#F0EAE0', backgroundColor: '#FEFCF9' }}
+                    style={{ borderColor: '#F0EAE0', backgroundColor: '#F8F6F2' }}
                   >
                     <div className="flex items-center gap-3">
                       <span className="font-mono font-semibold text-xs" style={{ color: '#5C4A38' }}>
@@ -989,8 +989,8 @@ export default function CustomerDetailPage() {
                       <span
                         className="text-xs px-1.5 py-0.5 rounded-full font-medium"
                         style={{
-                          backgroundColor: inv.סטטוס === 'הופקה' ? '#E8F5E9' : '#FFF3E0',
-                          color: inv.סטטוס === 'הופקה' ? '#2E7D32' : '#E65100',
+                          backgroundColor: inv.סטטוס === 'הופקה' ? '#E4EEE8' : '#FBF5E6',
+                          color: inv.סטטוס === 'הופקה' ? '#15803D' : '#E65100',
                         }}
                       >
                         {inv.סטטוס}
@@ -1080,13 +1080,13 @@ export default function CustomerDetailPage() {
                   <div
                     key={tx.id}
                     className="flex items-center justify-between px-3 py-2.5 rounded-lg border"
-                    style={{ borderColor: '#F0EAE0', backgroundColor: '#FEFCF9' }}
+                    style={{ borderColor: '#F0EAE0', backgroundColor: '#F8F6F2' }}
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       <span
                         className="text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0"
                         style={{
-                          backgroundColor: tx.סוג === 'credit_used' ? '#FEE2E2' : '#E8F5E9',
+                          backgroundColor: tx.סוג === 'credit_used' ? '#FEE2E2' : '#E4EEE8',
                           color: tx.סוג === 'credit_used' ? '#8A3228' : '#2D6648',
                         }}
                       >
@@ -1123,7 +1123,7 @@ export default function CustomerDetailPage() {
           style={{ width: 'min(420px, 96vw)', boxShadow: '0 24px 80px rgba(30,18,8,0.28)', border: '1px solid #E8DED2' }}
           onClick={e => e.stopPropagation()}
         >
-          <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: '#F0EAE0', backgroundColor: '#FDFAF5' }}>
+          <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: '#F0EAE0', backgroundColor: '#F8F6F2' }}>
             <span className="font-semibold text-sm" style={{ color: '#3A2A1A' }}>הוספת זיכוי ללקוח</span>
             <button
               onClick={() => setShowAddCreditModal(false)}
@@ -1194,7 +1194,7 @@ export default function CustomerDetailPage() {
             onClick={e => e.stopPropagation()}
           >
             {/* modal header */}
-            <div className="flex items-center justify-between px-5 py-3 flex-shrink-0" style={{ borderBottom: '1px solid #F0EAE0', backgroundColor: '#FDFAF5' }}>
+            <div className="flex items-center justify-between px-5 py-3 flex-shrink-0" style={{ borderBottom: '1px solid #F0EAE0', backgroundColor: '#F8F6F2' }}>
               <div className="flex items-center gap-2">
                 <span style={{ color: '#C6A77D' }}><IFile className="w-4 h-4" /></span>
                 <span className="font-semibold text-sm" style={{ color: '#3A2A1A' }}>חשבונית #{invoiceView.מספר_חשבונית}</span>
@@ -1220,7 +1220,7 @@ export default function CustomerDetailPage() {
             </div>
 
             {/* document content */}
-            <div className="flex-1 overflow-y-auto" style={{ backgroundColor: '#F7F3EC' }}>
+            <div className="flex-1 overflow-y-auto" style={{ backgroundColor: '#F5F1EB' }}>
               {invoiceLoading ? (
                 <div className="flex items-center justify-center h-48">
                   <span className="text-sm" style={{ color: '#8A7664' }}>טוען...</span>
@@ -1232,13 +1232,13 @@ export default function CustomerDetailPage() {
                     {/* document title row */}
                     <div className="flex justify-between items-start mb-5">
                       <div>
-                        <div className="text-lg font-bold" style={{ color: '#2A1C12' }}>עדי שוקולד</div>
-                        <div className="text-xs" style={{ color: '#8E7D6A' }}>Adi Chocolate Boutique</div>
+                        <div className="text-lg font-bold" style={{ color: '#2B1A10' }}>עדי שוקולד</div>
+                        <div className="text-xs" style={{ color: '#8A7664' }}>Adi Chocolate Boutique</div>
                       </div>
                       <div className="text-right">
-                        <div className="text-base font-bold" style={{ color: '#2A1C12' }}>חשבונית מס / קבלה</div>
+                        <div className="text-base font-bold" style={{ color: '#2B1A10' }}>חשבונית מס / קבלה</div>
                         <div className="text-sm mt-1" style={{ color: '#5C4A38' }}>מספר: <strong>#{invoiceView.מספר_חשבונית}</strong></div>
-                        <div className="text-xs mt-0.5" style={{ color: '#8E7D6A' }}>תאריך: {formatDate(invoiceView.תאריך_יצירה)}</div>
+                        <div className="text-xs mt-0.5" style={{ color: '#8A7664' }}>תאריך: {formatDate(invoiceView.תאריך_יצירה)}</div>
                       </div>
                     </div>
 
@@ -1246,15 +1246,15 @@ export default function CustomerDetailPage() {
 
                     {/* customer */}
                     <div className="mb-5 p-3 rounded-lg" style={{ backgroundColor: '#FAF7F2', border: '1px solid #F0EAE0' }}>
-                      <div className="text-xs font-semibold mb-1.5" style={{ color: '#8E7D6A' }}>פרטי לקוח</div>
-                      <div className="font-medium text-sm" style={{ color: '#2A1C12' }}>{customer?.שם_פרטי} {customer?.שם_משפחה}</div>
+                      <div className="text-xs font-semibold mb-1.5" style={{ color: '#8A7664' }}>פרטי לקוח</div>
+                      <div className="font-medium text-sm" style={{ color: '#2B1A10' }}>{customer?.שם_פרטי} {customer?.שם_משפחה}</div>
                       {customer?.טלפון && <div className="text-xs mt-0.5" style={{ color: '#5C4A38' }}>טלפון: {customer.טלפון}</div>}
                       {customer?.אימייל && <div className="text-xs" style={{ color: '#5C4A38' }}>דוא&quot;ל: {customer.אימייל}</div>}
                     </div>
 
                     {/* items */}
                     <div className="mb-5">
-                      <div className="text-xs font-semibold mb-2" style={{ color: '#8E7D6A' }}>פירוט מוצרים</div>
+                      <div className="text-xs font-semibold mb-2" style={{ color: '#8A7664' }}>פירוט מוצרים</div>
                       <table className="w-full text-sm" style={{ borderCollapse: 'collapse' }}>
                         <thead>
                           <tr style={{ backgroundColor: '#F5EFE7' }}>
@@ -1270,7 +1270,7 @@ export default function CustomerDetailPage() {
                               <td className="py-2.5 px-3" style={{ color: '#3A2A1A' }}>{buildItemDesc(item)}</td>
                               <td className="py-2.5 px-3 text-center" style={{ color: '#5C4A38' }}>{item.כמות}</td>
                               <td className="py-2.5 px-3" style={{ color: '#5C4A38', textAlign: 'left', direction: 'ltr' }}>{formatCurrency(item.מחיר_ליחידה)}</td>
-                              <td className="py-2.5 px-3 font-medium" style={{ color: '#2A1C12', textAlign: 'left', direction: 'ltr' }}>{formatCurrency(item.סהכ)}</td>
+                              <td className="py-2.5 px-3 font-medium" style={{ color: '#2B1A10', textAlign: 'left', direction: 'ltr' }}>{formatCurrency(item.סהכ)}</td>
                             </tr>
                           ))}
                           {(invoiceOrder?.דמי_משלוח ?? 0) > 0 && (
@@ -1278,7 +1278,7 @@ export default function CustomerDetailPage() {
                               <td className="py-2.5 px-3" style={{ color: '#3A2A1A' }}>דמי משלוח</td>
                               <td className="py-2.5 px-3 text-center" style={{ color: '#5C4A38' }}>1</td>
                               <td className="py-2.5 px-3" style={{ color: '#5C4A38', textAlign: 'left', direction: 'ltr' }}>{formatCurrency(invoiceOrder!.דמי_משלוח!)}</td>
-                              <td className="py-2.5 px-3 font-medium" style={{ color: '#2A1C12', textAlign: 'left', direction: 'ltr' }}>{formatCurrency(invoiceOrder!.דמי_משלוח!)}</td>
+                              <td className="py-2.5 px-3 font-medium" style={{ color: '#2B1A10', textAlign: 'left', direction: 'ltr' }}>{formatCurrency(invoiceOrder!.דמי_משלוח!)}</td>
                             </tr>
                           )}
                         </tbody>
@@ -1290,20 +1290,20 @@ export default function CustomerDetailPage() {
                       <div className="text-sm space-y-1.5" style={{ minWidth: '220px' }}>
                         {(invoiceOrder?.סכום_לפני_הנחה ?? 0) > 0 && (
                           <div className="flex justify-between gap-10">
-                            <span style={{ color: '#8E7D6A' }}>סכום לפני הנחה</span>
+                            <span style={{ color: '#8A7664' }}>סכום לפני הנחה</span>
                             <span style={{ color: '#3A2A1A' }}>{formatCurrency(invoiceOrder!.סכום_לפני_הנחה!)}</span>
                           </div>
                         )}
                         {(invoiceOrder?.סכום_הנחה ?? 0) > 0 && (
                           <div className="flex justify-between gap-10">
-                            <span style={{ color: '#8E7D6A' }}>
+                            <span style={{ color: '#8A7664' }}>
                               הנחה{invoiceOrder?.סוג_הנחה === 'אחוז' && invoiceOrder.ערך_הנחה ? ` ${invoiceOrder.ערך_הנחה}%` : ''}
                             </span>
                             <span style={{ color: '#8A3228' }}>-{formatCurrency(invoiceOrder!.סכום_הנחה!)}</span>
                           </div>
                         )}
                         <div className="flex justify-between gap-10 pt-2 mt-1" style={{ borderTop: '1px solid #E8DED2', fontWeight: 700, fontSize: '15px' }}>
-                          <span style={{ color: '#2A1C12' }}>סה&quot;כ לתשלום</span>
+                          <span style={{ color: '#2B1A10' }}>סה&quot;כ לתשלום</span>
                           <span style={{ color: '#8B5E34' }}>{formatCurrency(invoiceView.סכום)}</span>
                         </div>
                       </div>
@@ -1311,7 +1311,7 @@ export default function CustomerDetailPage() {
 
                     {/* payment method */}
                     {invoiceOrder?.אופן_תשלום && (
-                      <div className="mt-5 pt-4 text-xs" style={{ borderTop: '1px solid #F0EAE0', color: '#8E7D6A' }}>
+                      <div className="mt-5 pt-4 text-xs" style={{ borderTop: '1px solid #F0EAE0', color: '#8A7664' }}>
                         שולם באמצעות: <strong style={{ color: '#5C4A38' }}>{invoiceOrder.אופן_תשלום}</strong>
                       </div>
                     )}

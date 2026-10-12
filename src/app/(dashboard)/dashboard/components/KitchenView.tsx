@@ -66,7 +66,7 @@ function KitchenKanban({
     <section>
       <div className="flex items-center justify-between mb-2 px-0.5">
         <h2 className="text-[13px] font-bold" style={{ color: C.text }}>לוח עבודה</h2>
-        <span className="text-[10.5px]" style={{ color: C.textMuted }}>
+        <span className="text-[11.5px]" style={{ color: C.textMuted }}>
           {tasks.length} הזמנות פעילות
         </span>
       </div>
@@ -85,7 +85,7 @@ function KitchenKanban({
               >
                 <span className="text-[11.5px] font-bold" style={{ color: col.accent }}>{col.label}</span>
                 <span
-                  className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                  className="text-[11px] font-bold px-1.5 py-0.5 rounded-full"
                   style={{ backgroundColor: `${col.accent}22`, color: col.accent }}
                 >
                   {col.items.length}
@@ -214,7 +214,7 @@ export function KitchenView({
         <div className="flex items-center justify-between mb-2.5">
           <div>
             <h2 className="text-[13px] font-bold" style={{ color: C.text }}>חוסרי חומרי גלם</h2>
-            <p className="text-[10.5px] mt-0.5" style={{ color: C.textSoft }}>מול הזמנות פעילות השבוע</p>
+            <p className="text-[11.5px] mt-0.5" style={{ color: C.textSoft }}>מול הזמנות פעילות השבוע</p>
           </div>
         </div>
         <RawMaterialsSummaryPanel mode="kitchen" />
@@ -233,7 +233,7 @@ export function KitchenView({
         className="rounded-xl border p-2.5"
         style={{ backgroundColor: C.card, borderColor: C.border }}
       >
-        <p className="text-[10.5px] font-semibold mb-2 px-0.5" style={{ color: C.textMuted }}>פעולות מהירות</p>
+        <p className="text-[11.5px] font-semibold mb-2 px-0.5" style={{ color: C.textMuted }}>פעולות מהירות</p>
         <KitchenQuickActions onNavigate={onNavigate} onProduction={onProduction} />
       </div>
 

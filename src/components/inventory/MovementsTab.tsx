@@ -17,16 +17,16 @@ const KIND_LABEL: Record<InventoryMovement['סוג_פריט'], string> = {
 };
 
 const KIND_BADGE: Record<InventoryMovement['סוג_פריט'], { bg: string; fg: string }> = {
-  'חומר_גלם': { bg: '#EFE4D3', fg: '#5C3410' },
+  'חומר_גלם': { bg: '#E8DED2', fg: '#5C3410' },
   'מוצר':     { bg: '#DBEAFE', fg: '#1E40AF' },
   'פטיפור':   { bg: '#F3E8FF', fg: '#6D28D9' },
 };
 
 // Movement direction colors — green/red/amber as the user requested.
 const MOVE_COLOR: Record<InventoryMovement['סוג_תנועה'], { bg: string; fg: string; arrow: string }> = {
-  'כניסה':  { bg: '#DCFCE7', fg: '#166534', arrow: '↑' },
-  'יציאה':  { bg: '#FEE2E2', fg: '#991B1B', arrow: '↓' },
-  'התאמה':  { bg: '#FFEDD5', fg: '#9A3412', arrow: '⇄' },
+  'כניסה':  { bg: '#DCFCE7', fg: '#33623a', arrow: '↑' },
+  'יציאה':  { bg: '#FEE2E2', fg: '#8A3228', arrow: '↓' },
+  'התאמה':  { bg: '#FBF0E4', fg: '#9A3412', arrow: '⇄' },
 };
 
 const SOURCE_LABEL: Record<InventoryMovement['סוג_מקור'], string> = {
@@ -97,7 +97,7 @@ export function MovementsTab() {
 
   if (error) {
     return (
-      <div className="rounded-xl border p-6 text-sm text-center" style={{ borderColor: '#FECACA', backgroundColor: '#FEF2F2', color: '#991B1B' }}>
+      <div className="rounded-xl border p-6 text-sm text-center" style={{ borderColor: '#FECACA', backgroundColor: '#F0EAE8', color: '#8A3228' }}>
         {error}
       </div>
     );
@@ -154,10 +154,10 @@ export function MovementsTab() {
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto rounded-lg border" style={{ borderColor: '#EDE0CE' }}>
+      <div className="overflow-x-auto rounded-lg border" style={{ borderColor: '#E8DED2' }}>
         <table className="w-full text-sm">
           <thead>
-            <tr style={{ backgroundColor: '#FAF7F0', borderBottom: '1px solid #EDE0CE' }}>
+            <tr style={{ backgroundColor: '#FAF7F0', borderBottom: '1px solid #E8DED2' }}>
               {['תאריך', 'פריט', 'סוג', 'תנועה', 'כמות', 'לפני / אחרי', 'מקור', 'הערות'].map(h => (
                 <th key={h} className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#6B4A2D' }}>{h}</th>
               ))}
@@ -186,12 +186,12 @@ export function MovementsTab() {
                     <td className="px-3 py-2 text-xs whitespace-nowrap" style={{ color: '#6B4A2D' }}>{fmtDateTime(m.תאריך_יצירה)}</td>
                     <td className="px-3 py-2 text-xs font-medium" style={{ color: '#2B1A10' }}>{m.שם_פריט || '—'}</td>
                     <td className="px-3 py-2">
-                      <span className="text-[10px] font-medium px-2 py-0.5 rounded-full" style={{ backgroundColor: kindBadge.bg, color: kindBadge.fg }}>
+                      <span className="text-[11px] font-medium px-2 py-0.5 rounded-full" style={{ backgroundColor: kindBadge.bg, color: kindBadge.fg }}>
                         {KIND_LABEL[m.סוג_פריט]}
                       </span>
                     </td>
                     <td className="px-3 py-2">
-                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full inline-flex items-center gap-1" style={{ backgroundColor: moveColor.bg, color: moveColor.fg }}>
+                      <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full inline-flex items-center gap-1" style={{ backgroundColor: moveColor.bg, color: moveColor.fg }}>
                         <span>{moveColor.arrow}</span>
                         <span>{m.סוג_תנועה}</span>
                       </span>
@@ -207,7 +207,7 @@ export function MovementsTab() {
                     <td className="px-3 py-2 text-[11px]" style={{ color: '#6B4A2D' }}>
                       {SOURCE_LABEL[m.סוג_מקור]}
                       {clickable && (
-                        <span className="ms-1 text-[10px]" style={{ color: '#8B5E34' }}>↗</span>
+                        <span className="ms-1 text-[11px]" style={{ color: '#8B5E34' }}>↗</span>
                       )}
                     </td>
                     <td className="px-3 py-2 text-[11px] max-w-xs truncate" style={{ color: '#6B4A2D' }} title={m.הערות || ''}>

@@ -22,7 +22,7 @@ type Form = Record<string, string | number | boolean | null>;
 
 function Check({ label, hint, checked, onChange }: { label: string; hint?: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
-    <label className="flex items-start gap-2 cursor-pointer rounded-lg px-3 py-2.5" style={{ backgroundColor: '#FBF7F1', border: `1px solid ${BRAND.border}` }}>
+    <label className="flex items-start gap-2 cursor-pointer rounded-lg px-3 py-2.5" style={{ backgroundColor: '#FAF7F0', border: `1px solid ${BRAND.border}` }}>
       <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} className="mt-0.5 h-4 w-4 cursor-pointer" style={{ accentColor: BRAND.primary }} />
       <span className="text-[13px] leading-5" style={{ color: BRAND.textPrimary }}>
         {label}

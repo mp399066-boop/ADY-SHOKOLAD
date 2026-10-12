@@ -15,10 +15,10 @@ const PAYMENT_STATUSES: PaymentStatus[] = ['ממתין', 'שולם', 'חלקי',
 const DELIVERY_STATUSES: DeliveryStatus[] = ['ממתין', 'נאסף', 'נמסר'];
 
 function statusTone(value: string) {
-  if (value === 'בוטלה' || value === 'בוטל') return { bg: C.redSoft, color: C.red, border: '#E4C2BE' };
-  if (value === 'שולם' || value === 'הושלמה בהצלחה' || value === 'נמסר') return { bg: C.greenSoft, color: C.green, border: '#C9D9C7' };
-  if (value === 'חלקי' || value === 'בהכנה' || value === 'נאסף') return { bg: C.amberSoft, color: C.amber, border: '#E7CFA9' };
-  if (value === 'מוכנה למשלוח' || value === 'נשלחה') return { bg: C.blueSoft, color: C.blue, border: '#C5D7DE' };
+  if (value === 'בוטלה' || value === 'בוטל') return { bg: C.redSoft, color: C.red, border: '#D8BCB6' };
+  if (value === 'שולם' || value === 'הושלמה בהצלחה' || value === 'נמסר') return { bg: C.greenSoft, color: C.green, border: '#BDD5C0' };
+  if (value === 'חלקי' || value === 'בהכנה' || value === 'נאסף') return { bg: C.amberSoft, color: C.amber, border: '#EDD9B4' };
+  if (value === 'מוכנה למשלוח' || value === 'נשלחה') return { bg: C.blueSoft, color: C.blue, border: '#C8D8DF' };
   return { bg: C.brandSoft, color: C.text, border: C.border };
 }
 
@@ -82,7 +82,7 @@ function StatusRail<T extends string>({
                     />
                   )}
                   <span
-                    className="relative z-10 flex h-5 w-5 items-center justify-center rounded-full border text-[10px] font-bold"
+                    className="relative z-10 flex h-5 w-5 items-center justify-center rounded-full border text-[11px] font-bold"
                     style={{
                       backgroundColor: active ? statusColors.color : C.card,
                       borderColor: active ? statusColors.color : C.border,
@@ -92,7 +92,7 @@ function StatusRail<T extends string>({
                     {index + 1}
                   </span>
                   <span
-                    className="max-w-[68px] truncate text-[10px] font-bold leading-3"
+                    className="max-w-[68px] truncate text-[11px] font-bold leading-3"
                     style={{ color: active ? statusColors.color : C.textSoft }}
                   >
                     {status}

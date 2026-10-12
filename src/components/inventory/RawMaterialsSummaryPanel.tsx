@@ -76,7 +76,7 @@ export function RawMaterialsSummaryPanel({
     return (
       <div className="flex justify-center py-5">
         <div className="w-5 h-5 rounded-full border-2 animate-spin"
-          style={{ borderColor: '#F0E5D8', borderTopColor: '#8B5E34' }} />
+          style={{ borderColor: '#E8DED2', borderTopColor: '#8B5E34' }} />
       </div>
     );
   }
@@ -105,7 +105,7 @@ export function RawMaterialsSummaryPanel({
     if (!data || missing.length === 0) {
       return (
         <div className="rounded-lg px-3 py-3 text-center text-[12px] font-semibold"
-          style={{ color: C.green, backgroundColor: C.greenSoft, border: `1px solid #BFD4C2` }}>
+          style={{ color: C.green, backgroundColor: C.greenSoft, border: `1px solid #BDD5C0` }}>
           {!data || data.orders_count === 0
             ? 'אין הזמנות פעילות השבוע'
             : 'כל חומרי הגלם מספיקים להזמנות הפעילות'}
@@ -131,18 +131,18 @@ export function RawMaterialsSummaryPanel({
               style={{ backgroundColor: C.card, border: `1px solid ${C.border}` }}
             >
               <span
-                className="text-[10px] font-bold px-2 py-1 rounded-md flex-shrink-0 mt-0.5 tabular-nums"
+                className="text-[11px] font-bold px-2 py-1 rounded-md flex-shrink-0 mt-0.5 tabular-nums"
                 style={{ backgroundColor: badgeBg, color: badgeColor, minWidth: '4rem', textAlign: 'center' }}
               >
                 חסר {fmtQty(item.missing, item.recipe_unit)}
               </span>
               <div className="flex-1 min-w-0">
                 <p className="text-[13px] font-semibold" style={{ color: C.text }}>{item.שם}</p>
-                <p className="text-[10.5px] mt-0.5" style={{ color: C.textSoft }}>
+                <p className="text-[11.5px] mt-0.5" style={{ color: C.textSoft }}>
                   נדרש: {fmtQty(item.required, item.recipe_unit)} · קיים: {fmtQty(item.in_stock, item.recipe_unit)}
                 </p>
                 {topSrc.length > 0 && (
-                  <p className="text-[10.5px] mt-0.5 truncate" style={{ color: C.textMuted }}>
+                  <p className="text-[11.5px] mt-0.5 truncate" style={{ color: C.textMuted }}>
                     משפיע: {topSrc.map(s => s.name).join(', ')}{moreSrc > 0 ? ` +${moreSrc}` : ''}
                   </p>
                 )}
@@ -180,17 +180,17 @@ export function RawMaterialsSummaryPanel({
           label="חסר במלאי"
           count={missing.length}
           active={missing.length > 0}
-          activeColor="#991B1B"  activeBg="#FEF2F2"  activeBorder="#FECACA"
-          inactiveColor="#6B5544" inactiveBg="#F8F3EC" inactiveBorder="#EAE0D4"
+          activeColor="#8A3228"  activeBg="#F0EAE8"  activeBorder="#FECACA"
+          inactiveColor="#6B5544" inactiveBg="#F5F1EB" inactiveBorder="#E8DED2"
         />
-        <StatChip label="מספיק"     count={ok.length}      color="#166534" bg="#F0FDF4" border="#BBF7D0" />
-        <StatChip label="ללא מתכון" count={noRecipe.length} color="#92400E" bg="#FFFBEB" border="#FDE68A" />
+        <StatChip label="מספיק"     count={ok.length}      color="#33623a" bg="#E4EEE8" border="#BBF7D0" />
+        <StatChip label="ללא מתכון" count={noRecipe.length} color="#92400E" bg="#FBF5E6" border="#FDE68A" />
         {mismatch.length > 0 && (
-          <StatChip label="יחידות?" count={mismatch.length} color="#5B21B6" bg="#EDE9FE" border="#DDD6FE" />
+          <StatChip label="יחידות?" count={mismatch.length} color="#5B21B6" bg="#EFEAF5" border="#DDD6FE" />
         )}
         <Link href="/raw-materials-summary"
           className="mr-auto text-[11px] font-medium px-2.5 py-1 rounded-lg border transition-colors"
-          style={{ color: '#8B5E34', borderColor: '#E8D8C6', backgroundColor: '#F4E8D8' }}>
+          style={{ color: '#8B5E34', borderColor: '#E0D4C2', backgroundColor: '#F4E8D8' }}>
           סיכום מלא →
         </Link>
       </div>
@@ -198,7 +198,7 @@ export function RawMaterialsSummaryPanel({
       {/* ── All-clear message ── */}
       {missing.length === 0 && noRecipe.length === 0 && mismatch.length === 0 && (
         <div className="text-center py-3 text-sm rounded-xl"
-          style={{ color: '#166534', backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+          style={{ color: '#33623a', backgroundColor: '#E4EEE8', border: '1px solid #BBF7D0' }}>
           {data.orders_count === 0 ? 'אין הזמנות פעילות השבוע' : 'כל חומרי הגלם מספיקים להזמנות הפעילות'}
         </div>
       )}
@@ -214,11 +214,11 @@ export function RawMaterialsSummaryPanel({
             style={{ borderColor: '#FECACA', backgroundColor: '#FFFFFF' }}>
             <table className="w-full text-xs">
               <thead>
-                <tr style={{ backgroundColor: '#FFF5F5', borderBottom: '1px solid #FECACA' }}>
-                  <th className="text-right px-3 py-2 font-semibold" style={{ color: '#7F1D1D' }}>חומר גלם</th>
-                  <th className="text-center px-3 py-2 font-semibold w-24" style={{ color: '#7F1D1D' }}>נדרש</th>
+                <tr style={{ backgroundColor: '#F0EAE8', borderBottom: '1px solid #FECACA' }}>
+                  <th className="text-right px-3 py-2 font-semibold" style={{ color: '#8A3228' }}>חומר גלם</th>
+                  <th className="text-center px-3 py-2 font-semibold w-24" style={{ color: '#8A3228' }}>נדרש</th>
                   <th className="text-center px-3 py-2 font-semibold w-24" style={{ color: '#6B4A2D' }}>קיים</th>
-                  <th className="text-center px-3 py-2 font-semibold w-24" style={{ color: '#7F1D1D' }}>חסר</th>
+                  <th className="text-center px-3 py-2 font-semibold w-24" style={{ color: '#8A3228' }}>חסר</th>
                   {mode === 'full' && <th className="w-6" />}
                 </tr>
               </thead>
@@ -230,37 +230,37 @@ export function RawMaterialsSummaryPanel({
                       <tr
                         onClick={() => mode === 'full' && toggle(item.חומר_גלם_id)}
                         style={{
-                          borderBottom: '1px solid #FFF0F0',
+                          borderBottom: '1px solid #F0EAE8',
                           cursor: mode === 'full' ? 'pointer' : 'default',
                         }}
                         onMouseEnter={mode === 'full' ? e => (e.currentTarget.style.backgroundColor = '#FFFDF9') : undefined}
                         onMouseLeave={mode === 'full' ? e => (e.currentTarget.style.backgroundColor = '') : undefined}
                       >
                         <td className="px-3 py-2 font-semibold" style={{ color: '#2B1A10' }}>{item.שם}</td>
-                        <td className="px-3 py-2 text-center tabular-nums" style={{ color: '#4B2E14' }}>
+                        <td className="px-3 py-2 text-center tabular-nums" style={{ color: '#4A2F1B' }}>
                           {fmtQty(item.required, item.recipe_unit)}
                         </td>
-                        <td className="px-3 py-2 text-center tabular-nums" style={{ color: '#8A735F' }}>
+                        <td className="px-3 py-2 text-center tabular-nums" style={{ color: '#8A7664' }}>
                           {fmtQty(item.in_stock, item.recipe_unit)}
                         </td>
                         <td className="px-3 py-2 text-center">
-                          <span className="font-bold tabular-nums" style={{ color: '#991B1B' }}>
+                          <span className="font-bold tabular-nums" style={{ color: '#8A3228' }}>
                             {fmtQty(item.missing, item.recipe_unit)}
                           </span>
                         </td>
                         {mode === 'full' && (
-                          <td className="px-2 text-center text-[10px]" style={{ color: '#C9A46A' }}>
+                          <td className="px-2 text-center text-[11px]" style={{ color: '#C9A46A' }}>
                             {isOpen ? '▲' : '▼'}
                           </td>
                         )}
                       </tr>
                       {mode === 'full' && isOpen && (
-                        <tr style={{ backgroundColor: '#FDFBF7', borderBottom: '1px solid #FFF0F0' }}>
+                        <tr style={{ backgroundColor: '#FDFBF7', borderBottom: '1px solid #F0EAE8' }}>
                           <td colSpan={5} className="px-4 pt-1.5 pb-2.5">
                             <div className="flex flex-wrap gap-1.5">
                               {item.sources.map((src, i) => (
                                 <span key={i} className="text-[11px] px-2 py-0.5 rounded-full"
-                                  style={{ backgroundColor: '#F4E8D8', color: '#7B4A22', border: '1px solid #E8CFA8' }}>
+                                  style={{ backgroundColor: '#F4E8D8', color: '#7A4820', border: '1px solid #EDD9B4' }}>
                                   {src.name}: {fmtQty(src.required_qty, item.recipe_unit)}
                                 </span>
                               ))}
@@ -276,7 +276,7 @@ export function RawMaterialsSummaryPanel({
 
             {mode === 'compact' && extraCount > 0 && (
               <div className="px-3 py-2 text-center"
-                style={{ borderTop: '1px solid #FFF0F0', backgroundColor: '#FFFDF9' }}>
+                style={{ borderTop: '1px solid #F0EAE8', backgroundColor: '#FFFDF9' }}>
                 <Link href="/raw-materials-summary" className="text-[11px] font-medium"
                   style={{ color: '#8B5E34' }}>
                   + {extraCount} חומרים נוספים חסרים — פתח סיכום מלא
@@ -290,7 +290,7 @@ export function RawMaterialsSummaryPanel({
       {/* ── No-recipe warning — full mode only ── */}
       {mode === 'full' && noRecipe.length > 0 && (
         <div className="rounded-xl border px-4 py-3"
-          style={{ borderColor: '#FDE68A', backgroundColor: '#FFFBEB' }}>
+          style={{ borderColor: '#FDE68A', backgroundColor: '#FBF5E6' }}>
           <p className="text-[11px] font-semibold uppercase tracking-wider mb-2"
             style={{ color: '#92400E' }}>
             ללא מתכון משויך — לא ניתן לחשב
@@ -298,7 +298,7 @@ export function RawMaterialsSummaryPanel({
           <div className="flex flex-wrap gap-1.5">
             {noRecipe.map((item, i) => (
               <span key={i} className="text-xs px-2.5 py-1 rounded-full"
-                style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E' }}>
+                style={{ backgroundColor: '#FBF5E6', border: '1px solid #FDE68A', color: '#92400E' }}>
                 {item.name} ×{item.qty}
               </span>
             ))}
@@ -309,7 +309,7 @@ export function RawMaterialsSummaryPanel({
       {/* ── Unit mismatch warning — full mode only ── */}
       {mode === 'full' && mismatch.length > 0 && (
         <div className="rounded-xl border px-4 py-3"
-          style={{ borderColor: '#DDD6FE', backgroundColor: '#F5F3FF' }}>
+          style={{ borderColor: '#DDD6FE', backgroundColor: '#F5F0FA' }}>
           <p className="text-[11px] font-semibold uppercase tracking-wider mb-2"
             style={{ color: '#5B21B6' }}>
             יחידות לא תואמות — לבדיקה
@@ -317,7 +317,7 @@ export function RawMaterialsSummaryPanel({
           <div className="flex flex-wrap gap-1.5">
             {mismatch.map(item => (
               <span key={item.חומר_גלם_id} className="text-xs px-2.5 py-1 rounded-full"
-                style={{ backgroundColor: '#EDE9FE', border: '1px solid #DDD6FE', color: '#5B21B6' }}>
+                style={{ backgroundColor: '#EFEAF5', border: '1px solid #DDD6FE', color: '#5B21B6' }}>
                 {item.שם} ({item.recipe_unit} ≠ {item.stock_unit})
               </span>
             ))}

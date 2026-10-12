@@ -43,7 +43,7 @@ export function OrderStatusStepper({
   if (current === 'בוטלה') {
     return (
       <span
-        className="inline-flex items-center text-[10.5px] font-bold uppercase px-2 py-1 rounded-md"
+        className="inline-flex items-center text-[11.5px] font-bold uppercase px-2 py-1 rounded-md"
         style={{ backgroundColor: C.redSoft, color: C.red, letterSpacing: '0.06em' }}
       >
         בוטלה
@@ -53,7 +53,7 @@ export function OrderStatusStepper({
   if (current === 'טיוטה') {
     return (
       <span
-        className="inline-flex items-center text-[10.5px] font-bold uppercase px-2 py-1 rounded-md"
+        className="inline-flex items-center text-[11.5px] font-bold uppercase px-2 py-1 rounded-md"
         style={{ backgroundColor: C.surface, color: C.textSoft, letterSpacing: '0.06em' }}
       >
         טיוטה
@@ -92,7 +92,7 @@ export function OrderStatusStepper({
               style={{ minWidth: 40 }}
             >
               <span
-                className="rounded-full flex items-center justify-center text-[9px] font-bold transition-all"
+                className="rounded-full flex items-center justify-center text-[11.5px] font-bold transition-all"
                 style={{
                   width:  size,
                   height: size,
@@ -116,7 +116,7 @@ export function OrderStatusStepper({
                 )}
               </span>
               <span
-                className="text-[9.5px] whitespace-nowrap transition-colors"
+                className="text-[11.5px] whitespace-nowrap transition-colors"
                 style={{
                   color:      isCur ? C.text : past ? C.textSoft : C.textMuted,
                   fontWeight: isCur ? 700    : past ? 600        : 500,

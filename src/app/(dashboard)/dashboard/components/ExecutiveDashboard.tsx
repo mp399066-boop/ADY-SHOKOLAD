@@ -45,9 +45,9 @@ function KpiCard({
         {icon}
       </span>
       <div className="min-w-0 flex-1">
-        <p className="text-[10.5px] font-semibold mb-0.5 truncate" style={{ color: C.textMuted }}>{label}</p>
+        <p className="text-[11.5px] font-semibold mb-0.5 truncate" style={{ color: C.textMuted }}>{label}</p>
         <p className="text-[20px] font-bold tabular-nums leading-none" style={{ color: C.text }}>{value}</p>
-        {sub && <p className="text-[10px] mt-1 truncate" style={{ color: C.textSoft }}>{sub}</p>}
+        {sub && <p className="text-[11px] mt-1 truncate" style={{ color: C.textSoft }}>{sub}</p>}
       </div>
     </Tag>
   );
@@ -80,7 +80,7 @@ const ORDER_STATUS_BADGE: Record<string, { bg: string; color: string; label: str
 function OStatusBadge({ status }: { status: string }) {
   const s = ORDER_STATUS_BADGE[status] ?? { bg: C.borderSoft, color: C.textMuted, label: status };
   return (
-    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md flex-shrink-0" style={{ backgroundColor: s.bg, color: s.color }}>
+    <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-md flex-shrink-0" style={{ backgroundColor: s.bg, color: s.color }}>
       {s.label}
     </span>
   );
@@ -182,7 +182,7 @@ function KpiDrillModal({
                 <span className="font-mono text-[11px] flex-shrink-0" style={{ color: C.textMuted }}>{o.מספר_הזמנה}</span>
                 <span className="text-[12.5px] font-medium truncate flex-1" style={{ color: C.text }}>{ocname(o)}</span>
                 {o.אופן_תשלום && (
-                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md flex-shrink-0" style={{ backgroundColor: C.greenSoft, color: C.green }}>
+                  <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-md flex-shrink-0" style={{ backgroundColor: C.greenSoft, color: C.green }}>
                     {o.אופן_תשלום}
                   </span>
                 )}
@@ -208,7 +208,7 @@ function KpiDrillModal({
                 <span className="font-mono text-[11px] flex-shrink-0" style={{ color: C.textMuted }}>{o.מספר_הזמנה}</span>
                 <span className="text-[12.5px] font-medium truncate flex-1" style={{ color: C.text }}>{ocname(o)}</span>
                 <OStatusBadge status={o.סטטוס_הזמנה} />
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md flex-shrink-0" style={{ backgroundColor: C.amberSoft, color: C.amber }}>
+                <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-md flex-shrink-0" style={{ backgroundColor: C.amberSoft, color: C.amber }}>
                   {o.סטטוס_תשלום}
                 </span>
                 <span className="text-[13px] font-bold tabular-nums flex-shrink-0" style={{ color: C.amber }}>
@@ -256,7 +256,7 @@ function KpiDrillModal({
                   <span className="font-mono text-[11px] flex-shrink-0" style={{ color: C.textMuted }}>{o?.מספר_הזמנה || '—'}</span>
                   <span className="text-[12.5px] font-medium truncate flex-1" style={{ color: C.text }}>{name}</span>
                   {d.עיר && <span className="text-[11px] flex-shrink-0" style={{ color: C.textSoft }}>{d.עיר}</span>}
-                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md flex-shrink-0" style={{ backgroundColor: stBg, color: stColor }}>
+                  <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-md flex-shrink-0" style={{ backgroundColor: stBg, color: stColor }}>
                     {d.סטטוס_משלוח}
                   </span>
                 </DrillRow>
@@ -279,7 +279,7 @@ function KpiDrillModal({
                   <span className="text-[11px] flex-shrink-0 tabular-nums font-semibold" style={{ color: C.red }}>{fmtShortDate(o.תאריך_אספקה)}</span>
                 )}
                 {o.סטטוס_תשלום !== 'שולם' && (
-                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md flex-shrink-0" style={{ backgroundColor: C.amberSoft, color: C.amber }}>
+                  <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-md flex-shrink-0" style={{ backgroundColor: C.amberSoft, color: C.amber }}>
                     {o.סטטוס_תשלום}
                   </span>
                 )}
@@ -329,7 +329,7 @@ function CompactProductionSummary() {
       <div className="flex items-center justify-between mb-2">
         <h2 className="text-[12.5px] font-bold" style={{ color: C.textSoft }}>לייצור השבוע</h2>
         {data && data.orders_count > 0 && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold" style={{ backgroundColor: C.goldSoft, color: C.amber }}>
+          <span className="text-[11px] px-1.5 py-0.5 rounded-full font-semibold" style={{ backgroundColor: C.goldSoft, color: C.amber }}>
             {data.orders_count} הז׳
           </span>
         )}
@@ -358,7 +358,7 @@ function CompactProductionSummary() {
           {(data!.petitFoursTotal > 0) && (
             <div className="flex items-center justify-between">
               <span className="text-[11.5px]" style={{ color: C.textSoft }}>פטיפורים</span>
-              <span className="text-[11.5px] font-bold px-1.5 py-0.5 rounded-md" style={{ backgroundColor: '#EDE9FE', color: '#5B21B6' }}>{data!.petitFoursTotal}</span>
+              <span className="text-[11.5px] font-bold px-1.5 py-0.5 rounded-md" style={{ backgroundColor: '#EFEAF5', color: '#5B21B6' }}>{data!.petitFoursTotal}</span>
             </div>
           )}
         </div>
@@ -558,7 +558,7 @@ export function ExecutiveDashboard({
       {/* ── Today delivery city breakdown ────────────────────── */}
       {deliveryCities.length > 0 && (
         <div className="flex items-center gap-2 flex-wrap px-0.5">
-          <span className="text-[10.5px] font-semibold" style={{ color: C.textMuted }}>אזורי משלוח פעילים:</span>
+          <span className="text-[11.5px] font-semibold" style={{ color: C.textMuted }}>אזורי משלוח פעילים:</span>
           {deliveryCities.map(([city, count]) => (
             <button
               key={city}
@@ -567,7 +567,7 @@ export function ExecutiveDashboard({
               // and without the date param the target page defaulted to ALL
               // dates which exaggerated the count vs the pill.
               onClick={() => onNavigate(`/deliveries?city=${encodeURIComponent(city)}&date=${new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' })}`)}
-              className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold px-2 py-0.5 rounded-full transition-all hover:-translate-y-0.5 cursor-pointer"
+              className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold px-2 py-0.5 rounded-full transition-all hover:-translate-y-0.5 cursor-pointer"
               style={{ backgroundColor: C.blueSoft, color: C.blue }}
             >
               {city}

@@ -29,19 +29,25 @@ function LoginForm() {
 
   return (
     <div
-      className="min-h-screen flex items-center justify-center p-4"
-      style={{ backgroundColor: '#F8F6F2', direction: 'rtl' }}
+      className="relative min-h-[100dvh] flex items-center justify-center overflow-hidden p-4"
+      style={{
+        direction: 'rtl',
+        background: 'radial-gradient(1200px 600px at 85% -10%, #F5EBDD 0%, transparent 60%), radial-gradient(900px 500px at 0% 110%, #EDD9B4 0%, transparent 55%), #F8F6F2',
+      }}
     >
       <div
-        className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-sm"
-        style={{ border: '1px solid #EDE0CE' }}
+        className="relative w-full max-w-sm overflow-hidden rounded-3xl bg-white px-8 pb-8 pt-10"
+        style={{ border: '1px solid #E8DED2', boxShadow: '0 24px 60px rgba(58,42,26,0.12), 0 2px 8px rgba(58,42,26,0.05)' }}
       >
+        <div className="absolute inset-x-0 top-0 h-1" style={{ background: 'linear-gradient(90deg, #8B5E34, #C9A46A, #8B5E34)' }} />
+
         {/* Brand */}
-        <div className="text-center mb-8">
-          <div className="text-2xl font-bold mb-1" style={{ color: '#2B1A10' }}>
+        <div className="mb-8 flex flex-col items-center text-center">
+          <img src="/logo.png" alt="" className="mb-4 h-16 w-auto object-contain" />
+          <div className="text-[26px] font-extrabold leading-tight" style={{ color: '#2B1A10' }}>
             עדי תכשיט שוקולד
           </div>
-          <div className="text-sm" style={{ color: '#9B7A5A' }}>
+          <div className="mt-1 text-sm" style={{ color: '#9B7A5A' }}>
             מערכת ניהול
           </div>
         </div>
@@ -49,7 +55,7 @@ function LoginForm() {
         {isUnauthorized && (
           <div
             className="mb-5 px-4 py-3 rounded-xl text-sm text-center"
-            style={{ backgroundColor: '#FEF2F2', color: '#991B1B', border: '1px solid #FECACA' }}
+            style={{ backgroundColor: '#F0EAE8', color: '#8A3228', border: '1px solid #FECACA' }}
           >
             <div className="font-semibold mb-0.5">אין הרשאה למערכת</div>
             <div className="text-xs" style={{ color: '#B91C1C' }}>
@@ -61,7 +67,7 @@ function LoginForm() {
         {hasAuthError && (
           <div
             className="mb-5 px-3 py-2 rounded-lg text-sm text-center"
-            style={{ backgroundColor: '#FEF2F2', color: '#991B1B', border: '1px solid #FECACA' }}
+            style={{ backgroundColor: '#F0EAE8', color: '#8A3228', border: '1px solid #FECACA' }}
           >
             שגיאה בהתחברות — נסי שוב
           </div>
@@ -69,7 +75,7 @@ function LoginForm() {
 
         <button
           onClick={handleGoogleLogin}
-          className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-xl border text-sm font-medium transition-all hover:bg-[#FAF7F2] active:scale-[0.98]"
+          className="w-full flex items-center justify-center gap-3 px-4 h-12 rounded-xl border text-[15px] font-semibold transition-all hover:bg-[#FAF7F0] hover:border-[#C9A46A] hover:shadow-sm active:scale-[0.98]"
           style={{ borderColor: '#DDD0BC', color: '#2B1A10' }}
         >
           <svg width="18" height="18" viewBox="0 0 18 18" fill="none">

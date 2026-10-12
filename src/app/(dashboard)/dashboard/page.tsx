@@ -835,7 +835,7 @@ function AssignCourierModal({
                   {hasPhone ? (
                     <span dir="ltr" className="text-[11px] font-mono" style={{ color: C.textSoft }}>{c.טלפון_שליח}</span>
                   ) : (
-                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: C.redSoft, color: C.red, border: '1px solid #E4C2BE' }}>אין טלפון</span>
+                    <span className="text-[11px] font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: C.redSoft, color: C.red, border: '1px solid #D8BCB6' }}>אין טלפון</span>
                   )}
                 </div>
               </button>

@@ -28,8 +28,8 @@ function PreorderToggle({ checked, onChange }: { checked: boolean; onChange: (v:
     <label
       className="flex items-start gap-2 cursor-pointer rounded-lg px-3 py-2.5"
       style={{
-        backgroundColor: checked ? '#FFF7ED' : '#FBF7F1',
-        border: '1px solid ' + (checked ? '#FCD9A8' : '#EDE0CE'),
+        backgroundColor: checked ? '#FBF0E4' : '#FAF7F0',
+        border: '1px solid ' + (checked ? '#EDCF98' : '#E8DED2'),
       }}
     >
       <input
@@ -54,7 +54,7 @@ function PreorderBadge() {
   return (
     <span
       className="text-xs px-1.5 py-0.5 rounded-full flex-shrink-0"
-      style={{ backgroundColor: '#FFF1DC', color: '#92400E' }}
+      style={{ backgroundColor: '#FBF0E4', color: '#92400E' }}
       title="מיוצר בהזמנה מראש — לא נחסם במלאי חסר"
     >
       בהזמנה מראש
@@ -368,7 +368,7 @@ export default function ProductsPage() {
             <Link
               href="/products/prices"
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl border transition-all duration-200 mr-auto"
-              style={{ borderColor: '#C9A46A', backgroundColor: '#FAF5EC', color: '#5C3410' }}
+              style={{ borderColor: '#C9A46A', backgroundColor: '#FAF7F0', color: '#5C3410' }}
             >
               <span aria-hidden>💰</span>
               מחירון מוגמרים
@@ -395,7 +395,7 @@ export default function ProductsPage() {
                         <div
                           key={p.id}
                           className="bg-white rounded-xl border overflow-hidden hover:shadow-md transition-all relative"
-                          style={{ borderColor: isSelected ? '#C6A77D' : '#EDE0CE' }}
+                          style={{ borderColor: isSelected ? '#C6A77D' : '#E8DED2' }}
                         >
                           {/* Checkbox — top-right corner (RTL start) */}
                           <label
@@ -431,8 +431,8 @@ export default function ProductsPage() {
                                 className="text-xs px-1.5 py-0.5 rounded-full flex-shrink-0"
                                 style={
                                   p.פעיל
-                                    ? { backgroundColor: '#D1FAE5', color: '#065F46' }
-                                    : { backgroundColor: '#F3F4F6', color: '#6B7280' }
+                                    ? { backgroundColor: '#DCFCE7', color: '#2D6648' }
+                                    : { backgroundColor: '#EEF0F4', color: '#6B7280' }
                                 }
                               >
                                 {p.פעיל ? 'פעיל' : 'לא פעיל'}
@@ -484,10 +484,10 @@ export default function ProductsPage() {
                 filteredPackages.length === 0 ? (
                   <EmptyState title="אין מארזים" action={<Button onClick={openAdd}>+ מארז חדש</Button>} />
                 ) : (
-                  <div className="overflow-x-auto rounded-lg border" style={{ borderColor: '#EDE0CE' }}>
+                  <div className="overflow-x-auto rounded-lg border" style={{ borderColor: '#E8DED2' }}>
                     <table className="w-full text-sm">
                       <thead>
-                        <tr style={{ backgroundColor: '#FAF7F0', borderBottom: '1px solid #EDE0CE' }}>
+                        <tr style={{ backgroundColor: '#FAF7F0', borderBottom: '1px solid #E8DED2' }}>
                           <th className="px-4 py-3 w-9">
                             <input
                               type="checkbox"
@@ -530,8 +530,8 @@ export default function ProductsPage() {
                                   className="text-xs px-2 py-0.5 rounded-full"
                                   style={
                                     pkg.פעיל
-                                      ? { backgroundColor: '#D1FAE5', color: '#065F46' }
-                                      : { backgroundColor: '#F3F4F6', color: '#6B7280' }
+                                      ? { backgroundColor: '#DCFCE7', color: '#2D6648' }
+                                      : { backgroundColor: '#EEF0F4', color: '#6B7280' }
                                   }
                                 >
                                   {pkg.פעיל ? 'פעיל' : 'לא פעיל'}
@@ -564,7 +564,7 @@ export default function ProductsPage() {
                         <div
                           key={pf.id}
                           className="bg-white rounded-xl border p-3 hover:shadow-sm transition-all"
-                          style={{ borderColor: isSelected ? '#C6A77D' : '#EDE0CE' }}
+                          style={{ borderColor: isSelected ? '#C6A77D' : '#E8DED2' }}
                         >
                           <div className="flex items-center justify-between gap-2">
                             <div className="flex items-center gap-1.5 min-w-0">
@@ -583,8 +583,8 @@ export default function ProductsPage() {
                             <div className="flex items-center gap-1 flex-shrink-0">
                               {pf.בהזמנה_מראש && (
                                 <span
-                                  className="text-[10px] px-1.5 py-0.5 rounded-full"
-                                  style={{ backgroundColor: '#FFF1DC', color: '#92400E' }}
+                                  className="text-[11px] px-1.5 py-0.5 rounded-full"
+                                  style={{ backgroundColor: '#FBF0E4', color: '#92400E' }}
                                   title="מיוצר בהזמנה מראש — לא נחסם במלאי חסר"
                                 >
                                   מראש
@@ -594,8 +594,8 @@ export default function ProductsPage() {
                                 className="text-xs px-1.5 py-0.5 rounded-full"
                                 style={
                                   pf.פעיל
-                                    ? { backgroundColor: '#D1FAE5', color: '#065F46' }
-                                    : { backgroundColor: '#F3F4F6', color: '#6B7280' }
+                                    ? { backgroundColor: '#DCFCE7', color: '#2D6648' }
+                                    : { backgroundColor: '#EEF0F4', color: '#6B7280' }
                                 }
                               >
                                 {pf.פעיל ? '✓' : '—'}

@@ -22,7 +22,7 @@ function SettingsTabs({ activeHref = '/settings', isAdmin = false }: {
 }) {
   const tabs = SETTINGS_TABS_BASE.filter(t => !t.adminOnly || isAdmin);
   return (
-    <div className="flex gap-1 mb-6 border-b" style={{ borderColor: '#EAE0D4' }}>
+    <div className="flex gap-1 mb-6 border-b" style={{ borderColor: '#E8DED2' }}>
       {tabs.map(tab => {
         const isActive = tab.href === activeHref;
         return (

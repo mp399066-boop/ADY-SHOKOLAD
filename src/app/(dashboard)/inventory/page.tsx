@@ -44,8 +44,8 @@ function PreorderCell({ value, saving, onToggle }: {
       onClick={() => onToggle(!value)}
       className="text-xs px-2 py-0.5 rounded-full transition-opacity hover:opacity-80 disabled:opacity-50"
       style={value
-        ? { backgroundColor: '#FFF1DC', color: '#92400E', border: '1px solid #FCD9A8' }
-        : { backgroundColor: '#F3F4F6', color: '#4B5563', border: '1px solid #E5E7EB' }}
+        ? { backgroundColor: '#FBF0E4', color: '#92400E', border: '1px solid #EDCF98' }
+        : { backgroundColor: '#EEF0F4', color: '#4B5563', border: '1px solid #EEF0F4' }}
       title={value
         ? 'מיוצר בהזמנה מראש — לא נחסם במלאי חסר. לחצי כדי להחזיר להזמנה ממלאי.'
         : 'נמכר מהמלאי — הזמנה תיחסם אם אין מספיק. לחצי כדי לסמן כבהזמנה מראש.'}
@@ -619,7 +619,7 @@ export default function InventoryPage() {
     <div className="space-y-4">
       {/* הסבר זרימת ניקוי כפילויות + כפתור איתור משני */}
       <div className="rounded-xl border p-4 space-y-3"
-        style={{ backgroundColor: '#FDFAF6', borderColor: '#EAE0D4' }}>
+        style={{ backgroundColor: '#FDFAF6', borderColor: '#E8DED2' }}>
         <p className="text-sm" style={{ color: '#6B4A2D' }}>
           כדי לנקות כפילויות: קודם מעבירים שימושים לחומר הגלם הראשי, ואז מוחקים את החומר המיותר. המערכת תחסום מחיקה אם החומר עדיין בשימוש במתכונים או במסמכים.
         </p>
@@ -634,13 +634,13 @@ export default function InventoryPage() {
 
       {/* Critical alert banner */}
       {criticals.length > 0 && (
-        <div className="flex items-start gap-3 rounded-xl p-4 border" style={{ backgroundColor: '#FEF2F2', borderColor: '#FECACA' }}>
+        <div className="flex items-start gap-3 rounded-xl p-4 border" style={{ backgroundColor: '#F0EAE8', borderColor: '#FECACA' }}>
           <IconAlert className="w-5 h-5 flex-shrink-0 mt-0.5 text-red-500" />
           <div>
             <p className="text-sm font-semibold text-red-700">{criticals.length} פריטים במצב קריטי / אזל מהמלאי</p>
             <div className="flex flex-wrap gap-1.5 mt-1.5">
               {criticals.map(m => (
-                <span key={m.id} className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#FEE2E2', color: '#991B1B' }}>
+                <span key={m.id} className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#FEE2E2', color: '#8A3228' }}>
                   {m.שם_חומר_גלם}
                 </span>
               ))}
@@ -660,11 +660,11 @@ export default function InventoryPage() {
             <>
               {/* ── חוסרים לפי הזמנות פעילות ── */}
               <div className="mb-5 rounded-xl border p-4"
-                style={{ backgroundColor: '#FDFAF6', borderColor: '#EAE0D4' }}>
+                style={{ backgroundColor: '#FDFAF6', borderColor: '#E8DED2' }}>
                 <div className="flex items-center justify-between mb-3">
                   <div>
                     <h3 className="text-sm font-bold" style={{ color: '#2B1A10' }}>חוסרים לפי הזמנות פעילות</h3>
-                    <p className="text-[11px] mt-0.5" style={{ color: '#8A735F' }}>
+                    <p className="text-[11px] mt-0.5" style={{ color: '#8A7664' }}>
                       כמה מכל חומר גלם נדרש להכנת ההזמנות הפעילות השבוע
                     </p>
                   </div>
@@ -703,10 +703,10 @@ export default function InventoryPage() {
               ) : filtered.length === 0 ? (
                 <EmptyState title="אין חומרי גלם" description="הוסף חומרי גלם למעקב" action={<Button onClick={openAdd}>+ הוסף</Button>} />
               ) : (
-                <div className="overflow-x-auto rounded-lg border" style={{ borderColor: '#EDE0CE' }}>
+                <div className="overflow-x-auto rounded-lg border" style={{ borderColor: '#E8DED2' }}>
                   <table className="w-full text-sm">
                     <thead>
-                      <tr style={{ backgroundColor: '#FAF7F0', borderBottom: '1px solid #EDE0CE' }}>
+                      <tr style={{ backgroundColor: '#FAF7F0', borderBottom: '1px solid #E8DED2' }}>
                         <th className="px-4 py-3 w-9">
                           <input
                             type="checkbox"
@@ -748,7 +748,7 @@ export default function InventoryPage() {
                               <span
                                 className="text-xs font-semibold"
                                 style={{
-                                  color: m.כמות_במלאי === 0 ? '#991B1B'
+                                  color: m.כמות_במלאי === 0 ? '#8A3228'
                                     : m.כמות_במלאי <= m.סף_מלאי_קריטי ? '#B45309'
                                     : m.כמות_במלאי <= m.סף_מלאי_נמוך ? '#D97706'
                                     : '#2B1A10',
@@ -763,13 +763,13 @@ export default function InventoryPage() {
                             <td className="px-4 py-3"><StatusBadge status={m.סטטוס_מלאי} type="inventory" /></td>
                             <td className="px-4 py-3 text-xs">{m.מחיר_ליחידה ? formatCurrency(m.מחיר_ליחידה) : '—'}</td>
                             <td className="px-4 py-3 text-xs" style={{ color: '#6B4A2D' }}>
-                              {m.ספק_מועדף_id ? supplierMap.get(m.ספק_מועדף_id) ?? '—' : <span style={{ color: '#C0A882' }}>—</span>}
+                              {m.ספק_מועדף_id ? supplierMap.get(m.ספק_מועדף_id) ?? '—' : <span style={{ color: '#C5A882' }}>—</span>}
                             </td>
                             <td className="px-4 py-3">
                               {(() => {
                                 const rec = materialRecipeMap.get(m.id);
                                 if (!rec || rec.count === 0) {
-                                  return <span className="text-xs" style={{ color: '#C0A882' }}>—</span>;
+                                  return <span className="text-xs" style={{ color: '#C5A882' }}>—</span>;
                                 }
                                 return (
                                   <button
@@ -807,7 +807,7 @@ export default function InventoryPage() {
                                   title="מחיקת חומר גלם"
                                   onClick={e => { e.stopPropagation(); setConfirmMaterial({ id: m.id, name: m.שם_חומר_גלם }); }}
                                   className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg border whitespace-nowrap transition-colors hover:bg-red-50"
-                                  style={{ borderColor: '#E0B4AE', color: '#B91C1C', backgroundColor: '#FFF' }}
+                                  style={{ borderColor: '#D8BCB6', color: '#B91C1C', backgroundColor: '#FFF' }}
                                 >
                                   <IconTrash className="w-3.5 h-3.5" />
                                   מחיקת חומר גלם
@@ -832,10 +832,10 @@ export default function InventoryPage() {
                   <IconExport className="w-3.5 h-3.5" />ייצוא לאקסל
                 </button>
               </div>
-              <div className="overflow-x-auto rounded-lg border" style={{ borderColor: '#EDE0CE' }}>
+              <div className="overflow-x-auto rounded-lg border" style={{ borderColor: '#E8DED2' }}>
                 <table className="w-full text-sm">
                   <thead>
-                    <tr style={{ backgroundColor: '#FAF7F0', borderBottom: '1px solid #EDE0CE' }}>
+                    <tr style={{ backgroundColor: '#FAF7F0', borderBottom: '1px solid #E8DED2' }}>
                       <th className="px-4 py-3 w-9">
                         <input
                           type="checkbox"
@@ -877,7 +877,7 @@ export default function InventoryPage() {
                                 <button className="text-xs" style={{ color: '#9B7A5A' }} onClick={() => setEditStockId(null)}>ביטול</button>
                               </div>
                             ) : (
-                              <span className="text-xs font-semibold" style={{ color: (p.כמות_במלאי || 0) === 0 ? '#991B1B' : '#2B1A10' }}>
+                              <span className="text-xs font-semibold" style={{ color: (p.כמות_במלאי || 0) === 0 ? '#8A3228' : '#2B1A10' }}>
                                 {p.כמות_במלאי || 0} יח׳
                               </span>
                             )}
@@ -971,10 +971,10 @@ export default function InventoryPage() {
                   <IconExport className="w-3.5 h-3.5" />ייצוא לאקסל
                 </button>
               </div>
-              <div className="overflow-x-auto rounded-lg border" style={{ borderColor: '#EDE0CE' }}>
+              <div className="overflow-x-auto rounded-lg border" style={{ borderColor: '#E8DED2' }}>
                 <table className="w-full text-sm">
                   <thead>
-                    <tr style={{ backgroundColor: '#FAF7F0', borderBottom: '1px solid #EDE0CE' }}>
+                    <tr style={{ backgroundColor: '#FAF7F0', borderBottom: '1px solid #E8DED2' }}>
                       <th className="px-4 py-3 w-9">
                         <input
                           type="checkbox"
@@ -1007,7 +1007,7 @@ export default function InventoryPage() {
                           </td>
                           <td className="px-4 py-3 font-medium text-xs" style={{ color: '#2B1A10' }}>{pf.שם_פטיפור}</td>
                           <td className="px-4 py-3">
-                            <span className="text-xs px-2 py-0.5 rounded-full" style={pf.פעיל ? { backgroundColor: '#DCFCE7', color: '#166534' } : { backgroundColor: '#F3F4F6', color: '#6B7280' }}>
+                            <span className="text-xs px-2 py-0.5 rounded-full" style={pf.פעיל ? { backgroundColor: '#DCFCE7', color: '#33623a' } : { backgroundColor: '#EEF0F4', color: '#6B7280' }}>
                               {pf.פעיל ? 'פעיל' : 'לא פעיל'}
                             </span>
                           </td>
@@ -1019,7 +1019,7 @@ export default function InventoryPage() {
                                 <button className="text-xs" style={{ color: '#9B7A5A' }} onClick={() => setEditStockId(null)}>ביטול</button>
                               </div>
                             ) : (
-                              <span className="text-xs font-semibold" style={{ color: (pf.כמות_במלאי || 0) === 0 ? '#991B1B' : '#2B1A10' }}>
+                              <span className="text-xs font-semibold" style={{ color: (pf.כמות_במלאי || 0) === 0 ? '#8A3228' : '#2B1A10' }}>
                                 {pf.כמות_במלאי || 0} יח׳
                               </span>
                             )}
@@ -1108,7 +1108,7 @@ export default function InventoryPage() {
                       <h3 className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: '#DC2626' }}>חומרי גלם · קריטי / אזל</h3>
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                         {criticals.map(m => (
-                          <div key={m.id} className="rounded-xl border p-4" style={{ borderColor: '#FECACA', backgroundColor: '#FFF5F5' }}>
+                          <div key={m.id} className="rounded-xl border p-4" style={{ borderColor: '#FECACA', backgroundColor: '#F0EAE8' }}>
                             <div className="flex items-center justify-between mb-2">
                               <span className="font-semibold text-sm" style={{ color: '#2B1A10' }}>{m.שם_חומר_גלם}</span>
                               <StatusBadge status={m.סטטוס_מלאי} type="inventory" />
@@ -1131,7 +1131,7 @@ export default function InventoryPage() {
                         <h3 className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: '#D97706' }}>חומרי גלם · מלאי נמוך</h3>
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                           {low.map(m => (
-                            <div key={m.id} className="rounded-xl border p-4" style={{ borderColor: '#FDE68A', backgroundColor: '#FFFBEB' }}>
+                            <div key={m.id} className="rounded-xl border p-4" style={{ borderColor: '#FDE68A', backgroundColor: '#FBF5E6' }}>
                               <div className="flex items-center justify-between mb-2">
                                 <span className="font-semibold text-sm" style={{ color: '#2B1A10' }}>{m.שם_חומר_גלם}</span>
                                 <StatusBadge status={m.סטטוס_מלאי} type="inventory" />
@@ -1153,7 +1153,7 @@ export default function InventoryPage() {
                       <h3 className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: '#DC2626' }}>מוצרים מוכנים · קריטי / אזל</h3>
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                         {productCriticals.map(p => (
-                          <div key={p.id} className="rounded-xl border p-4" style={{ borderColor: '#FECACA', backgroundColor: '#FFF5F5' }}>
+                          <div key={p.id} className="rounded-xl border p-4" style={{ borderColor: '#FECACA', backgroundColor: '#F0EAE8' }}>
                             <div className="flex items-center justify-between mb-2">
                               <span className="font-semibold text-sm" style={{ color: '#2B1A10' }}>{p.שם_מוצר}</span>
                               <StatusBadge status={p.סטטוס_מלאי || 'תקין'} type="inventory" />
@@ -1180,7 +1180,7 @@ export default function InventoryPage() {
                       <h3 className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: '#D97706' }}>מוצרים מוכנים · מלאי נמוך</h3>
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                         {productLow.map(p => (
-                          <div key={p.id} className="rounded-xl border p-4" style={{ borderColor: '#FDE68A', backgroundColor: '#FFFBEB' }}>
+                          <div key={p.id} className="rounded-xl border p-4" style={{ borderColor: '#FDE68A', backgroundColor: '#FBF5E6' }}>
                             <div className="flex items-center justify-between mb-2">
                               <span className="font-semibold text-sm" style={{ color: '#2B1A10' }}>{p.שם_מוצר}</span>
                               <StatusBadge status={p.סטטוס_מלאי || 'תקין'} type="inventory" />
@@ -1235,7 +1235,7 @@ export default function InventoryPage() {
               <p className="text-sm" style={{ color: '#2B1A10' }}>
                 בחרי לאיזה חומר גלם להעביר את השימושים של <strong>{replaceMaterial.name}</strong>
               </p>
-              <div className="rounded-lg border p-3 text-xs" style={{ borderColor: '#F1E2C3', backgroundColor: '#FFFBEB', color: '#8A735F' }}>
+              <div className="rounded-lg border p-3 text-xs" style={{ borderColor: '#EDD9B4', backgroundColor: '#FBF5E6', color: '#8A7664' }}>
                 המערכת תעביר מתכונים/מסמכים שמשתמשים בחומר הזה לחומר הנבחר. הכמויות לא יימחקו ללא אישור.
               </div>
               <input
@@ -1246,7 +1246,7 @@ export default function InventoryPage() {
                 className="w-full px-3 py-2 text-sm rounded-lg border bg-white focus:outline-none focus:ring-2 focus:ring-amber-100"
                 style={{ borderColor: '#DDD0BC', color: '#2B1A10' }}
               />
-              <div className="max-h-56 overflow-y-auto rounded-lg border" style={{ borderColor: '#EDE0CE' }}>
+              <div className="max-h-56 overflow-y-auto rounded-lg border" style={{ borderColor: '#E8DED2' }}>
                 {candidates.length === 0 ? (
                   <p className="px-3 py-4 text-xs text-center" style={{ color: '#9B7A5A' }}>לא נמצאו חומרי גלם</p>
                 ) : (
@@ -1258,7 +1258,7 @@ export default function InventoryPage() {
                       className="w-full text-right px-3 py-2 text-xs border-b last:border-b-0 transition-colors hover:bg-amber-50"
                       style={{
                         borderColor: '#F5ECD8',
-                        backgroundColor: replaceTargetId === m.id ? '#FEF3DD' : '#FFF',
+                        backgroundColor: replaceTargetId === m.id ? '#FBF5E6' : '#FFF',
                         color: '#2B1A10',
                         fontWeight: replaceTargetId === m.id ? 700 : 400,
                       }}
@@ -1386,7 +1386,7 @@ export default function InventoryPage() {
           {/* "ייתכן שחומר הגלם הזה כבר קיים" — shown for a NEW material whose
               name resembles existing materials/aliases. User decides. */}
           {matchWarning && matchWarning.length > 0 && (
-            <div className="rounded-lg border p-3" style={{ borderColor: '#E7D2A6', backgroundColor: '#FBF6EC' }}>
+            <div className="rounded-lg border p-3" style={{ borderColor: '#E7D2A6', backgroundColor: '#FAF7F0' }}>
               <p className="text-xs font-semibold mb-2" style={{ color: '#8B5E34' }}>
                 ייתכן שחומר הגלם הזה כבר קיים במערכת
               </p>
@@ -1401,7 +1401,7 @@ export default function InventoryPage() {
                       onClick={() => handleLinkToExisting(m.id)}
                       disabled={saving}
                       className="px-2.5 py-1 rounded-lg font-semibold disabled:opacity-50"
-                      style={{ backgroundColor: '#476D53', color: '#FFF' }}
+                      style={{ backgroundColor: '#2D6648', color: '#FFF' }}
                     >
                       חברי לחומר קיים
                     </button>
@@ -1413,7 +1413,7 @@ export default function InventoryPage() {
                 onClick={() => handleSave(true)}
                 disabled={saving}
                 className="text-xs px-3 py-1.5 rounded-lg border bg-white disabled:opacity-50"
-                style={{ borderColor: '#DDD0BC', color: '#8A735F' }}
+                style={{ borderColor: '#DDD0BC', color: '#8A7664' }}
               >
                 שמרי כחומר חדש
               </button>
@@ -1460,7 +1460,7 @@ export default function InventoryPage() {
                 maxWidth: '360px',
                 maxHeight: '320px',
                 backgroundColor: '#FFFFFF',
-                borderColor: '#E8DED0',
+                borderColor: '#E8DED2',
                 direction: 'rtl',
                 overflow: 'hidden',
                 display: 'flex',
@@ -1469,7 +1469,7 @@ export default function InventoryPage() {
             >
               <div
                 className="flex items-center justify-between px-4 py-2.5 flex-shrink-0"
-                style={{ borderBottom: '1px solid #F0E8DC', backgroundColor: '#FAF7F0' }}
+                style={{ borderBottom: '1px solid #F0EAE0', backgroundColor: '#FAF7F0' }}
               >
                 <span className="text-xs font-semibold" style={{ color: '#2B1A10' }}>
                   מתכונים שמשתמשים בחומר גלם זה

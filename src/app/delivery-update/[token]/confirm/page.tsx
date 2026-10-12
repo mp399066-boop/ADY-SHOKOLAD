@@ -20,19 +20,19 @@ export const dynamic = 'force-dynamic';
 import { markDeliveryDeliveredByToken } from '@/lib/delivery-confirm';
 
 const C = {
-  bg:        '#F7F1E8',
+  bg:        '#F5F1EB',
   card:      '#FFFDF9',
   border:    '#E8DED2',
-  textHead:  '#4B2E1F',
+  textHead:  '#4A2F1B',
   textBody:  '#3A2A1A',
   textSoft:  '#7B604D',
-  brand:     '#5B3926',
-  green:     '#2F6B47',
-  greenSoft: '#E5F1E8',
-  blue:      '#3A5A75',
-  blueSoft:  '#E5EEF1',
-  red:       '#9B2C2C',
-  redSoft:   '#FBEAEA',
+  brand:     '#5A3424',
+  green:     '#2D6648',
+  greenSoft: '#E4EEE8',
+  blue:      '#2A4E6B',
+  blueSoft:  '#EAF0F5',
+  red:       '#8A3228',
+  redSoft:   '#FEE2E2',
 };
 
 export default async function DeliveryConfirmPage(props: { params: Promise<{ token: string }> }) {

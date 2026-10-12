@@ -71,7 +71,7 @@ export function AliasEditor({ materialId }: { materialId: string }) {
             <span className="text-xs" style={{ color: '#9B7A5A' }}>אין שמות חלופיים</span>
           ) : (
             aliases.map(a => (
-              <span key={a.id} className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#F4E3C9', color: '#6B4A2D' }}>
+              <span key={a.id} className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#EDD9B4', color: '#6B4A2D' }}>
                 {a.alias}
                 <button type="button" onClick={() => remove(a.id)} className="hover:text-red-600" aria-label="מחק שם חלופי">✕</button>
               </span>

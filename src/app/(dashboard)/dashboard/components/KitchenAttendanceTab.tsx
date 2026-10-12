@@ -63,10 +63,10 @@ function hoursLabel(value: number | null | undefined): string {
 }
 
 function statusTone(status: string) {
-  if (status === 'בפנים עכשיו' || status === 'פתוח') return { bg: C.greenSoft, color: C.green, border: '#C9D9C7' };
-  if (status === 'חסרה יציאה') return { bg: C.redSoft, color: C.red, border: '#E4C2BE' };
+  if (status === 'בפנים עכשיו' || status === 'פתוח') return { bg: C.greenSoft, color: C.green, border: '#BDD5C0' };
+  if (status === 'חסרה יציאה') return { bg: C.redSoft, color: C.red, border: '#D8BCB6' };
   if (status === 'יצאה היום' || status === 'הושלם') return { bg: C.blueSoft, color: C.blue, border: '#C8D8DF' };
-  return { bg: C.amberSoft, color: C.amber, border: '#E7CFA9' };
+  return { bg: C.amberSoft, color: C.amber, border: '#EDD9B4' };
 }
 
 export function KitchenAttendanceTab() {
@@ -274,7 +274,7 @@ export function KitchenAttendanceTab() {
       </div>
 
       {error && (
-        <div className="rounded-md border px-3 py-2 text-sm font-semibold" style={{ backgroundColor: C.redSoft, borderColor: '#E4C2BE', color: C.red }}>
+        <div className="rounded-md border px-3 py-2 text-sm font-semibold" style={{ backgroundColor: C.redSoft, borderColor: '#D8BCB6', color: C.red }}>
           {error}
         </div>
       )}
@@ -444,7 +444,7 @@ export function KitchenAttendanceTab() {
 
           <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
             {(data.workers || []).map(worker => (
-              <div key={worker.id} className="flex items-center justify-between gap-2 rounded-md border p-2" style={{ borderColor: C.borderSoft, backgroundColor: worker.פעילה ? C.cardSoft : '#F7F1EA' }}>
+              <div key={worker.id} className="flex items-center justify-between gap-2 rounded-md border p-2" style={{ borderColor: C.borderSoft, backgroundColor: worker.פעילה ? C.cardSoft : '#F5F1EB' }}>
                 <div>
                   <div className="text-sm font-bold" style={{ color: C.text }}>{worker.שם_עובדת}</div>
                   <div className="text-[11px]" style={{ color: C.textSoft }}>{worker.תפקיד || 'ללא תפקיד'}{worker.טלפון ? ` · ${worker.טלפון}` : ''}</div>
@@ -467,7 +467,7 @@ export function KitchenAttendanceTab() {
 function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-md border px-2 py-2" style={{ borderColor: C.borderSoft, backgroundColor: C.cardSoft }}>
-      <div className="text-[10px] font-semibold" style={{ color: C.textMuted }}>{label}</div>
+      <div className="text-[11px] font-semibold" style={{ color: C.textMuted }}>{label}</div>
       <div className="mt-1 flex items-center justify-center gap-1 text-sm font-bold" style={{ color: C.text }}>
         <Clock size={12} color={C.cocoa} />
         {value}
@@ -712,7 +712,7 @@ function MonthlySummarySection({ workers }: { workers: Worker[] }) {
       </div>
 
       {error && (
-        <div className="mb-3 rounded-md border px-3 py-2 text-xs font-bold" style={{ backgroundColor: C.redSoft, borderColor: '#E4C2BE', color: C.red }}>
+        <div className="mb-3 rounded-md border px-3 py-2 text-xs font-bold" style={{ backgroundColor: C.redSoft, borderColor: '#D8BCB6', color: C.red }}>
           {error}
         </div>
       )}

@@ -7,20 +7,20 @@ import { fmtILS } from '@/lib/finance-export';
 
 export const C = {
   text: '#2A1C10',
-  sub: '#6E5B49',
-  faint: '#C4B6A6',
-  border: '#EAE0D4',
-  brand: '#7A4F2A',
-  choc: '#3B2618',
+  sub: '#7B604D',
+  faint: '#C0B4A8',
+  border: '#E8DED2',
+  brand: '#7A4820',
+  choc: '#3A2A1A',
   gold: '#C9A46A',
   soft: '#FAF7F0',
-  totalBg: '#F4EBDC',
-  green: '#2E6B3A',
-  greenBg: '#EAF4EA',
+  totalBg: '#F0EAE0',
+  green: '#33623A',
+  greenBg: '#EAF0E7',
   red: '#A0362C',
-  redBg: '#FBEDEB',
+  redBg: '#F0EAE8',
   amber: '#94650E',
-  amberBg: '#FBF3E2',
+  amberBg: '#FBF5E6',
 };
 
 /** Dark chocolate table header — pair with <Th>. */
@@ -28,7 +28,7 @@ export const THEAD_STYLE: React.CSSProperties = { backgroundColor: C.choc };
 /** Highlighted "סה״כ" row. */
 export const TOTAL_ROW_STYLE: React.CSSProperties = { borderTop: `2px solid ${C.gold}`, backgroundColor: C.totalBg };
 /** Zebra + hover for table body rows. */
-export const ROW_CLS = 'even:bg-[#FCFAF6]';
+export const ROW_CLS = 'even:bg-[#F8F6F2]';
 
 export function money(n: number) {
   return fmtILS(n);
@@ -38,8 +38,8 @@ const TONE: Record<'green' | 'red' | 'amber' | 'brand' | 'neutral', { fg: string
   green: { fg: C.green, iconBg: C.greenBg, iconFg: C.green },
   red: { fg: C.red, iconBg: C.redBg, iconFg: C.red },
   amber: { fg: C.amber, iconBg: C.amberBg, iconFg: C.amber },
-  brand: { fg: C.brand, iconBg: '#F5ECDF', iconFg: C.brand },
-  neutral: { fg: C.text, iconBg: '#F5EFE6', iconFg: '#9A7B5A' },
+  brand: { fg: C.brand, iconBg: '#FBF0E4', iconFg: C.brand },
+  neutral: { fg: C.text, iconBg: '#F0EAE0', iconFg: '#9B7A5A' },
 };
 
 export function StatCard({ label, value, sub, tone, icon: Icon }: {
@@ -87,7 +87,7 @@ export function ExportButtons({ onExcel, onImage }: {
   const btn = 'inline-flex items-center gap-1.5 h-8 px-3 text-xs font-medium rounded-lg bg-white transition-colors hover:bg-[#FAF7F0] disabled:opacity-50';
   return (
     <div className="flex items-center gap-2" data-export-hide>
-      <button className={btn} style={{ border: `1px solid ${C.border}`, color: '#1D6F42' }}
+      <button className={btn} style={{ border: `1px solid ${C.border}`, color: '#2A7A4F' }}
         disabled={busy !== null} onClick={() => run('excel', onExcel)}>
         <FileSpreadsheet size={14} />
         {busy === 'excel' ? 'מכין…' : 'אקסל'}
@@ -105,7 +105,7 @@ export function ExportButtons({ onExcel, onImage }: {
 
 export function Th({ children, className = '' }: { children?: React.ReactNode; className?: string }) {
   return (
-    <th className={`px-4 py-3 text-xs font-semibold text-right whitespace-nowrap ${className}`} style={{ color: '#F6ECDD' }}>
+    <th className={`px-4 py-3 text-xs font-semibold text-right whitespace-nowrap ${className}`} style={{ color: '#FBF0E4' }}>
       {children}
     </th>
   );

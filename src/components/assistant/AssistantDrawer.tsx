@@ -69,14 +69,14 @@ type Message =
   | { role: 'assistant'; response: AssistantResponse; ts: number };
 
 const TONE_BG: Record<Tone, string> = {
-  good:    '#E5F2EA',
-  warn:    '#FFF4E0',
-  bad:     '#FBE9E7',
+  good:    '#E4EEE8',
+  warn:    '#FBF5E6',
+  bad:     '#FEE2E2',
   neutral: '#FAF7F0',
 };
 const TONE_FG: Record<Tone, string> = {
-  good:    '#1F6B3E',
-  warn:    '#8A5A18',
+  good:    '#33623A',
+  warn:    '#7A5820',
   bad:     '#A03C2C',
   neutral: '#5C4A38',
 };
@@ -206,7 +206,7 @@ export default function AssistantDrawer() {
       <button
         onClick={() => setOpen(o => !o)}
         aria-label="עוזרת מערכת"
-        className="fixed z-40"
+        className="no-print fixed z-40"
         style={{
           bottom: '96px',
           left: '20px',
@@ -277,7 +277,7 @@ export default function AssistantDrawer() {
               width: '380px',
               maxWidth: '100vw',
               backgroundColor: '#FFFFFF',
-              borderLeft: '1px solid #EAE0D4',
+              borderLeft: '1px solid #E8DED2',
               boxShadow: '-4px 0 18px rgba(58,42,26,0.10)',
               direction: 'rtl',
             }}
@@ -286,11 +286,11 @@ export default function AssistantDrawer() {
                 middle flex-1 area being the only thing that gives up space. */}
             <header
               className="flex items-center justify-between px-4"
-              style={{ height: '54px', flexShrink: 0, borderBottom: '1px solid #EAE0D4', backgroundColor: '#FDFAF5' }}
+              style={{ height: '54px', flexShrink: 0, borderBottom: '1px solid #E8DED2', backgroundColor: '#F8F6F2' }}
             >
               <div>
                 <div style={{ fontSize: '14px', fontWeight: 700, color: '#2B1A10' }}>עוזרת מערכת</div>
-                <div style={{ fontSize: '11px', color: '#8E7D6A', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ fontSize: '11px', color: '#8A7664', display: 'flex', alignItems: 'center', gap: 6 }}>
                   {messages.length > 0 || contextRef.current
                     ? <>
                         <span
@@ -298,8 +298,8 @@ export default function AssistantDrawer() {
                           style={{
                             display: 'inline-block',
                             width: 6, height: 6, borderRadius: '50%',
-                            backgroundColor: '#4F9B6E',
-                            boxShadow: '0 0 0 2px #E5F2EA',
+                            backgroundColor: '#6B9E6B',
+                            boxShadow: '0 0 0 2px #E4EEE8',
                           }}
                         />
                         <span>זוכרת את השיחה הזו</span>
@@ -384,7 +384,7 @@ export default function AssistantDrawer() {
 
             {/* Input — pinned to the bottom; flexShrink:0 guards against the
                 messages area expanding into it on long conversations. */}
-            <form onSubmit={onSubmit} style={{ padding: '12px', flexShrink: 0, borderTop: '1px solid #EAE0D4', backgroundColor: '#FFFFFF' }}>
+            <form onSubmit={onSubmit} style={{ padding: '12px', flexShrink: 0, borderTop: '1px solid #E8DED2', backgroundColor: '#FFFFFF' }}>
               <div className="flex gap-2">
                 <input
                   ref={inputRef}
@@ -410,7 +410,7 @@ export default function AssistantDrawer() {
                     fontSize: '13px',
                     fontWeight: 600,
                     borderRadius: '10px',
-                    backgroundColor: pending || !input.trim() ? '#D9CDBC' : '#8B5E34',
+                    backgroundColor: pending || !input.trim() ? '#E0D4C2' : '#8B5E34',
                     color: '#FFFFFF',
                     border: 'none',
                     cursor: pending || !input.trim() ? 'not-allowed' : 'pointer',
@@ -500,7 +500,7 @@ function EmptyState({ onPick, recent }: { onPick: (t: string) => void; recent: s
         ))}
       </Section>
 
-      <div style={{ fontSize: '11px', color: '#A0907D', textAlign: 'center', marginTop: '8px', lineHeight: 1.5 }}>
+      <div style={{ fontSize: '11px', color: '#A09080', textAlign: 'center', marginTop: '8px', lineHeight: 1.5 }}>
         או פשוט הקלידי שאלה בעברית רגילה למטה
       </div>
     </div>
@@ -526,7 +526,7 @@ function LiveSnapshot({
         marginBottom: '14px',
         borderRadius: '10px',
         backgroundColor: '#FAF7F0',
-        border: '1px solid #EAE0D4',
+        border: '1px solid #E8DED2',
         fontSize: '12px',
         color: '#8A7664',
         textAlign: 'center',
@@ -567,10 +567,10 @@ function LiveSnapshot({
   ];
 
   const palette: Record<Tile['tone'], { bg: string; fg: string; border: string; valueFg: string }> = {
-    good:    { bg: '#F5F9F6', fg: '#5C6B5F', border: '#DFE8E1', valueFg: '#3A2A1A' },
-    warn:    { bg: '#FFF7E6', fg: '#7A5618', border: '#EDCF98', valueFg: '#7A5618' },
-    bad:     { bg: '#FBF1EE', fg: '#7A2C1F', border: '#F0C7BF', valueFg: '#A03C2C' },
-    neutral: { bg: '#FAF5EC', fg: '#5C4A38', border: '#EAE0D4', valueFg: '#3A2A1A' },
+    good:    { bg: '#F8F6F2', fg: '#5C6B5F', border: '#E4EEE8', valueFg: '#3A2A1A' },
+    warn:    { bg: '#FBF5E6', fg: '#7A5820', border: '#EDCF98', valueFg: '#7A5820' },
+    bad:     { bg: '#F0EAE8', fg: '#8A3228', border: '#FECACA', valueFg: '#A03C2C' },
+    neutral: { bg: '#FAF7F0', fg: '#5C4A38', border: '#E8DED2', valueFg: '#3A2A1A' },
   };
 
   return (
@@ -621,7 +621,7 @@ function LiveSnapshot({
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div style={{ marginBottom: '14px' }}>
-      <div style={{ fontSize: '11px', fontWeight: 600, color: '#8E7D6A', letterSpacing: '0.05em', marginBottom: '6px' }}>
+      <div style={{ fontSize: '11px', fontWeight: 600, color: '#8A7664', letterSpacing: '0.05em', marginBottom: '6px' }}>
         {title}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -733,7 +733,7 @@ function Card({ children }: { children: React.ReactNode }) {
     <div
       style={{
         backgroundColor: '#FFFFFF',
-        border: '1px solid #EAE0D4',
+        border: '1px solid #E8DED2',
         borderRadius: '12px 12px 12px 2px',
         padding: '12px',
         maxWidth: '92%',
@@ -777,7 +777,7 @@ function BlockView({ block, onOpenOrder, onPick }: { block: Block; onOpenOrder: 
     return (
       <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #F0EAE0' }}>
         {block.title && (
-          <div style={{ fontSize: '10px', color: '#B0A090', fontWeight: 600, letterSpacing: '0.05em', marginBottom: '6px' }}>
+          <div style={{ fontSize: '11px', color: '#B0A090', fontWeight: 600, letterSpacing: '0.05em', marginBottom: '6px' }}>
             {block.title}
           </div>
         )}
@@ -823,7 +823,7 @@ function BlockView({ block, onOpenOrder, onPick }: { block: Block; onOpenOrder: 
         }}
       >
         <div>
-          <div style={{ fontSize: '11px', color: '#8E7D6A' }}>{block.label}</div>
+          <div style={{ fontSize: '11px', color: '#8A7664' }}>{block.label}</div>
           {block.sublabel && <div style={{ fontSize: '11px', color: TONE_FG[tone], marginTop: '1px' }}>{block.sublabel}</div>}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -838,7 +838,7 @@ function BlockView({ block, onOpenOrder, onPick }: { block: Block; onOpenOrder: 
     return (
       <div style={{ marginBottom: '6px' }}>
         {block.title && (
-          <div style={{ fontSize: '11px', color: '#8E7D6A', marginBottom: '6px', fontWeight: 600, letterSpacing: '0.04em' }}>
+          <div style={{ fontSize: '11px', color: '#8A7664', marginBottom: '6px', fontWeight: 600, letterSpacing: '0.04em' }}>
             {block.title}
           </div>
         )}
@@ -865,7 +865,7 @@ function BlockView({ block, onOpenOrder, onPick }: { block: Block; onOpenOrder: 
     return (
       <div style={{ marginBottom: '6px' }}>
         {block.title && (
-          <div style={{ fontSize: '11px', color: '#8E7D6A', marginBottom: '6px', fontWeight: 600, letterSpacing: '0.04em' }}>
+          <div style={{ fontSize: '11px', color: '#8A7664', marginBottom: '6px', fontWeight: 600, letterSpacing: '0.04em' }}>
             {block.title}
           </div>
         )}
@@ -953,7 +953,7 @@ function DownloadBlockButton({ block }: { block: Extract<Block, { type: 'downloa
           fontSize: '13px',
           fontWeight: 600,
           borderRadius: '10px',
-          backgroundColor: downloading ? '#D9CDBC' : '#8B5E34',
+          backgroundColor: downloading ? '#E0D4C2' : '#8B5E34',
           color: '#FFFFFF',
           border: 'none',
           cursor: downloading ? 'wait' : 'pointer',
@@ -999,7 +999,7 @@ function ConfirmSendReportCard({ block }: { block: Extract<Block, { type: 'confi
 
   if (state === 'sent') {
     return (
-      <div style={{ marginTop: '6px', padding: '12px 14px', borderRadius: '10px', backgroundColor: '#E8F5EE', border: '1px solid #B7DBC4', fontSize: '13px', color: '#1F6B43' }}>
+      <div style={{ marginTop: '6px', padding: '12px 14px', borderRadius: '10px', backgroundColor: '#E4EEE8', border: '1px solid #B4D2BE', fontSize: '13px', color: '#2D6648' }}>
         ✓ הדוח נשלח ל-<span dir="ltr">{block.recipientEmail}</span>
       </div>
     );
@@ -1019,7 +1019,7 @@ function ConfirmSendReportCard({ block }: { block: Extract<Block, { type: 'confi
         marginTop: '6px',
         padding: '14px 16px',
         borderRadius: '12px',
-        backgroundColor: '#FFFDF8',
+        backgroundColor: '#F8F6F2',
         border: '1px solid #E8DED2',
         boxShadow: '0 1px 4px rgba(58,42,26,0.04)',
       }}
@@ -1043,7 +1043,7 @@ function ConfirmSendReportCard({ block }: { block: Extract<Block, { type: 'confi
             fontSize: '12px',
             fontWeight: 600,
             borderRadius: '8px',
-            backgroundColor: state === 'sending' ? '#D9CDBC' : '#8B5E34',
+            backgroundColor: state === 'sending' ? '#E0D4C2' : '#8B5E34',
             color: '#FFFFFF',
             border: 'none',
             cursor: state === 'sending' ? 'wait' : 'pointer',
@@ -1184,7 +1184,7 @@ function ReportPreviewCard({ block }: { block: PreviewBlock }) {
 
   if (phase === 'sent') {
     return (
-      <div style={{ marginTop: '6px', padding: '12px 14px', borderRadius: '10px', backgroundColor: '#E8F5EE', border: '1px solid #B7DBC4', fontSize: '13px', color: '#1F6B43' }}>
+      <div style={{ marginTop: '6px', padding: '12px 14px', borderRadius: '10px', backgroundColor: '#E4EEE8', border: '1px solid #B4D2BE', fontSize: '13px', color: '#2D6648' }}>
         ✓ הדוח נשלח ל-<span dir="ltr">{emailInput.trim()}</span>
       </div>
     );
@@ -1198,7 +1198,7 @@ function ReportPreviewCard({ block }: { block: PreviewBlock }) {
   }
   if (phase === 'loading') {
     return (
-      <div style={{ marginTop: '6px', padding: '14px', borderRadius: '12px', backgroundColor: '#FFFDF8', border: '1px solid #E8DED2', fontSize: '12px', color: '#9B7A5A', textAlign: 'center' }}>
+      <div style={{ marginTop: '6px', padding: '14px', borderRadius: '12px', backgroundColor: '#F8F6F2', border: '1px solid #E8DED2', fontSize: '12px', color: '#9B7A5A', textAlign: 'center' }}>
         טוען תצוגה מוקדמת…
       </div>
     );
@@ -1208,7 +1208,7 @@ function ReportPreviewCard({ block }: { block: PreviewBlock }) {
     <div
       style={{
         marginTop: '6px', padding: '14px 16px',
-        borderRadius: '12px', backgroundColor: '#FFFDF8',
+        borderRadius: '12px', backgroundColor: '#F8F6F2',
         border: '1px solid #E8DED2', boxShadow: '0 1px 4px rgba(58,42,26,0.04)',
       }}
     >
@@ -1238,17 +1238,17 @@ function ReportPreviewCard({ block }: { block: PreviewBlock }) {
             </div>
           ) : (
             <div style={{ marginBottom: '10px' }}>
-              <div style={{ fontSize: '10px', color: '#9B7A5A', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              <div style={{ fontSize: '11px', color: '#9B7A5A', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                 {data.summary.truncated ? `5 הראשונות מתוך ${data.summary.total}` : `כל ההזמנות בדוח`}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                 {data.sample.map(o => (
-                  <div key={o.id} style={{ padding: '7px 10px', backgroundColor: o.urgent ? '#FBE9E7' : '#FAF7F0', borderRadius: '6px', fontSize: '11px' }}>
+                  <div key={o.id} style={{ padding: '7px 10px', backgroundColor: o.urgent ? '#FEE2E2' : '#FAF7F0', borderRadius: '6px', fontSize: '11px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '6px' }}>
                       <span style={{ fontWeight: 600, color: '#2B1A10' }}>{o.customerName}</span>
                       <span style={{ fontWeight: 700, color: '#8B5E34', direction: 'ltr' }}>₪{o.total.toFixed(2)}</span>
                     </div>
-                    <div style={{ fontSize: '10px', color: '#9B7A5A', marginTop: '2px' }}>
+                    <div style={{ fontSize: '11px', color: '#9B7A5A', marginTop: '2px' }}>
                       {o.orderNumber}
                       {o.deliveryDate && ` · ${o.deliveryDate}${o.deliveryTime ? ' ' + o.deliveryTime : ''}`}
                       {o.deliveryType && ` · ${o.deliveryType}`}
@@ -1342,9 +1342,9 @@ function Stat({ label, value, tone }: { label: string; value: string; tone?: 'wa
   return (
     <div style={{
       padding: '6px 10px', borderRadius: '6px',
-      backgroundColor: tone === 'warn' ? '#FFF8E1' : '#FAF7F0',
+      backgroundColor: tone === 'warn' ? '#FBF5E6' : '#FAF7F0',
     }}>
-      <div style={{ fontSize: '10px', color: '#9B7A5A', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
+      <div style={{ fontSize: '11px', color: '#9B7A5A', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
       <div style={{ fontSize: '14px', fontWeight: 700, color: tone === 'warn' ? '#92400E' : '#2B1A10', fontVariantNumeric: 'tabular-nums' }}>{value}</div>
     </div>
   );
@@ -1354,8 +1354,8 @@ function OrderRow({ order, onClick }: { order: OrderSummary; onClick: () => void
   const paid     = order.paymentStatus === 'שולם';
   const pending  = order.paymentStatus === 'ממתין';
   const payEmoji = paid ? '✅' : pending ? '⏳' : '•';
-  const baseBg   = order.urgent ? '#FBE9E7' : '#FAF7F0';
-  const hoverBg  = order.urgent ? '#F8DDD7' : '#F2EBDD';
+  const baseBg   = order.urgent ? '#FEE2E2' : '#FAF7F0';
+  const hoverBg  = order.urgent ? '#FEE2E2' : '#F2EBDD';
   return (
     <button
       onClick={onClick}
@@ -1366,7 +1366,7 @@ function OrderRow({ order, onClick }: { order: OrderSummary; onClick: () => void
         textAlign: 'right',
         padding: '9px 11px',
         backgroundColor: baseBg,
-        border: order.urgent ? '1px solid #E8B5A8' : '1px solid #EDE0CE',
+        border: order.urgent ? '1px solid #E7B7B0' : '1px solid #E8DED2',
         borderRadius: '8px',
         fontSize: '12px',
         cursor: 'pointer',

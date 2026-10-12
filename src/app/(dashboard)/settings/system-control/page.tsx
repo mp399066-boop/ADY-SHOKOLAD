@@ -36,7 +36,7 @@ const SETTINGS_TABS = [
 
 function SettingsTabs({ active }: { active: string }) {
   return (
-    <div className="flex gap-1 mb-6 border-b" style={{ borderColor: '#EAE0D4' }}>
+    <div className="flex gap-1 mb-6 border-b" style={{ borderColor: '#E8DED2' }}>
       {SETTINGS_TABS.map(tab => {
         const isActive = tab.href === active;
         return (
@@ -177,11 +177,11 @@ interface ActivityLog {
 // ── Visual config ────────────────────────────────────────────────────────────
 
 const STATUS_TONE: Record<string, { bg: string; fg: string; border: string }> = {
-  success:  { bg: '#E8F4EC', fg: '#1F6B3E', border: '#BBE0C8' },
-  failed:   { bg: '#FBE9E7', fg: '#A03C2C', border: '#F0C7BF' },
-  skipped:  { bg: '#F4ECDF', fg: '#7A5C2C', border: '#DCC9A8' },
-  warning:  { bg: '#FFF4E0', fg: '#8A5A18', border: '#EDCF98' },
-  disabled: { bg: '#EFE7DA', fg: '#5C4A38', border: '#D5C9B5' },
+  success:  { bg: '#E4EEE8', fg: '#33623A', border: '#B7E0C0' },
+  failed:   { bg: '#FEE2E2', fg: '#A03C2C', border: '#FECACA' },
+  skipped:  { bg: '#F0EAE0', fg: '#7A5820', border: '#EDD9B4' },
+  warning:  { bg: '#FBF5E6', fg: '#7A5820', border: '#EDCF98' },
+  disabled: { bg: '#F0EAE0', fg: '#5C4A38', border: '#E0D4C2' },
 };
 
 const PAGE_SIZE = 50;
@@ -414,14 +414,14 @@ export default function LogsPage() {
                 onChange={e => setQ(e.target.value)}
                 placeholder="חיפוש חופשי (כותרת / תיאור / לקוח / משתמש)"
                 className="px-2 h-8 rounded-lg border bg-white min-w-[200px] flex-1"
-                style={{ borderColor: '#E8D8C6', color: '#3A2A1A' }}
+                style={{ borderColor: '#E0D4C2', color: '#3A2A1A' }}
               />
 
               <select
                 value={statusF}
                 onChange={e => setStatusF(e.target.value)}
                 className="px-2 h-8 rounded-lg border bg-white"
-                style={{ borderColor: '#E8D8C6', color: '#3A2A1A' }}
+                style={{ borderColor: '#E0D4C2', color: '#3A2A1A' }}
               >
                 <option value="">כל הסטטוסים</option>
                 {(['success', 'failed', 'warning', 'skipped', 'disabled'] as ActivityStatus[]).map(s => (
@@ -435,7 +435,7 @@ export default function LogsPage() {
                 value={fromF}
                 onChange={e => setFromF(e.target.value)}
                 className="px-2 h-8 rounded-lg border bg-white"
-                style={{ borderColor: '#E8D8C6', color: '#3A2A1A' }}
+                style={{ borderColor: '#E0D4C2', color: '#3A2A1A' }}
               />
               <span style={{ color: '#8A7664' }}>עד-</span>
               <input
@@ -443,7 +443,7 @@ export default function LogsPage() {
                 value={toF}
                 onChange={e => setToF(e.target.value)}
                 className="px-2 h-8 rounded-lg border bg-white"
-                style={{ borderColor: '#E8D8C6', color: '#3A2A1A' }}
+                style={{ borderColor: '#E0D4C2', color: '#3A2A1A' }}
               />
 
               {filterActive && (
@@ -531,7 +531,7 @@ function CategorySidebar({
       {/* Desktop / tablet — vertical list */}
       <nav className="hidden lg:block">
         <Card className="p-2">
-          <div className="px-2 pt-1 pb-2 text-[10.5px] font-bold uppercase tracking-wider" style={{ color: '#A0907D', letterSpacing: '0.06em' }}>
+          <div className="px-2 pt-1 pb-2 text-[11.5px] font-bold uppercase tracking-wider" style={{ color: '#A09080', letterSpacing: '0.06em' }}>
             קטגוריות
           </div>
           <ul className="space-y-1">
@@ -544,7 +544,7 @@ function CategorySidebar({
                     onClick={() => onChange(tab.id)}
                     className="w-full text-right px-3 py-2 rounded-lg inline-flex items-center gap-2.5 transition-colors"
                     style={isActive
-                      ? { backgroundColor: '#FAF5EC', color: '#5C3410', borderRight: '3px solid #C9A46A', paddingRight: 9 }
+                      ? { backgroundColor: '#FAF7F0', color: '#5C3410', borderRight: '3px solid #C9A46A', paddingRight: 9 }
                       : { color: '#5C4A38' }}
                     onMouseEnter={e => { if (!isActive) e.currentTarget.style.backgroundColor = '#FAF7F0'; }}
                     onMouseLeave={e => { if (!isActive) e.currentTarget.style.backgroundColor = ''; }}
@@ -581,13 +581,13 @@ function CategorySidebar({
                 className="inline-flex items-center gap-1.5 px-3 h-9 rounded-full border whitespace-nowrap text-[12.5px] font-semibold transition-colors"
                 style={isActive
                   ? { backgroundColor: '#5C3410', color: '#FFFFFF', borderColor: '#5C3410' }
-                  : { backgroundColor: '#FFFFFF', color: '#5C4A38', borderColor: '#EAE0D4' }}
+                  : { backgroundColor: '#FFFFFF', color: '#5C4A38', borderColor: '#E8DED2' }}
               >
                 <span aria-hidden>{tab.icon}</span>
                 <span>{tab.label}</span>
                 {failures > 0 && (
                   <span
-                    className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10.5px] font-bold tabular-nums mr-0.5"
+                    className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[11.5px] font-bold tabular-nums mr-0.5"
                     style={isActive
                       ? { backgroundColor: '#FFFFFF', color: '#A03C2C' }
                       : { backgroundColor: '#A03C2C', color: '#FFFFFF' }}
@@ -634,8 +634,8 @@ function FailureBanner({
     <div
       className="rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-3"
       style={{
-        background: 'linear-gradient(135deg, #FBE9E7 0%, #FBF1EE 100%)',
-        border: '1.5px solid #F0C7BF',
+        background: 'linear-gradient(135deg, #FEE2E2 0%, #F0EAE8 100%)',
+        border: '1.5px solid #FECACA',
         boxShadow: '0 2px 8px rgba(160,60,44,0.10)',
       }}
     >
@@ -653,22 +653,22 @@ function FailureBanner({
       </div>
 
       <div className="flex-1 min-w-0">
-        <div className="text-[14px] font-bold" style={{ color: '#7A2C1F' }}>
+        <div className="text-[14px] font-bold" style={{ color: '#8A3228' }}>
           {totalFailures} {totalFailures === 1 ? 'שגיאה' : 'שגיאות'} ב-{windowDays} הימים האחרונים
         </div>
-        <div className="text-[12px] mt-0.5 flex flex-wrap items-center gap-1" style={{ color: '#7A2C1F' }}>
+        <div className="text-[12px] mt-0.5 flex flex-wrap items-center gap-1" style={{ color: '#8A3228' }}>
           <span>הכי הרבה ב:</span>
           {top.map((x, i) => (
             <button
               key={x.tab.id}
               onClick={() => onJump(x.tab.id)}
               className="inline-flex items-center gap-1 px-2 h-6 rounded-md text-[11.5px] font-semibold hover:underline"
-              style={{ backgroundColor: '#FFFFFF', color: '#A03C2C', border: '1px solid #F0C7BF' }}
+              style={{ backgroundColor: '#FFFFFF', color: '#A03C2C', border: '1px solid #FECACA' }}
             >
               <span aria-hidden>{x.tab.icon}</span>
               <span>{x.tab.label}</span>
               <span className="font-bold">({x.count})</span>
-              {i < top.length - 1 && <span aria-hidden style={{ color: '#D5A99E' }}>·</span>}
+              {i < top.length - 1 && <span aria-hidden style={{ color: '#E7B7B0' }}>·</span>}
             </button>
           ))}
         </div>
@@ -715,7 +715,7 @@ function StatusSummary({ items, total }: { items: ActivityLog[]; total: number }
     <div className="flex flex-wrap items-center gap-2">
       <div
         className="inline-flex items-center gap-2 px-3 h-9 rounded-xl border"
-        style={{ backgroundColor: '#FAF5EC', color: '#5C3410', borderColor: '#EAE0D4' }}
+        style={{ backgroundColor: '#FAF7F0', color: '#5C3410', borderColor: '#E8DED2' }}
       >
         <span className="text-[12px] font-semibold">סך הכל</span>
         <span className="text-[13px] font-bold tabular-nums">{total}</span>
@@ -765,12 +765,12 @@ function LogCard({ row, icon, onOpen }: { row: ActivityLog; icon: string; onOpen
       onClick={onOpen}
       className="w-full text-right rounded-xl transition-shadow hover:shadow-md focus:outline-none focus-visible:ring-2"
       style={{
-        backgroundColor: isError ? '#FFFAF9' : '#FFFFFF',
+        backgroundColor: isError ? '#FFFFFF' : '#FFFFFF',
         border: isError
           ? `2px solid ${tone.fg}`
           : isWarn
             ? `1.5px solid ${tone.border}`
-            : '1px solid #EAE0D4',
+            : '1px solid #E8DED2',
         boxShadow: isError
           ? '0 2px 10px rgba(160,60,44,0.18)'
           : '0 1px 6px rgba(58,42,26,0.05)',
@@ -800,7 +800,7 @@ function LogCard({ row, icon, onOpen }: { row: ActivityLog; icon: string; onOpen
               <span aria-hidden className="text-[15px] font-bold leading-none">{statusIcon}</span>
               <span className="text-[13px] font-bold">{statusVerb}</span>
             </div>
-            <div className="text-[11.5px]" style={{ color: '#A0907D' }} title={formatTime(row.created_at)}>
+            <div className="text-[11.5px]" style={{ color: '#A09080' }} title={formatTime(row.created_at)}>
               {formatRelative(row.created_at)} <span style={{ color: '#C9B89E' }}>·</span> {formatTime(row.created_at)}
             </div>
           </div>
@@ -818,7 +818,7 @@ function LogCard({ row, icon, onOpen }: { row: ActivityLog; icon: string; onOpen
             {row.entity_label && (
               <span
                 className="inline-flex items-center px-2 py-0.5 rounded-md text-[11.5px] font-semibold"
-                style={{ backgroundColor: '#FAF5EC', color: '#5C3410', border: '1px solid #E7D2A6' }}
+                style={{ backgroundColor: '#FAF7F0', color: '#5C3410', border: '1px solid #E7D2A6' }}
               >
                 {row.entity_label}
               </span>
@@ -840,9 +840,9 @@ function LogCard({ row, icon, onOpen }: { row: ActivityLog; icon: string; onOpen
             <div
               className="mt-3 p-3 rounded-lg text-[12.5px] leading-relaxed flex items-start gap-2"
               style={{
-                backgroundColor: isError ? '#FBF1EE' : '#FFF7E6',
-                color:           isError ? '#7A2C1F' : '#7A5618',
-                border: `1px solid ${isError ? '#F0C7BF' : '#EDCF98'}`,
+                backgroundColor: isError ? '#F0EAE8' : '#FBF5E6',
+                color:           isError ? '#8A3228' : '#7A5820',
+                border: `1px solid ${isError ? '#FECACA' : '#EDCF98'}`,
               }}
             >
               <span aria-hidden className="text-[14px] font-bold leading-none mt-0.5">
@@ -860,7 +860,7 @@ function LogCard({ row, icon, onOpen }: { row: ActivityLog; icon: string; onOpen
           )}
 
           {/* Footer — open-details affordance */}
-          <div className="mt-3 flex items-center justify-between text-[11px]" style={{ color: '#A0907D' }}>
+          <div className="mt-3 flex items-center justify-between text-[11px]" style={{ color: '#A09080' }}>
             <span dir="ltr" style={{ fontFamily: 'monospace' }}>{row.action}</span>
             <span className="font-semibold" style={{ color: '#8B5E34' }}>פרטים מלאים ←</span>
           </div>
@@ -902,7 +902,7 @@ function LogDetail({ row, onClose }: { row: ActivityLog; onClose: () => void }) 
         <div>
           <div className="text-[11px] font-bold mb-1" style={{ color: '#A03C2C' }}>שגיאה</div>
           <pre dir="ltr" className="text-[11.5px] p-3 rounded-lg whitespace-pre-wrap break-words"
-               style={{ backgroundColor: '#FBF1EE', color: '#7A2C1F', border: '1px solid #F0C7BF', fontFamily: 'monospace' }}>
+               style={{ backgroundColor: '#F0EAE8', color: '#8A3228', border: '1px solid #FECACA', fontFamily: 'monospace' }}>
             {row.error_message}
           </pre>
         </div>
@@ -957,7 +957,7 @@ function JsonBlock({ label, value }: { label: string; value: unknown }) {
     <div>
       <div className="text-[11px] font-bold mb-1" style={{ color: '#6B4A2D' }}>{label}</div>
       <pre dir="ltr" className="text-[11.5px] p-3 rounded-lg whitespace-pre-wrap break-words max-h-72 overflow-auto"
-           style={{ backgroundColor: '#FAF5EC', color: '#3A2A1A', border: '1px solid #EAE0D4', fontFamily: 'monospace' }}>
+           style={{ backgroundColor: '#FAF7F0', color: '#3A2A1A', border: '1px solid #E8DED2', fontFamily: 'monospace' }}>
         {text}
       </pre>
     </div>
@@ -1029,7 +1029,7 @@ function MonthlyBackupCard() {
             onChange={e => setMonth(Number(e.target.value))}
             disabled={sending}
             className="px-2 h-9 rounded-lg border bg-white text-[13px]"
-            style={{ borderColor: '#E8D8C6', color: '#3A2A1A', minWidth: '8.5rem' }}
+            style={{ borderColor: '#E0D4C2', color: '#3A2A1A', minWidth: '8.5rem' }}
           >
             {HEBREW_MONTHS.map((name, i) => (
               <option key={i + 1} value={i + 1}>{name}</option>
@@ -1043,7 +1043,7 @@ function MonthlyBackupCard() {
             onChange={e => setYear(Number(e.target.value))}
             disabled={sending}
             className="px-2 h-9 rounded-lg border bg-white text-[13px]"
-            style={{ borderColor: '#E8D8C6', color: '#3A2A1A', minWidth: '5.5rem' }}
+            style={{ borderColor: '#E0D4C2', color: '#3A2A1A', minWidth: '5.5rem' }}
           >
             {yearOptions.map(y => (
               <option key={y} value={y}>{y}</option>
@@ -1059,7 +1059,7 @@ function MonthlyBackupCard() {
             placeholder="ריק = ברירת מחדל"
             disabled={sending}
             className="px-3 h-9 rounded-lg border bg-white text-[13px]"
-            style={{ borderColor: '#E8D8C6', color: '#3A2A1A' }}
+            style={{ borderColor: '#E0D4C2', color: '#3A2A1A' }}
           />
         </div>
         <Button onClick={send} loading={sending} disabled={sending}>

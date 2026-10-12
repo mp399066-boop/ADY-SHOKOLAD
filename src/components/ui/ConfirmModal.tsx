@@ -39,7 +39,7 @@ export function ConfirmModal({
           onClick={onConfirm}
           disabled={loading}
           className="px-4 py-2 text-sm font-medium rounded-xl text-white transition-colors disabled:opacity-50"
-          style={{ backgroundColor: loading ? '#FCA5A5' : '#DC2626' }}
+          style={{ backgroundColor: loading ? '#F2AAAA' : '#DC2626' }}
         >
           {loading ? '...' : confirmLabel}
         </button>

@@ -17,6 +17,7 @@ import toast from 'react-hot-toast';
 import type { Customer, Product, PetitFourType, Package } from '@/types/database';
 import { DeliveryTypeCards } from '@/components/orders/DeliveryTypeCards';
 import { PayPlusModal } from '@/components/orders/PayPlusModal';
+import { resolvePriceListEntry, totalQtyForProduct, computeEffectivePriceType, type PriceEntry, type EffectivePriceType } from '@/lib/order-pricing';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 
 interface OrderItem {
@@ -78,7 +79,7 @@ function RecipientPicker({ recipients, value, onChange }: {
         style={{
           borderColor: unassigned ? '#FBBF24' : '#DDD0BC',
           color: '#2B1A10',
-          backgroundColor: unassigned ? '#FFFBEB' : '#FFF',
+          backgroundColor: unassigned ? '#FBF5E6' : '#FFF',
         }}
       >
         <option value="">— כל ההזמנה —</option>
@@ -93,79 +94,11 @@ function RecipientPicker({ recipients, value, onChange }: {
   );
 }
 
-type PriceEntry = { מוצר_id: string; price_type: string; מחיר: number; min_quantity: number | null };
-type EffectivePriceType = 'retail' | 'retail_quantity' | 'business_fixed' | 'business_quantity';
-
-function resolvePriceListEntry(
-  priceList: PriceEntry[],
-  productId: string,
-  priceType: string,
-  qty: number,
-): PriceEntry | undefined {
-  if (priceType === 'business_quantity' || priceType === 'retail_quantity') {
-    const all = priceList
-      .filter(pl => pl.מוצר_id === productId && pl.price_type === priceType)
-      .sort((a, b) => (b.min_quantity ?? 0) - (a.min_quantity ?? 0));
-    const matching = all.filter(pl => (pl.min_quantity ?? 0) <= qty);
-    // Below every tier minimum: fall back to the lowest tier, i.e. the dearest
-    // unit price, rather than leaving the item with no price at all.
-    return matching[0] ?? all[all.length - 1];
-  }
-  return priceList.find(pl => pl.מוצר_id === productId && pl.price_type === priceType);
-}
-
-/**
- * Total quantity of one product across the whole order.
- *
- * A quantity price tier is a bracket on how much of a product the ORDER
- * holds, not on how much sits on any one line. Multi-recipient orders are
- * what make the difference visible: 30 boxes for 30 people are 30 lines of 1,
- * and pricing each line on its own quantity would drop the order out of the
- * bracket it actually qualifies for.
- */
-function totalQtyForProduct(items: { מוצר_id: string; כמות: number }[], productId: string): number {
-  if (!productId) return 0;
-  return items.reduce((sum, i) => (i.מוצר_id === productId ? sum + (Number(i.כמות) || 0) : sum), 0);
-}
-
-function computeEffectivePriceType(
-  custType: string | undefined,
-  items: { מוצר_id: string; כמות: number }[],
-  products: { id: string; קטגוריית_מוצר?: string | null }[],
-  priceList: PriceEntry[],
-): EffectivePriceType {
-  if (custType === 'עסקי - כמות') return 'business_quantity';
-  if (custType === 'עסקי - קבוע' || custType === 'עסקי') return 'business_fixed';
-
-  // Private / recurring customers — check for event/quantity upgrade
-  // Only count items with a product selected (מוצר_id not empty)
-  const totalUnits = items.reduce((sum, it) => it.מוצר_id ? sum + (it.כמות || 0) : sum, 0);
-  if (totalUnits >= 250) return 'retail_quantity';
-
-  // Amount threshold at retail prices; only one cake item counts toward 2500
-  let nonCakeTotal = 0;
-  let maxCakeTotal = 0;
-  for (const it of items) {
-    if (!it.מוצר_id) continue;
-    const retailEntry = priceList.find(pl => pl.מוצר_id === it.מוצר_id && pl.price_type === 'retail');
-    if (!retailEntry) continue;
-    const lineTotal = retailEntry.מחיר * (it.כמות || 0);
-    const prod = products.find(p => p.id === it.מוצר_id);
-    if (prod?.קטגוריית_מוצר === 'עוגה') {
-      maxCakeTotal = Math.max(maxCakeTotal, lineTotal);
-    } else {
-      nonCakeTotal += lineTotal;
-    }
-  }
-  if (nonCakeTotal + maxCakeTotal >= 2500) return 'retail_quantity';
-  return 'retail';
-}
-
 const TIER_INFO: Record<EffectivePriceType, { label: string; color: string; bg: string }> = {
-  retail:            { label: 'לקוח פרטי',                  color: '#5C3410', bg: '#EFE4D3' },
-  retail_quantity:   { label: 'לקוח פרטי אירוע - כמות',    color: '#7C5A1E', bg: '#FFF3CD' },
-  business_fixed:    { label: 'עסקי קבוע',                  color: '#1A4D6E', bg: '#D6EAF8' },
-  business_quantity: { label: 'עסקי אירוע - כמות',          color: '#1D6A3D', bg: '#D5F0E3' },
+  retail:            { label: 'לקוח פרטי',                  color: '#5C3410', bg: '#E8DED2' },
+  retail_quantity:   { label: 'לקוח פרטי אירוע - כמות',    color: '#7A5820', bg: '#FEF3C7' },
+  business_fixed:    { label: 'עסקי קבוע',                  color: '#2A4E6B', bg: '#DBEAFE' },
+  business_quantity: { label: 'עסקי אירוע - כמות',          color: '#33623A', bg: '#DCFCE7' },
 };
 
 interface PackageItem {
@@ -1279,9 +1212,9 @@ export default function NewOrderPage() {
                   </div>
                   {showStrikethrough && retailEntry && (
                     <div className="flex items-center gap-2 mt-1.5">
-                      <span className="text-xs px-1.5 py-0.5 rounded font-medium" style={{ backgroundColor: '#D5F0E3', color: '#1D6A3D' }}>מחיר אירוע</span>
+                      <span className="text-xs px-1.5 py-0.5 rounded font-medium" style={{ backgroundColor: '#DCFCE7', color: '#33623A' }}>מחיר אירוע</span>
                       <span className="text-xs" style={{ color: '#9B7A5A', textDecoration: 'line-through' }}>₪{retailEntry.מחיר.toFixed(2)}</span>
-                      <span className="text-xs font-semibold" style={{ color: '#1D6A3D' }}>₪{item.מחיר_ליחידה.toFixed(2)}</span>
+                      <span className="text-xs font-semibold" style={{ color: '#33623A' }}>₪{item.מחיר_ליחידה.toFixed(2)}</span>
                     </div>
                   )}
                   {item.missingPrice && (
@@ -1344,17 +1277,17 @@ export default function NewOrderPage() {
                       const cap = pkg.גודל_מארז;
                       const info = getCapacityInfo(sumPetitFours(pkg.פטיפורים), cap);
                       const counterStyle = info.state === 'over'
-                        ? { backgroundColor: '#FEE2E2', color: '#991B1B', border: '1px solid #FECACA' }
+                        ? { backgroundColor: '#FEE2E2', color: '#8A3228', border: '1px solid #FECACA' }
                         : info.state === 'full'
-                        ? { backgroundColor: '#D5F0E3', color: '#1D6A3D', border: '1px solid #A8DCC0' }
+                        ? { backgroundColor: '#DCFCE7', color: '#33623A', border: '1px solid #B7E0C0' }
                         : info.state === 'under'
-                        ? { backgroundColor: '#FEF3C7', color: '#7C5A1E', border: '1px solid #FCD9A6' }
-                        : { backgroundColor: '#EFE4D3', color: '#6B4A2D', border: '1px solid #DDD0BC' };
+                        ? { backgroundColor: '#FEF3C7', color: '#7A5820', border: '1px solid #EDCF98' }
+                        : { backgroundColor: '#E8DED2', color: '#6B4A2D', border: '1px solid #DDD0BC' };
                       const availableTypes = petitFourTypes.filter(pf =>
                         pf.פעיל && !pkg.פטיפורים.find(x => x.פטיפור_id === pf.id),
                       );
                       return (
-                        <div className="border-t pt-3" style={{ borderColor: '#EDE0CE' }}>
+                        <div className="border-t pt-3" style={{ borderColor: '#E8DED2' }}>
                           <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
                             <div className="flex items-center gap-2">
                               <span className="text-xs font-semibold" style={{ color: '#4A2F1B' }}>פטיפורים</span>
@@ -1447,8 +1380,8 @@ export default function NewOrderPage() {
                       key={idx}
                       className="p-3 rounded-xl"
                       style={{
-                        backgroundColor: isDiscount ? '#F0FAF2' : '#FAF7F0',
-                        border: `1px solid ${isDiscount ? '#B7E0C0' : '#E8DECE'}`,
+                        backgroundColor: isDiscount ? '#EAF0E7' : '#FAF7F0',
+                        border: `1px solid ${isDiscount ? '#B7E0C0' : '#E8DED2'}`,
                       }}
                     >
                       <RecipientPicker
@@ -1572,7 +1505,7 @@ export default function NewOrderPage() {
                     checked={isUrgent}
                     onChange={e => setIsUrgent(e.target.checked)}
                     className="w-4 h-4 rounded"
-                    style={{ accentColor: '#C0392B' }}
+                    style={{ accentColor: '#B91C1C' }}
                   />
                   <span className="text-sm font-medium text-red-600">הזמנה דחופה</span>
                 </label>
@@ -1819,7 +1752,7 @@ export default function NewOrderPage() {
                       >
                         <div
                           className="flex items-center justify-between gap-2 px-4 py-2.5 border-b flex-wrap"
-                          style={{ backgroundColor: '#F3E9DA', borderColor: '#DDD0BC' }}
+                          style={{ backgroundColor: '#FBF0E4', borderColor: '#DDD0BC' }}
                         >
                           <span className="text-sm font-semibold" style={{ color: '#5C3410' }}>
                             נמען {ridx + 1}{r.שם_נמען.trim() ? ` · ${r.שם_נמען.trim()}` : ''}
@@ -1882,7 +1815,7 @@ export default function NewOrderPage() {
                             </div>
                           </div>
 
-                          <div className="pt-3 border-t space-y-3" style={{ borderColor: '#EDE0CE' }}>
+                          <div className="pt-3 border-t space-y-3" style={{ borderColor: '#E8DED2' }}>
                             <p className="text-xs font-semibold" style={{ color: '#8B5E34' }}>
                               מה {r.שם_נמען.trim() || `נמען ${ridx + 1}`} מקבל
                             </p>
@@ -1923,7 +1856,7 @@ export default function NewOrderPage() {
                   {(unassignedProducts.length > 0 || unassignedPackages.length > 0) && (
                     <div
                       className="rounded-2xl border p-4 space-y-3"
-                      style={{ borderColor: '#FBBF24', backgroundColor: '#FFFBEB' }}
+                      style={{ borderColor: '#FBBF24', backgroundColor: '#FBF5E6' }}
                     >
                       <p className="text-xs font-semibold" style={{ color: '#92700E' }}>
                         פריטים שלא שויכו לנמען ({unassignedProducts.length + unassignedPackages.length})
@@ -1956,7 +1889,7 @@ export default function NewOrderPage() {
                       מחירון: {TIER_INFO[effectivePriceType].label}
                     </span>
                     {effectivePriceType === 'retail_quantity' && (customerType === 'פרטי' || customerType === 'חוזר') && (
-                      <span className="text-xs" style={{ color: '#7C5A1E' }}>✓ ההזמנה עומדת בתנאי אירוע/כמות</span>
+                      <span className="text-xs" style={{ color: '#7A5820' }}>✓ ההזמנה עומדת בתנאי אירוע/כמות</span>
                     )}
                   </div>
                 )}
@@ -1977,7 +1910,7 @@ export default function NewOrderPage() {
             ) : (
               <div className="space-y-2">
                 {orderItems.map((item, idx) => renderProductRow(item, idx))}
-                <div className="pt-2 border-t" style={{ borderColor: '#EDE0CE' }}>
+                <div className="pt-2 border-t" style={{ borderColor: '#E8DED2' }}>
                   <Button type="button" variant="outline" size="sm" onClick={addProductItem}>
                     + הוסף מוצר נוסף
                   </Button>
@@ -2098,11 +2031,11 @@ export default function NewOrderPage() {
           <div className="sticky top-6 space-y-4">
             <div
               className="rounded-2xl border overflow-hidden"
-              style={{ borderColor: '#EDE0CE', backgroundColor: '#FFFFFF' }}
+              style={{ borderColor: '#E8DED2', backgroundColor: '#FFFFFF' }}
             >
               <div
                 className="px-5 py-4 border-b"
-                style={{ backgroundColor: '#FAF7F0', borderColor: '#EDE0CE' }}
+                style={{ backgroundColor: '#FAF7F0', borderColor: '#E8DED2' }}
               >
                 <h3 className="text-sm font-bold" style={{ color: '#2B1A10' }}>סיכום הזמנה</h3>
               </div>
@@ -2166,7 +2099,7 @@ export default function NewOrderPage() {
                   <StatusBadge status={paymentStatus} type="payment" />
                 </div>
 
-                <div className="border-t pt-4" style={{ borderColor: '#EDE0CE' }}>
+                <div className="border-t pt-4" style={{ borderColor: '#E8DED2' }}>
                   {subtotal > 0 && (
                     <div className="flex justify-between text-xs mb-1" style={{ color: '#6B4A2D' }}>
                       <span>סכום ביניים</span>
@@ -2199,10 +2132,10 @@ export default function NewOrderPage() {
                     </div>
                   )}
                   {customerCreditBalance > 0 && (
-                    <div className="mt-2 pt-2 border-t" style={{ borderColor: '#EDE0CE' }}>
+                    <div className="mt-2 pt-2 border-t" style={{ borderColor: '#E8DED2' }}>
                       <div className="flex items-center justify-between text-xs mb-1.5">
-                        <span style={{ color: '#1D6A3D' }}>יתרת זיכוי</span>
-                        <span className="font-semibold" style={{ color: '#1D6A3D' }}>₪{customerCreditBalance.toFixed(2)}</span>
+                        <span style={{ color: '#33623A' }}>יתרת זיכוי</span>
+                        <span className="font-semibold" style={{ color: '#33623A' }}>₪{customerCreditBalance.toFixed(2)}</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <label className="text-xs flex-shrink-0" style={{ color: '#6B4A2D' }}>הפעל:</label>
@@ -2245,7 +2178,7 @@ export default function NewOrderPage() {
                       </div>
                       <div
                         className="flex justify-between items-center mt-1.5 pt-2 border-t"
-                        style={{ borderColor: '#EDE0CE' }}
+                        style={{ borderColor: '#E8DED2' }}
                       >
                         <span className="text-sm font-semibold" style={{ color: '#2B1A10' }}>סה״כ כולל מע״מ</span>
                         <span className="text-lg font-bold" style={{ color: '#8B5E34' }}>
@@ -2264,7 +2197,7 @@ export default function NewOrderPage() {
                 // Success state — shown after order is confirmed
                 <div
                   className="rounded-xl border p-4 space-y-2.5"
-                  style={{ borderColor: '#BBE6D0', backgroundColor: '#F0FAF5' }}
+                  style={{ borderColor: '#B7E0C0', backgroundColor: '#E4EEE8' }}
                 >
                   <div className="flex items-center gap-2 mb-0.5">
                     <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="#15803D" strokeWidth={2.5}>
@@ -2349,9 +2282,9 @@ export default function NewOrderPage() {
         >
           <div
             className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden"
-            style={{ direction: 'rtl', border: '1px solid #EDE0CE' }}
+            style={{ direction: 'rtl', border: '1px solid #E8DED2' }}
           >
-            <div className="px-6 pt-5 pb-2 border-b" style={{ borderColor: '#EDE0CE' }}>
+            <div className="px-6 pt-5 pb-2 border-b" style={{ borderColor: '#E8DED2' }}>
               <h3 className="text-base font-semibold" style={{ color: '#2B1A10' }}>הוסף מוצר חדש</h3>
             </div>
             <div className="px-6 py-4 space-y-3">
@@ -2447,7 +2380,7 @@ export default function NewOrderPage() {
       {/* Mobile bottom bar */}
       <div
         className="lg:hidden fixed bottom-0 left-0 right-0 border-t px-4 py-3 flex items-center justify-between z-20"
-        style={{ backgroundColor: '#FFFFFF', borderColor: '#EDE0CE' }}
+        style={{ backgroundColor: '#FFFFFF', borderColor: '#E8DED2' }}
       >
         <div>
           <span className="text-xs" style={{ color: '#9B7A5A' }}>סך הכל</span>

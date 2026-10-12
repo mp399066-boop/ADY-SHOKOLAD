@@ -86,7 +86,7 @@ export default function NewCustomerPage() {
           <Input label="אחוז הנחה (%)" type="number" value={form.אחוז_הנחה} onChange={e => set('אחוז_הנחה', Number(e.target.value))} min={0} max={100} step={0.5} />
           <Input label="עיר" value={form.עיר} onChange={e => set('עיר', e.target.value)} />
           <label className="col-span-2 flex items-start gap-2 cursor-pointer rounded-lg px-3 py-2.5"
-            style={{ backgroundColor: form.פטור_ממעמ ? '#FFF7ED' : '#FBF7F1', border: `1px solid ${form.פטור_ממעמ ? '#FCD9A8' : '#EDE0CE'}` }}>
+            style={{ backgroundColor: form.פטור_ממעמ ? '#FBF0E4' : '#FAF7F0', border: `1px solid ${form.פטור_ממעמ ? '#EDCF98' : '#E8DED2'}` }}>
             <input
               type="checkbox"
               checked={form.פטור_ממעמ}

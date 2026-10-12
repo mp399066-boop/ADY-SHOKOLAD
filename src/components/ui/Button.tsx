@@ -7,6 +7,26 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   loading?: boolean;
 }
 
+const BASE =
+  'inline-flex items-center justify-center gap-2 font-medium rounded-[10px] whitespace-nowrap ' +
+  'transition-[background-color,border-color,color,box-shadow,transform] duration-150 active:scale-[0.98] ' +
+  'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[#C9A46A] ' +
+  'disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100 select-none';
+
+const SIZES = {
+  sm: 'h-8 px-3 text-[12.5px]',
+  md: 'h-10 px-4 text-[13.5px]',
+  lg: 'h-11 px-5 text-sm',
+};
+
+const VARIANTS = {
+  primary:   'bg-[#8B5E34] text-white shadow-[0_1px_2px_rgba(139,94,52,0.25)] hover:bg-[#7A5020]',
+  secondary: 'bg-[#C9A46A] text-white shadow-[0_1px_2px_rgba(201,164,106,0.25)] hover:bg-[#B8925A]',
+  outline:   'bg-white border border-[#E8DED2] text-[#8B5E34] hover:bg-[#FAF7F0] hover:border-[#DDD0BC]',
+  ghost:     'text-[#8B5E34] hover:bg-[#F5EBDD]',
+  danger:    'bg-[#A0362C] text-white shadow-[0_1px_2px_rgba(160,54,44,0.25)] hover:bg-[#8A3228] focus-visible:ring-red-300',
+};
+
 export function Button({
   children,
   variant = 'primary',
@@ -16,47 +36,9 @@ export function Button({
   disabled,
   ...props
 }: ButtonProps) {
-  const base =
-    'inline-flex items-center justify-center gap-2 font-medium rounded-lg ' +
-    'transition-all duration-200 ' +
-    'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 ' +
-    'disabled:opacity-40 disabled:cursor-not-allowed select-none';
-
-  const sizes = {
-    sm: 'px-3 py-1.5 text-xs',
-    md: 'px-4 py-2 text-sm',
-    lg: 'px-5 py-2.5 text-sm',
-  };
-
-  const variants: Record<string, { className: string; style?: React.CSSProperties }> = {
-    primary: {
-      className: 'text-white focus-visible:ring-[#C9A46A]',
-      style: { backgroundColor: '#8B5E34', boxShadow: '0 1px 3px rgba(139,94,52,0.14)' },
-    },
-    secondary: {
-      className: 'focus-visible:ring-[#C9A46A]',
-      style: { backgroundColor: '#C9A46A', color: '#FFFFFF', boxShadow: '0 1px 3px rgba(201,164,106,0.16)' },
-    },
-    outline: {
-      className: 'bg-white focus-visible:ring-[#C9A46A]',
-      style: { border: '1px solid #E8DED2', color: '#8B5E34' },
-    },
-    ghost: {
-      className: 'focus-visible:ring-[#C9A46A]',
-      style: { color: '#8B5E34' },
-    },
-    danger: {
-      className: 'text-white focus-visible:ring-red-300',
-      style: { backgroundColor: '#A0362C', boxShadow: '0 1px 3px rgba(160,54,44,0.14)' },
-    },
-  };
-
-  const v = variants[variant];
-
   return (
     <button
-      className={cn(base, sizes[size], v.className, className)}
-      style={v.style}
+      className={cn(BASE, SIZES[size], VARIANTS[variant], className)}
       disabled={disabled || loading}
       {...props}
     >

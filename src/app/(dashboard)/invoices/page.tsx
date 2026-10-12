@@ -32,10 +32,10 @@ const DOC_LABEL: Record<DocCategory, string> = {
 };
 
 const DOC_BADGE: Record<DocCategory, { bg: string; fg: string; border: string }> = {
-  receipt:         { bg: '#E8F4EC', fg: '#1F6B3E', border: '#BBE0C8' },
-  tax_invoice:     { bg: '#EAF2FB', fg: '#1E4E8C', border: '#C0D6F0' },
-  invoice_receipt: { bg: '#F4E9DC', fg: '#7A4A27', border: '#D8B98F' },
-  manual_other:    { bg: '#F1ECF7', fg: '#5B3A8C', border: '#D5C6E5' },
+  receipt:         { bg: '#E4EEE8', fg: '#33623A', border: '#B7E0C0' },
+  tax_invoice:     { bg: '#EAF0F5', fg: '#1E4E8C', border: '#B6CCDD' },
+  invoice_receipt: { bg: '#FBF0E4', fg: '#7A4820', border: '#EDC898' },
+  manual_other:    { bg: '#EFEAF5', fg: '#5B3F8B', border: '#D4C8E8' },
 };
 
 function categorize(raw: string | null | undefined): DocCategory {
@@ -161,16 +161,16 @@ export default function InvoicesPage() {
               onClick={() => setFilter(chip.value)}
               className="inline-flex items-center gap-1.5 px-3 h-8 rounded-full text-[12px] font-semibold transition-colors"
               style={{
-                backgroundColor: active ? '#2F1B14' : '#FFFFFF',
+                backgroundColor: active ? '#2B1A10' : '#FFFFFF',
                 color: active ? '#FFFFFF' : '#3A2A1A',
-                border: `1px solid ${active ? '#2F1B14' : '#E8D8C6'}`,
+                border: `1px solid ${active ? '#2B1A10' : '#E0D4C2'}`,
               }}
             >
               {chip.label}
               <span
-                className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold tabular-nums"
+                className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[11px] font-bold tabular-nums"
                 style={{
-                  backgroundColor: active ? 'rgba(255,255,255,0.18)' : '#F4E9DC',
+                  backgroundColor: active ? 'rgba(255,255,255,0.18)' : '#FBF0E4',
                   color: active ? '#FFFFFF' : '#5A3424',
                 }}
               >
@@ -222,8 +222,8 @@ export default function InvoicesPage() {
                           <span className="font-mono font-medium" style={{ color: '#8B5E34' }}>#{display}</span>
                           {isManual && (
                             <span
-                              className="inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded"
-                              style={{ backgroundColor: '#FBF3E4', color: '#8B5E34', border: '1px solid #E8D2A8' }}
+                              className="inline-block text-[11px] font-semibold px-1.5 py-0.5 rounded"
+                              style={{ backgroundColor: '#FBF5E6', color: '#8B5E34', border: '1px solid #EDD9B4' }}
                               title="המסמך הופק ידנית — לא דרך מורנינג"
                             >
                               הופקה ידנית
@@ -277,13 +277,13 @@ export default function InvoicesPage() {
                           <span className="inline-flex items-center gap-1.5">
                             <span
                               className="w-7 h-7 inline-flex items-center justify-center rounded-md cursor-not-allowed"
-                              style={{ color: '#C7B7A0', backgroundColor: '#FAF7F0' }}
+                              style={{ color: '#C9B89E', backgroundColor: '#FAF7F0' }}
                               title="המסמך הופק ידנית ואין קובץ לצפייה"
                               aria-disabled="true"
                             >
                               <IconExternalLink className="w-4 h-4 opacity-50" />
                             </span>
-                            <span className="text-[10px] font-semibold whitespace-nowrap" style={{ color: '#8A7664' }}>
+                            <span className="text-[11px] font-semibold whitespace-nowrap" style={{ color: '#8A7664' }}>
                               אין קובץ במערכת
                             </span>
                           </span>

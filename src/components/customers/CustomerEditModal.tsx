@@ -97,7 +97,7 @@ export function CustomerEditModal({ customerId, onClose, onSaved }: {
           </div>
           <Textarea label="כתובת" rows={2} value={form.כתובת || ''} onChange={e => set('כתובת', e.target.value)} />
           <Textarea label="הערות" rows={2} value={form.הערות || ''} onChange={e => set('הערות', e.target.value)} />
-          <label className="flex items-start gap-2 cursor-pointer rounded-lg px-3 py-2.5" style={{ backgroundColor: '#FBF7F1', border: `1px solid ${BRAND.border}` }}>
+          <label className="flex items-start gap-2 cursor-pointer rounded-lg px-3 py-2.5" style={{ backgroundColor: '#FAF7F0', border: `1px solid ${BRAND.border}` }}>
             <input type="checkbox" checked={form.פטור_ממעמ === true} onChange={e => set('פטור_ממעמ', e.target.checked)} className="mt-0.5 h-4 w-4 cursor-pointer" style={{ accentColor: BRAND.primary }} />
             <span className="text-[13px] leading-5" style={{ color: BRAND.textPrimary }}>
               לקוח חו״ל — פטור ממע״מ

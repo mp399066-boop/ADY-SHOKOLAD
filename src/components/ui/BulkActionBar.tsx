@@ -21,7 +21,7 @@ export function BulkActionBar({ count, onClear, actions }: BulkActionBarProps) {
       className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 px-5 py-3 rounded-2xl"
       style={{
         backgroundColor: '#FFFFFF',
-        border: '1px solid #E8DDD0',
+        border: '1px solid #E8DED2',
         boxShadow: '0 8px 32px rgba(58,42,26,0.13), 0 2px 8px rgba(58,42,26,0.06)',
         direction: 'rtl',
         whiteSpace: 'nowrap',
@@ -44,16 +44,16 @@ export function BulkActionBar({ count, onClear, actions }: BulkActionBarProps) {
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all"
             style={
               action.variant === 'danger'
-                ? { backgroundColor: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }
+                ? { backgroundColor: '#F0EAE8', color: '#DC2626', border: '1px solid #FECACA' }
                 : { backgroundColor: '#FAF7F2', color: '#6B4A2D', border: '1px solid #DDD0BC' }
             }
             onMouseEnter={e => {
               (e.currentTarget as HTMLButtonElement).style.backgroundColor =
-                action.variant === 'danger' ? '#FEE2E2' : '#F0E8DC';
+                action.variant === 'danger' ? '#FEE2E2' : '#F0EAE0';
             }}
             onMouseLeave={e => {
               (e.currentTarget as HTMLButtonElement).style.backgroundColor =
-                action.variant === 'danger' ? '#FEF2F2' : '#FAF7F2';
+                action.variant === 'danger' ? '#F0EAE8' : '#FAF7F2';
             }}
           >
             {action.icon && <span className="opacity-80">{action.icon}</span>}

@@ -9,12 +9,8 @@ interface CardProps {
 export function Card({ children, className, style }: CardProps) {
   return (
     <div
-      className={cn('bg-white rounded-xl p-5 premium-card', className)}
-      style={{
-        border: '1px solid #EAE0D4',
-        boxShadow: '0 1px 6px rgba(58,42,26,0.05)',
-        ...style,
-      }}
+      className={cn('bg-white rounded-2xl p-5 premium-card border border-[#E8DED2] shadow-[var(--shadow-sm)]', className)}
+      style={style}
     >
       {children}
     </div>
@@ -29,7 +25,7 @@ export function CardHeader({
   className?: string;
 }) {
   return (
-    <div className={cn('flex items-center justify-between mb-4', className)}>
+    <div className={cn('flex items-center justify-between gap-3 mb-4', className)}>
       {children}
     </div>
   );
@@ -43,10 +39,7 @@ export function CardTitle({
   className?: string;
 }) {
   return (
-    <h2
-      className={cn('text-sm font-medium', className)}
-      style={{ color: '#3A2A1A', letterSpacing: '0.2px' }}
-    >
+    <h2 className={cn('text-[15px] font-semibold text-[#2B1A10]', className)}>
       {children}
     </h2>
   );

@@ -44,18 +44,18 @@ const TYPE_ORDER: ResultType[] = [
 ];
 
 const BADGE_COLOR: Record<ResultType, { bg: string; fg: string }> = {
-  customer:  { bg: '#EAF2FB', fg: '#1E4E8C' },
-  order:     { bg: '#FFF4E0', fg: '#8A5A18' },
-  invoice:   { bg: '#F1ECF7', fg: '#5B3A8C' },
-  product:   { bg: '#E8F4EC', fg: '#1F6B3E' },
-  package:   { bg: '#FBE9E7', fg: '#A03C2C' },
-  petitFour: { bg: '#FCEEE2', fg: '#8B4A1F' },
-  inventory: { bg: '#FDF2D8', fg: '#7A5820' },
-  delivery:  { bg: '#E5EEF1', fg: '#496D7D' },
+  customer:  { bg: '#EAF0F5', fg: '#1E4E8C' },
+  order:     { bg: '#FBF5E6', fg: '#7A5820' },
+  invoice:   { bg: '#EFEAF5', fg: '#5B3F8B' },
+  product:   { bg: '#E4EEE8', fg: '#33623A' },
+  package:   { bg: '#FEE2E2', fg: '#A03C2C' },
+  petitFour: { bg: '#FBF0E4', fg: '#92400E' },
+  inventory: { bg: '#FBF5E6', fg: '#7A5820' },
+  delivery:  { bg: '#EAF0F5', fg: '#496D7D' },
 };
 
 const kbdStyle: React.CSSProperties = {
-  fontSize: '10px',
+  fontSize: '11px',
   padding: '1px 5px',
   border: '1px solid #E8DED2',
   borderRadius: '3px',
@@ -209,7 +209,7 @@ export default function GlobalSearch() {
           maxWidth: '640px',
           backgroundColor: '#FFFFFF',
           borderRadius: '14px',
-          boxShadow: '0 14px 40px rgba(58,42,26,0.22), 0 0 0 1px #EAE0D4',
+          boxShadow: '0 14px 40px rgba(58,42,26,0.22), 0 0 0 1px #E8DED2',
           direction: 'rtl',
           overflow: 'hidden',
         }}
@@ -219,7 +219,7 @@ export default function GlobalSearch() {
         <div
           style={{
             padding: '14px 18px',
-            borderBottom: '1px solid #EAE0D4',
+            borderBottom: '1px solid #E8DED2',
             display: 'flex',
             alignItems: 'center',
             gap: '10px',
@@ -253,7 +253,7 @@ export default function GlobalSearch() {
             <div style={{ padding: '14px 18px' }}>
               {recent.length > 0 ? (
                 <>
-                  <div style={{ fontSize: '11px', color: '#8E7D6A', fontWeight: 600, marginBottom: '6px', letterSpacing: '0.05em' }}>
+                  <div style={{ fontSize: '11px', color: '#8A7664', fontWeight: 600, marginBottom: '6px', letterSpacing: '0.05em' }}>
                     חיפושים אחרונים
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
@@ -284,7 +284,7 @@ export default function GlobalSearch() {
                   </div>
                 </>
               ) : (
-                <div style={{ fontSize: '13px', color: '#8E7D6A', textAlign: 'center', padding: '22px 0' }}>
+                <div style={{ fontSize: '13px', color: '#8A7664', textAlign: 'center', padding: '22px 0' }}>
                   התחילי להקליד כדי לחפש
                 </div>
               )}
@@ -293,14 +293,14 @@ export default function GlobalSearch() {
 
           {/* Loading */}
           {query.trim() && loading && (
-            <div style={{ padding: '20px', fontSize: '13px', color: '#8E7D6A', textAlign: 'center' }}>
+            <div style={{ padding: '20px', fontSize: '13px', color: '#8A7664', textAlign: 'center' }}>
               ...מחפש
             </div>
           )}
 
           {/* No results */}
           {query.trim() && !loading && flatList.length === 0 && (
-            <div style={{ padding: '28px', fontSize: '13px', color: '#8E7D6A', textAlign: 'center' }}>
+            <div style={{ padding: '28px', fontSize: '13px', color: '#8A7664', textAlign: 'center' }}>
               לא נמצאו תוצאות
             </div>
           )}
@@ -313,7 +313,7 @@ export default function GlobalSearch() {
                 if (!items.length) return null;
                 return (
                   <div key={type}>
-                    <div style={{ fontSize: '11px', color: '#8E7D6A', fontWeight: 600, padding: '12px 18px 4px', letterSpacing: '0.05em' }}>
+                    <div style={{ fontSize: '11px', color: '#8A7664', fontWeight: 600, padding: '12px 18px 4px', letterSpacing: '0.05em' }}>
                       {TYPE_LABEL[type]}
                     </div>
                     {items.map(r => {
@@ -336,7 +336,7 @@ export default function GlobalSearch() {
         </div>
 
         {/* Footer hints */}
-        <div style={{ padding: '8px 18px', borderTop: '1px solid #EAE0D4', fontSize: '11px', color: '#8E7D6A', display: 'flex', gap: '14px', backgroundColor: '#FDFAF5', flexWrap: 'wrap' }}>
+        <div style={{ padding: '8px 18px', borderTop: '1px solid #E8DED2', fontSize: '11px', color: '#8A7664', display: 'flex', gap: '14px', backgroundColor: '#F8F6F2', flexWrap: 'wrap' }}>
           <span><kbd style={kbdStyle}>↑↓</kbd> ניווט</span>
           <span><kbd style={kbdStyle}>↵</kbd> פתיחה</span>
           <span><kbd style={kbdStyle}>Esc</kbd> סגירה</span>
@@ -378,7 +378,7 @@ function ResultRow({
       </div>
       {r.badge && (
         <span style={{
-          fontSize: '10px',
+          fontSize: '11px',
           padding: '2px 8px',
           borderRadius: '999px',
           backgroundColor: badge.bg,

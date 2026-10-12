@@ -456,7 +456,7 @@ export default function SuppliersPage() {
 h1{font-size:20px;margin:0 0 6px}
 .meta{color:#555;font-size:12px;margin-bottom:18px}
 table{border-collapse:collapse;width:100%;font-size:13px}
-th,td{border:1px solid #C9BFB1;padding:6px 8px;text-align:right;vertical-align:top}
+th,td{border:1px solid #C0B4A8;padding:6px 8px;text-align:right;vertical-align:top}
 th{background:#F3EDE4}</style></head>
 <body>
 <h1>הזמנת רכש — ${escapeHtml(supplierName)}</h1>
@@ -533,15 +533,15 @@ th{background:#F3EDE4}</style></head>
 <meta charset="UTF-8">
 <title>הזמנת רכש — ${escapeHtml(supplierName)}</title>
 <style>
-  :root { --gold:#C7A46B; --brown:#2A1A0E; --bg:#FAF7F0; --ink:#2A1A0E; --soft:#7A6A55; --line:#E8DED4; }
+  :root { --gold:#C7A46B; --brown:#2A1A0E; --bg:#FAF7F0; --ink:#2A1A0E; --soft:#7A6A55; --line:#E8DED2; }
   * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; background: #ECE5DA; }
+  html, body { margin: 0; padding: 0; background: #F0EAE0; }
   body { font-family: 'Segoe UI', Arial, Helvetica, sans-serif; direction: rtl; color: var(--ink); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .toolbar { position: sticky; top: 0; z-index: 10; background: var(--brown); color: #FAF7F0; padding: 10px 16px; display: flex; gap: 8px; justify-content: center; box-shadow: 0 2px 6px rgba(0,0,0,.15); }
   .toolbar button { background: var(--gold); color: var(--brown); border: 0; padding: 8px 18px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; }
   .toolbar button.ghost { background: transparent; color: #FAF7F0; border: 1px solid #FAF7F0; }
   .sheet { width: 210mm; min-height: 297mm; margin: 24px auto; background: #FFFFFF; padding: 22mm 18mm; box-shadow: 0 4px 24px rgba(0,0,0,.08); position: relative; }
-  .sheet::before { content: ''; position: absolute; top: 0; right: 0; left: 0; height: 6px; background: linear-gradient(90deg, var(--gold), #E5C892, var(--gold)); }
+  .sheet::before { content: ''; position: absolute; top: 0; right: 0; left: 0; height: 6px; background: linear-gradient(90deg, var(--gold), #EDCF98, var(--gold)); }
   .header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
   .brand { display: flex; align-items: center; gap: 14px; }
   .brand img { width: 64px; height: 64px; object-fit: contain; }
@@ -560,7 +560,7 @@ th{background:#F3EDE4}</style></head>
   table.items thead th:first-child { border-radius: 0 8px 0 0; }
   table.items thead th:last-child  { border-radius: 8px 0 0 0; }
   table.items tbody td { padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
-  table.items tbody tr:nth-child(even) td { background: #FBF8F2; }
+  table.items tbody tr:nth-child(even) td { background: #FAF7F0; }
   table.items .idx { color: var(--soft); width: 28px; }
   table.items .num { font-variant-numeric: tabular-nums; }
   table.items .qty { font-weight: 700; text-align: left; color: var(--brown); }
@@ -724,7 +724,7 @@ th{background:#F3EDE4}</style></head>
   h1 { font-size: 22px; margin: 0 0 6px; }
   .meta { color: #555; font-size: 13px; margin-bottom: 28px; }
   table { width: 100%; border-collapse: collapse; }
-  th { background: #F3EDE4; text-align: right; padding: 9px 12px; font-size: 13px; border-bottom: 2px solid #E8DED4; }
+  th { background: #F3EDE4; text-align: right; padding: 9px 12px; font-size: 13px; border-bottom: 2px solid #E8DED2; }
   td { padding: 8px 12px; border-bottom: 1px solid #eee; font-size: 13px; }
   td.num { text-align: left; font-variant-numeric: tabular-nums; }
   td .name { font-weight: 600; color: #222; }
@@ -1156,7 +1156,7 @@ th{background:#F3EDE4}</style></head>
                                 <div className="text-sm font-medium text-gray-900 truncate">
                                   {m.שם_חומר_גלם}
                                   {cartMaterialIds.has(m.id) && (
-                                    <span className="mr-2 text-[10px] text-amber-700 bg-amber-100 rounded px-1.5 py-0.5">בסל</span>
+                                    <span className="mr-2 text-[11px] text-amber-700 bg-amber-100 rounded px-1.5 py-0.5">בסל</span>
                                   )}
                                 </div>
                                 <div className="text-xs text-gray-400 truncate">
@@ -1245,7 +1245,7 @@ th{background:#F3EDE4}</style></head>
                       style={isDropTarget ? { outline: '2px dashed #C7A46B', outlineOffset: 2 } : undefined}
                     >
                       {/* Group header */}
-                      <div className="px-5 py-4" style={{ background: '#F3EDE4', borderBottom: '1px solid #E8DED4' }}>
+                      <div className="px-5 py-4" style={{ background: '#F3EDE4', borderBottom: '1px solid #E8DED2' }}>
                         <div className="flex items-center justify-between">
                           <div>
                             <div className="font-semibold text-gray-900 text-base flex items-center gap-2">
@@ -1384,10 +1384,10 @@ th{background:#F3EDE4}</style></head>
                                 <div className="font-medium text-gray-900 text-sm flex items-center gap-2 flex-wrap">
                                   <span>{item.שם_פריט}</span>
                                   {!item.חומר_גלם_id && (
-                                    <span className="text-[10px] text-gray-500 bg-gray-100 rounded px-1.5 py-0.5">פריט חופשי</span>
+                                    <span className="text-[11px] text-gray-500 bg-gray-100 rounded px-1.5 py-0.5">פריט חופשי</span>
                                   )}
                                   {item.הועבר_ידנית && (
-                                    <span className="text-[10px] text-amber-700 bg-amber-100 rounded px-1.5 py-0.5">הועבר ידנית</span>
+                                    <span className="text-[11px] text-amber-700 bg-amber-100 rounded px-1.5 py-0.5">הועבר ידנית</span>
                                   )}
                                 </div>
                                 {mat?.שם_מוצר_אצל_הספק && mat.שם_מוצר_אצל_הספק !== item.שם_פריט && (
@@ -1441,7 +1441,7 @@ th{background:#F3EDE4}</style></head>
                                 />
                                 <span className="text-xs text-gray-500 w-10 truncate">{unit}</span>
                                 {qtySaving.has(item.id) && (
-                                  <span className="text-[10px] text-gray-400">שומר...</span>
+                                  <span className="text-[11px] text-gray-400">שומר...</span>
                                 )}
                               </div>
 
@@ -1475,7 +1475,7 @@ th{background:#F3EDE4}</style></head>
       {showModal && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={e => e.target === e.currentTarget && setShowModal(false)}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" dir="rtl">
-            <div className="px-6 py-4" style={{ borderBottom: '1px solid #F0E8DC' }}>
+            <div className="px-6 py-4" style={{ borderBottom: '1px solid #F0EAE0' }}>
               <h2 className="text-lg font-semibold text-gray-900">{editSup ? 'עריכת ספק' : 'הוספת ספק'}</h2>
             </div>
             <div className="px-6 py-5 space-y-4">
@@ -1545,7 +1545,7 @@ th{background:#F3EDE4}</style></head>
                 </label>
               )}
             </div>
-            <div className="px-6 py-4 flex gap-2 justify-end" style={{ borderTop: '1px solid #F0E8DC' }}>
+            <div className="px-6 py-4 flex gap-2 justify-end" style={{ borderTop: '1px solid #F0EAE0' }}>
               <button onClick={() => setShowModal(false)} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
                 ביטול
               </button>

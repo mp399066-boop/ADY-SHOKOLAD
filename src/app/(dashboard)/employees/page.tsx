@@ -18,10 +18,10 @@ type TaskPriority = WorkTask['עדיפות'];
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const STATUS_CFG: Record<TaskStatus, { label: string; bg: string; fg: string; border: string }> = {
-  'ממתין':  { label: 'ממתין',  bg: '#EEF3FB', fg: '#1E4E8C', border: '#C5D9F2' },
-  'בעבודה': { label: 'בעבודה', bg: '#FFF8E6', fg: '#7A5200', border: '#F0D870' },
-  'הושלם':  { label: 'הושלם',  bg: '#EEF7EE', fg: '#1E5C31', border: '#A8D5B5' },
-  'בוטל':   { label: 'בוטל',   bg: '#FFF0F0', fg: '#8B1C1C', border: '#F2AAAA' },
+  'ממתין':  { label: 'ממתין',  bg: '#EAF0F5', fg: '#1E4E8C', border: '#C8D2E2' },
+  'בעבודה': { label: 'בעבודה', bg: '#FBF5E6', fg: '#7A5820', border: '#FDE68A' },
+  'הושלם':  { label: 'הושלם',  bg: '#EAF0E7', fg: '#2A5C38', border: '#B7E0C0' },
+  'בוטל':   { label: 'בוטל',   bg: '#F0EAE8', fg: '#8A3228', border: '#F2AAAA' },
 };
 
 const ALL_STATUSES: TaskStatus[] = ['ממתין', 'בעבודה', 'הושלם', 'בוטל'];
@@ -39,7 +39,7 @@ function StatusBadge({ status }: { status: TaskStatus }) {
   const c = STATUS_CFG[status];
   return (
     <span
-      className="inline-block text-[10px] font-bold px-1.5 py-0.5 rounded"
+      className="inline-block text-[11px] font-bold px-1.5 py-0.5 rounded"
       style={{ backgroundColor: c.bg, color: c.fg, border: `1px solid ${c.border}` }}
     >
       {c.label}
@@ -51,8 +51,8 @@ function PriorityBadge({ priority }: { priority: TaskPriority }) {
   if (priority !== 'דחוף') return null;
   return (
     <span
-      className="inline-block text-[10px] font-bold px-1.5 py-0.5 rounded"
-      style={{ backgroundColor: '#FFF0F0', color: '#8B1C1C', border: '1px solid #F2AAAA' }}
+      className="inline-block text-[11px] font-bold px-1.5 py-0.5 rounded"
+      style={{ backgroundColor: '#F0EAE8', color: '#8A3228', border: '1px solid #F2AAAA' }}
     >
       דחוף
     </span>
@@ -230,21 +230,21 @@ export default function EmployeesPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-bold" style={{ color: '#2B1A10' }}>עובדים ומשימות</h1>
-          <p className="text-[12px] mt-0.5" style={{ color: '#8A735F' }}>
+          <p className="text-[12px] mt-0.5" style={{ color: '#8A7664' }}>
             {activeEmployees.length} עובדים פעילים · {tasks.filter(t => t.סטטוס === 'ממתין' || t.סטטוס === 'בעבודה').length} משימות פתוחות
           </p>
         </div>
         <button
           onClick={() => openAddTask()}
           className="rounded-xl px-4 py-2 text-sm font-semibold text-white"
-          style={{ background: 'linear-gradient(135deg,#7A4A27,#8B5E34)' }}
+          style={{ background: 'linear-gradient(135deg,#7A4820,#8B5E34)' }}
         >
           + משימה חדשה
         </button>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 p-1 rounded-xl w-fit" style={{ backgroundColor: '#EDE0CE' }}>
+      <div className="flex gap-1 p-1 rounded-xl w-fit" style={{ backgroundColor: '#E8DED2' }}>
         {([['board', 'לוח עבודה'], ['tasks', 'כל המשימות'], ['employees', 'ניהול עובדים']] as [Tab, string][]).map(([key, label]) => (
           <button
             key={key}
@@ -252,7 +252,7 @@ export default function EmployeesPage() {
             className="px-4 py-1.5 rounded-lg text-[13px] font-medium transition-all"
             style={tab === key
               ? { backgroundColor: '#fff', color: '#2B1A10', boxShadow: '0 1px 4px rgba(0,0,0,0.1)' }
-              : { color: '#7A5540' }}
+              : { color: '#7B604D' }}
           >
             {label}
           </button>
@@ -260,7 +260,7 @@ export default function EmployeesPage() {
       </div>
 
       {loading ? (
-        <div className="text-center py-16 text-sm" style={{ color: '#8A735F' }}>טוען נתונים...</div>
+        <div className="text-center py-16 text-sm" style={{ color: '#8A7664' }}>טוען נתונים...</div>
       ) : (
         <>
           {/* ═══ TAB: לוח עבודה ═══════════════════════════════════════════════ */}
@@ -275,7 +275,7 @@ export default function EmployeesPage() {
                     className="px-3 py-1 rounded-full text-[12px] font-medium transition-all"
                     style={boardFilter === val
                       ? { backgroundColor: '#8B5E34', color: '#fff' }
-                      : { backgroundColor: '#EDE0CE', color: '#7A5540' }}
+                      : { backgroundColor: '#E8DED2', color: '#7B604D' }}
                   >
                     {label}
                     {val !== 'all' && (
@@ -316,14 +316,14 @@ export default function EmployeesPage() {
                 {unassigned.length > 0 && (
                   <div
                     className="flex-shrink-0 rounded-2xl p-3 space-y-2"
-                    style={{ width: 268, backgroundColor: '#F0EBE3', border: '1px solid #DDD0C0', scrollSnapAlign: 'start' }}
+                    style={{ width: 268, backgroundColor: '#F0EAE0', border: '1px solid #E0D4C2', scrollSnapAlign: 'start' }}
                   >
                     <div className="flex items-center justify-between mb-2">
                       <div>
                         <p className="font-bold text-[13px]" style={{ color: '#2B1A10' }}>ללא עובד מוקצה</p>
-                        <p className="text-[11px]" style={{ color: '#8A735F' }}>{unassigned.length} משימות</p>
+                        <p className="text-[11px]" style={{ color: '#8A7664' }}>{unassigned.length} משימות</p>
                       </div>
-                      <button onClick={() => openAddTask()} className="text-[11px] px-2 py-1 rounded-lg" style={{ backgroundColor: '#EDE0CE', color: '#7A4A27' }}>
+                      <button onClick={() => openAddTask()} className="text-[11px] px-2 py-1 rounded-lg" style={{ backgroundColor: '#E8DED2', color: '#7A4820' }}>
                         + משימה
                       </button>
                     </div>
@@ -336,7 +336,7 @@ export default function EmployeesPage() {
                 )}
 
                 {activeEmployees.length === 0 && unassigned.length === 0 && (
-                  <div className="w-full text-center py-12 text-sm" style={{ color: '#8A735F' }}>
+                  <div className="w-full text-center py-12 text-sm" style={{ color: '#8A7664' }}>
                     אין עובדים פעילים עדיין.{' '}
                     <button onClick={() => setTab('employees')} className="underline" style={{ color: '#8B5E34' }}>הוסף עובד</button>
                   </div>
@@ -352,7 +352,7 @@ export default function EmployeesPage() {
               <div className="flex gap-3 flex-wrap">
                 <select
                   className="rounded-lg border px-3 py-1.5 text-[13px]"
-                  style={{ borderColor: '#DDD0C0', color: '#2B1A10', backgroundColor: '#FFFCF7' }}
+                  style={{ borderColor: '#E0D4C2', color: '#2B1A10', backgroundColor: '#F8F6F2' }}
                   value={taskEmpFilter}
                   onChange={e => setTaskEmpFilter(e.target.value)}
                 >
@@ -361,18 +361,18 @@ export default function EmployeesPage() {
                 </select>
                 <select
                   className="rounded-lg border px-3 py-1.5 text-[13px]"
-                  style={{ borderColor: '#DDD0C0', color: '#2B1A10', backgroundColor: '#FFFCF7' }}
+                  style={{ borderColor: '#E0D4C2', color: '#2B1A10', backgroundColor: '#F8F6F2' }}
                   value={taskStatusFilter}
                   onChange={e => setTaskStatusFilter(e.target.value as TaskStatus | '')}
                 >
                   <option value="">כל הסטטוסים</option>
                   {ALL_STATUSES.map(s => <option key={s} value={s}>{STATUS_CFG[s].label}</option>)}
                 </select>
-                <span className="self-center text-[12px]" style={{ color: '#8A735F' }}>{filteredTasksList.length} משימות</span>
+                <span className="self-center text-[12px]" style={{ color: '#8A7664' }}>{filteredTasksList.length} משימות</span>
               </div>
 
               {filteredTasksList.length === 0 ? (
-                <p className="text-center py-10 text-sm" style={{ color: '#8A735F' }}>אין משימות להצגה.</p>
+                <p className="text-center py-10 text-sm" style={{ color: '#8A7664' }}>אין משימות להצגה.</p>
               ) : (
                 <Card>
                   <div className="space-y-1">
@@ -398,14 +398,14 @@ export default function EmployeesPage() {
                 <button
                   onClick={openAddEmp}
                   className="rounded-xl px-4 py-2 text-sm font-semibold text-white"
-                  style={{ background: 'linear-gradient(135deg,#7A4A27,#8B5E34)' }}
+                  style={{ background: 'linear-gradient(135deg,#7A4820,#8B5E34)' }}
                 >
                   + הוסף עובד
                 </button>
               </div>
 
               {employees.length === 0 ? (
-                <p className="text-center py-12 text-sm" style={{ color: '#8A735F' }}>עדיין אין עובדים. לחץ "הוסף עובד" כדי להתחיל.</p>
+                <p className="text-center py-12 text-sm" style={{ color: '#8A7664' }}>עדיין אין עובדים. לחץ "הוסף עובד" כדי להתחיל.</p>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   {employees.map(emp => {
@@ -417,12 +417,12 @@ export default function EmployeesPage() {
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="font-bold text-[14px]" style={{ color: '#2B1A10' }}>{emp.שם_עובד}</span>
                               {!emp.פעיל && (
-                                <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ backgroundColor: '#F0EBE3', color: '#8A735F', border: '1px solid #DDD0C0' }}>לא פעיל</span>
+                                <span className="text-[11px] px-1.5 py-0.5 rounded" style={{ backgroundColor: '#F0EAE0', color: '#8A7664', border: '1px solid #E0D4C2' }}>לא פעיל</span>
                               )}
                             </div>
-                            {emp.תפקיד && <p className="text-[12px] mt-0.5" style={{ color: '#7A5540' }}>{emp.תפקיד}</p>}
-                            {emp.טלפון && <p className="text-[12px] mt-1 tabular-nums" style={{ color: '#8A735F' }}>{emp.טלפון}</p>}
-                            {emp.אימייל && <p className="text-[11.5px] mt-0.5 truncate" style={{ color: '#8A735F' }}>{emp.אימייל}</p>}
+                            {emp.תפקיד && <p className="text-[12px] mt-0.5" style={{ color: '#7B604D' }}>{emp.תפקיד}</p>}
+                            {emp.טלפון && <p className="text-[12px] mt-1 tabular-nums" style={{ color: '#8A7664' }}>{emp.טלפון}</p>}
+                            {emp.אימייל && <p className="text-[11.5px] mt-0.5 truncate" style={{ color: '#8A7664' }}>{emp.אימייל}</p>}
                             {empTaskCount > 0 && (
                               <p className="text-[11px] mt-2 font-medium" style={{ color: '#8B5E34' }}>
                                 {empTaskCount} {empTaskCount === 1 ? 'משימה פתוחה' : 'משימות פתוחות'}
@@ -433,14 +433,14 @@ export default function EmployeesPage() {
                             <button
                               onClick={() => openEditEmp(emp)}
                               className="text-[11px] px-2 py-1 rounded-lg"
-                              style={{ backgroundColor: '#F0EBE3', color: '#7A4A27', border: '1px solid #DDD0C0' }}
+                              style={{ backgroundColor: '#F0EAE0', color: '#7A4820', border: '1px solid #E0D4C2' }}
                             >
                               ערוך
                             </button>
                             <button
                               onClick={() => toggleEmpActive(emp)}
                               className="text-[11px] px-2 py-1 rounded-lg"
-                              style={{ backgroundColor: emp.פעיל ? '#FFF8E6' : '#EEF7EE', color: emp.פעיל ? '#7A5200' : '#1E5C31', border: `1px solid ${emp.פעיל ? '#F0D870' : '#A8D5B5'}` }}
+                              style={{ backgroundColor: emp.פעיל ? '#FBF5E6' : '#EAF0E7', color: emp.פעיל ? '#7A5820' : '#2A5C38', border: `1px solid ${emp.פעיל ? '#FDE68A' : '#B7E0C0'}` }}
                             >
                               {emp.פעיל ? 'השבת' : 'הפעל'}
                             </button>
@@ -466,7 +466,7 @@ export default function EmployeesPage() {
             <FormField label="שם עובד *">
               <input
                 className="w-full rounded-lg border px-3 py-2 text-[13px]"
-                style={{ borderColor: '#E8D2A8', backgroundColor: '#FFFCF7', color: '#2B1A10' }}
+                style={{ borderColor: '#EDD9B4', backgroundColor: '#F8F6F2', color: '#2B1A10' }}
                 value={empForm.שם_עובד}
                 onChange={e => setEmpForm(f => ({ ...f, שם_עובד: e.target.value }))}
                 placeholder="שם מלא"
@@ -475,7 +475,7 @@ export default function EmployeesPage() {
             <FormField label="תפקיד">
               <input
                 className="w-full rounded-lg border px-3 py-2 text-[13px]"
-                style={{ borderColor: '#E8D2A8', backgroundColor: '#FFFCF7', color: '#2B1A10' }}
+                style={{ borderColor: '#EDD9B4', backgroundColor: '#F8F6F2', color: '#2B1A10' }}
                 value={empForm.תפקיד}
                 onChange={e => setEmpForm(f => ({ ...f, תפקיד: e.target.value }))}
                 placeholder="לדוג׳ מכינה"
@@ -485,7 +485,7 @@ export default function EmployeesPage() {
               <FormField label="טלפון">
                 <input
                   className="w-full rounded-lg border px-3 py-2 text-[13px]"
-                  style={{ borderColor: '#E8D2A8', backgroundColor: '#FFFCF7', color: '#2B1A10' }}
+                  style={{ borderColor: '#EDD9B4', backgroundColor: '#F8F6F2', color: '#2B1A10' }}
                   value={empForm.טלפון}
                   onChange={e => setEmpForm(f => ({ ...f, טלפון: e.target.value }))}
                   placeholder="050-..."
@@ -496,7 +496,7 @@ export default function EmployeesPage() {
                 <input
                   type="email"
                   className="w-full rounded-lg border px-3 py-2 text-[13px]"
-                  style={{ borderColor: '#E8D2A8', backgroundColor: '#FFFCF7', color: '#2B1A10' }}
+                  style={{ borderColor: '#EDD9B4', backgroundColor: '#F8F6F2', color: '#2B1A10' }}
                   value={empForm.אימייל}
                   onChange={e => setEmpForm(f => ({ ...f, אימייל: e.target.value }))}
                   placeholder="name@example.com"
@@ -510,14 +510,14 @@ export default function EmployeesPage() {
               onClick={saveEmployee}
               disabled={savingEmp}
               className="flex-1 rounded-xl py-2.5 text-[13px] font-semibold text-white"
-              style={{ background: savingEmp ? '#C5A882' : 'linear-gradient(135deg,#7A4A27,#8B5E34)', cursor: savingEmp ? 'not-allowed' : 'pointer' }}
+              style={{ background: savingEmp ? '#C5A882' : 'linear-gradient(135deg,#7A4820,#8B5E34)', cursor: savingEmp ? 'not-allowed' : 'pointer' }}
             >
               {savingEmp ? 'שומר...' : 'שמור'}
             </button>
             <button
               onClick={() => setShowEmpModal(false)}
               className="rounded-xl px-5 py-2.5 text-[13px] font-semibold"
-              style={{ backgroundColor: '#F4EDE3', color: '#7A4A27', border: '1px solid #E8D2A8' }}
+              style={{ backgroundColor: '#F0EAE0', color: '#7A4820', border: '1px solid #EDD9B4' }}
             >
               ביטול
             </button>
@@ -535,7 +535,7 @@ export default function EmployeesPage() {
             <FormField label="שם משימה *">
               <input
                 className="w-full rounded-lg border px-3 py-2 text-[13px]"
-                style={{ borderColor: '#E8D2A8', backgroundColor: '#FFFCF7', color: '#2B1A10' }}
+                style={{ borderColor: '#EDD9B4', backgroundColor: '#F8F6F2', color: '#2B1A10' }}
                 value={taskForm.שם_משימה}
                 onChange={e => setTaskForm(f => ({ ...f, שם_משימה: e.target.value }))}
                 placeholder="לדוג׳ להכין מארז פטיפורים"
@@ -544,7 +544,7 @@ export default function EmployeesPage() {
             <FormField label="פירוט (אופציונלי)">
               <textarea
                 className="w-full rounded-lg border px-3 py-2 text-[13px] resize-none"
-                style={{ borderColor: '#E8D2A8', backgroundColor: '#FFFCF7', color: '#2B1A10' }}
+                style={{ borderColor: '#EDD9B4', backgroundColor: '#F8F6F2', color: '#2B1A10' }}
                 rows={2}
                 value={taskForm.פירוט}
                 onChange={e => setTaskForm(f => ({ ...f, פירוט: e.target.value }))}
@@ -555,7 +555,7 @@ export default function EmployeesPage() {
               <FormField label="עובד">
                 <select
                   className="w-full rounded-lg border px-3 py-2 text-[13px]"
-                  style={{ borderColor: '#E8D2A8', backgroundColor: '#FFFCF7', color: '#2B1A10' }}
+                  style={{ borderColor: '#EDD9B4', backgroundColor: '#F8F6F2', color: '#2B1A10' }}
                   value={taskForm.עובד_id}
                   onChange={e => setTaskForm(f => ({ ...f, עובד_id: e.target.value }))}
                 >
@@ -566,7 +566,7 @@ export default function EmployeesPage() {
               <FormField label="עדיפות">
                 <select
                   className="w-full rounded-lg border px-3 py-2 text-[13px]"
-                  style={{ borderColor: '#E8D2A8', backgroundColor: '#FFFCF7', color: '#2B1A10' }}
+                  style={{ borderColor: '#EDD9B4', backgroundColor: '#F8F6F2', color: '#2B1A10' }}
                   value={taskForm.עדיפות}
                   onChange={e => setTaskForm(f => ({ ...f, עדיפות: e.target.value as TaskPriority }))}
                 >
@@ -580,7 +580,7 @@ export default function EmployeesPage() {
                 <input
                   type="date"
                   className="w-full rounded-lg border px-3 py-2 text-[13px]"
-                  style={{ borderColor: '#E8D2A8', backgroundColor: '#FFFCF7', color: '#2B1A10' }}
+                  style={{ borderColor: '#EDD9B4', backgroundColor: '#F8F6F2', color: '#2B1A10' }}
                   value={taskForm.תאריך_יעד}
                   onChange={e => setTaskForm(f => ({ ...f, תאריך_יעד: e.target.value }))}
                 />
@@ -589,7 +589,7 @@ export default function EmployeesPage() {
                 <input
                   type="time"
                   className="w-full rounded-lg border px-3 py-2 text-[13px]"
-                  style={{ borderColor: '#E8D2A8', backgroundColor: '#FFFCF7', color: '#2B1A10' }}
+                  style={{ borderColor: '#EDD9B4', backgroundColor: '#F8F6F2', color: '#2B1A10' }}
                   value={taskForm.שעת_יעד}
                   onChange={e => setTaskForm(f => ({ ...f, שעת_יעד: e.target.value }))}
                 />
@@ -599,7 +599,7 @@ export default function EmployeesPage() {
               <FormField label="סטטוס">
                 <select
                   className="w-full rounded-lg border px-3 py-2 text-[13px]"
-                  style={{ borderColor: '#E8D2A8', backgroundColor: '#FFFCF7', color: '#2B1A10' }}
+                  style={{ borderColor: '#EDD9B4', backgroundColor: '#F8F6F2', color: '#2B1A10' }}
                   value={taskForm.סטטוס as string}
                   onChange={e => setTaskForm(f => ({ ...f, סטטוס: e.target.value as TaskStatus }))}
                 >
@@ -610,7 +610,7 @@ export default function EmployeesPage() {
             <FormField label="הערות">
               <textarea
                 className="w-full rounded-lg border px-3 py-2 text-[13px] resize-none"
-                style={{ borderColor: '#E8D2A8', backgroundColor: '#FFFCF7', color: '#2B1A10' }}
+                style={{ borderColor: '#EDD9B4', backgroundColor: '#F8F6F2', color: '#2B1A10' }}
                 rows={2}
                 value={taskForm.הערות}
                 onChange={e => setTaskForm(f => ({ ...f, הערות: e.target.value }))}
@@ -623,14 +623,14 @@ export default function EmployeesPage() {
               onClick={saveTask}
               disabled={savingTask}
               className="flex-1 rounded-xl py-2.5 text-[13px] font-semibold text-white"
-              style={{ background: savingTask ? '#C5A882' : 'linear-gradient(135deg,#7A4A27,#8B5E34)', cursor: savingTask ? 'not-allowed' : 'pointer' }}
+              style={{ background: savingTask ? '#C5A882' : 'linear-gradient(135deg,#7A4820,#8B5E34)', cursor: savingTask ? 'not-allowed' : 'pointer' }}
             >
               {savingTask ? 'שומר...' : 'שמור'}
             </button>
             <button
               onClick={() => setShowTaskModal(false)}
               className="rounded-xl px-5 py-2.5 text-[13px] font-semibold"
-              style={{ backgroundColor: '#F4EDE3', color: '#7A4A27', border: '1px solid #E8D2A8' }}
+              style={{ backgroundColor: '#F0EAE0', color: '#7A4820', border: '1px solid #EDD9B4' }}
             >
               ביטול
             </button>
@@ -652,7 +652,7 @@ function ModalOverlay({ children, onClose }: { children: React.ReactNode; onClos
     >
       <div
         className="w-full max-w-md rounded-2xl shadow-2xl p-6"
-        style={{ backgroundColor: '#FFFDF8', border: '1px solid #E8D2A8', direction: 'rtl', maxHeight: '90vh', overflowY: 'auto' }}
+        style={{ backgroundColor: '#F8F6F2', border: '1px solid #EDD9B4', direction: 'rtl', maxHeight: '90vh', overflowY: 'auto' }}
       >
         {children}
       </div>
@@ -663,7 +663,7 @@ function ModalOverlay({ children, onClose }: { children: React.ReactNode; onClos
 function FormField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1">
-      <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#7A4A27' }}>
+      <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#7A4820' }}>
         {label}
       </label>
       {children}
@@ -685,10 +685,10 @@ function EmployeeColumn({
   return (
     <div
       className="flex-shrink-0 rounded-2xl p-3 flex flex-col gap-2"
-      style={{ width: 268, backgroundColor: '#FFFDF8', border: '1px solid #EAE0D4', scrollSnapAlign: 'start' }}
+      style={{ width: 268, backgroundColor: '#F8F6F2', border: '1px solid #E8DED2', scrollSnapAlign: 'start' }}
     >
       {/* Employee header */}
-      <div className="flex items-start justify-between pb-2" style={{ borderBottom: '1px solid #EAE0D4' }}>
+      <div className="flex items-start justify-between pb-2" style={{ borderBottom: '1px solid #E8DED2' }}>
         <div className="min-w-0">
           <p className="font-bold text-[13px] inline-flex items-center gap-1" style={{ color: '#2B1A10' }}>
             {employee.שם_עובד}
@@ -703,16 +703,16 @@ function EmployeeColumn({
               <IconEdit className="w-3 h-3" />
             </button>
           </p>
-          {employee.תפקיד && <p className="text-[11px]" style={{ color: '#8A735F' }}>{employee.תפקיד}</p>}
+          {employee.תפקיד && <p className="text-[11px]" style={{ color: '#8A7664' }}>{employee.תפקיד}</p>}
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
-          <span className="text-[11px] px-1.5 py-0.5 rounded-full font-medium" style={{ backgroundColor: '#F4E8D8', color: '#7A4A27' }}>
+          <span className="text-[11px] px-1.5 py-0.5 rounded-full font-medium" style={{ backgroundColor: '#F4E8D8', color: '#7A4820' }}>
             {tasks.length}
           </span>
           <button
             onClick={onAddTask}
             className="text-[11px] px-2 py-0.5 rounded-lg font-medium"
-            style={{ backgroundColor: '#F4E8D8', color: '#7A4A27', border: '1px solid #E8D2A8' }}
+            style={{ backgroundColor: '#F4E8D8', color: '#7A4820', border: '1px solid #EDD9B4' }}
           >
             + משימה
           </button>
@@ -722,7 +722,7 @@ function EmployeeColumn({
       {/* Task list */}
       <div className="space-y-2 overflow-y-auto" style={{ maxHeight: 480 }}>
         {tasks.length === 0 ? (
-          <p className="text-center text-[12px] py-6" style={{ color: '#B09A84' }}>אין משימות</p>
+          <p className="text-center text-[12px] py-6" style={{ color: '#B0A090' }}>אין משימות</p>
         ) : (
           tasks.map(task => (
             <TaskCard key={task.id} task={task} onEdit={onEditTask} onStatusChange={onStatusChange} onDelete={onDelete} />
@@ -748,8 +748,8 @@ function TaskCard({
     <div
       className="rounded-xl p-3 space-y-2"
       style={{
-        backgroundColor: isDone ? '#F6F4F0' : '#FFFDF8',
-        border: `1px solid ${overdue ? '#F2AAAA' : '#EAE0D4'}`,
+        backgroundColor: isDone ? '#F8F6F2' : '#F8F6F2',
+        border: `1px solid ${overdue ? '#F2AAAA' : '#E8DED2'}`,
         opacity: isDone ? 0.72 : 1,
       }}
     >
@@ -758,7 +758,7 @@ function TaskCard({
         <PriorityBadge priority={task.עדיפות} />
         <StatusBadge status={task.סטטוס} />
         {overdue && (
-          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: '#FFF0F0', color: '#8B1C1C', border: '1px solid #F2AAAA' }}>
+          <span className="text-[11px] font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: '#F0EAE8', color: '#8A3228', border: '1px solid #F2AAAA' }}>
             באיחור
           </span>
         )}
@@ -780,7 +780,7 @@ function TaskCard({
 
       {/* Due date */}
       {task.תאריך_יעד && (
-        <p className="text-[11px]" style={{ color: overdue ? '#8B1C1C' : '#8A735F' }}>
+        <p className="text-[11px]" style={{ color: overdue ? '#8A3228' : '#8A7664' }}>
           {task.שעת_יעד ? `${task.שעת_יעד} · ` : ''}{formatDate(task.תאריך_יעד)}
         </p>
       )}
@@ -792,7 +792,7 @@ function TaskCard({
             <button
               onClick={() => onStatusChange(task.id, 'בעבודה')}
               className="flex-1 rounded-lg py-1 text-[11px] font-semibold"
-              style={{ backgroundColor: '#FFF8E6', color: '#7A5200', border: '1px solid #F0D870' }}
+              style={{ backgroundColor: '#FBF5E6', color: '#7A5820', border: '1px solid #FDE68A' }}
             >
               התחל עבודה
             </button>
@@ -801,7 +801,7 @@ function TaskCard({
             <button
               onClick={() => onStatusChange(task.id, 'ממתין')}
               className="rounded-lg px-2 py-1 text-[11px] font-semibold"
-              style={{ backgroundColor: '#EEF3FB', color: '#1E4E8C', border: '1px solid #C5D9F2' }}
+              style={{ backgroundColor: '#EAF0F5', color: '#1E4E8C', border: '1px solid #C8D2E2' }}
             >
               הפסק
             </button>
@@ -809,7 +809,7 @@ function TaskCard({
           <button
             onClick={() => onStatusChange(task.id, 'הושלם')}
             className="flex-1 rounded-lg py-1 text-[11px] font-semibold"
-            style={{ backgroundColor: '#EEF7EE', color: '#1E5C31', border: '1px solid #A8D5B5' }}
+            style={{ backgroundColor: '#EAF0E7', color: '#2A5C38', border: '1px solid #B7E0C0' }}
           >
             הושלם
           </button>
@@ -818,8 +818,8 @@ function TaskCard({
 
       {/* Edit / delete row */}
       <div className="flex gap-2 pt-0.5">
-        <button onClick={() => onEdit(task)} className="text-[10px]" style={{ color: '#8A735F' }}>ערוך</button>
-        <button onClick={() => onDelete(task.id)} className="text-[10px]" style={{ color: '#C47A7A' }}>מחק</button>
+        <button onClick={() => onEdit(task)} className="text-[11px]" style={{ color: '#8A7664' }}>ערוך</button>
+        <button onClick={() => onDelete(task.id)} className="text-[11px]" style={{ color: '#C47A7A' }}>מחק</button>
       </div>
     </div>
   );
@@ -844,12 +844,12 @@ function TaskListRow({
           <span className="font-semibold" style={{ color: '#2B1A10' }}>{task.שם_משימה}</span>
           <PriorityBadge priority={task.עדיפות} />
           {overdue && (
-            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: '#FFF0F0', color: '#8B1C1C' }}>
+            <span className="text-[11px] font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: '#F0EAE8', color: '#8A3228' }}>
               באיחור
             </span>
           )}
         </div>
-        <div className="flex items-center gap-3 text-[11px] flex-wrap" style={{ color: '#8A735F' }}>
+        <div className="flex items-center gap-3 text-[11px] flex-wrap" style={{ color: '#8A7664' }}>
           {task.עובדים && <span>{task.עובדים.שם_עובד}</span>}
           {task.הזמנות && (
             <Link href={`/orders/${task.הזמנה_id}`} className="hover:underline" style={{ color: '#8B5E34' }}>
@@ -862,16 +862,16 @@ function TaskListRow({
       <StatusBadge status={task.סטטוס} />
       <select
         className="rounded-lg border px-2 py-1 text-[11px]"
-        style={{ borderColor: '#DDD0C0', color: '#2B1A10', backgroundColor: '#FFFCF7' }}
+        style={{ borderColor: '#E0D4C2', color: '#2B1A10', backgroundColor: '#F8F6F2' }}
         value={task.סטטוס}
         onChange={e => onStatusChange(task.id, e.target.value as TaskStatus)}
       >
         {ALL_STATUSES.map(s => <option key={s} value={s}>{STATUS_CFG[s].label}</option>)}
       </select>
-      <button onClick={() => onEdit(task)} className="text-[11px] px-2 py-1 rounded-lg" style={{ backgroundColor: '#F0EBE3', color: '#7A4A27', border: '1px solid #DDD0C0' }}>
+      <button onClick={() => onEdit(task)} className="text-[11px] px-2 py-1 rounded-lg" style={{ backgroundColor: '#F0EAE0', color: '#7A4820', border: '1px solid #E0D4C2' }}>
         ערוך
       </button>
-      <button onClick={() => onDelete(task.id)} className="text-[11px] px-2 py-1 rounded-lg" style={{ backgroundColor: '#FFF0F0', color: '#8B1C1C', border: '1px solid #F2AAAA' }}>
+      <button onClick={() => onDelete(task.id)} className="text-[11px] px-2 py-1 rounded-lg" style={{ backgroundColor: '#F0EAE8', color: '#8A3228', border: '1px solid #F2AAAA' }}>
         מחק
       </button>
     </div>

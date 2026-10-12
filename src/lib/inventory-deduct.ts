@@ -48,6 +48,7 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { recordStockMovement } from '@/lib/inventory-movements';
 import { isServiceEnabled, logServiceRun } from '@/lib/system-services';
 import { logActivity } from '@/lib/activity-log';
+import { summarizeLedger, buildDesiredQuantities, computeReconcileDeltas, type MovementRow } from '@/lib/inventory-ledger';
 
 // ─── Policy switches ────────────────────────────────────────────────────────
 
@@ -80,14 +81,6 @@ export type ReconcileResult =
 
 // ─── Ledger helpers ─────────────────────────────────────────────────────────
 
-interface MovementRow {
-  מזהה_פריט:  string | null;
-  סוג_פריט:   string | null;
-  שם_פריט:    string | null;
-  סוג_תנועה:  string | null;
-  כמות:       number | null;
-}
-
 // Returns the current deduction state for an order: per-item net amount
 // (יציאה − כניסה) and totals. net_per_item > 0 means that item is
 // currently "out" by that quantity.
@@ -105,21 +98,7 @@ async function loadOrderLedgerNet(supabase: AnySupabase, orderId: string): Promi
     console.error('[inventory] ledger lookup failed. order:', orderId, '| error:', error.message);
     return { totalNet: 0, byItem: new Map(), fetchFailed: true };
   }
-  const rows = (data ?? []) as MovementRow[];
-  const byItem = new Map<string, { kind: string; name: string; net: number }>();
-  let totalNet = 0;
-  for (const r of rows) {
-    if (!r.מזהה_פריט || !r.סוג_פריט) continue;
-    const qty   = Number(r.כמות || 0);
-    const delta = r.סוג_תנועה === 'יציאה' ? qty
-                : r.סוג_תנועה === 'כניסה' ? -qty
-                : 0; // התאמה rows shouldn't appear here; ignore defensively
-    const cur = byItem.get(r.מזהה_פריט) ?? { kind: r.סוג_פריט, name: r.שם_פריט || '', net: 0 };
-    cur.net += delta;
-    if (!cur.name && r.שם_פריט) cur.name = r.שם_פריט;
-    byItem.set(r.מזהה_פריט, cur);
-    totalNet += delta;
-  }
+  const { totalNet, byItem } = summarizeLedger((data ?? []) as MovementRow[]);
   return { totalNet, byItem, fetchFailed: false };
 }
 
@@ -483,8 +462,6 @@ export async function reconcileOrderInventory(
   }
 
   // ── Desired quantities from the order's CURRENT items ────────────────────
-  const desired = new Map<string, { kind: 'מוצר' | 'פטיפור'; qty: number }>();
-
   const { data: items, error: itemsErr } = await supabase
     .from('מוצרים_בהזמנה')
     .select('מוצר_id, כמות')
@@ -493,13 +470,6 @@ export async function reconcileOrderInventory(
   if (itemsErr) {
     console.error('[inventory] reconcile — fetch product lines failed. order:', orderId, '| error:', itemsErr.message);
     return { reconciled: false, reason: 'fetch_failed' };
-  }
-  for (const item of (items ?? []) as Array<{ מוצר_id: string | null; כמות: number | null }>) {
-    if (!item.מוצר_id) continue;
-    const qty = Number(item.כמות) || 0;
-    if (qty <= 0) continue;
-    const cur = desired.get(item.מוצר_id);
-    desired.set(item.מוצר_id, { kind: 'מוצר', qty: (cur?.qty || 0) + qty });
   }
 
   const { data: packageLines, error: pkgErr } = await supabase
@@ -512,9 +482,8 @@ export async function reconcileOrderInventory(
     return { reconciled: false, reason: 'fetch_failed' };
   }
   const pkgRows = (packageLines ?? []) as Array<{ id: string; כמות: number | null }>;
+  let selectionRows: Array<{ שורת_הזמנה_id: string; פטיפור_id: string | null; כמות: number | null }> = [];
   if (pkgRows.length > 0) {
-    const packageQtyByLine: Record<string, number> = {};
-    for (const pl of pkgRows) packageQtyByLine[pl.id] = pl.כמות || 1;
     const { data: selections, error: selErr } = await supabase
       .from('בחירת_פטיפורים_בהזמנה')
       .select('שורת_הזמנה_id, פטיפור_id, כמות')
@@ -523,33 +492,18 @@ export async function reconcileOrderInventory(
       console.error('[inventory] reconcile — fetch petit-four selections failed. order:', orderId, '| error:', selErr.message);
       return { reconciled: false, reason: 'fetch_failed' };
     }
-    for (const sel of (selections ?? []) as Array<{ שורת_הזמנה_id: string; פטיפור_id: string | null; כמות: number | null }>) {
-      if (!sel.פטיפור_id) continue;
-      const total = (sel.כמות || 0) * (packageQtyByLine[sel.שורת_הזמנה_id] || 1);
-      if (total <= 0) continue;
-      const cur = desired.get(sel.פטיפור_id);
-      desired.set(sel.פטיפור_id, { kind: 'פטיפור', qty: (cur?.qty || 0) + total });
-    }
+    selectionRows = (selections ?? []) as typeof selectionRows;
   }
+  const desired = buildDesiredQuantities(
+    (items ?? []) as Array<{ מוצר_id: string | null; כמות: number | null }>,
+    pkgRows,
+    selectionRows,
+  );
 
   // ── Apply per-item delta (desired − ledger net) ───────────────────────────
-  const allItemIds = new Set<string>([...Array.from(desired.keys()), ...Array.from(ledger.byItem.keys())]);
   let adjusted = 0;
 
-  for (const itemId of Array.from(allItemIds)) {
-    const want   = desired.get(itemId);
-    const led    = ledger.byItem.get(itemId);
-    const target = want?.qty ?? 0;
-    const net    = led?.net ?? 0;
-    const delta  = target - net; // >0 → deduct more; <0 → give back
-    if (delta === 0) continue;
-
-    const kind = want?.kind ?? led?.kind;
-    if (kind !== 'מוצר' && kind !== 'פטיפור') {
-      // חומר_גלם rows can only come from manual ledger entries — never from
-      // order items, so we have no "desired" to reconcile against. Skip.
-      continue;
-    }
+  for (const { itemId, kind, delta, ledgerName } of computeReconcileDeltas(desired, ledger.byItem)) {
     const table   = kind === 'מוצר' ? 'מוצרים_למכירה' : 'סוגי_פטיפורים';
     const nameCol = kind === 'מוצר' ? 'שם_מוצר' : 'שם_פטיפור';
 
@@ -566,7 +520,7 @@ export async function reconcileOrderInventory(
     const r      = row as ItemRow;
     const before = Number(r.כמות_במלאי) || 0;
     const after  = before - delta; // no clamping — negative stock is honest
-    const name   = (r[nameCol] as string | null | undefined) || led?.name || '';
+    const name   = (r[nameCol] as string | null | undefined) || ledgerName;
 
     const { error: updErr } = await supabase.from(table).update({ כמות_במלאי: after }).eq('id', itemId);
     if (updErr) {

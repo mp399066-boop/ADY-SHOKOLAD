@@ -113,7 +113,7 @@ export default function FullReportModal({ open, onClose, orders, expenses, year,
               {busy === 'pdf' ? 'מכין…' : 'הורדת PDF'}
             </button>
             <button className={btn} disabled={busy !== null} onClick={() => run('excel')}
-              style={{ border: `1px solid ${C.border}`, color: '#1D6F42' }}>
+              style={{ border: `1px solid ${C.border}`, color: '#2A7A4F' }}>
               <span className="text-2xl">📊</span>
               {busy === 'excel' ? 'מכין…' : 'הורדת אקסל'}
             </button>

@@ -81,24 +81,24 @@ const PRESETS: { key: Preset; label: string }[] = [
 const B = {
   bg:        '#FFFDF9',
   card:      '#FFFFFF',
-  border:    '#EAE0D4',
-  borderSoft:'#F4EDE4',
+  border:    '#E8DED2',
+  borderSoft:'#F0EAE0',
   brand:     '#8B5E34',
   brandSoft: '#F4E8D8',
   espresso:  '#2B1A10',
-  textSoft:  '#8A735F',
+  textSoft:  '#8A7664',
   textMuted: '#A09080',
-  red:       '#991B1B',
-  redSoft:   '#FEF2F2',
+  red:       '#8A3228',
+  redSoft:   '#F0EAE8',
   redBorder: '#FECACA',
-  green:     '#166534',
-  greenSoft: '#F0FDF4',
+  green:     '#33623a',
+  greenSoft: '#E4EEE8',
   greenBorder:'#BBF7D0',
   amber:     '#92400E',
-  amberSoft: '#FFFBEB',
+  amberSoft: '#FBF5E6',
   amberBorder:'#FDE68A',
   purple:    '#5B21B6',
-  purpleSoft:'#EDE9FE',
+  purpleSoft:'#EFEAF5',
 };
 
 // ── Page ──────────────────────────────────────────────────────────────────
@@ -188,7 +188,7 @@ export default function RawMaterialsSummaryPage() {
 
       {/* ── Filters ── */}
       <div className="rounded-2xl p-4 space-y-3"
-        style={{ background: 'linear-gradient(180deg,#FFFDF8 0%,#FBF5EA 100%)', border: `1px solid ${B.border}` }}>
+        style={{ background: 'linear-gradient(180deg,#F8F6F2 0%,#FBF5E6 100%)', border: `1px solid ${B.border}` }}>
 
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-medium shrink-0" style={{ color: B.textSoft }}>תקופה:</span>
@@ -197,7 +197,7 @@ export default function RawMaterialsSummaryPage() {
               className="px-3 py-1 rounded-full text-xs font-medium transition-colors"
               style={activePreset === key
                 ? { backgroundColor: B.brand, color: '#FFFFFF' }
-                : { backgroundColor: '#EAE0D4', color: '#6B4A2D' }}>
+                : { backgroundColor: '#E8DED2', color: '#6B4A2D' }}>
               {label}
             </button>
           ))}
@@ -268,7 +268,7 @@ export default function RawMaterialsSummaryPage() {
           {data.raw_materials.some(r => r.missing > 0) && (
             <Section title="חסר במלאי" badge={`${missingCount} חומרים`}
               badgeStyle={{ backgroundColor: B.red, color: '#FFFFFF' }}
-              headerStyle={{ backgroundColor: '#FEF2F2' }}>
+              headerStyle={{ backgroundColor: '#F0EAE8' }}>
               <RawMaterialTable
                 items={data.raw_materials.filter(r => r.missing > 0)}
                 expanded={expanded}
@@ -283,7 +283,7 @@ export default function RawMaterialsSummaryPage() {
           {data.raw_materials.some(r => r.missing === 0) && (
             <Section title="מספיק במלאי" badge={`${okCount} חומרים`}
               badgeStyle={{ backgroundColor: B.green, color: '#FFFFFF' }}
-              headerStyle={{ backgroundColor: '#F0FDF4' }}>
+              headerStyle={{ backgroundColor: '#E4EEE8' }}>
               <RawMaterialTable
                 items={data.raw_materials.filter(r => r.missing === 0)}
                 expanded={expanded}
@@ -348,9 +348,9 @@ function Section({ title, badge, badgeStyle, headerStyle, children }: {
 }) {
   return (
     <div className="rounded-2xl overflow-hidden"
-      style={{ background: '#FFFFFF', border: '1px solid #EAE0D4', boxShadow: '0 1px 6px rgba(58,42,26,0.04)' }}>
+      style={{ background: '#FFFFFF', border: '1px solid #E8DED2', boxShadow: '0 1px 6px rgba(58,42,26,0.04)' }}>
       <div className="flex items-center justify-between px-4 py-3"
-        style={{ borderBottom: '1px solid #EAE0D4', ...headerStyle }}>
+        style={{ borderBottom: '1px solid #E8DED2', ...headerStyle }}>
         <h2 className="font-semibold text-sm" style={{ color: '#2B1A10' }}>{title}</h2>
         <span className="text-xs font-bold px-2.5 py-1 rounded-full"
           style={badgeStyle}>
@@ -399,11 +399,11 @@ function RawMaterialTable({ items, expanded, toggleExpand, onEdit, rowVariant }:
   return (
     <table className="w-full text-sm">
       <thead>
-        <tr style={{ borderBottom: '1px solid #EAE0D4' }}>
-          <th className="text-right py-2 px-4 text-xs font-medium" style={{ color: '#8A735F' }}>חומר גלם</th>
-          <th className="text-center py-2 px-3 text-xs font-medium w-28" style={{ color: '#8A735F' }}>נדרש</th>
-          <th className="text-center py-2 px-3 text-xs font-medium w-28" style={{ color: '#8A735F' }}>קיים במלאי</th>
-          <th className="text-center py-2 px-3 text-xs font-medium w-32" style={{ color: '#8A735F' }}>מצב</th>
+        <tr style={{ borderBottom: '1px solid #E8DED2' }}>
+          <th className="text-right py-2 px-4 text-xs font-medium" style={{ color: '#8A7664' }}>חומר גלם</th>
+          <th className="text-center py-2 px-3 text-xs font-medium w-28" style={{ color: '#8A7664' }}>נדרש</th>
+          <th className="text-center py-2 px-3 text-xs font-medium w-28" style={{ color: '#8A7664' }}>קיים במלאי</th>
+          <th className="text-center py-2 px-3 text-xs font-medium w-32" style={{ color: '#8A7664' }}>מצב</th>
           <th className="w-8" />
         </tr>
       </thead>
@@ -415,7 +415,7 @@ function RawMaterialTable({ items, expanded, toggleExpand, onEdit, rowVariant }:
             <React.Fragment key={key}>
               <tr onClick={() => toggleExpand(key)}
                 className="cursor-pointer"
-                style={{ borderBottom: '1px solid #F4EEE6' }}
+                style={{ borderBottom: '1px solid #F5F1EB' }}
                 onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#FAFAF6')}
                 onMouseLeave={e => (e.currentTarget.style.backgroundColor = '')}>
                 <td className="py-2.5 px-4 font-semibold" style={{ color: '#2B1A10' }}>
@@ -436,7 +436,7 @@ function RawMaterialTable({ items, expanded, toggleExpand, onEdit, rowVariant }:
                 <td className="py-2.5 px-3 text-center tabular-nums text-sm font-medium" style={{ color: '#2B1A10' }}>
                   {fmtQty(item.required, item.recipe_unit)}
                 </td>
-                <td className="py-2.5 px-3 text-center tabular-nums text-sm" style={{ color: '#8A735F' }}>
+                <td className="py-2.5 px-3 text-center tabular-nums text-sm" style={{ color: '#8A7664' }}>
                   {rowVariant === 'mismatch'
                     ? <span className="text-xs" style={{ color: B.purple }}>{item.in_stock} {item.stock_unit}</span>
                     : fmtQty(item.in_stock, item.recipe_unit)
@@ -451,7 +451,7 @@ function RawMaterialTable({ items, expanded, toggleExpand, onEdit, rowVariant }:
               </tr>
 
               {open && (
-                <tr style={{ backgroundColor: '#FDFBF7', borderBottom: '1px solid #F4EEE6' }}>
+                <tr style={{ backgroundColor: '#FDFBF7', borderBottom: '1px solid #F5F1EB' }}>
                   <td colSpan={5} className="px-4 pt-2 pb-3">
                     <p className="text-[11px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: '#A09080' }}>
                       נדרש בגלל:
@@ -467,7 +467,7 @@ function RawMaterialTable({ items, expanded, toggleExpand, onEdit, rowVariant }:
                     <div className="space-y-1">
                       {item.sources.map((src, i) => (
                         <div key={i} className="flex items-center gap-2 text-xs">
-                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium"
                             style={src.type === 'מוצר'
                               ? { backgroundColor: B.brandSoft, color: B.brand }
                               : { backgroundColor: B.purpleSoft, color: B.purple }}>
@@ -502,10 +502,10 @@ function NoRecipeTable({ items, expanded, toggleExpand }: {
   return (
     <table className="w-full text-sm">
       <thead>
-        <tr style={{ borderBottom: '1px solid #EAE0D4' }}>
-          <th className="text-right py-2 px-4 text-xs font-medium" style={{ color: '#8A735F' }}>פריט</th>
-          <th className="text-right py-2 px-4 text-xs font-medium w-24" style={{ color: '#8A735F' }}>סוג</th>
-          <th className="text-center py-2 px-4 text-xs font-medium w-24" style={{ color: '#8A735F' }}>כמות</th>
+        <tr style={{ borderBottom: '1px solid #E8DED2' }}>
+          <th className="text-right py-2 px-4 text-xs font-medium" style={{ color: '#8A7664' }}>פריט</th>
+          <th className="text-right py-2 px-4 text-xs font-medium w-24" style={{ color: '#8A7664' }}>סוג</th>
+          <th className="text-center py-2 px-4 text-xs font-medium w-24" style={{ color: '#8A7664' }}>כמות</th>
           <th className="w-8" />
         </tr>
       </thead>
@@ -517,7 +517,7 @@ function NoRecipeTable({ items, expanded, toggleExpand }: {
             <React.Fragment key={key}>
               <tr onClick={() => toggleExpand(key)}
                 className="cursor-pointer"
-                style={{ borderBottom: '1px solid #F4EEE6' }}
+                style={{ borderBottom: '1px solid #F5F1EB' }}
                 onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#FAFAF6')}
                 onMouseLeave={e => (e.currentTarget.style.backgroundColor = '')}>
                 <td className="py-2.5 px-4 font-medium" style={{ color: '#2B1A10' }}>{item.name}</td>
@@ -540,7 +540,7 @@ function NoRecipeTable({ items, expanded, toggleExpand }: {
                 </td>
               </tr>
               {open && item.orders.map((o, i) => (
-                <tr key={`${key}:o${i}`} style={{ backgroundColor: '#FDFBF7', borderBottom: '1px solid #F4EEE6' }}>
+                <tr key={`${key}:o${i}`} style={{ backgroundColor: '#FDFBF7', borderBottom: '1px solid #F5F1EB' }}>
                   <td className="py-1.5 px-4 text-xs" style={{ paddingInlineStart: '2.5rem', color: '#6B4A2D' }} colSpan={3}>
                     <Link href={`/orders/${o.id}`} className="hover:underline font-medium" style={{ color: B.brand }}>
                       הזמנה #{o.מספר_הזמנה}
