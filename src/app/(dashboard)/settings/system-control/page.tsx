@@ -1019,7 +1019,7 @@ function MonthlyBackupCard() {
         <span className="text-[11px]" style={{ color: '#8A7664' }}>נשלח אוטומטית ב-1 בחודש · ברירת מחדל: adi548419927@gmail.com</span>
       </div>
       <p className="text-[12px] mb-3" style={{ color: '#8A7664' }}>
-        ברירת המחדל היא החודש הקודם. לבדיקה אפשר לבחור חודש אחר.
+        מייל סיכום + קובץ Excel עם כל הלקוחות, כל ההזמנות, המוצרים ופירוט החודש. ברירת המחדל היא החודש הקודם.
       </p>
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex flex-col gap-1">
