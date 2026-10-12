@@ -6,7 +6,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { useOptionList } from '@/hooks/useOptionList';
-import { NO_VAT_CATEGORIES, vatFromGross, round2, todayJerusalem, type Expense } from '@/lib/finance';
+import { NO_VAT_CATEGORIES, vatFromGross, round2, todayJerusalem, expenseBox, EXPENSE_BOXES, EXPENSE_BOX_LABEL, type Expense, type ExpenseBox } from '@/lib/finance';
 import { C, money } from './shared';
 
 export interface SupplierOption { id: string; שם_ספק: string; פעיל?: boolean }
@@ -15,13 +15,17 @@ type VatMode = 'included' | 'none' | 'manual';
 
 const selectCls = 'w-full px-3 py-2 text-sm rounded-lg border border-[#E8DED2] bg-white focus:outline-none focus:border-[#C9A46A]';
 
-export default function ExpenseFormModal({ open, initial, suppliers, longTermReady, onClose, onSaved }: {
+export default function ExpenseFormModal({ open, initial, suppliers, longTermReady, boxReady, defaultBox, onClose, onSaved }: {
   open: boolean;
   /** Existing expense to edit (has id) or a template to duplicate (no id). */
   initial: Partial<Expense> | null;
   suppliers: SupplierOption[];
   /** false until migration 062 (long-term flag) has been run. */
   longTermReady: boolean;
+  /** false until migration 065 (expense box) has been run. */
+  boxReady: boolean;
+  /** Box for a new expense (the tab it was opened from). */
+  defaultBox: ExpenseBox;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -40,6 +44,7 @@ export default function ExpenseFormModal({ open, initial, suppliers, longTermRea
   const [paymentMethod, setPaymentMethod] = useState('');
   const [notes, setNotes] = useState('');
   const [longTerm, setLongTerm] = useState(false);
+  const [box, setBox] = useState<ExpenseBox>(defaultBox);
   const [saving, setSaving] = useState(false);
 
   const editing = !!initial?.id;
@@ -64,7 +69,8 @@ export default function ExpenseFormModal({ open, initial, suppliers, longTermRea
     setPaymentMethod(i.אמצעי_תשלום ?? '');
     setNotes(i.הערות ?? '');
     setLongTerm(i.השקעה_לטווח_ארוך === true);
-  }, [open, initial]);
+    setBox(i.קופה ? expenseBox(i) : defaultBox);
+  }, [open, initial, defaultBox]);
 
   const amountNum = Number(amount) || 0;
   const vat = vatMode === 'none' ? 0 : vatMode === 'included' ? vatFromGross(amountNum) : round2(Number(vatManual) || 0);
@@ -93,6 +99,7 @@ export default function ExpenseFormModal({ open, initial, suppliers, longTermRea
         אמצעי_תשלום: paymentMethod,
         הערות: notes,
         ...(longTermReady ? { השקעה_לטווח_ארוך: longTerm } : {}),
+        ...(boxReady ? { קופה: box } : {}),
       };
       const res = await fetch(editing ? `/api/finance/expenses/${initial!.id}` : '/api/finance/expenses', {
         method: editing ? 'PATCH' : 'POST',
@@ -160,6 +167,19 @@ export default function ExpenseFormModal({ open, initial, suppliers, longTermRea
         </div>
         <div className="sm:col-span-2">
           <Input label="הערות" value={notes} onChange={e => setNotes(e.target.value)} />
+        </div>
+        <div className="sm:col-span-2 space-y-1">
+          <label className="block text-xs font-medium" style={{ color: C.sub }}>קופה</label>
+          <select className={selectCls} value={box} disabled={!boxReady} onChange={e => setBox(e.target.value as ExpenseBox)}>
+            {EXPENSE_BOXES.map(b => <option key={b} value={b}>{EXPENSE_BOX_LABEL[b]}</option>)}
+          </select>
+          <p className="text-xs" style={{ color: C.faint }}>
+            {!boxReady
+              ? 'כדי לבחור קופה — יש להריץ את מיגרציה 065 ב-Supabase SQL Editor.'
+              : box === 'קורסים'
+                ? 'הוצאה של הקורסים — לא נכנסת להוצאות של העסק ולרווח והפסד, מוצגת בלשונית "קופת קורסים".'
+                : 'הוצאה רגילה של העסק.'}
+          </p>
         </div>
         <div className="sm:col-span-2 rounded-lg px-3 py-2.5" style={{ border: `1px solid ${C.border}`, backgroundColor: longTerm ? '#FBF6EE' : undefined }}>
           <label className="flex items-start gap-2 text-sm" style={{ color: longTermReady ? C.text : C.faint, cursor: longTermReady ? 'pointer' : 'not-allowed' }}>

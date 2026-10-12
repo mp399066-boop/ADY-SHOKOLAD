@@ -20,10 +20,11 @@ export async function GET(req: NextRequest) {
   if (!/^\d{4}$/.test(yearRaw)) return NextResponse.json({ error: 'שנה לא תקינה' }, { status: 400 });
 
   const supabase = createAdminClient();
-  // Optional columns from later migrations, newest first: long-term flag (062),
-  // payslip fields (059). Until a migration is run, fall back to the older
-  // column set so the expenses list keeps working.
+  // Optional columns from later migrations, newest first: expense box (065),
+  // long-term flag (062), payslip fields (059). Until a migration is run, fall
+  // back to the older column set so the expenses list keeps working.
   const columnSets = [
+    `${COLUMNS}, עובד_id, חודש_שכר, השקעה_לטווח_ארוך, קופה`,
     `${COLUMNS}, עובד_id, חודש_שכר, השקעה_לטווח_ארוך`,
     `${COLUMNS}, עובד_id, חודש_שכר`,
     COLUMNS,
@@ -57,7 +58,7 @@ export async function GET(req: NextRequest) {
   }
 
   const data = all.map(r => ({ ...r, סכום: Number(r['סכום']) || 0, מעמ: Number(r['מעמ']) || 0 }));
-  return NextResponse.json({ data, tableReady: true, salariesReady: level <= 1, longTermReady: level === 0 });
+  return NextResponse.json({ data, tableReady: true, salariesReady: level <= 2, longTermReady: level <= 1, boxReady: level === 0 });
 }
 
 export async function POST(req: NextRequest) {

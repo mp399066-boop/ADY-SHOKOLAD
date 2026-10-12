@@ -4,15 +4,17 @@ import { useMemo, useRef } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Wallet, Receipt, TrendingDown, CreditCard, Scale, Hourglass, Armchair } from 'lucide-react';
 import {
-  buildPnl, round2, VAT_RATE,
+  buildPnl, round2, expenseNet, VAT_RATE,
   type FinanceOrder, type Expense, type DateBasis,
 } from '@/lib/finance';
 import { downloadExcel, downloadElementPng, type Cell } from '@/lib/finance-export';
 import { C, money, StatCard, ExportButtons, Th, Td, EmptyNote, THEAD_STYLE, TOTAL_ROW_STYLE, ROW_CLS } from './shared';
 
-export default function ProfitLossTab({ orders, expenses, year, basis, expensesReady }: {
+export default function ProfitLossTab({ orders, expenses, coursesExpenses = [], year, basis, expensesReady }: {
   orders: FinanceOrder[];
   expenses: Expense[];
+  /** קופת קורסים — not part of this P&L; only mentioned so it's clear. */
+  coursesExpenses?: Expense[];
   year: number;
   basis: DateBasis;
   expensesReady: boolean;
@@ -31,6 +33,7 @@ export default function ProfitLossTab({ orders, expenses, year, basis, expensesR
   // Long-term investments (fridge, oven…) — own column, never in the average.
   const showLT = totals.longTermGross > 0;
   const afterLT = totals.resultAfterLongTerm;
+  const coursesNet = round2(coursesExpenses.reduce((t, e) => t + expenseNet(e), 0));
 
   async function exportExcel() {
     const sheet: Cell[][] = [
@@ -45,6 +48,7 @@ export default function ProfitLossTab({ orders, expenses, year, basis, expensesR
       ] : []),
       ...(result < 0 ? [['הכנסה נוספת שנדרשת כדי לכסות את ההפסד', -result] as Cell[]] : []),
       [],
+      ...(coursesNet > 0 ? [[`הוצאות קופת קורסים (לא נכללות ברווח והפסד של העסק) — לפני מע״מ`, coursesNet] as Cell[]] : []),
       ['רווח והפסד מחושב לפני מע״מ: מע״מ שנגבה מלקוחות שייך למדינה, ומע״מ על הוצאות מקוזז.'],
     ];
     await downloadExcel(`רווח_והפסד_${year}`, [{ name: `רווח והפסד ${year}`, rows: sheet }]);
@@ -76,6 +80,10 @@ export default function ProfitLossTab({ orders, expenses, year, basis, expensesR
         )}
         <StatCard label="טרם נגבה מלקוחות — לפני מע״מ" value={money(totals.open)} tone={totals.open ? 'amber' : undefined} sub="כל סכום ההזמנה" icon={Hourglass} />
       </div>
+
+      {coursesNet > 0 && (
+        <EmptyNote>הוצאות קופת קורסים ({money(coursesNet)} לפני מע״מ, {coursesExpenses.length} הוצאות) לא נכללות ברווח והפסד של העסק — הן מוצגות בלשונית &quot;קופת קורסים&quot;.</EmptyNote>
+      )}
 
       {(avgExpenses > 0 || result < 0 || showLT) && (
         <Card>

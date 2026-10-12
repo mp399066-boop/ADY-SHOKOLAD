@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   vatModeFor, toFinanceOrder, isBarterOrder, isCountableOrder, orderIncome, summarize,
-  vatFromGross, expenseNet, type FinanceOrderSource,
+  vatFromGross, expenseNet, buildPnl, expenseBox, isCoursesExpense, type FinanceOrderSource, type Expense,
 } from '@/lib/finance';
 
 const order = (
@@ -93,4 +93,25 @@ describe('income', () => {
 describe('expenses', () => {
   it('VAT inside a gross amount', () => expect(vatFromGross(118)).toBe(18));
   it('expense net = amount − VAT', () => expect(expenseNet({ סכום: 118, מעמ: 18 })).toBe(100));
+});
+
+describe('expense boxes (קופת קורסים)', () => {
+  const exp = (over: Partial<Expense>): Expense => ({
+    id: 'e1', תאריך: '2026-10-05', ספק_id: null, שם_ספק: 'ספק', קטגוריה: 'חומרי גלם', תיאור: null,
+    סכום: 118, מעמ: 18, מספר_מסמך: null, אמצעי_תשלום: null, הערות: null, מקור: 'ידני', ...over,
+  });
+
+  it('missing / unknown box = the business box', () => {
+    expect(expenseBox({})).toBe('עסק');
+    expect(expenseBox({ קופה: null })).toBe('עסק');
+    expect(expenseBox({ קופה: 'קורסים' })).toBe('קורסים');
+    expect(isCoursesExpense({ קופה: 'עסק' })).toBe(false);
+  });
+
+  it('courses expenses are not counted in the business profit & loss', () => {
+    const pnl = buildPnl([], [exp({ id: 'a' }), exp({ id: 'b', קופה: 'קורסים', סכום: 590, מעמ: 90 })], 2026, 'order', '2026-10-12');
+    expect(pnl.totals.expenses).toBe(100);
+    expect(pnl.totals.expensesGross).toBe(118);
+    expect(pnl.totals.result).toBe(-100);
+  });
 });
