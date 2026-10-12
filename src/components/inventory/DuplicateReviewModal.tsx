@@ -81,22 +81,22 @@ export function DuplicateReviewModal({
   const skip = (id: string) => setSuggestions(prev => prev.filter(s => s.id !== id));
 
   const renderCard = (s: Suggestion, isLinked: boolean) => (
-    <div key={s.id} className="rounded-xl border p-4" style={{ borderColor: '#EAE0D4', backgroundColor: '#FDFAF6' }}>
+    <div key={s.id} className="rounded-xl border p-4" style={{ borderColor: '#E8DED2', backgroundColor: '#FDFAF6' }}>
       <div className="flex items-center gap-2 mb-3">
-        <span className="text-[11px] px-2 py-0.5 rounded-full" style={{ backgroundColor: '#F4E3C9', color: '#8B5E34' }}>
+        <span className="text-[11px] px-2 py-0.5 rounded-full" style={{ backgroundColor: '#EDD9B4', color: '#8B5E34' }}>
           {isLinked ? 'כבר מחובר — אפשר למזג' : (s.reason || 'שמות דומים')}
         </span>
       </div>
       <div className="grid grid-cols-2 gap-3 mb-3">
-        <div className="rounded-lg border p-3" style={{ borderColor: '#D9E5DC', backgroundColor: '#F3F8F4' }}>
-          <p className="text-[10.5px] mb-1" style={{ color: '#476D53' }}>חומר ראשי (יישאר)</p>
+        <div className="rounded-lg border p-3" style={{ borderColor: '#E4EEE8', backgroundColor: '#EAF0E7' }}>
+          <p className="text-[11.5px] mb-1" style={{ color: '#2D6648' }}>חומר ראשי (יישאר)</p>
           <p className="text-sm font-semibold" style={{ color: '#2B1A10' }}>{s.primary.שם_חומר_גלם}</p>
           <p className="text-xs mt-1" style={{ color: '#6B4A2D' }}>
             {s.primary.כמות_במלאי} {s.primary.יחידת_מידה}
           </p>
         </div>
-        <div className="rounded-lg border p-3" style={{ borderColor: '#E7D2A6', backgroundColor: '#FBF6EC' }}>
-          <p className="text-[10.5px] mb-1" style={{ color: '#A8753D' }}>כפילות (תימחק במיזוג)</p>
+        <div className="rounded-lg border p-3" style={{ borderColor: '#E7D2A6', backgroundColor: '#FAF7F0' }}>
+          <p className="text-[11.5px] mb-1" style={{ color: '#A8753D' }}>כפילות (תימחק במיזוג)</p>
           <p className="text-sm font-semibold" style={{ color: '#2B1A10' }}>{s.duplicate.שם_חומר_גלם}</p>
           <p className="text-xs mt-1" style={{ color: '#6B4A2D' }}>
             {s.duplicate.כמות_במלאי} {s.duplicate.יחידת_מידה}
@@ -114,7 +114,7 @@ export function DuplicateReviewModal({
             onClick={() => skip(s.id)}
             disabled={busyId === s.id}
             className="text-xs px-3 py-1.5 rounded-lg border bg-white disabled:opacity-50"
-            style={{ borderColor: '#DDD0BC', color: '#8A735F' }}
+            style={{ borderColor: '#DDD0BC', color: '#8A7664' }}
           >
             דלגי עכשיו
           </button>
@@ -123,7 +123,7 @@ export function DuplicateReviewModal({
           onClick={() => act(s.id, 'reject')}
           disabled={busyId === s.id}
           className="text-xs px-3 py-1.5 rounded-lg border bg-white disabled:opacity-50"
-          style={{ borderColor: '#E6C3C0', color: '#9D4B4A' }}
+          style={{ borderColor: '#D8BCB6', color: '#9D4B4A' }}
         >
           דחי
         </button>
@@ -131,7 +131,7 @@ export function DuplicateReviewModal({
           onClick={() => setConfirm(s)}
           disabled={busyId === s.id}
           className="text-xs px-3 py-1.5 rounded-lg font-semibold disabled:opacity-50"
-          style={{ backgroundColor: '#476D53', color: '#FFF' }}
+          style={{ backgroundColor: '#2D6648', color: '#FFF' }}
         >
           {busyId === s.id ? '…' : 'אשרי מיזוג'}
         </button>
@@ -143,7 +143,7 @@ export function DuplicateReviewModal({
     <>
       <Modal open={open} onClose={onClose} title="בדיקת כפילויות בחומרי גלם" size="lg">
         <div className="space-y-4">
-          <p className="text-xs" style={{ color: '#8A735F' }}>
+          <p className="text-xs" style={{ color: '#8A7664' }}>
             מיזוג משאיר את החומר הראשי, מעביר אליו הפניות (מתכונים, רכש) וכמות בטוחה, ומוחק את הכפול.
             לא מתבצע מיזוג כשהיחידות אינן תואמות או כשנדרשת בדיקה ידנית.
           </p>
@@ -193,7 +193,7 @@ export function DuplicateReviewModal({
                 onClick={() => act(confirm.id, 'merge')}
                 disabled={busyId === confirm.id}
                 className="text-sm px-4 py-2 rounded-lg font-semibold disabled:opacity-50"
-                style={{ backgroundColor: '#476D53', color: '#FFF' }}
+                style={{ backgroundColor: '#2D6648', color: '#FFF' }}
               >
                 {busyId === confirm.id ? 'ממזג…' : 'אשרי מיזוג'}
               </button>

@@ -138,7 +138,7 @@ export function RawMaterialEditModal({ materialId, onClose, onSaved }: {
           </div>
 
           {form.יחידת_מידה !== origUnit && (
-            <div className="rounded-lg border p-3 text-xs space-y-2" style={{ borderColor: BRAND.goldLight, backgroundColor: '#FFFBEB', color: BRAND.warning }}>
+            <div className="rounded-lg border p-3 text-xs space-y-2" style={{ borderColor: BRAND.goldLight, backgroundColor: '#FBF5E6', color: BRAND.warning }}>
               <p>
                 היחידה שונתה מ־<strong>{origUnit}</strong> ל־<strong>{form.יחידת_מידה}</strong>. אם הכמות, הספים והמחיר רשומים לפי היחידה הקודמת — כדאי להמיר אותם. (אם המחיר כבר הוזן לפי היחידה החדשה, אפשר לשמור בלי להמיר.)
               </p>

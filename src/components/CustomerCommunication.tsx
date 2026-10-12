@@ -141,9 +141,9 @@ export function CustomerCommunication({
     const s = item.סטטוס
       || (item._status === 'pending' ? 'בהמתנה' : item._status === 'failed' ? 'נכשל' : 'נשלח');
     const style =
-      s === 'נשלח'   ? { backgroundColor: '#DCFCE7', color: '#166534' } :
-      s === 'נכשל'   ? { backgroundColor: '#FEE2E2', color: '#991B1B' } :
-                        { backgroundColor: '#FEF9C3', color: '#854D0E' };
+      s === 'נשלח'   ? { backgroundColor: '#DCFCE7', color: '#33623a' } :
+      s === 'נכשל'   ? { backgroundColor: '#FEE2E2', color: '#8A3228' } :
+                        { backgroundColor: '#FEF3C7', color: '#854D0E' };
     return (
       <span className="text-xs px-1.5 py-0.5 rounded-full font-medium" style={style}>{s}</span>
     );
@@ -155,12 +155,12 @@ export function CustomerCommunication({
       {/* ═══════════════════════════ EMAIL PANEL ═══════════════════════════ */}
       <div
         className="flex flex-col rounded-xl overflow-hidden"
-        style={{ height: 480, border: '1px solid #EDE0CE' }}
+        style={{ height: 480, border: '1px solid #E8DED2' }}
       >
         {/* header */}
         <div
           className="flex items-center justify-between px-4 py-3 flex-shrink-0"
-          style={{ backgroundColor: '#A63A3A', borderBottom: '1px solid #8F2F2F' }}
+          style={{ backgroundColor: '#9D4B4A', borderBottom: '1px solid #8A3228' }}
         >
           <div className="flex items-center gap-2 min-w-0">
             <span className="font-semibold text-sm text-white">מיילים</span>
@@ -222,7 +222,7 @@ export function CustomerCommunication({
                     <div className="flex items-center gap-2 mt-1.5 pr-5">
                       {statusChip(item)}
                       {item.אל && (
-                        <span className="text-xs truncate" style={{ color: '#BFB09A' }}>→ {item.אל}</span>
+                        <span className="text-xs truncate" style={{ color: '#C9B89E' }}>→ {item.אל}</span>
                       )}
                       {!isOpen && (
                         <span className="text-xs line-clamp-1 flex-1 min-w-0" style={{ color: '#9B7A5A' }}>
@@ -237,7 +237,7 @@ export function CustomerCommunication({
                     <div
                       className="mx-3 mb-3 rounded-xl p-4 space-y-3 text-xs"
                       dir="rtl"
-                      style={{ backgroundColor: '#FBF7F2', border: '1px solid #EDE0CE' }}
+                      style={{ backgroundColor: '#F8F6F2', border: '1px solid #E8DED2' }}
                     >
                       {/* meta grid */}
                       <div className="grid grid-cols-2 gap-x-4 gap-y-2">
@@ -280,7 +280,7 @@ export function CustomerCommunication({
                       {/* body */}
                       <div
                         className="rounded-lg p-3 leading-relaxed whitespace-pre-wrap"
-                        style={{ backgroundColor: '#fff', border: '1px solid #EDE0CE', color: '#2B1A10' }}
+                        style={{ backgroundColor: '#fff', border: '1px solid #E8DED2', color: '#2B1A10' }}
                       >
                         {item.תוכן}
                       </div>
@@ -289,7 +289,7 @@ export function CustomerCommunication({
                       {(item as CommItem & { הודעת_שגיאה?: string }).הודעת_שגיאה && (
                         <div
                           className="rounded-lg p-2.5"
-                          style={{ backgroundColor: '#FEF2F2', border: '1px solid #FECACA', color: '#991B1B' }}
+                          style={{ backgroundColor: '#F0EAE8', border: '1px solid #FECACA', color: '#8A3228' }}
                         >
                           <span className="font-semibold">שגיאה: </span>
                           {(item as CommItem & { הודעת_שגיאה?: string }).הודעת_שגיאה}
@@ -306,7 +306,7 @@ export function CustomerCommunication({
         {/* compose */}
         <div
           className="flex-shrink-0 p-3 space-y-2"
-          style={{ borderTop: '1px solid #EDE0CE', backgroundColor: '#FAF7F0' }}
+          style={{ borderTop: '1px solid #E8DED2', backgroundColor: '#FAF7F0' }}
         >
           <input
             type="text"
@@ -342,7 +342,7 @@ export function CustomerCommunication({
       {/* ══════════════════════════ WHATSAPP PANEL ══════════════════════════ */}
       <div
         className="flex flex-col rounded-xl overflow-hidden"
-        style={{ height: 480, border: '1px solid #A8D5A8' }}
+        style={{ height: 480, border: '1px solid #B8D5A8' }}
       >
         {/* header */}
         <div
@@ -367,19 +367,19 @@ export function CustomerCommunication({
         <div
           className="flex-1 overflow-y-auto flex flex-col gap-2 p-3"
           dir="rtl"
-          style={{ backgroundColor: '#ECE5DD' }}
+          style={{ backgroundColor: '#F0EAE0' }}
         >
           {waItems.length === 0 ? (
             <div className="flex-1 flex flex-col items-center justify-center gap-2 py-10">
               <div
                 className="h-10 w-10 rounded-xl flex items-center justify-center"
-                style={{ backgroundColor: '#D1EDD4' }}
+                style={{ backgroundColor: '#DCFCE7' }}
               >
-                <svg className="w-5 h-5" fill="none" stroke="#166534" viewBox="0 0 24 24" strokeWidth={1.6}>
+                <svg className="w-5 h-5" fill="none" stroke="#33623a" viewBox="0 0 24 24" strokeWidth={1.6}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
                 </svg>
               </div>
-              <p className="text-xs" style={{ color: '#5F6B5F' }}>
+              <p className="text-xs" style={{ color: '#5C6B5F' }}>
                 {phone ? 'אין הודעות עדיין' : 'ללקוח אין מספר טלפון'}
               </p>
             </div>
@@ -417,7 +417,7 @@ export function CustomerCommunication({
         {/* compose */}
         <div
           className="flex-shrink-0 flex items-end gap-2 p-3"
-          style={{ borderTop: '1px solid #A8D5A8', backgroundColor: '#F0F4F0' }}
+          style={{ borderTop: '1px solid #B8D5A8', backgroundColor: '#EAF0E7' }}
         >
           <textarea
             value={waMsg}
@@ -426,7 +426,7 @@ export function CustomerCommunication({
             placeholder="הודעה... (Enter לשליחה)"
             rows={1}
             className="flex-1 text-sm px-3 py-2 rounded-2xl border bg-white resize-none focus:outline-none"
-            style={{ borderColor: '#B8D4B8', color: '#1A1A1A', maxHeight: 80, overflowY: 'auto' }}
+            style={{ borderColor: '#BDD5C0', color: '#1A1A1A', maxHeight: 80, overflowY: 'auto' }}
           />
           <button
             onClick={() => void handleSendWA()}

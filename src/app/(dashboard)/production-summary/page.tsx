@@ -119,7 +119,7 @@ export default function ProductionSummaryPage() {
         </div>
         <div>
           <h1 className="text-xl font-bold" style={{ color: '#2B1A10' }}>סיכום ייצור</h1>
-          <p className="text-xs mt-0.5" style={{ color: '#8A735F' }}>
+          <p className="text-xs mt-0.5" style={{ color: '#8A7664' }}>
             {loading ? 'טוען...' : data ? `${data.orders_count} הזמנות בתקופה ${fmtDate(dateFrom)}–${fmtDate(dateTo)}` : ''}
           </p>
         </div>
@@ -127,17 +127,17 @@ export default function ProductionSummaryPage() {
 
       {/* ── Filters ── */}
       <div className="rounded-2xl p-4 space-y-3"
-        style={{ background: 'linear-gradient(180deg,#FFFDF8 0%,#FBF5EA 100%)', border: '1px solid #EAE0D4' }}>
+        style={{ background: 'linear-gradient(180deg,#F8F6F2 0%,#FBF5E6 100%)', border: '1px solid #E8DED2' }}>
 
         {/* Date presets + custom range */}
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-medium shrink-0" style={{ color: '#8A735F' }}>תקופה:</span>
+          <span className="text-xs font-medium shrink-0" style={{ color: '#8A7664' }}>תקופה:</span>
           {PRESETS.map(({ key, label }) => (
             <button key={key} onClick={() => applyPreset(key)}
               className="px-3 py-1 rounded-full text-xs font-medium transition-colors"
               style={activePreset === key
                 ? { backgroundColor: '#8B5E34', color: '#FFFFFF' }
-                : { backgroundColor: '#EAE0D4', color: '#6B4A2D' }}>
+                : { backgroundColor: '#E8DED2', color: '#6B4A2D' }}>
               {label}
             </button>
           ))}
@@ -145,18 +145,18 @@ export default function ProductionSummaryPage() {
             <input type="date" value={dateFrom}
               onChange={e => { setDateFrom(e.target.value); setActivePreset('custom'); }}
               className="rounded-lg px-2 py-1 text-xs border"
-              style={{ borderColor: '#EAE0D4', color: '#2B1A10', backgroundColor: '#FFFFFF' }} />
-            <span className="text-xs" style={{ color: '#8A735F' }}>—</span>
+              style={{ borderColor: '#E8DED2', color: '#2B1A10', backgroundColor: '#FFFFFF' }} />
+            <span className="text-xs" style={{ color: '#8A7664' }}>—</span>
             <input type="date" value={dateTo}
               onChange={e => { setDateTo(e.target.value); setActivePreset('custom'); }}
               className="rounded-lg px-2 py-1 text-xs border"
-              style={{ borderColor: '#EAE0D4', color: '#2B1A10', backgroundColor: '#FFFFFF' }} />
+              style={{ borderColor: '#E8DED2', color: '#2B1A10', backgroundColor: '#FFFFFF' }} />
           </div>
         </div>
 
         {/* Status chips */}
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-medium shrink-0" style={{ color: '#8A735F' }}>סטטוס:</span>
+          <span className="text-xs font-medium shrink-0" style={{ color: '#8A7664' }}>סטטוס:</span>
           {ALL_STATUSES.map(s => (
             <button key={s} onClick={() => toggleStatus(s)}
               className="px-2.5 py-1 rounded-full text-xs transition-colors"
@@ -172,7 +172,7 @@ export default function ProductionSummaryPage() {
       {/* ── Error ── */}
       {error && (
         <div className="p-4 rounded-xl text-sm"
-          style={{ backgroundColor: '#FEF2F2', color: '#991B1B', border: '1px solid #FCA5A5' }}>
+          style={{ backgroundColor: '#F0EAE8', color: '#8A3228', border: '1px solid #F2AAAA' }}>
           {error}
         </div>
       )}
@@ -181,14 +181,14 @@ export default function ProductionSummaryPage() {
       {loading && (
         <div className="flex items-center justify-center py-16">
           <div className="w-7 h-7 rounded-full border-2 animate-spin"
-            style={{ borderColor: '#EAE0D4', borderTopColor: '#8B5E34' }} />
+            style={{ borderColor: '#E8DED2', borderTopColor: '#8B5E34' }} />
         </div>
       )}
 
       {/* ── Empty ── */}
       {!loading && data && !hasData && (
         <div className="text-center py-16">
-          <p className="text-lg font-medium" style={{ color: '#8A735F' }}>אין הזמנות בתקופה זו</p>
+          <p className="text-lg font-medium" style={{ color: '#8A7664' }}>אין הזמנות בתקופה זו</p>
           <p className="text-sm mt-1" style={{ color: '#A09080' }}>שנה את הפילטרים כדי לראות נתונים</p>
         </div>
       )}
@@ -202,10 +202,10 @@ export default function ProductionSummaryPage() {
               badge={`${data.products.reduce((s, p) => s + p.כמות_כוללת, 0)} יחידות`}>
               <table className="w-full text-sm">
                 <thead>
-                  <tr style={{ borderBottom: '1px solid #EAE0D4' }}>
-                    <th className="text-right py-2 px-4 text-xs font-medium" style={{ color: '#8A735F' }}>מוצר</th>
-                    <th className="text-center py-2 px-4 text-xs font-medium w-24" style={{ color: '#8A735F' }}>כמות</th>
-                    <th className="text-center py-2 px-4 text-xs font-medium w-20" style={{ color: '#8A735F' }}>הזמנות</th>
+                  <tr style={{ borderBottom: '1px solid #E8DED2' }}>
+                    <th className="text-right py-2 px-4 text-xs font-medium" style={{ color: '#8A7664' }}>מוצר</th>
+                    <th className="text-center py-2 px-4 text-xs font-medium w-24" style={{ color: '#8A7664' }}>כמות</th>
+                    <th className="text-center py-2 px-4 text-xs font-medium w-20" style={{ color: '#8A7664' }}>הזמנות</th>
                     <th className="w-8" />
                   </tr>
                 </thead>
@@ -217,7 +217,7 @@ export default function ProductionSummaryPage() {
                       <React.Fragment key={key}>
                         <tr onClick={() => toggleExpand(key)}
                           className="cursor-pointer transition-colors"
-                          style={{ borderBottom: '1px solid #F4EEE6' }}
+                          style={{ borderBottom: '1px solid #F5F1EB' }}
                           onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#FAFAF6')}
                           onMouseLeave={e => (e.currentTarget.style.backgroundColor = '')}>
                           <td className="py-2.5 px-4 font-medium" style={{ color: '#2B1A10' }}>{p.שם_מוצר}</td>
@@ -227,7 +227,7 @@ export default function ProductionSummaryPage() {
                               {p.כמות_כוללת}
                             </span>
                           </td>
-                          <td className="py-2.5 px-4 text-center text-sm" style={{ color: '#8A735F' }}>
+                          <td className="py-2.5 px-4 text-center text-sm" style={{ color: '#8A7664' }}>
                             {p.הזמנות.length}
                           </td>
                           <td className="py-2.5 px-2 text-center text-xs" style={{ color: '#C9A46A' }}>
@@ -235,7 +235,7 @@ export default function ProductionSummaryPage() {
                           </td>
                         </tr>
                         {open && p.הזמנות.map((o, i) => (
-                          <tr key={`${key}:o${i}`} style={{ backgroundColor: '#FDFBF7', borderBottom: '1px solid #F4EEE6' }}>
+                          <tr key={`${key}:o${i}`} style={{ backgroundColor: '#FDFBF7', borderBottom: '1px solid #F5F1EB' }}>
                             <td className="py-1.5 px-4 text-xs" style={{ paddingInlineStart: '2.5rem', color: '#6B4A2D' }}>
                               <Link href={`/orders/${o.id}`} className="hover:underline font-medium" style={{ color: '#8B5E34' }}>
                                 הזמנה #{o.מספר_הזמנה}
@@ -266,26 +266,26 @@ export default function ProductionSummaryPage() {
                     <div key={key} className="space-y-1">
                       <button onClick={() => toggleExpand(key)}
                         className="w-full text-right rounded-xl p-3.5 transition-opacity hover:opacity-90"
-                        style={{ backgroundColor: '#F4E8D8', border: '1px solid #E2CDB0' }}>
+                        style={{ backgroundColor: '#F4E8D8', border: '1px solid #EDD9B4' }}>
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-xs font-semibold" style={{ color: '#6B4A2D' }}>
                             מארז {pkg.גודל_מארז} פטיפורים
                           </span>
-                          <span className="text-xs" style={{ color: '#A07850' }}>{open ? '▲' : '▼'}</span>
+                          <span className="text-xs" style={{ color: '#9B7A5A' }}>{open ? '▲' : '▼'}</span>
                         </div>
                         <div className="flex items-end gap-1.5">
                           <span className="text-3xl font-bold leading-none" style={{ color: '#8B5E34' }}>
                             {pkg.כמות_כוללת}
                           </span>
-                          <span className="text-xs mb-0.5" style={{ color: '#A07850' }}>יחידות</span>
+                          <span className="text-xs mb-0.5" style={{ color: '#9B7A5A' }}>יחידות</span>
                         </div>
-                        <div className="text-xs mt-1.5 font-medium" style={{ color: '#A07850' }}>
+                        <div className="text-xs mt-1.5 font-medium" style={{ color: '#9B7A5A' }}>
                           {pkg.פטיפורים_כוללים} פטיפורים סה״כ
                         </div>
                       </button>
                       {open && (
                         <div className="rounded-xl p-2 space-y-1"
-                          style={{ backgroundColor: '#FDFBF7', border: '1px solid #EAE0D4' }}>
+                          style={{ backgroundColor: '#FDFBF7', border: '1px solid #E8DED2' }}>
                           {pkg.הזמנות.map((o, i) => (
                             <div key={i} className="flex items-center gap-2 text-xs py-1 px-1">
                               <Link href={`/orders/${o.id}`} className="hover:underline font-medium shrink-0"
@@ -318,7 +318,7 @@ export default function ProductionSummaryPage() {
                     <div key={key} className="space-y-1">
                       <button onClick={() => toggleExpand(key)}
                         className="w-full text-right rounded-xl p-3 transition-opacity hover:opacity-90"
-                        style={{ backgroundColor: '#EDE9FE', border: '1px solid #DDD6FE' }}>
+                        style={{ backgroundColor: '#EFEAF5', border: '1px solid #DDD6FE' }}>
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-xs font-semibold truncate" style={{ color: '#5B21B6' }}>
                             {pf.שם_פטיפור}
@@ -331,7 +331,7 @@ export default function ProductionSummaryPage() {
                       </button>
                       {open && (
                         <div className="rounded-xl p-2 space-y-1"
-                          style={{ backgroundColor: '#FDFBF7', border: '1px solid #EAE0D4' }}>
+                          style={{ backgroundColor: '#FDFBF7', border: '1px solid #E8DED2' }}>
                           {pf.הזמנות.map((o, i) => (
                             <div key={i} className="flex items-center gap-2 text-xs py-1 px-1">
                               <Link href={`/orders/${o.id}`} className="hover:underline font-medium shrink-0"
@@ -357,10 +357,10 @@ export default function ProductionSummaryPage() {
               badge={`${data.custom_items.reduce((s, p) => s + p.כמות_כוללת, 0)} יחידות`}>
               <table className="w-full text-sm">
                 <thead>
-                  <tr style={{ borderBottom: '1px solid #EAE0D4' }}>
-                    <th className="text-right py-2 px-4 text-xs font-medium" style={{ color: '#8A735F' }}>פריט</th>
-                    <th className="text-right py-2 px-4 text-xs font-medium w-24" style={{ color: '#8A735F' }}>סוג</th>
-                    <th className="text-center py-2 px-4 text-xs font-medium w-24" style={{ color: '#8A735F' }}>כמות</th>
+                  <tr style={{ borderBottom: '1px solid #E8DED2' }}>
+                    <th className="text-right py-2 px-4 text-xs font-medium" style={{ color: '#8A7664' }}>פריט</th>
+                    <th className="text-right py-2 px-4 text-xs font-medium w-24" style={{ color: '#8A7664' }}>סוג</th>
+                    <th className="text-center py-2 px-4 text-xs font-medium w-24" style={{ color: '#8A7664' }}>כמות</th>
                     <th className="w-8" />
                   </tr>
                 </thead>
@@ -372,7 +372,7 @@ export default function ProductionSummaryPage() {
                       <React.Fragment key={key}>
                         <tr onClick={() => toggleExpand(key)}
                           className="cursor-pointer transition-colors"
-                          style={{ borderBottom: '1px solid #F4EEE6' }}
+                          style={{ borderBottom: '1px solid #F5F1EB' }}
                           onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#FAFAF6')}
                           onMouseLeave={e => (e.currentTarget.style.backgroundColor = '')}>
                           <td className="py-2.5 px-4 font-medium" style={{ color: '#2B1A10' }}>
@@ -381,8 +381,8 @@ export default function ProductionSummaryPage() {
                           <td className="py-2.5 px-4">
                             <span className="text-xs px-2 py-0.5 rounded-full font-medium"
                               style={item.סוג_שורה === 'תוספת_תשלום'
-                                ? { backgroundColor: '#EDE9FE', color: '#5B21B6' }
-                                : { backgroundColor: '#F3F4F6', color: '#374151' }}>
+                                ? { backgroundColor: '#EFEAF5', color: '#5B21B6' }
+                                : { backgroundColor: '#EEF0F4', color: '#374151' }}>
                               {item.סוג_שורה === 'תוספת_תשלום' ? 'תוספת' : 'ידני'}
                             </span>
                           </td>
@@ -398,7 +398,7 @@ export default function ProductionSummaryPage() {
                         </tr>
                         {open && item.הזמנות.map((o, i) => (
                           <tr key={`${key}:o${i}`}
-                            style={{ backgroundColor: '#FDFBF7', borderBottom: '1px solid #F4EEE6' }}>
+                            style={{ backgroundColor: '#FDFBF7', borderBottom: '1px solid #F5F1EB' }}>
                             <td className="py-1.5 px-4 text-xs" style={{ paddingInlineStart: '2.5rem', color: '#6B4A2D' }} colSpan={2}>
                               <Link href={`/orders/${o.id}`} className="hover:underline font-medium"
                                 style={{ color: '#8B5E34' }}>
@@ -437,9 +437,9 @@ function Section({
 }) {
   return (
     <div className="rounded-2xl overflow-hidden"
-      style={{ background: '#FFFFFF', border: '1px solid #EAE0D4', boxShadow: '0 1px 6px rgba(58,42,26,0.04)' }}>
+      style={{ background: '#FFFFFF', border: '1px solid #E8DED2', boxShadow: '0 1px 6px rgba(58,42,26,0.04)' }}>
       <div className="flex items-center justify-between px-4 py-3"
-        style={{ borderBottom: '1px solid #EAE0D4', backgroundColor: '#FBF5EA' }}>
+        style={{ borderBottom: '1px solid #E8DED2', backgroundColor: '#FBF5E6' }}>
         <h2 className="font-semibold text-sm" style={{ color: '#2B1A10' }}>{title}</h2>
         <span className="text-xs font-bold px-2.5 py-1 rounded-full"
           style={badgeStyle ?? { backgroundColor: '#8B5E34', color: '#FFFFFF' }}>

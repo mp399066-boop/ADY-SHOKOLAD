@@ -4,37 +4,37 @@
 
 export const C = {
   // Surfaces
-  bg:         '#F8F3EC',
+  bg:         '#F5F1EB',
   card:       '#FFFDF9',
   cardSoft:   '#FFFFFF',
-  surface:    '#EFE2D3',
+  surface:    '#E8DED2',
 
   // Borders
-  border:     '#E8D8C6',
-  borderSoft: '#F0E5D8',
+  border:     '#E0D4C2',
+  borderSoft: '#E8DED2',
 
   // Text
-  text:       '#2F1B14',
+  text:       '#2B1A10',
   textSoft:   '#7B604D',
-  textMuted:  '#AF9A87',
+  textMuted:  '#B0A090',
 
   // Brand
   brand:      '#5A3424',
-  espresso:   '#2F1B14',
+  espresso:   '#2B1A10',
   cocoa:      '#7B4A35',
-  brandSoft:  '#F4E9DC',
+  brandSoft:  '#FBF0E4',
 
   // Accents
-  gold:       '#C49A6C',
-  goldSoft:   '#F3E4D0',
+  gold:       '#C9A46A',
+  goldSoft:   '#E8DED2',
 
   // Status (used only on small badges / urgency bars)
-  green:      '#476D53',
-  greenSoft:  '#E8F0E7',
+  green:      '#2D6648',
+  greenSoft:  '#EAF0E7',
   red:        '#9D4B4A',
-  redSoft:    '#F4E4E1',
+  redSoft:    '#F0EAE8',
   amber:      '#A8753D',
-  amberSoft:  '#F4E3C9',
+  amberSoft:  '#EDD9B4',
   blue:       '#496D7D',
-  blueSoft:   '#E5EEF1',
+  blueSoft:   '#EAF0F5',
 } as const;

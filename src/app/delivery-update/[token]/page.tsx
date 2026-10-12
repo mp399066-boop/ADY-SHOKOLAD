@@ -44,21 +44,21 @@ type PageStatus = 'loading' | 'ready' | 'done' | 'already' | 'invalid';
 
 // ── Brand palette ───────────────────────────────────────────────────────────
 const C = {
-  bg:           '#F7F1E8',
+  bg:           '#F5F1EB',
   card:         '#FFFDF9',
   border:       '#E8DED2',
-  textHead:     '#4B2E1F',
+  textHead:     '#4A2F1B',
   textBody:     '#3A2A1A',
   textSoft:     '#7B604D',
-  textMuted:    '#A89882',
-  brand:        '#5B3926',
-  brandHover:   '#4B2E1F',
-  gold:         '#C9A45C',
-  goldSoft:     '#F4E9DC',
-  green:        '#2F6B47',
-  greenSoft:    '#E5F1E8',
-  blue:         '#3A5A75',
-  blueSoft:     '#E5EEF1',
+  textMuted:    '#A09080',
+  brand:        '#5A3424',
+  brandHover:   '#4A2F1B',
+  gold:         '#C9A46A',
+  goldSoft:     '#FBF0E4',
+  green:        '#2D6648',
+  greenSoft:    '#E4EEE8',
+  blue:         '#2A4E6B',
+  blueSoft:     '#EAF0F5',
 };
 
 function formatDateHe(iso: string | null): string {
@@ -155,10 +155,10 @@ export default function DeliveryUpdatePage() {
         )}
 
         {pageStatus === 'invalid' && (
-          <Card style={{ borderColor: '#F0C7BF', backgroundColor: '#FBF1EE' }}>
+          <Card style={{ borderColor: '#FECACA', backgroundColor: '#F0EAE8' }}>
             <div style={{ textAlign: 'center', padding: 24 }}>
               <div style={{ fontSize: 32, marginBottom: 8 }}>⚠️</div>
-              <div style={{ fontWeight: 700, color: '#7A2C1F', fontSize: 16, marginBottom: 6 }}>
+              <div style={{ fontWeight: 700, color: '#8A3228', fontSize: 16, marginBottom: 6 }}>
                 המשלוח לא נמצא או שכבר אינו פעיל
               </div>
               <div style={{ fontSize: 13, color: '#9D4B4A' }}>
@@ -169,13 +169,13 @@ export default function DeliveryUpdatePage() {
         )}
 
         {pageStatus === 'done' && (
-          <Card style={{ borderColor: '#A8D5B6', backgroundColor: C.greenSoft }}>
+          <Card style={{ borderColor: '#B7E0C0', backgroundColor: C.greenSoft }}>
             <div style={{ textAlign: 'center', padding: 24 }}>
               <div style={{ fontSize: 36, marginBottom: 8 }}>✅</div>
               <div style={{ fontWeight: 800, color: C.green, fontSize: 18, marginBottom: 6 }}>
                 תודה, העדכון בוצע!
               </div>
-              <div style={{ fontSize: 13, color: '#1F5635' }}>
+              <div style={{ fontSize: 13, color: '#2A5C38' }}>
                 המשלוח סומן כנמסר בהצלחה.
               </div>
             </div>
@@ -183,14 +183,14 @@ export default function DeliveryUpdatePage() {
         )}
 
         {pageStatus === 'already' && delivery && (
-          <Card style={{ borderColor: '#A8D5B6', backgroundColor: C.greenSoft }}>
+          <Card style={{ borderColor: '#B7E0C0', backgroundColor: C.greenSoft }}>
             <div style={{ textAlign: 'center', padding: 24 }}>
               <div style={{ fontSize: 36, marginBottom: 8 }}>✅</div>
               <div style={{ fontWeight: 800, color: C.green, fontSize: 18, marginBottom: 6 }}>
                 המשלוח כבר סומן כנמסר
               </div>
               {delivery.deliveredAt && (
-                <div style={{ fontSize: 12, color: '#1F5635' }}>
+                <div style={{ fontSize: 12, color: '#2A5C38' }}>
                   זמן מסירה: {formatDateHe(delivery.deliveredAt)} {new Date(delivery.deliveredAt).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
                 </div>
               )}
@@ -276,7 +276,7 @@ export default function DeliveryUpdatePage() {
 
             {/* ── Card: notes for the courier ────────────────────────── */}
             {(delivery.deliveryNotes || delivery.orderNotes) && (
-              <Card style={{ borderColor: '#F0C7BF', backgroundColor: '#FBF6EE' }}>
+              <Card style={{ borderColor: '#FECACA', backgroundColor: '#FBF6EE' }}>
                 <CardTitle style={{ color: C.brand }}>הערות חשובות</CardTitle>
                 {delivery.deliveryNotes && (
                   <div style={{ fontSize: 13.5, color: C.textBody, lineHeight: 1.5, whiteSpace: 'pre-line' }}>
@@ -322,7 +322,7 @@ export default function DeliveryUpdatePage() {
                     fontSize: 17,
                     fontWeight: 800,
                     color: '#FFFFFF',
-                    background: marking ? '#9B8B7A' : C.brand,
+                    background: marking ? '#A09080' : C.brand,
                     border: 'none',
                     borderRadius: 14,
                     cursor: marking ? 'not-allowed' : 'pointer',
@@ -409,10 +409,10 @@ function Field({ label, value, bold, mono }: { label: string; value: string; bol
 function StatusPill({ status }: { status: string }) {
   const tone =
     status === 'נמסר'
-      ? { bg: C.greenSoft, fg: C.green,  border: '#A8D5B6' }
+      ? { bg: C.greenSoft, fg: C.green,  border: '#B7E0C0' }
       : status === 'נאסף'
-        ? { bg: C.blueSoft,  fg: C.blue,   border: '#BFD3DC' }
-        : { bg: C.goldSoft,  fg: C.brand,  border: '#E2CDA4' };
+        ? { bg: C.blueSoft,  fg: C.blue,   border: '#C8D8DF' }
+        : { bg: C.goldSoft,  fg: C.brand,  border: '#EDD9B4' };
   return (
     <span
       style={{

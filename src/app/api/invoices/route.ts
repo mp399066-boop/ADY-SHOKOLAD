@@ -4,15 +4,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { dbErrorResponse } from '@/lib/api-error';
+import { fetchAllPages } from '@/lib/supabase/fetch-all';
 
 export async function GET() {
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
-  const { data, error } = await supabase
+  const { data, error } = await fetchAllPages((from, to) => supabase
     .from('חשבוניות')
     .select('*, הזמנות(מספר_הזמנה), לקוחות(שם_פרטי, שם_משפחה)')
-    .order('תאריך_יצירה', { ascending: false });
+    .order('תאריך_יצירה', { ascending: false })
+    .order('id')
+    .range(from, to));
   if (error) return dbErrorResponse(error, 'invoices');
   return NextResponse.json({ data });
 }

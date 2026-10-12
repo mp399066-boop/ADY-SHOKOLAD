@@ -158,7 +158,7 @@ export default function FinancePage() {
         </div>
       </div>
 
-      <div className="inline-flex gap-1 p-1 rounded-xl" style={{ backgroundColor: '#F1E9DD' }} role="tablist">
+      <div className="inline-flex gap-1 p-1 rounded-xl" style={{ backgroundColor: '#F0EAE0' }} role="tablist">
         {([
           { key: 'income', label: 'הכנסות' },
           { key: 'expenses', label: 'הוצאות', count: expensesReady ? businessExpenses.length : undefined },
@@ -175,7 +175,7 @@ export default function FinancePage() {
               {t.label}
               {t.count !== undefined && (
                 <span className="px-1.5 rounded-full text-xs tabular-nums"
-                  style={{ backgroundColor: active ? '#F5ECDF' : 'rgba(255,255,255,0.6)', color: C.brand }}>
+                  style={{ backgroundColor: active ? '#FBF0E4' : 'rgba(255,255,255,0.6)', color: C.brand }}>
                   {t.count}
                 </span>
               )}

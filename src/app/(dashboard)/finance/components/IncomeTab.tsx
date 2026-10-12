@@ -495,7 +495,7 @@ function MonthDetailModal({ monthKeyStr, orders, basis, onClose }: {
                     <Td>{paymentMethodLabel(o.paymentMethod)}</Td>
                     <Td>
                       <span className="text-xs px-2 py-0.5 rounded-full" style={
-                        o.barter ? { backgroundColor: '#F0EAE2', color: C.sub }
+                        o.barter ? { backgroundColor: '#F0EAE0', color: C.sub }
                           : o.paid ? { backgroundColor: C.greenBg, color: C.green }
                           : { backgroundColor: C.amberBg, color: C.amber }}>
                         {o.barter ? 'בארטר — לא נספר' : o.paymentStatus}

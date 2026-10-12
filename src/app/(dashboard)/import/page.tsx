@@ -260,9 +260,9 @@ function RecipeImportFlow() {
 
   const recipeStatusBadge = (s: RecipePreviewRecipe['status']) => {
     const map: Record<typeof s, { bg: string; fg: string; label: string }> = {
-      new:    { bg: '#DCFCE7', fg: '#166534', label: 'חדש' },
+      new:    { bg: '#DCFCE7', fg: '#33623a', label: 'חדש' },
       update: { bg: '#DBEAFE', fg: '#1E40AF', label: 'עדכון' },
-      error:  { bg: '#FEE2E2', fg: '#991B1B', label: 'שגיאה' },
+      error:  { bg: '#FEE2E2', fg: '#8A3228', label: 'שגיאה' },
     };
     const m = map[s];
     return <span className="px-1.5 py-0.5 rounded text-xs font-medium" style={{ backgroundColor: m.bg, color: m.fg }}>{m.label}</span>;
@@ -270,8 +270,8 @@ function RecipeImportFlow() {
 
   const rawStatusBadge = (s: RecipePreviewRaw['status']) => {
     const map: Record<typeof s, { bg: string; fg: string; label: string }> = {
-      new:      { bg: '#DCFCE7', fg: '#166534', label: 'חדש' },
-      existing: { bg: '#E5E7EB', fg: '#374151', label: 'קיים' },
+      new:      { bg: '#DCFCE7', fg: '#33623a', label: 'חדש' },
+      existing: { bg: '#EEF0F4', fg: '#374151', label: 'קיים' },
       updated:  { bg: '#DBEAFE', fg: '#1E40AF', label: 'עדכון' },
       warning:  { bg: '#FEF3C7', fg: '#92400E', label: 'אזהרה' },
     };
@@ -285,17 +285,17 @@ function RecipeImportFlow() {
       <Card>
         <div className="flex flex-col items-center py-6 gap-4">
           <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ backgroundColor: '#DCFCE7' }}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#166534" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#33623a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="20 6 9 17 4 12"/>
             </svg>
           </div>
           <h3 className="text-base font-semibold" style={{ color: '#2B1A10' }}>ייבוא מתכונים הושלם</h3>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
-            <div className="p-3 rounded-lg text-center" style={{ backgroundColor: '#F0FDF4' }}>
-              <div className="text-2xl font-bold" style={{ color: '#166534' }}>{result.recipesCreated}</div>
-              <div className="text-xs" style={{ color: '#166534' }}>מתכונים נוצרו</div>
+            <div className="p-3 rounded-lg text-center" style={{ backgroundColor: '#E4EEE8' }}>
+              <div className="text-2xl font-bold" style={{ color: '#33623a' }}>{result.recipesCreated}</div>
+              <div className="text-xs" style={{ color: '#33623a' }}>מתכונים נוצרו</div>
             </div>
-            <div className="p-3 rounded-lg text-center" style={{ backgroundColor: '#EFF6FF' }}>
+            <div className="p-3 rounded-lg text-center" style={{ backgroundColor: '#EAF0F5' }}>
               <div className="text-2xl font-bold" style={{ color: '#1E40AF' }}>{result.recipesUpdated}</div>
               <div className="text-xs" style={{ color: '#1E40AF' }}>מתכונים עודכנו</div>
             </div>
@@ -303,16 +303,16 @@ function RecipeImportFlow() {
               <div className="text-2xl font-bold" style={{ color: '#5C3410' }}>{result.ingredientsImported}</div>
               <div className="text-xs" style={{ color: '#5C3410' }}>שורות רכיבים</div>
             </div>
-            <div className="p-3 rounded-lg text-center" style={{ backgroundColor: '#FFF7ED' }}>
+            <div className="p-3 rounded-lg text-center" style={{ backgroundColor: '#FBF0E4' }}>
               <div className="text-2xl font-bold" style={{ color: '#9A3412' }}>{result.rawMaterialsCreated}</div>
               <div className="text-xs" style={{ color: '#9A3412' }}>חומרי גלם חדשים</div>
             </div>
-            <div className="p-3 rounded-lg text-center" style={{ backgroundColor: '#F5F3FF' }}>
+            <div className="p-3 rounded-lg text-center" style={{ backgroundColor: '#F5F0FA' }}>
               <div className="text-2xl font-bold" style={{ color: '#5B21B6' }}>{result.rawMaterialsReused}</div>
               <div className="text-xs" style={{ color: '#5B21B6' }}>חומרי גלם קיימים</div>
             </div>
             {result.warningsCount > 0 && (
-              <div className="p-3 rounded-lg text-center" style={{ backgroundColor: '#FFFBEB' }}>
+              <div className="p-3 rounded-lg text-center" style={{ backgroundColor: '#FBF5E6' }}>
                 <div className="text-2xl font-bold" style={{ color: '#92400E' }}>{result.warningsCount}</div>
                 <div className="text-xs" style={{ color: '#92400E' }}>אזהרות</div>
               </div>
@@ -330,7 +330,7 @@ function RecipeImportFlow() {
       <Card>
         <CardHeader>
           <CardTitle>
-            <span className="inline-block ml-2 px-2 py-0.5 rounded text-[10px] align-middle font-medium" style={{ backgroundColor: '#DCFCE7', color: '#166534' }}>
+            <span className="inline-block ml-2 px-2 py-0.5 rounded text-[11px] align-middle font-medium" style={{ backgroundColor: '#DCFCE7', color: '#33623a' }}>
               ✓ תהליך רב־גיליונות פעיל
             </span>
             ייבוא מתכונים
@@ -344,10 +344,10 @@ function RecipeImportFlow() {
             הורדת תבנית מתכונים
           </a>
         </CardHeader>
-        <p className="text-xs mb-3 p-2 rounded" style={{ backgroundColor: '#EFF6FF', color: '#1E3A8A' }}>
+        <p className="text-xs mb-3 p-2 rounded" style={{ backgroundColor: '#EAF0F5', color: '#1E3A8A' }}>
           ייבוא מתכונים קורא כמה גיליונות מהקובץ: <strong>מתכונים</strong>, <strong>רכיבי מתכון</strong>, וחומרי גלם אופציונלי.
         </p>
-        <ul className="text-xs space-y-1" style={{ color: '#6B5744' }}>
+        <ul className="text-xs space-y-1" style={{ color: '#5C4A38' }}>
           <li>• מתכון מזוהה לפי <strong>קוד מתכון</strong> ייחודי. אם הקוד כבר קיים — המתכון יעודכן.</li>
           <li>• <strong>עדכון מתכון קיים יחליף את רשימת הרכיבים שלו לפי הקובץ.</strong></li>
           <li>• חומרי גלם נוצרים אוטומטית משמות הרכיבים — אין צורך להוסיף ידנית.</li>
@@ -361,7 +361,7 @@ function RecipeImportFlow() {
         <Card>
           <label
             className="flex flex-col items-center justify-center gap-2 border-2 border-dashed rounded-lg p-10 cursor-pointer transition-colors"
-            style={{ borderColor: uploading ? '#C9A46A' : '#DDD0BE', backgroundColor: '#FBF7F2' }}
+            style={{ borderColor: uploading ? '#C9A46A' : '#E0D4C2', backgroundColor: '#F8F6F2' }}
           >
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#C9A46A" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -417,8 +417,8 @@ function RecipeImportFlow() {
                       key={i}
                       className="inline-block mx-1 px-1.5 py-0.5 rounded text-[11px] font-medium"
                       style={isRead
-                        ? { backgroundColor: '#DCFCE7', color: '#166534' }
-                        : { backgroundColor: '#E5E7EB', color: '#374151' }}
+                        ? { backgroundColor: '#DCFCE7', color: '#33623a' }
+                        : { backgroundColor: '#EEF0F4', color: '#374151' }}
                     >
                       {s} {isRead ? '✓' : '(לא נקרא)'}
                     </span>
@@ -427,9 +427,9 @@ function RecipeImportFlow() {
               </div>
             )}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-              <div className="p-3 rounded-lg" style={{ backgroundColor: '#F0FDF4' }}>
-                <div className="text-xs" style={{ color: '#166534' }}>מתכונים</div>
-                <div className="text-base font-semibold" style={{ color: '#166534' }}>
+              <div className="p-3 rounded-lg" style={{ backgroundColor: '#E4EEE8' }}>
+                <div className="text-xs" style={{ color: '#33623a' }}>מתכונים</div>
+                <div className="text-base font-semibold" style={{ color: '#33623a' }}>
                   {preview.summary.totalRecipes}
                   <span className="mr-2 text-xs font-normal">({preview.summary.newRecipes} חדשים, {preview.summary.updatedRecipes} עדכונים)</span>
                 </div>
@@ -438,16 +438,16 @@ function RecipeImportFlow() {
                 <div className="text-xs" style={{ color: '#5C3410' }}>שורות רכיבים</div>
                 <div className="text-base font-semibold" style={{ color: '#5C3410' }}>{preview.summary.totalIngredients}</div>
               </div>
-              <div className="p-3 rounded-lg" style={{ backgroundColor: '#FFF7ED' }}>
+              <div className="p-3 rounded-lg" style={{ backgroundColor: '#FBF0E4' }}>
                 <div className="text-xs" style={{ color: '#9A3412' }}>חומרי גלם</div>
                 <div className="text-base font-semibold" style={{ color: '#9A3412' }}>
                   {preview.summary.totalRawMaterials}
                   <span className="mr-2 text-xs font-normal">({preview.summary.newRawMaterials} חדשים, {preview.summary.existingRawMaterials} קיימים)</span>
                 </div>
               </div>
-              <div className="p-3 rounded-lg" style={{ backgroundColor: preview.summary.errors > 0 ? '#FEF2F2' : '#F0FDF4' }}>
-                <div className="text-xs" style={{ color: preview.summary.errors > 0 ? '#B91C1C' : '#166534' }}>שגיאות / אזהרות</div>
-                <div className="text-base font-semibold" style={{ color: preview.summary.errors > 0 ? '#B91C1C' : '#166534' }}>
+              <div className="p-3 rounded-lg" style={{ backgroundColor: preview.summary.errors > 0 ? '#F0EAE8' : '#E4EEE8' }}>
+                <div className="text-xs" style={{ color: preview.summary.errors > 0 ? '#B91C1C' : '#33623a' }}>שגיאות / אזהרות</div>
+                <div className="text-base font-semibold" style={{ color: preview.summary.errors > 0 ? '#B91C1C' : '#33623a' }}>
                   {preview.summary.errors} / {preview.summary.warnings}
                 </div>
               </div>
@@ -458,7 +458,7 @@ function RecipeImportFlow() {
               </p>
             )}
             {!preview.summary.canImport && (
-              <p className="text-xs mt-3 p-2 rounded" style={{ backgroundColor: '#FEE2E2', color: '#991B1B' }}>
+              <p className="text-xs mt-3 p-2 rounded" style={{ backgroundColor: '#FEE2E2', color: '#8A3228' }}>
                 לא ניתן לייבא — נמצאו שגיאות חוסמות. תקנו את הקובץ והעלו מחדש.
               </p>
             )}
@@ -473,7 +473,7 @@ function RecipeImportFlow() {
               <div className="overflow-x-auto max-h-64 overflow-y-auto">
                 <table className="w-full text-xs border-collapse" dir="rtl">
                   <thead>
-                    <tr style={{ backgroundColor: '#FEF2F2' }}>
+                    <tr style={{ backgroundColor: '#F0EAE8' }}>
                       <th className="border px-2 py-1 text-right" style={{ borderColor: '#FECACA' }}>גיליון</th>
                       <th className="border px-2 py-1 text-right" style={{ borderColor: '#FECACA' }}>שורה</th>
                       <th className="border px-2 py-1 text-right" style={{ borderColor: '#FECACA' }}>שגיאה</th>
@@ -481,9 +481,9 @@ function RecipeImportFlow() {
                   </thead>
                   <tbody>
                     {preview.errors.map((err, i) => (
-                      <tr key={i} style={{ backgroundColor: '#FFF5F5' }}>
-                        <td className="border px-2 py-1" style={{ borderColor: '#FECACA', color: '#7F1D1D' }}>{err.sheet || '—'}</td>
-                        <td className="border px-2 py-1" style={{ borderColor: '#FECACA', color: '#7F1D1D' }}>{err.rowNumber ?? '—'}</td>
+                      <tr key={i} style={{ backgroundColor: '#F0EAE8' }}>
+                        <td className="border px-2 py-1" style={{ borderColor: '#FECACA', color: '#8A3228' }}>{err.sheet || '—'}</td>
+                        <td className="border px-2 py-1" style={{ borderColor: '#FECACA', color: '#8A3228' }}>{err.rowNumber ?? '—'}</td>
                         <td className="border px-2 py-1" style={{ borderColor: '#FECACA', color: '#B91C1C' }}>{err.message}</td>
                       </tr>
                     ))}
@@ -501,7 +501,7 @@ function RecipeImportFlow() {
               </h3>
               <div className="space-y-1 max-h-48 overflow-y-auto">
                 {preview.warnings.map((w, i) => (
-                  <div key={i} className="text-xs p-2 rounded" style={{ backgroundColor: '#FFFBEB', color: '#78350F' }}>
+                  <div key={i} className="text-xs p-2 rounded" style={{ backgroundColor: '#FBF5E6', color: '#78350F' }}>
                     [{w.sheet}{w.rowNumber ? ` · שורה ${w.rowNumber}` : ''}] {w.message}
                   </div>
                 ))}
@@ -516,22 +516,22 @@ function RecipeImportFlow() {
               <div className="overflow-x-auto max-h-80 overflow-y-auto">
                 <table className="w-full text-xs border-collapse" dir="rtl">
                   <thead>
-                    <tr style={{ backgroundColor: '#F5EFE6' }}>
+                    <tr style={{ backgroundColor: '#F0EAE0' }}>
                       {['שורה', 'קוד', 'שם', 'כמות', 'יחידה', 'סטטוס', 'שגיאות'].map(h => (
-                        <th key={h} className="border px-2 py-1 text-right" style={{ borderColor: '#DDD0BE', color: '#5C3410' }}>{h}</th>
+                        <th key={h} className="border px-2 py-1 text-right" style={{ borderColor: '#E0D4C2', color: '#5C3410' }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {preview.recipes.map((r, i) => (
-                      <tr key={i} style={{ backgroundColor: i % 2 === 0 ? '#FFFFFF' : '#FBF7F2' }}>
-                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#6B5744' }}>{r.rowNumber}</td>
-                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>{r.code}</td>
-                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>{r.name}</td>
-                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>{r.yieldQty}</td>
-                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>{r.yieldUnit}</td>
-                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE' }}>{recipeStatusBadge(r.status)}</td>
-                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#B91C1C' }}>{r.errors.join(' | ')}</td>
+                      <tr key={i} style={{ backgroundColor: i % 2 === 0 ? '#FFFFFF' : '#F8F6F2' }}>
+                        <td className="border px-2 py-1" style={{ borderColor: '#E0D4C2', color: '#5C4A38' }}>{r.rowNumber}</td>
+                        <td className="border px-2 py-1" style={{ borderColor: '#E0D4C2', color: '#3A2A1A' }}>{r.code}</td>
+                        <td className="border px-2 py-1" style={{ borderColor: '#E0D4C2', color: '#3A2A1A' }}>{r.name}</td>
+                        <td className="border px-2 py-1" style={{ borderColor: '#E0D4C2', color: '#3A2A1A' }}>{r.yieldQty}</td>
+                        <td className="border px-2 py-1" style={{ borderColor: '#E0D4C2', color: '#3A2A1A' }}>{r.yieldUnit}</td>
+                        <td className="border px-2 py-1" style={{ borderColor: '#E0D4C2' }}>{recipeStatusBadge(r.status)}</td>
+                        <td className="border px-2 py-1" style={{ borderColor: '#E0D4C2', color: '#B91C1C' }}>{r.errors.join(' | ')}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -550,20 +550,20 @@ function RecipeImportFlow() {
               <div className="overflow-x-auto max-h-80 overflow-y-auto">
                 <table className="w-full text-xs border-collapse" dir="rtl">
                   <thead>
-                    <tr style={{ backgroundColor: '#F5EFE6' }}>
+                    <tr style={{ backgroundColor: '#F0EAE0' }}>
                       {['שם', 'יחידה', 'כמות התחלתית', 'סטטוס', 'אזהרות'].map(h => (
-                        <th key={h} className="border px-2 py-1 text-right" style={{ borderColor: '#DDD0BE', color: '#5C3410' }}>{h}</th>
+                        <th key={h} className="border px-2 py-1 text-right" style={{ borderColor: '#E0D4C2', color: '#5C3410' }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {preview.rawMaterials.map((r, i) => (
-                      <tr key={i} style={{ backgroundColor: i % 2 === 0 ? '#FFFFFF' : '#FBF7F2' }}>
-                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>{r.name}</td>
-                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>{r.unit || 'ק"ג'}</td>
-                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>{Number.isFinite(Number(r.initialStock)) ? Number(r.initialStock) : 0}</td>
-                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE' }}>{rawStatusBadge(r.status)}</td>
-                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#92400E' }}>{r.warnings.join(' | ')}</td>
+                      <tr key={i} style={{ backgroundColor: i % 2 === 0 ? '#FFFFFF' : '#F8F6F2' }}>
+                        <td className="border px-2 py-1" style={{ borderColor: '#E0D4C2', color: '#3A2A1A' }}>{r.name}</td>
+                        <td className="border px-2 py-1" style={{ borderColor: '#E0D4C2', color: '#3A2A1A' }}>{r.unit || 'ק"ג'}</td>
+                        <td className="border px-2 py-1" style={{ borderColor: '#E0D4C2', color: '#3A2A1A' }}>{Number.isFinite(Number(r.initialStock)) ? Number(r.initialStock) : 0}</td>
+                        <td className="border px-2 py-1" style={{ borderColor: '#E0D4C2' }}>{rawStatusBadge(r.status)}</td>
+                        <td className="border px-2 py-1" style={{ borderColor: '#E0D4C2', color: '#92400E' }}>{r.warnings.join(' | ')}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -579,24 +579,24 @@ function RecipeImportFlow() {
               <div className="overflow-x-auto max-h-80 overflow-y-auto">
                 <table className="w-full text-xs border-collapse" dir="rtl">
                   <thead>
-                    <tr style={{ backgroundColor: '#F5EFE6' }}>
+                    <tr style={{ backgroundColor: '#F0EAE0' }}>
                       {['שורה', 'קוד מתכון', 'חומר גלם', 'כמות', 'יחידה', 'סטטוס'].map(h => (
-                        <th key={h} className="border px-2 py-1 text-right" style={{ borderColor: '#DDD0BE', color: '#5C3410' }}>{h}</th>
+                        <th key={h} className="border px-2 py-1 text-right" style={{ borderColor: '#E0D4C2', color: '#5C3410' }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {preview.ingredients.map((ing, i) => (
-                      <tr key={i} style={{ backgroundColor: i % 2 === 0 ? '#FFFFFF' : '#FBF7F2' }}>
-                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#6B5744' }}>{ing.rowNumber}</td>
-                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>{ing.recipeCode}</td>
-                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>{ing.rawName}</td>
-                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>{ing.qty}</td>
-                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>{ing.unit}</td>
-                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE' }}>
+                      <tr key={i} style={{ backgroundColor: i % 2 === 0 ? '#FFFFFF' : '#F8F6F2' }}>
+                        <td className="border px-2 py-1" style={{ borderColor: '#E0D4C2', color: '#5C4A38' }}>{ing.rowNumber}</td>
+                        <td className="border px-2 py-1" style={{ borderColor: '#E0D4C2', color: '#3A2A1A' }}>{ing.recipeCode}</td>
+                        <td className="border px-2 py-1" style={{ borderColor: '#E0D4C2', color: '#3A2A1A' }}>{ing.rawName}</td>
+                        <td className="border px-2 py-1" style={{ borderColor: '#E0D4C2', color: '#3A2A1A' }}>{ing.qty}</td>
+                        <td className="border px-2 py-1" style={{ borderColor: '#E0D4C2', color: '#3A2A1A' }}>{ing.unit}</td>
+                        <td className="border px-2 py-1" style={{ borderColor: '#E0D4C2' }}>
                           {ing.status === 'error'
-                            ? <span className="px-1.5 py-0.5 rounded text-xs font-medium" style={{ backgroundColor: '#FEE2E2', color: '#991B1B' }}>{ing.errors.join(' | ') || 'שגיאה'}</span>
-                            : <span className="px-1.5 py-0.5 rounded text-xs font-medium" style={{ backgroundColor: '#DCFCE7', color: '#166534' }}>תקין</span>}
+                            ? <span className="px-1.5 py-0.5 rounded text-xs font-medium" style={{ backgroundColor: '#FEE2E2', color: '#8A3228' }}>{ing.errors.join(' | ') || 'שגיאה'}</span>
+                            : <span className="px-1.5 py-0.5 rounded text-xs font-medium" style={{ backgroundColor: '#DCFCE7', color: '#33623a' }}>תקין</span>}
                         </td>
                       </tr>
                     ))}
@@ -835,8 +835,8 @@ function GeneralImportTab() {
                   key={h}
                   className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium"
                   style={dbField
-                    ? { backgroundColor: '#F0FDF4', color: '#166534', border: '1px solid #BBF7D0' }
-                    : { backgroundColor: '#FEF9EC', color: '#92400E', border: '1px solid #FDE68A' }
+                    ? { backgroundColor: '#E4EEE8', color: '#33623a', border: '1px solid #BBF7D0' }
+                    : { backgroundColor: '#FBF5E6', color: '#92400E', border: '1px solid #FDE68A' }
                   }
                 >
                   <span>{h}</span>
@@ -893,15 +893,15 @@ function GeneralImportTab() {
         <Card>
           <CardHeader><CardTitle>תוצאות ייבוא</CardTitle></CardHeader>
           <div className="grid grid-cols-3 gap-4 mb-4">
-            <div className="text-center p-3 rounded-lg" style={{ backgroundColor: '#F0FDF4' }}>
+            <div className="text-center p-3 rounded-lg" style={{ backgroundColor: '#E4EEE8' }}>
               <div className="text-2xl font-bold text-green-600">{result.added}</div>
               <div className="text-xs text-green-600">נוספו</div>
             </div>
-            <div className="text-center p-3 rounded-lg" style={{ backgroundColor: '#EFF6FF' }}>
+            <div className="text-center p-3 rounded-lg" style={{ backgroundColor: '#EAF0F5' }}>
               <div className="text-2xl font-bold text-blue-600">{result.updated}</div>
               <div className="text-xs text-blue-600">עודכנו</div>
             </div>
-            <div className="text-center p-3 rounded-lg" style={{ backgroundColor: result.failed > 0 ? '#FEF2F2' : '#F0FDF4' }}>
+            <div className="text-center p-3 rounded-lg" style={{ backgroundColor: result.failed > 0 ? '#F0EAE8' : '#E4EEE8' }}>
               <div className={`text-2xl font-bold ${result.failed > 0 ? 'text-red-600' : 'text-green-600'}`}>{result.failed}</div>
               <div className={`text-xs ${result.failed > 0 ? 'text-red-600' : 'text-green-600'}`}>נכשלו</div>
             </div>
@@ -910,7 +910,7 @@ function GeneralImportTab() {
             <div className="space-y-1 max-h-48 overflow-y-auto">
               <p className="text-xs font-semibold text-red-600 mb-2">שגיאות:</p>
               {result.errors.map((err, i) => (
-                <div key={i} className="text-xs p-2 rounded" style={{ backgroundColor: '#FEF2F2', color: '#991B1B' }}>
+                <div key={i} className="text-xs p-2 rounded" style={{ backgroundColor: '#F0EAE8', color: '#8A3228' }}>
                   שורה {err.row}: {err.error}
                 </div>
               ))}
@@ -1049,9 +1049,9 @@ function PriceImportTab() {
         <div className="overflow-x-auto">
           <table className="text-xs w-full border-collapse" dir="rtl">
             <thead>
-              <tr style={{ backgroundColor: '#F5EFE6' }}>
+              <tr style={{ backgroundColor: '#F0EAE0' }}>
                 {['SKU', 'שם מוצר', 'סוג מחירון', 'מחיר', 'כמות מינימום', 'כולל מע״מ', 'פעיל'].map(h => (
-                  <th key={h} className="border px-2 py-1 text-right font-medium" style={{ borderColor: '#DDD0BE', color: '#5C3410' }}>{h}</th>
+                  <th key={h} className="border px-2 py-1 text-right font-medium" style={{ borderColor: '#E0D4C2', color: '#5C3410' }}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -1061,16 +1061,16 @@ function PriceImportTab() {
                 ['CAKE001', 'עוגת מוס', 'עסקי - קבוע', '150', '', 'לא', 'כן'],
                 ['CAKE001', 'עוגת מוס', 'עסקי - כמות', '135', '10', 'לא', 'כן'],
               ].map((row, i) => (
-                <tr key={i} style={{ backgroundColor: i % 2 === 0 ? '#FFFFFF' : '#FBF7F2' }}>
+                <tr key={i} style={{ backgroundColor: i % 2 === 0 ? '#FFFFFF' : '#F8F6F2' }}>
                   {row.map((cell, j) => (
-                    <td key={j} className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>{cell}</td>
+                    <td key={j} className="border px-2 py-1" style={{ borderColor: '#E0D4C2', color: '#3A2A1A' }}>{cell}</td>
                   ))}
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-        <ul className="mt-3 text-xs space-y-1" style={{ color: '#6B5744' }}>
+        <ul className="mt-3 text-xs space-y-1" style={{ color: '#5C4A38' }}>
           <li>• <strong>סוג מחירון:</strong> {Object.values(PRICE_TYPE_LABELS).join(' / ')}</li>
           <li>• <strong>מחיר עסקי</strong> נשמר לפני מע״מ — יש לסמן &quot;לא&quot; בעמודת כולל מע״מ</li>
           <li>• <strong>כמות מינימום</strong> חובה לסוג &quot;עסקי - כמות&quot;, אופציונלי לשאר</li>
@@ -1085,7 +1085,7 @@ function PriceImportTab() {
           <h2 className="text-sm font-semibold mb-4" style={{ color: '#2B1A10' }}>העלאת קובץ מחירון</h2>
           <label
             className="flex flex-col items-center justify-center gap-2 border-2 border-dashed rounded-lg p-10 cursor-pointer transition-colors"
-            style={{ borderColor: uploading ? '#C9A46A' : '#DDD0BE', backgroundColor: '#FBF7F2' }}
+            style={{ borderColor: uploading ? '#C9A46A' : '#E0D4C2', backgroundColor: '#F8F6F2' }}
           >
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#C9A46A" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -1119,7 +1119,7 @@ function PriceImportTab() {
               <div className="overflow-x-auto">
                 <table className="w-full text-xs border-collapse" dir="rtl">
                   <thead>
-                    <tr style={{ backgroundColor: '#FEF2F2' }}>
+                    <tr style={{ backgroundColor: '#F0EAE8' }}>
                       <th className="border px-2 py-1 text-right" style={{ borderColor: '#FECACA' }}>שורה</th>
                       <th className="border px-2 py-1 text-right" style={{ borderColor: '#FECACA' }}>שם מוצר</th>
                       <th className="border px-2 py-1 text-right" style={{ borderColor: '#FECACA' }}>שגיאות</th>
@@ -1127,9 +1127,9 @@ function PriceImportTab() {
                   </thead>
                   <tbody>
                     {errors.map((err, i) => (
-                      <tr key={i} style={{ backgroundColor: '#FFF5F5' }}>
-                        <td className="border px-2 py-1" style={{ borderColor: '#FECACA', color: '#7F1D1D' }}>{err.rowNumber}</td>
-                        <td className="border px-2 py-1" style={{ borderColor: '#FECACA', color: '#7F1D1D' }}>{err.productName || err.sku || '—'}</td>
+                      <tr key={i} style={{ backgroundColor: '#F0EAE8' }}>
+                        <td className="border px-2 py-1" style={{ borderColor: '#FECACA', color: '#8A3228' }}>{err.rowNumber}</td>
+                        <td className="border px-2 py-1" style={{ borderColor: '#FECACA', color: '#8A3228' }}>{err.productName || err.sku || '—'}</td>
                         <td className="border px-2 py-1" style={{ borderColor: '#FECACA', color: '#B91C1C' }}>{err.errors.join(' | ')}</td>
                       </tr>
                     ))}
@@ -1166,35 +1166,35 @@ function PriceImportTab() {
               <div className="overflow-x-auto">
                 <table className="w-full text-xs border-collapse" dir="rtl">
                   <thead>
-                    <tr style={{ backgroundColor: '#F5EFE6' }}>
+                    <tr style={{ backgroundColor: '#F0EAE0' }}>
                       {['שורה', 'SKU', 'שם מוצר', 'סוג מחירון', 'מחיר', 'כמות מינ׳', 'כולל מע״מ', 'פעיל', 'פעולה'].map(h => (
-                        <th key={h} className="border px-2 py-1 text-right" style={{ borderColor: '#DDD0BE', color: '#5C3410' }}>{h}</th>
+                        <th key={h} className="border px-2 py-1 text-right" style={{ borderColor: '#E0D4C2', color: '#5C3410' }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {validRows.map((row, i) => (
-                      <tr key={i} style={{ backgroundColor: i % 2 === 0 ? '#FFFFFF' : '#FBF7F2' }}>
-                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#6B5744' }}>{row.rowNumber}</td>
-                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>{row.sku || '—'}</td>
-                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>
+                      <tr key={i} style={{ backgroundColor: i % 2 === 0 ? '#FFFFFF' : '#F8F6F2' }}>
+                        <td className="border px-2 py-1" style={{ borderColor: '#E0D4C2', color: '#5C4A38' }}>{row.rowNumber}</td>
+                        <td className="border px-2 py-1" style={{ borderColor: '#E0D4C2', color: '#3A2A1A' }}>{row.sku || '—'}</td>
+                        <td className="border px-2 py-1" style={{ borderColor: '#E0D4C2', color: '#3A2A1A' }}>
                           {row.productName}
                           {row.isNewProduct && (
-                            <span className="mr-1 text-xs px-1 py-0.5 rounded" style={{ backgroundColor: '#FFF3CD', color: '#92400E' }}>מוצר חדש</span>
+                            <span className="mr-1 text-xs px-1 py-0.5 rounded" style={{ backgroundColor: '#FEF3C7', color: '#92400E' }}>מוצר חדש</span>
                           )}
                         </td>
                         <td className="border px-2 py-1">
                           <PriceTypeBadge type={row.priceType} />
                         </td>
-                        <td className="border px-2 py-1 font-medium" style={{ borderColor: '#DDD0BE', color: '#2B1A10' }}>₪{row.price.toFixed(2)}</td>
-                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>{row.minQuantity ?? '—'}</td>
-                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>{row.includesVat ? 'כן' : 'לא'}</td>
-                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>{row.isActive ? 'כן' : 'לא'}</td>
-                        <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE' }}>
+                        <td className="border px-2 py-1 font-medium" style={{ borderColor: '#E0D4C2', color: '#2B1A10' }}>₪{row.price.toFixed(2)}</td>
+                        <td className="border px-2 py-1" style={{ borderColor: '#E0D4C2', color: '#3A2A1A' }}>{row.minQuantity ?? '—'}</td>
+                        <td className="border px-2 py-1" style={{ borderColor: '#E0D4C2', color: '#3A2A1A' }}>{row.includesVat ? 'כן' : 'לא'}</td>
+                        <td className="border px-2 py-1" style={{ borderColor: '#E0D4C2', color: '#3A2A1A' }}>{row.isActive ? 'כן' : 'לא'}</td>
+                        <td className="border px-2 py-1" style={{ borderColor: '#E0D4C2' }}>
                           <span
                             className="px-1.5 py-0.5 rounded text-xs font-medium"
                             style={row.isNew
-                              ? { backgroundColor: '#DCFCE7', color: '#166534' }
+                              ? { backgroundColor: '#DCFCE7', color: '#33623a' }
                               : { backgroundColor: '#DBEAFE', color: '#1E40AF' }}
                           >
                             {row.isNew ? 'חדש' : 'עדכון'}
@@ -1224,16 +1224,16 @@ function PriceImportTab() {
         <Card>
           <div className="flex flex-col items-center py-6 gap-4">
             <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ backgroundColor: '#DCFCE7' }}>
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#166534" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#33623a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="20 6 9 17 4 12"/>
               </svg>
             </div>
             <h3 className="text-base font-semibold" style={{ color: '#2B1A10' }}>ייבוא הושלם בהצלחה</h3>
             <div className="flex gap-6 text-sm flex-wrap justify-center">
-              <span><strong style={{ color: '#166534' }}>{importResult.inserted}</strong> <span style={{ color: '#6B5744' }}>שורות חדשות</span></span>
-              <span><strong style={{ color: '#1E40AF' }}>{importResult.updated}</strong> <span style={{ color: '#6B5744' }}>שורות עודכנו</span></span>
+              <span><strong style={{ color: '#33623a' }}>{importResult.inserted}</strong> <span style={{ color: '#5C4A38' }}>שורות חדשות</span></span>
+              <span><strong style={{ color: '#1E40AF' }}>{importResult.updated}</strong> <span style={{ color: '#5C4A38' }}>שורות עודכנו</span></span>
               {importResult.newProductsCreated > 0 && (
-                <span><strong style={{ color: '#92400E' }}>{importResult.newProductsCreated}</strong> <span style={{ color: '#6B5744' }}>מוצרים נוצרו</span></span>
+                <span><strong style={{ color: '#92400E' }}>{importResult.newProductsCreated}</strong> <span style={{ color: '#5C4A38' }}>מוצרים נוצרו</span></span>
               )}
             </div>
             <Button type="button" variant="outline" onClick={reset}>ייבא קובץ נוסף</Button>
@@ -1267,7 +1267,7 @@ export default function ImportPage() {
   return (
     <div className="max-w-5xl">
       {/* Tabs */}
-      <div className="flex gap-1 mb-6 border-b" style={{ borderColor: '#EAE0D4' }}>
+      <div className="flex gap-1 mb-6 border-b" style={{ borderColor: '#E8DED2' }}>
         {TABS.map(tab => (
           <button
             key={tab.key}

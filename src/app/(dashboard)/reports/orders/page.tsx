@@ -288,7 +288,7 @@ export default function OrdersReportPage() {
         </p>
 
         {/* Unsent-only toggle — full-width row, prominent */}
-        <div className="mt-3 pt-3 border-t" style={{ borderColor: '#EDE0CE' }}>
+        <div className="mt-3 pt-3 border-t" style={{ borderColor: '#E8DED2' }}>
           <label
             className="flex items-center gap-2.5 p-3 rounded-lg cursor-pointer transition-all border"
             style={filters.unsentOnly
@@ -389,7 +389,7 @@ export default function OrdersReportPage() {
                 </div>
                 <div
                   className="overflow-y-auto rounded-lg border"
-                  style={{ maxHeight: '164px', borderColor: '#EDE0CE' }}
+                  style={{ maxHeight: '164px', borderColor: '#E8DED2' }}
                 >
                   {preview.orders.map(order => {
                     const checked = selectedOrderIds.has(order.id);
@@ -401,8 +401,8 @@ export default function OrdersReportPage() {
                         key={order.id}
                         className="flex items-center gap-2.5 px-3 py-1.5 cursor-pointer border-b last:border-b-0"
                         style={{
-                          borderColor: '#EDE0CE',
-                          backgroundColor: checked ? '#FBF3E8' : '#FDFAF5',
+                          borderColor: '#E8DED2',
+                          backgroundColor: checked ? '#FBF3E8' : '#F8F6F2',
                         }}
                       >
                         <input
@@ -427,10 +427,10 @@ export default function OrdersReportPage() {
                           <span className="text-xs flex-shrink-0" style={{ color: '#8A7664' }}>{dateStr}</span>
                         )}
                         {order.urgent && (
-                          <span style={{ flexShrink: 0, display: 'inline-block', padding: '1px 5px', borderRadius: '999px', fontSize: '9px', fontWeight: 700, background: '#FBE9E7', color: '#A03C2C' }}>⚡</span>
+                          <span style={{ flexShrink: 0, display: 'inline-block', padding: '1px 5px', borderRadius: '999px', fontSize: '11.5px', fontWeight: 700, background: '#FEE2E2', color: '#A03C2C' }}>⚡</span>
                         )}
                         {order.reportSentAt && (
-                          <span style={{ flexShrink: 0, display: 'inline-block', padding: '1px 5px', borderRadius: '999px', fontSize: '9px', fontWeight: 600, background: '#EDE6F4', color: '#5A3A8B' }}>נשלח</span>
+                          <span style={{ flexShrink: 0, display: 'inline-block', padding: '1px 5px', borderRadius: '999px', fontSize: '11.5px', fontWeight: 600, background: '#EFEAF5', color: '#5B3F8B' }}>נשלח</span>
                         )}
                       </label>
                     );
@@ -457,7 +457,7 @@ export default function OrdersReportPage() {
                     זה בדיוק מה שהלקוחה תראה במייל
                   </div>
                 </div>
-                <div className="rounded-lg overflow-hidden border" style={{ borderColor: '#EDE0CE' }}>
+                <div className="rounded-lg overflow-hidden border" style={{ borderColor: '#E8DED2' }}>
                   <iframe
                     srcDoc={preview.html}
                     title="תצוגה מקדימה — דוח הזמנות"
@@ -480,7 +480,7 @@ export default function OrdersReportPage() {
               const emailInvalid = !emailEmpty && !isValidEmail(trimmedEmail);
               const emailValid   = !emailEmpty && !emailInvalid;
               return (
-                <div className="space-y-3 pt-2 border-t" style={{ borderColor: '#EDE0CE' }}>
+                <div className="space-y-3 pt-2 border-t" style={{ borderColor: '#E8DED2' }}>
                   <div>
                     <label
                       htmlFor="report-recipient-email"
@@ -536,11 +536,11 @@ export default function OrdersReportPage() {
 }
 
 function PreviewStat({ label, value, tone }: { label: string; value: string; tone?: 'warn' | 'info' }) {
-  const bg = tone === 'warn' ? '#FFF8E1' : tone === 'info' ? '#EDE6F4' : '#FAF7F0';
-  const fg = tone === 'warn' ? '#92400E' : tone === 'info' ? '#5A3A8B' : '#2B1A10';
+  const bg = tone === 'warn' ? '#FBF5E6' : tone === 'info' ? '#EFEAF5' : '#FAF7F0';
+  const fg = tone === 'warn' ? '#92400E' : tone === 'info' ? '#5B3F8B' : '#2B1A10';
   return (
     <div className="rounded-lg p-3" style={{ backgroundColor: bg }}>
-      <div className="text-[10px] uppercase tracking-wider" style={{ color: '#9B7A5A' }}>{label}</div>
+      <div className="text-[11px] uppercase tracking-wider" style={{ color: '#9B7A5A' }}>{label}</div>
       <div className="text-lg font-bold tabular-nums" style={{ color: fg }}>{value}</div>
     </div>
   );

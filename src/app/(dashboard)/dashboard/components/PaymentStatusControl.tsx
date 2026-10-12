@@ -79,7 +79,7 @@ export function PaymentStatusControl({
               style={{ minWidth: 42 }}
             >
               <span
-                className="flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-bold transition-all"
+                className="flex h-5 w-5 items-center justify-center rounded-full text-[11.5px] font-bold transition-all"
                 style={{
                   backgroundColor: active ? c.activeBg : reached ? c.bg : C.card,
                   color: active ? c.activeText : c.text,
@@ -90,7 +90,7 @@ export function PaymentStatusControl({
                 {idx + 1}
               </span>
               <span
-                className="text-[9.5px] whitespace-nowrap"
+                className="text-[11.5px] whitespace-nowrap"
                 style={{ color: active ? C.text : c.text, fontWeight: active ? 700 : 600 }}
               >
                 {c.label}

@@ -104,7 +104,7 @@ function Cell({
         aria-hidden
       />
       <div className="relative flex items-center justify-between gap-3 mb-2">
-        <span className="text-[10.5px] font-bold" style={{ color: C.textSoft }}>
+        <span className="text-[11.5px] font-bold" style={{ color: C.textSoft }}>
           {label}
         </span>
         <span className="w-2 h-2 rounded-full" style={{ backgroundColor: accent, boxShadow: `0 0 0 4px ${glow}` }} />
@@ -112,7 +112,7 @@ function Cell({
       <p className="relative text-[19px] font-bold tabular-nums leading-none" style={{ color: C.text, letterSpacing: '0' }}>
         {value}
       </p>
-      {sub && <p className="relative text-[10.5px] mt-1.5 truncate" style={{ color: C.textSoft }}>{sub}</p>}
+      {sub && <p className="relative text-[11.5px] mt-1.5 truncate" style={{ color: C.textSoft }}>{sub}</p>}
     </Tag>
   );
 }

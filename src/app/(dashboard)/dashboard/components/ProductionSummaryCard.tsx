@@ -76,11 +76,11 @@ function ItemRow({
         style={{ backgroundColor: qtyBgColor ?? C.brandSoft, color: qtyTextColor ?? C.brand, minWidth: '2.5rem', textAlign: 'center' }}>
         {qty}
       </span>
-      <span className="text-[10.5px] shrink-0" style={{ color: C.textMuted }}>
+      <span className="text-[11.5px] shrink-0" style={{ color: C.textMuted }}>
         {orderCount} הז׳
       </span>
       {nearest && (
-        <span className="text-[10.5px] shrink-0" style={{ color: C.textMuted }}>
+        <span className="text-[11.5px] shrink-0" style={{ color: C.textMuted }}>
           | {fmtDate(nearest)}
         </span>
       )}
@@ -135,7 +135,7 @@ export function ProductionSummaryCard() {
 
       {/* ── Card header ── */}
       <div className="flex flex-wrap items-start justify-between gap-3 px-3.5 py-3"
-        style={{ borderBottom: `1px solid ${C.border}`, backgroundColor: '#FDFAF5' }}>
+        style={{ borderBottom: `1px solid ${C.border}`, backgroundColor: '#F8F6F2' }}>
         <div>
           <div className="flex items-center gap-2">
             <h2 className="text-base font-bold" style={{ color: C.espresso }}>סיכום הזמנות לייצור</h2>
@@ -245,7 +245,7 @@ export function ProductionSummaryCard() {
                         qty={pf.כמות_כוללת}
                         orderCount={pf.הזמנות.length}
                         nearest={nearestDate(pf.הזמנות)}
-                        qtyBgColor="#EDE9FE"
+                        qtyBgColor="#EFEAF5"
                         qtyTextColor="#5B21B6"
                       />
                     ))}
@@ -271,7 +271,7 @@ export function ProductionSummaryCard() {
                         qty={item.כמות_כוללת}
                         orderCount={item.הזמנות.length}
                         nearest={nearestDate(item.הזמנות)}
-                        qtyBgColor="#F3F4F6"
+                        qtyBgColor="#EEF0F4"
                         qtyTextColor="#374151"
                       />
                     ))}

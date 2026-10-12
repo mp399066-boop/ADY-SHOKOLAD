@@ -35,8 +35,9 @@ export default function DemoBadge() {
   return (
     <div
       dir="rtl"
+      className="no-print"
       style={{
-        position: 'fixed', bottom: '16px', insetInlineStart: '16px', zIndex: 9999,
+        position: 'fixed', bottom: '16px', left: '50%', transform: 'translateX(-50%)', zIndex: 9999,
         display: 'flex', alignItems: 'center', gap: '10px',
         padding: '8px 14px', borderRadius: '9999px',
         backgroundColor: '#3A2A1A', color: '#FBF6EE',

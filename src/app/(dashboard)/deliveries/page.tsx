@@ -79,18 +79,18 @@ function DeliverySummaryPanel({
           <div
             key={dateKey || '__no_date__'}
             className="relative overflow-hidden flex items-start gap-3 rounded-xl p-3 w-full text-right"
-            style={{ backgroundColor: '#FFFDF9', border: '1px solid #E8D8C6', boxShadow: '0 2px 8px rgba(47,27,20,0.04)' }}
+            style={{ backgroundColor: '#FFFDF9', border: '1px solid #E0D4C2', boxShadow: '0 2px 8px rgba(47,27,20,0.04)' }}
           >
             <span
               className="flex h-9 w-9 items-center justify-center rounded-lg flex-shrink-0 mt-0.5"
-              style={{ backgroundColor: '#E5EEF1', color: '#496D7D' }}
+              style={{ backgroundColor: '#EAF0F5', color: '#496D7D' }}
             >
               {truckIcon}
             </span>
             <div className="min-w-0 flex-1">
-              <p className="text-[10.5px] font-semibold mb-0.5 truncate" style={{ color: '#AF9A87' }}>{formatDateLabel(dateKey)}</p>
-              <p className="text-[20px] font-bold tabular-nums leading-none mb-2" style={{ color: '#2F1B14' }}>{items.length}</p>
-              <div className="space-y-0.5" style={{ borderTop: '1px solid #EEE5D9', paddingTop: '6px' }}>
+              <p className="text-[11.5px] font-semibold mb-0.5 truncate" style={{ color: '#B0A090' }}>{formatDateLabel(dateKey)}</p>
+              <p className="text-[20px] font-bold tabular-nums leading-none mb-2" style={{ color: '#2B1A10' }}>{items.length}</p>
+              <div className="space-y-0.5" style={{ borderTop: '1px solid #E8DED2', paddingTop: '6px' }}>
                 {sortedCities.map(([city, n]) => {
                   const isActive = cityFilter === city;
                   return (
@@ -108,7 +108,7 @@ function DeliverySummaryPanel({
                       </span>
                       <span
                         className="text-[12.5px] font-medium truncate"
-                        style={{ color: isActive ? 'rgba(255,255,255,0.9)' : '#2F1B14' }}
+                        style={{ color: isActive ? 'rgba(255,255,255,0.9)' : '#2B1A10' }}
                       >
                         {city}
                       </span>
@@ -129,9 +129,9 @@ function DeliverySummaryPanel({
 const VALID_STATUSES: Delivery['סטטוס_משלוח'][] = ['ממתין', 'נאסף', 'נמסר'];
 
 const STATUS_STYLE: Record<string, { bg: string; color: string; border: string }> = {
-  'ממתין': { bg: '#FEFCE8', color: '#854D0E', border: '#FEF08A' },
-  'נאסף':  { bg: '#FFF7ED', color: '#C2610F', border: '#FED7AA' },
-  'נמסר':  { bg: '#ECFDF5', color: '#065F46', border: '#6EE7B7' },
+  'ממתין': { bg: '#FBF5E6', color: '#854D0E', border: '#FDE68A' },
+  'נאסף':  { bg: '#FBF0E4', color: '#C2610F', border: '#EDC898' },
+  'נמסר':  { bg: '#E4EEE8', color: '#2D6648', border: '#6EE7B7' },
 };
 
 // ─── Status badge ──────────────────────────────────────────────────────────
@@ -198,7 +198,7 @@ function DeliveryStatusBadge({
       {open && (
         <div
           className="absolute top-full mt-1 right-0 z-50 rounded-xl shadow-lg border py-1 min-w-[110px]"
-          style={{ backgroundColor: '#FFFFFF', borderColor: '#E5DDD3' }}
+          style={{ backgroundColor: '#FFFFFF', borderColor: '#E8DED2' }}
         >
           {VALID_STATUSES.map(s => {
             const st = STATUS_STYLE[s];
@@ -210,7 +210,7 @@ function DeliveryStatusBadge({
                 className="w-full text-right px-3 py-1.5 text-xs flex items-center gap-2 transition-colors"
                 style={{
                   backgroundColor: isCurrent ? st.bg : 'transparent',
-                  color: isCurrent ? st.color : '#3D2A1A',
+                  color: isCurrent ? st.color : '#3A2A1A',
                   fontWeight: isCurrent ? 600 : 400,
                 }}
                 onMouseEnter={e => { if (!isCurrent) (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#FAF7F2'; }}
@@ -722,7 +722,7 @@ function DeliveriesContent() {
             <button
               onClick={() => setCityFilter('')}
               className="text-[11px] px-2 py-0.5 rounded-full border transition-colors hover:opacity-75"
-              style={{ borderColor: '#E8D8C6', color: '#7B604D', backgroundColor: '#FFFDF9' }}
+              style={{ borderColor: '#E0D4C2', color: '#7B604D', backgroundColor: '#FFFDF9' }}
             >
               נקה סינון
             </button>
@@ -805,7 +805,7 @@ function DeliveriesContent() {
                         onMarkDelivered={() => openPlacedModal(d)}
                       />
                       {d.תאריך_משלוח && (
-                        <span className="text-xs" style={{ color: '#7A5840' }}>
+                        <span className="text-xs" style={{ color: '#7B604D' }}>
                           {d.תאריך_משלוח}{d.שעת_משלוח && ` · ${d.שעת_משלוח}`}
                         </span>
                       )}
@@ -843,7 +843,7 @@ function DeliveriesContent() {
                       <div className="flex items-center gap-1.5 flex-wrap text-xs" style={{ color: '#6B4A2D' }}>
                         <span
                           className="font-medium rounded-full px-2 py-0.5"
-                          style={{ backgroundColor: '#EDE9FE', color: '#5B21B6' }}
+                          style={{ backgroundColor: '#EFEAF5', color: '#5B21B6' }}
                         >
                           לנמען
                         </span>
@@ -865,14 +865,14 @@ function DeliveriesContent() {
 
                     {/* Courier selector */}
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs" style={{ color: '#7A5840' }}>שליח:</span>
+                      <span className="text-xs" style={{ color: '#7B604D' }}>שליח:</span>
                       <select
                         value={d.courier_id || ''}
                         onChange={e => assignCourier(d.id, e.target.value || null)}
                         disabled={assigningCourier === d.id}
                         className="text-xs rounded-lg px-2 py-0.5 border"
                         style={{
-                          borderColor: '#C8B89E',
+                          borderColor: '#C9B89E',
                           color: d.courier_id ? '#1E120A' : '#B0A090',
                           backgroundColor: 'white',
                           minWidth: '130px',
@@ -908,7 +908,7 @@ function DeliveriesContent() {
 
                     {/* Notes */}
                     {d.הערות && (
-                      <div className="text-xs p-2 rounded" style={{ backgroundColor: '#F0F9FF', color: '#1E3A5F' }}>
+                      <div className="text-xs p-2 rounded" style={{ backgroundColor: '#EAF0F5', color: '#1E3A5F' }}>
                         {d.הערות}
                       </div>
                     )}
@@ -928,7 +928,7 @@ function DeliveriesContent() {
                         title={d.delivery_token ? 'העתק קישור לשליח' : 'צור קישור לשליח'}
                         className="text-xs px-2.5 py-1.5 rounded-lg font-medium transition-all whitespace-nowrap border"
                         style={{
-                          backgroundColor: d.delivery_token ? '#F0FDF4' : '#F5F3FF',
+                          backgroundColor: d.delivery_token ? '#E4EEE8' : '#F5F0FA',
                           color: d.delivery_token ? '#15803D' : '#6D28D9',
                           borderColor: d.delivery_token ? '#BBF7D0' : '#DDD6FE',
                         }}
@@ -942,7 +942,7 @@ function DeliveriesContent() {
                         onClick={() => handleSendToCourier(d)}
                         title="שלח לשליח בוואטסאפ"
                         className="text-xs px-2.5 py-1.5 rounded-lg font-medium transition-all whitespace-nowrap border flex items-center gap-1"
-                        style={{ backgroundColor: '#F0FDF4', color: '#15803D', borderColor: '#86EFAC' }}
+                        style={{ backgroundColor: '#E4EEE8', color: '#15803D', borderColor: '#86EFAC' }}
                       >
                         <IconWhatsApp className="w-3 h-3" />שלח לשליח
                       </button>
@@ -966,7 +966,7 @@ function DeliveriesContent() {
                       title="מחק משלוח"
                       aria-label="מחק משלוח"
                       className="text-xs px-2 py-1.5 rounded-lg font-medium transition-all whitespace-nowrap border flex items-center gap-1"
-                      style={{ backgroundColor: '#FFFFFF', color: '#9D4B4A', borderColor: '#E4C2BE' }}
+                      style={{ backgroundColor: '#FFFFFF', color: '#9D4B4A', borderColor: '#D8BCB6' }}
                     >
                       <IconTrash className="w-3.5 h-3.5" />
                       מחק
@@ -1218,7 +1218,7 @@ function CouriersContent() {
                     {!c.פעיל && (
                       <span
                         className="text-xs px-2 py-0.5 rounded-full"
-                        style={{ backgroundColor: '#F3F4F6', color: '#6B7280', border: '1px solid #E5E7EB' }}
+                        style={{ backgroundColor: '#EEF0F4', color: '#6B7280', border: '1px solid #EEF0F4' }}
                       >
                         לא פעיל
                       </span>
@@ -1228,7 +1228,7 @@ function CouriersContent() {
                     {c.טלפון_שליח}
                   </a>
                   {c.הערות && (
-                    <div className="text-xs" style={{ color: '#7A5840' }}>{c.הערות}</div>
+                    <div className="text-xs" style={{ color: '#7B604D' }}>{c.הערות}</div>
                   )}
                   {/* Delivery stats */}
                   <div className="flex gap-2 flex-wrap pt-0.5">
@@ -1314,7 +1314,7 @@ function CouriersContent() {
               className="w-4 h-4 rounded"
               style={{ accentColor: '#7C5230' }}
             />
-            <label htmlFor="courier-active" className="text-sm cursor-pointer" style={{ color: '#3D2A1A' }}>
+            <label htmlFor="courier-active" className="text-sm cursor-pointer" style={{ color: '#3A2A1A' }}>
               שליח פעיל
             </label>
           </div>
@@ -1416,7 +1416,7 @@ function ArchiveContent() {
                   </Link>
                   <span
                     className="inline-flex items-center text-xs font-medium rounded-full px-2.5 py-0.5 border"
-                    style={{ backgroundColor: '#ECFDF5', color: '#065F46', borderColor: '#6EE7B7' }}
+                    style={{ backgroundColor: '#E4EEE8', color: '#2D6648', borderColor: '#6EE7B7' }}
                   >
                     נמסר
                   </span>
@@ -1442,7 +1442,7 @@ function ArchiveContent() {
                 )}
 
                 {d.שליחים?.שם_שליח && (
-                  <div className="text-xs" style={{ color: '#7A5840' }}>
+                  <div className="text-xs" style={{ color: '#7B604D' }}>
                     שליח: {d.שליחים.שם_שליח}
                   </div>
                 )}
@@ -1454,7 +1454,7 @@ function ArchiveContent() {
                 title="מחק משלוח"
                 aria-label="מחק משלוח"
                 className="text-xs px-2 py-1.5 rounded-lg font-medium transition-all whitespace-nowrap border flex items-center gap-1 self-start"
-                style={{ backgroundColor: '#FFFFFF', color: '#9D4B4A', borderColor: '#E4C2BE' }}
+                style={{ backgroundColor: '#FFFFFF', color: '#9D4B4A', borderColor: '#D8BCB6' }}
               >
                 <IconTrash className="w-3.5 h-3.5" />
                 מחק

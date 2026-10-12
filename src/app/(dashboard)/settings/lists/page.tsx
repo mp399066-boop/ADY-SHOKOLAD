@@ -32,7 +32,7 @@ const SETTINGS_TABS = [
 
 function SettingsTabs({ active, isAdmin }: { active: string; isAdmin: boolean }) {
   return (
-    <div className="flex gap-1 mb-6 border-b" style={{ borderColor: '#EAE0D4' }}>
+    <div className="flex gap-1 mb-6 border-b" style={{ borderColor: '#E8DED2' }}>
       {SETTINGS_TABS.filter(t => !t.adminOnly || isAdmin).map(tab => {
         const isActive = tab.href === active;
         return (
@@ -251,7 +251,7 @@ export default function ManagedListsPage() {
         {loading ? (
           <div className="flex justify-center py-10"><LoadingSpinner /></div>
         ) : loadError ? (
-          <div className="rounded-xl border px-4 py-6 text-center text-sm" style={{ borderColor: '#D8BCB6', backgroundColor: '#F7EEEC', color: '#8A3228' }}>
+          <div className="rounded-xl border px-4 py-6 text-center text-sm" style={{ borderColor: '#D8BCB6', backgroundColor: '#F0EAE8', color: '#8A3228' }}>
             {loadError}
             <div className="mt-3">
               <Button variant="outline" size="sm" onClick={() => load(selectedKey)}>נסה שוב</Button>
@@ -260,7 +260,7 @@ export default function ManagedListsPage() {
         ) : rows.length === 0 ? (
           <EmptyState title="אין ערכים ברשימה" description="הוסף/י את הערך הראשון בעזרת השדה למעלה." />
         ) : (
-          <div className="rounded-xl border overflow-hidden" style={{ borderColor: '#EFE7DA' }}>
+          <div className="rounded-xl border overflow-hidden" style={{ borderColor: '#F0EAE0' }}>
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ backgroundColor: '#FAF7F0', color: '#8A7664' }}>

@@ -38,7 +38,7 @@ const SETTINGS_TABS = [
 function SettingsTabs({ activeHref, isAdmin }: { activeHref: string; isAdmin: boolean }) {
   const tabs = SETTINGS_TABS.filter(t => !t.adminOnly || isAdmin);
   return (
-    <div className="flex gap-1 mb-6 border-b" style={{ borderColor: '#EAE0D4' }}>
+    <div className="flex gap-1 mb-6 border-b" style={{ borderColor: '#E8DED2' }}>
       {tabs.map(tab => {
         const isActive = tab.href === activeHref;
         return (
@@ -102,10 +102,10 @@ interface RunResponse {
 // ── Helper components ──────────────────────────────────────────────────────
 function StatusPill({ tone, label }: { tone: 'green' | 'amber' | 'red' | 'gray'; label: string }) {
   const styles = {
-    green: { bg: '#DCFCE7', fg: '#166534' },
+    green: { bg: '#DCFCE7', fg: '#33623a' },
     amber: { bg: '#FEF3C7', fg: '#92400E' },
-    red:   { bg: '#FEE2E2', fg: '#991B1B' },
-    gray:  { bg: '#E5E7EB', fg: '#374151' },
+    red:   { bg: '#FEE2E2', fg: '#8A3228' },
+    gray:  { bg: '#EEF0F4', fg: '#374151' },
   }[tone];
   return (
     <span className="px-1.5 py-0.5 rounded text-xs font-medium" style={{ backgroundColor: styles.bg, color: styles.fg }}>
@@ -151,8 +151,8 @@ function BackfillSection({
 }) {
   const allSelected = rows.length > 0 && rows.every(r => selected.has(r.order_id));
   const headerStyle = headerTone === 'red'
-    ? { bg: '#FEF2F2', fg: '#991B1B' }
-    : { bg: '#FEF9EC', fg: '#92400E' };
+    ? { bg: '#F0EAE8', fg: '#8A3228' }
+    : { bg: '#FBF5E6', fg: '#92400E' };
   return (
     <Card className="mb-4">
       <CardHeader>
@@ -174,7 +174,7 @@ function BackfillSection({
       </CardHeader>
       <p className="text-xs mb-3" style={{ color: '#6B4A2D' }}>{helper}</p>
       {rows.length === 0 ? (
-        <div className="py-4 text-center text-sm font-semibold rounded" style={{ color: '#15803D', backgroundColor: '#F0FDF4' }}>
+        <div className="py-4 text-center text-sm font-semibold rounded" style={{ color: '#15803D', backgroundColor: '#E4EEE8' }}>
           הכל תקין — אין הזמנות שדורשות פעולה.
         </div>
       ) : (
@@ -188,18 +188,18 @@ function BackfillSection({
           <div className="overflow-x-auto">
             <table className="w-full text-xs border-collapse" dir="rtl">
               <thead>
-                <tr style={{ backgroundColor: '#F5EFE6' }}>
-                  <th className="border px-2 py-1 text-right w-8" style={{ borderColor: '#DDD0BE' }}></th>
-                  <th className="border px-2 py-1 text-right" style={{ borderColor: '#DDD0BE', color: '#5C3410' }}>הזמנה</th>
-                  <th className="border px-2 py-1 text-right" style={{ borderColor: '#DDD0BE', color: '#5C3410' }}>סטטוס</th>
-                  <th className="border px-2 py-1 text-right" style={{ borderColor: '#DDD0BE', color: '#5C3410' }}>לקוחה</th>
-                  <th className="border px-2 py-1 text-right" style={{ borderColor: '#DDD0BE', color: '#5C3410' }}>פריטים</th>
+                <tr style={{ backgroundColor: '#F0EAE0' }}>
+                  <th className="border px-2 py-1 text-right w-8" style={{ borderColor: '#E0D4C2' }}></th>
+                  <th className="border px-2 py-1 text-right" style={{ borderColor: '#E0D4C2', color: '#5C3410' }}>הזמנה</th>
+                  <th className="border px-2 py-1 text-right" style={{ borderColor: '#E0D4C2', color: '#5C3410' }}>סטטוס</th>
+                  <th className="border px-2 py-1 text-right" style={{ borderColor: '#E0D4C2', color: '#5C3410' }}>לקוחה</th>
+                  <th className="border px-2 py-1 text-right" style={{ borderColor: '#E0D4C2', color: '#5C3410' }}>פריטים</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((row, i) => (
-                  <tr key={row.order_id} style={{ backgroundColor: i % 2 === 0 ? '#FFFFFF' : '#FBF7F2' }}>
-                    <td className="border px-2 py-1 text-center" style={{ borderColor: '#DDD0BE' }}>
+                  <tr key={row.order_id} style={{ backgroundColor: i % 2 === 0 ? '#FFFFFF' : '#F8F6F2' }}>
+                    <td className="border px-2 py-1 text-center" style={{ borderColor: '#E0D4C2' }}>
                       <input
                         type="checkbox"
                         checked={selected.has(row.order_id)}
@@ -207,18 +207,18 @@ function BackfillSection({
                         style={{ accentColor: '#8B5E34' }}
                       />
                     </td>
-                    <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>
+                    <td className="border px-2 py-1" style={{ borderColor: '#E0D4C2', color: '#3A2A1A' }}>
                       <Link href={`/orders/${row.order_id}`} className="hover:underline" style={{ color: '#5C3410' }}>
                         {row.order_number || row.order_id.slice(0, 8)}
                       </Link>
                     </td>
-                    <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>
+                    <td className="border px-2 py-1" style={{ borderColor: '#E0D4C2', color: '#3A2A1A' }}>
                       {row.order_status || '—'}
                     </td>
-                    <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>
+                    <td className="border px-2 py-1" style={{ borderColor: '#E0D4C2', color: '#3A2A1A' }}>
                       {row.customer_name || '—'}
                     </td>
-                    <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>
+                    <td className="border px-2 py-1" style={{ borderColor: '#E0D4C2', color: '#3A2A1A' }}>
                       <PreviewItemsCell items={row.items} />
                     </td>
                   </tr>
@@ -427,17 +427,17 @@ export default function InventoryBackfillPage() {
         <Card className="mt-4">
           <CardHeader><CardTitle>תוצאות תיקון</CardTitle></CardHeader>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4 text-sm">
-            <div className="p-3 rounded-lg text-center" style={{ backgroundColor: '#F0FDF4' }}>
-              <div className="text-2xl font-bold" style={{ color: '#166534' }}>{result.deduct.succeeded}</div>
-              <div className="text-xs" style={{ color: '#166534' }}>ירידות שהושלמו</div>
+            <div className="p-3 rounded-lg text-center" style={{ backgroundColor: '#E4EEE8' }}>
+              <div className="text-2xl font-bold" style={{ color: '#33623a' }}>{result.deduct.succeeded}</div>
+              <div className="text-xs" style={{ color: '#33623a' }}>ירידות שהושלמו</div>
             </div>
-            <div className="p-3 rounded-lg text-center" style={{ backgroundColor: '#EFF6FF' }}>
+            <div className="p-3 rounded-lg text-center" style={{ backgroundColor: '#EAF0F5' }}>
               <div className="text-2xl font-bold" style={{ color: '#1E40AF' }}>{result.restore.succeeded}</div>
               <div className="text-xs" style={{ color: '#1E40AF' }}>החזרות שהושלמו</div>
             </div>
-            <div className="p-3 rounded-lg text-center" style={{ backgroundColor: result.errored > 0 ? '#FEF2F2' : '#F0FDF4' }}>
-              <div className="text-2xl font-bold" style={{ color: result.errored > 0 ? '#991B1B' : '#166534' }}>{result.errored}</div>
-              <div className="text-xs" style={{ color: result.errored > 0 ? '#991B1B' : '#166534' }}>שגיאות</div>
+            <div className="p-3 rounded-lg text-center" style={{ backgroundColor: result.errored > 0 ? '#F0EAE8' : '#E4EEE8' }}>
+              <div className="text-2xl font-bold" style={{ color: result.errored > 0 ? '#8A3228' : '#33623a' }}>{result.errored}</div>
+              <div className="text-xs" style={{ color: result.errored > 0 ? '#8A3228' : '#33623a' }}>שגיאות</div>
             </div>
             <div className="p-3 rounded-lg text-center" style={{ backgroundColor: '#FAF7F0' }}>
               <div className="text-2xl font-bold" style={{ color: '#5C3410' }}>{result.deduct.processed + result.restore.processed}</div>
@@ -447,25 +447,25 @@ export default function InventoryBackfillPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-xs border-collapse" dir="rtl">
               <thead>
-                <tr style={{ backgroundColor: '#F5EFE6' }}>
-                  <th className="border px-2 py-1 text-right" style={{ borderColor: '#DDD0BE', color: '#5C3410' }}>הזמנה</th>
-                  <th className="border px-2 py-1 text-right" style={{ borderColor: '#DDD0BE', color: '#5C3410' }}>פעולה</th>
-                  <th className="border px-2 py-1 text-right" style={{ borderColor: '#DDD0BE', color: '#5C3410' }}>תוצאה</th>
-                  <th className="border px-2 py-1 text-right" style={{ borderColor: '#DDD0BE', color: '#5C3410' }}>פרטים</th>
+                <tr style={{ backgroundColor: '#F0EAE0' }}>
+                  <th className="border px-2 py-1 text-right" style={{ borderColor: '#E0D4C2', color: '#5C3410' }}>הזמנה</th>
+                  <th className="border px-2 py-1 text-right" style={{ borderColor: '#E0D4C2', color: '#5C3410' }}>פעולה</th>
+                  <th className="border px-2 py-1 text-right" style={{ borderColor: '#E0D4C2', color: '#5C3410' }}>תוצאה</th>
+                  <th className="border px-2 py-1 text-right" style={{ borderColor: '#E0D4C2', color: '#5C3410' }}>פרטים</th>
                 </tr>
               </thead>
               <tbody>
                 {result.results.map((r, i) => (
-                  <tr key={`${r.direction}-${r.order_id}`} style={{ backgroundColor: i % 2 === 0 ? '#FFFFFF' : '#FBF7F2' }}>
-                    <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>
+                  <tr key={`${r.direction}-${r.order_id}`} style={{ backgroundColor: i % 2 === 0 ? '#FFFFFF' : '#F8F6F2' }}>
+                    <td className="border px-2 py-1" style={{ borderColor: '#E0D4C2', color: '#3A2A1A' }}>
                       <Link href={`/orders/${r.order_id}`} className="hover:underline" style={{ color: '#5C3410' }}>
                         {r.order_number || r.order_id.slice(0, 8)}
                       </Link>
                     </td>
-                    <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>
+                    <td className="border px-2 py-1" style={{ borderColor: '#E0D4C2', color: '#3A2A1A' }}>
                       {r.direction === 'deduct' ? 'הורדה' : 'החזרה'}
                     </td>
-                    <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE' }}>
+                    <td className="border px-2 py-1" style={{ borderColor: '#E0D4C2' }}>
                       {r.result === 'deducted'     && <StatusPill tone="green" label="ירד מהמלאי" />}
                       {r.result === 'restored'     && <StatusPill tone="green" label="הוחזר למלאי" />}
                       {r.result === 'already_done' && <StatusPill tone="gray"  label="כבר היה רשום" />}
@@ -474,10 +474,10 @@ export default function InventoryBackfillPage() {
                       {(r.result === 'error' || r.result === 'fetch_failed') && <StatusPill tone="red"   label="שגיאה" />}
                       {r.result === 'flag_off'     && <StatusPill tone="gray"  label="שירות כבוי" />}
                     </td>
-                    <td className="border px-2 py-1" style={{ borderColor: '#DDD0BE', color: '#3D2B1A' }}>
+                    <td className="border px-2 py-1" style={{ borderColor: '#E0D4C2', color: '#3A2A1A' }}>
                       {(r.result === 'deducted' || r.result === 'restored')
                         && `${r.product_count ?? 0} מוצרים · ${r.petit_four_types ?? 0} סוגי פטיפורים`}
-                      {r.error && <span style={{ color: '#991B1B' }}>{r.error}</span>}
+                      {r.error && <span style={{ color: '#8A3228' }}>{r.error}</span>}
                     </td>
                   </tr>
                 ))}

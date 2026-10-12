@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { attachDeliveryRecipients } from '@/lib/order-recipients';
 import { dbErrorResponse } from '@/lib/api-error';
+import { fetchAllPages } from '@/lib/supabase/fetch-all';
 
 interface OrderRow {
   id: string;
@@ -52,7 +53,8 @@ export async function GET(req: NextRequest) {
 
   // ── Archive mode: query משלוחים directly for נמסר ──────────────────────────
   if (mode === 'archive') {
-    const { data, error } = await supabase
+    // Paged: the archive only grows, and PostgREST stops at 1,000 rows.
+    const { data, error } = await fetchAllPages((from, to) => supabase
       .from('משלוחים')
       // `*` rather than an explicit column list so נמען_id comes along on
       // databases that have migration 053 (and is simply absent on those
@@ -63,7 +65,9 @@ export async function GET(req: NextRequest) {
         שליחים!courier_id(שם_שליח)
       `)
       .eq('סטטוס_משלוח', 'נמסר')
-      .order('delivered_at', { ascending: false });
+      .order('delivered_at', { ascending: false })
+      .order('id')
+      .range(from, to));
     if (error) return dbErrorResponse(error, 'deliveries');
     const withRecipients = await attachDeliveryRecipients(
       supabase,

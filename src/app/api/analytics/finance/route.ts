@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { dbErrorResponse } from '@/lib/api-error';
+import { fetchAllPages } from '@/lib/supabase/fetch-all';
 
 // GET /api/analytics/finance?range=today|week|month|30days
 // Read-only — returns aggregated revenue data. Never writes to DB.
@@ -69,12 +70,16 @@ export async function GET(req: NextRequest) {
       // Current unpaid (not range-filtered — outstanding balance is always
       // current). Deliberately does NOT exclude 'הושלמה בהצלחה' — a completed
       // order with a balance still owed is exactly the debt to collect.
-      supabase
+      // Paged so the debt total stays right past PostgREST's 1,000-row cap.
+      fetchAllPages((from, to) => supabase
         .from('הזמנות')
-        .select('סך_הכל_לתשלום, דמי_משלוח', { count: 'exact' })
+        .select('סך_הכל_לתשלום, דמי_משלוח')
         .in('סטטוס_תשלום', ['ממתין', 'חלקי'])
         .neq('סטטוס_הזמנה', 'בוטלה')
-        .neq('סטטוס_הזמנה', 'טיוטה'),
+        .neq('סטטוס_הזמנה', 'טיוטה')
+        .order('id')
+        .range(from, to))
+        .then(r => ({ ...r, count: r.data.length })),
 
       // All paid in last 30 days — for the daily chart (always 30-day window)
       supabase

@@ -153,7 +153,7 @@ export function ProductionRecipeModal({
         )}
 
         {hasMissing && (
-          <div className="rounded-lg border px-3 py-2 text-sm font-bold" style={{ borderColor: '#E4C2BE', color: C.red, backgroundColor: C.redSoft }}>
+          <div className="rounded-lg border px-3 py-2 text-sm font-bold" style={{ borderColor: '#D8BCB6', color: C.red, backgroundColor: C.redSoft }}>
             יש חומרי גלם שלא מספיקים לייצור הכמות הזו.
           </div>
         )}

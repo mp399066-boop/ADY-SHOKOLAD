@@ -208,13 +208,13 @@ export function KitchenTeamChat() {
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="fixed bottom-5 left-5 z-40 flex items-center gap-2 rounded-full px-4 py-2.5 shadow-lg transition-transform hover:scale-[1.03]"
+          className="no-print fixed bottom-5 left-5 z-40 flex items-center gap-2 rounded-full px-4 py-2.5 shadow-lg transition-transform hover:scale-[1.03]"
           style={{ backgroundColor: C.brand, color: '#FFFDF9' }}
         >
           <span className="text-[12.5px] font-bold">הודעות צוות</span>
           {unread > 0 && (
             <span
-              className="flex items-center justify-center text-[10px] font-bold rounded-full min-w-[18px] h-[18px] px-1"
+              className="flex items-center justify-center text-[11px] font-bold rounded-full min-w-[18px] h-[18px] px-1"
               style={{ backgroundColor: C.gold, color: C.espresso }}
             >
               {unread > 99 ? '99+' : unread}
@@ -226,7 +226,7 @@ export function KitchenTeamChat() {
       {/* Chat panel */}
       {open && (
         <div
-          className="fixed bottom-5 left-5 z-40 flex flex-col rounded-2xl shadow-2xl overflow-hidden"
+          className="no-print fixed bottom-5 left-5 z-40 flex flex-col rounded-2xl shadow-2xl overflow-hidden"
           style={{
             width: 'min(360px, calc(100vw - 2.5rem))',
             height: 'min(520px, calc(100vh - 6rem))',
@@ -241,13 +241,13 @@ export function KitchenTeamChat() {
           >
             <div>
               <h3 className="text-[13.5px] font-bold" style={{ color: C.brand }}>הודעות צוות</h3>
-              <p className="text-[10.5px] mt-0.5" style={{ color: C.textSoft }}>כתבי הודעה לעדי או לצוות</p>
+              <p className="text-[11.5px] mt-0.5" style={{ color: C.textSoft }}>כתבי הודעה לעדי או לצוות</p>
             </div>
             <div className="flex items-center gap-1.5">
               <button
                 type="button"
                 onClick={toggleMute}
-                className="text-[10.5px] font-semibold rounded-md px-2 py-1 transition-opacity hover:opacity-70"
+                className="text-[11.5px] font-semibold rounded-md px-2 py-1 transition-opacity hover:opacity-70"
                 style={{ color: muted ? C.red : C.textSoft, backgroundColor: C.card, border: `1px solid ${C.border}` }}
                 title="השתק צליל"
               >
@@ -278,7 +278,7 @@ export function KitchenTeamChat() {
                     <span className="text-[11px] font-bold" style={{ color: C.brand }}>
                       {m.sender_name || 'צוות'}
                     </span>
-                    <span className="text-[9.5px]" style={{ color: C.textMuted }}>
+                    <span className="text-[11.5px]" style={{ color: C.textMuted }}>
                       {formatTime(m.created_at)}
                     </span>
                   </div>
@@ -293,7 +293,7 @@ export function KitchenTeamChat() {
           {/* Input */}
           <div className="px-3 py-2.5 space-y-2" style={{ borderTop: `1px solid ${C.border}` }}>
             {error && (
-              <p className="text-[10.5px]" style={{ color: C.red }}>{error}</p>
+              <p className="text-[11.5px]" style={{ color: C.red }}>{error}</p>
             )}
             <div className="flex items-end gap-2">
               <textarea

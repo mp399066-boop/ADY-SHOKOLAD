@@ -1,6 +1,7 @@
 import { sendEmail } from '@/lib/email-transport';
 import { createAdminClient } from '@/lib/supabase/server';
 import { logActivity, SYSTEM_ACTOR } from '@/lib/activity-log';
+import { appBaseUrl } from '@/lib/app-url';
 
 // Internal "new order received" notification to the business owner.
 // Visual language mirrors the customer-facing email (src/lib/email.ts) —
@@ -429,8 +430,7 @@ export async function sendAdminNewOrderAlert(orderId: string, options: AdminAler
     };
   });
 
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL?.replace(/\/$/, '') ?? '';
-  const orderLink = baseUrl ? `${baseUrl}/orders/${orderId}` : null;
+  const orderLink = `${appBaseUrl()}/orders/${orderId}`;
 
   const args = {
     orderNumber: (order as Record<string, unknown>).מספר_הזמנה as string ?? '',

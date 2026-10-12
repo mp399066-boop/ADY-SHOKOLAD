@@ -76,7 +76,7 @@ function DrillModal({ state, onClose }: { state: NonNullable<DrillState>; onClos
           <div>
             <h3 className="text-[13px] font-bold" style={{ color: C.text }}>{state.title}</h3>
             {state.subtitle && (
-              <p className="text-[10px] mt-0.5" style={{ color: C.textMuted }}>{state.subtitle}</p>
+              <p className="text-[11px] mt-0.5" style={{ color: C.textMuted }}>{state.subtitle}</p>
             )}
           </div>
           <button
@@ -108,13 +108,13 @@ function DrillModal({ state, onClose }: { state: NonNullable<DrillState>; onClos
                       {item.primary}
                     </span>
                     {item.secondary && (
-                      <span className="text-[9.5px] flex-shrink-0 tabular-nums" style={{ color: C.textMuted }}>
+                      <span className="text-[11.5px] flex-shrink-0 tabular-nums" style={{ color: C.textMuted }}>
                         {item.secondary}
                       </span>
                     )}
                     {item.badge && (
                       <span
-                        className="text-[9px] font-medium px-1.5 py-0.5 rounded-md flex-shrink-0"
+                        className="text-[11.5px] font-medium px-1.5 py-0.5 rounded-md flex-shrink-0"
                         style={{ backgroundColor: item.badgeBg ?? C.brandSoft, color: item.badgeColor ?? C.brand }}
                       >
                         {item.badge}
@@ -128,7 +128,7 @@ function DrillModal({ state, onClose }: { state: NonNullable<DrillState>; onClos
                         {formatCurrency(item.amount)}
                       </span>
                     )}
-                    <span className="text-[10px] flex-shrink-0" style={{ color: C.textMuted }}>←</span>
+                    <span className="text-[11px] flex-shrink-0" style={{ color: C.textMuted }}>←</span>
                   </Link>
                 </li>
               ))}
@@ -261,7 +261,7 @@ function OrderStatusDonut({
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
           <span className="text-[17px] font-bold tabular-nums leading-none" style={{ color: C.text }}>{total}</span>
-          <span className="text-[9px] font-semibold" style={{ color: C.textMuted }}>הזמנות</span>
+          <span className="text-[11.5px] font-semibold" style={{ color: C.textMuted }}>הזמנות</span>
         </div>
       </div>
       <div className="flex flex-col gap-1.5 min-w-0">
@@ -277,7 +277,7 @@ function OrderStatusDonut({
                 <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: sl.color }} />
                 <span className="text-[11px] truncate" style={{ color: C.textSoft }}>{sl.label}</span>
                 <span className="text-[11px] font-bold tabular-nums mr-auto" style={{ color: C.text }}>{sl.count}</span>
-                <span className="text-[9px]" style={{ color: C.textMuted }}>←</span>
+                <span className="text-[11.5px]" style={{ color: C.textMuted }}>←</span>
               </button>
             ) : (
               <div className="flex items-center gap-1.5">
@@ -332,7 +332,7 @@ function DeliveryScheduleBars({
           const col = (
             <div className="flex-1 flex flex-col items-center gap-1">
               <span
-                className="text-[9px] font-bold tabular-nums"
+                className="text-[11.5px] font-bold tabular-nums"
                 style={{ color: counts[i] > 0 ? C.text : C.textMuted }}
               >
                 {counts[i] > 0 ? counts[i] : ''}
@@ -357,7 +357,7 @@ function DeliveryScheduleBars({
               style={{ cursor: 'pointer' }}
             >
               <span
-                className="text-[9px] font-bold tabular-nums"
+                className="text-[11.5px] font-bold tabular-nums"
                 style={{ color: counts[i] > 0 ? C.text : C.textMuted }}
               >
                 {counts[i] > 0 ? counts[i] : ''}
@@ -375,7 +375,7 @@ function DeliveryScheduleBars({
           ) : (
             <div key={day} className="flex-1 flex flex-col items-center gap-1">
               <span
-                className="text-[9px] font-bold tabular-nums"
+                className="text-[11.5px] font-bold tabular-nums"
                 style={{ color: counts[i] > 0 ? C.text : C.textMuted }}
               >
                 {counts[i] > 0 ? counts[i] : ''}
@@ -400,7 +400,7 @@ function DeliveryScheduleBars({
           return (
             <div key={day} className="flex-1 flex flex-col items-center">
               <span
-                className="text-[9px] font-semibold truncate w-full text-center"
+                className="text-[11.5px] font-semibold truncate w-full text-center"
                 style={{ color: isToday ? C.brand : C.textMuted }}
               >
                 {isToday ? 'היום' : fmtDayShort(day)}
@@ -452,14 +452,14 @@ function AttentionList({ items, onNavigate }: { items: QueueItem[]; onNavigate: 
               style={{ backgroundColor: C.card, border: `1px solid ${C.border}` }}
             >
               <span
-                className="text-[9.5px] font-bold px-1.5 py-0.5 rounded-md flex-shrink-0 mt-0.5"
+                className="text-[11.5px] font-bold px-1.5 py-0.5 rounded-md flex-shrink-0 mt-0.5"
                 style={{ backgroundColor: `${color}18`, color }}
               >
                 {label}
               </span>
               <div className="flex-1 min-w-0">
                 <p className="text-[11.5px] font-semibold truncate" style={{ color: C.text }}>{item.title}</p>
-                {item.meta && <p className="text-[10px] truncate" style={{ color: C.textMuted }}>{item.meta}</p>}
+                {item.meta && <p className="text-[11px] truncate" style={{ color: C.textMuted }}>{item.meta}</p>}
               </div>
               <span className="text-[11px] flex-shrink-0 mt-0.5" style={{ color: C.textMuted }}>←</span>
             </Link>
@@ -596,7 +596,7 @@ function OrdersTab({
               <button
                 type="button"
                 onClick={() => onNavigate('/orders?filter=urgent')}
-                className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[10px] font-bold transition-opacity hover:opacity-70"
+                className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[11px] font-bold transition-opacity hover:opacity-70"
                 style={{ backgroundColor: C.redSoft, color: C.red, cursor: 'pointer' }}
                 title="לכל ההזמנות הדחופות"
               >
@@ -681,12 +681,12 @@ function FinKpiCard({
 }) {
   const base = (
     <>
-      <p className="text-[9.5px] font-semibold uppercase tracking-wide" style={{ color: C.textMuted }}>{label}</p>
+      <p className="text-[11.5px] font-semibold uppercase tracking-wide" style={{ color: C.textMuted }}>{label}</p>
       <p className="text-[20px] font-bold tabular-nums leading-none" style={{ color: amount > 0 ? accent : C.textMuted }}>
         {formatCurrency(amount)}
       </p>
       {count > 0 && (
-        <p className="text-[9.5px] font-medium" style={{ color: C.textMuted }}>
+        <p className="text-[11.5px] font-medium" style={{ color: C.textMuted }}>
           <span
             className="inline-block px-1.5 py-0.5 rounded-full tabular-nums"
             style={{ backgroundColor: accentBg, color: accent }}
@@ -697,13 +697,13 @@ function FinKpiCard({
         </p>
       )}
       {typeof pending === 'number' && pending > 0 && (
-        <p className="text-[9.5px] font-semibold tabular-nums" style={{ color: C.amber }}>
+        <p className="text-[11.5px] font-semibold tabular-nums" style={{ color: C.amber }}>
           + {formatCurrency(pending)} טרם שולם
           {pendingCount ? ` (${pendingCount})` : ''}
         </p>
       )}
       {typeof shipping === 'number' && shipping > 0 && (
-        <p className="text-[9px] font-medium tabular-nums" style={{ color: C.textMuted }}>
+        <p className="text-[11.5px] font-medium tabular-nums" style={{ color: C.textMuted }}>
           מתוכם {formatCurrency(shipping)} דמי משלוח
         </p>
       )}
@@ -786,7 +786,7 @@ function FinBarChart({
           return (
             <div key={key} className="flex-1 text-center overflow-hidden">
               {show && (
-                <span className="text-[7px] font-medium leading-none" style={{ color: C.textMuted }}>
+                <span className="text-[11.5px] font-medium leading-none" style={{ color: C.textMuted }}>
                   {label}
                 </span>
               )}
@@ -829,20 +829,20 @@ function FinOrderList({
             className="w-full flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-right transition-opacity hover:opacity-75"
             style={{ backgroundColor: bg ?? C.brandSoft, border: `1px solid ${C.border}` }}
           >
-            <span className="font-mono text-[9.5px] flex-shrink-0 w-14 truncate" style={{ color: C.textMuted }}>
+            <span className="font-mono text-[11.5px] flex-shrink-0 w-14 truncate" style={{ color: C.textMuted }}>
               {o.orderNumber}
             </span>
             <span className="text-[11px] truncate flex-1" style={{ color: C.text }}>
               {o.customerName}
             </span>
             {o.date && (
-              <span className="text-[9.5px] flex-shrink-0 tabular-nums" style={{ color: C.textMuted }}>
+              <span className="text-[11.5px] flex-shrink-0 tabular-nums" style={{ color: C.textMuted }}>
                 {o.date.slice(5).replace('-', '/')}
               </span>
             )}
             {showStatus && o.orderStatus && (
               <span
-                className="text-[9px] font-medium px-1.5 py-0.5 rounded-md flex-shrink-0"
+                className="text-[11.5px] font-medium px-1.5 py-0.5 rounded-md flex-shrink-0"
                 style={{ backgroundColor: C.amberSoft, color: C.amber }}
               >
                 {o.orderStatus}
@@ -850,7 +850,7 @@ function FinOrderList({
             )}
             {o.paymentMethod && !showStatus && (
               <span
-                className="text-[9px] font-medium px-1.5 py-0.5 rounded-md flex-shrink-0"
+                className="text-[11.5px] font-medium px-1.5 py-0.5 rounded-md flex-shrink-0"
                 style={{ backgroundColor: C.card, color: C.textSoft }}
               >
                 {o.paymentMethod}
@@ -858,7 +858,7 @@ function FinOrderList({
             )}
             <span className="text-[11px] font-bold tabular-nums flex-shrink-0"
               style={{ color: amountColor ?? C.green }}>{formatCurrency(o.amount)}</span>
-            <span className="text-[10px] flex-shrink-0" style={{ color: C.textMuted }}>←</span>
+            <span className="text-[11px] flex-shrink-0" style={{ color: C.textMuted }}>←</span>
           </button>
         </li>
       ))}
@@ -1050,7 +1050,7 @@ function FinanceTab({ onNavigate }: { onNavigate: (path: string) => void }) {
                   <button
                     key={mode}
                     onClick={() => setChartMode(mode)}
-                    className="text-[9.5px] font-semibold px-2.5 py-1 rounded-md transition-all"
+                    className="text-[11.5px] font-semibold px-2.5 py-1 rounded-md transition-all"
                     style={{
                       backgroundColor: chartMode === mode ? C.card : 'transparent',
                       color: chartMode === mode ? C.text : C.textMuted,
@@ -1073,11 +1073,11 @@ function FinanceTab({ onNavigate }: { onNavigate: (path: string) => void }) {
               />
             )}
             <div className="flex items-center gap-4 mt-2">
-              <span className="flex items-center gap-1.5 text-[9px]" style={{ color: C.textMuted }}>
+              <span className="flex items-center gap-1.5 text-[11.5px]" style={{ color: C.textMuted }}>
                 <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: C.brand }} />
                 {chartMode === 'daily' ? 'היום' : 'החודש הנוכחי'}
               </span>
-              <span className="flex items-center gap-1.5 text-[9px]" style={{ color: C.textMuted }}>
+              <span className="flex items-center gap-1.5 text-[11.5px]" style={{ color: C.textMuted }}>
                 <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: C.gold }} />
                 לחץ על עמודה לפירוט
               </span>
@@ -1116,7 +1116,7 @@ function FinanceTab({ onNavigate }: { onNavigate: (path: string) => void }) {
                       <button
                         type="button"
                         onClick={openYearPaidDrill}
-                        className="flex items-center gap-1 text-[9px] transition-opacity hover:opacity-70"
+                        className="flex items-center gap-1 text-[11.5px] transition-opacity hover:opacity-70"
                         style={{ color: C.green, cursor: 'pointer' }}
                       >
                         <span className="inline-block w-2 h-2 rounded-sm" style={{ backgroundColor: C.green }} />
@@ -1125,7 +1125,7 @@ function FinanceTab({ onNavigate }: { onNavigate: (path: string) => void }) {
                       <button
                         type="button"
                         onClick={openUnpaidDrill}
-                        className="flex items-center gap-1 text-[9px] transition-opacity hover:opacity-70"
+                        className="flex items-center gap-1 text-[11.5px] transition-opacity hover:opacity-70"
                         style={{ color: C.amber, cursor: 'pointer' }}
                       >
                         פתוח {unpaidPct}%
@@ -1135,7 +1135,7 @@ function FinanceTab({ onNavigate }: { onNavigate: (path: string) => void }) {
                   </>
                 );
               })() : (
-                <p className="text-[10px]" style={{ color: C.textMuted }}>אין נתונים</p>
+                <p className="text-[11px]" style={{ color: C.textMuted }}>אין נתונים</p>
               )}
             </div>
 
@@ -1143,7 +1143,7 @@ function FinanceTab({ onNavigate }: { onNavigate: (path: string) => void }) {
             <div style={{ borderTop: `1px solid ${C.borderSoft}`, paddingTop: '0.875rem' }}>
               <h3 className="text-[11px] font-bold mb-2" style={{ color: C.textSoft }}>אמצעי תשלום · 30 ימים</h3>
               {data.byPaymentMethod.length === 0 ? (
-                <p className="text-[10px]" style={{ color: C.textMuted }}>אין נתונים</p>
+                <p className="text-[11px]" style={{ color: C.textMuted }}>אין נתונים</p>
               ) : (() => {
                 const total30 = data.byPaymentMethod.reduce((s, m) => s + m.amount, 0);
                 return (
@@ -1159,10 +1159,10 @@ function FinanceTab({ onNavigate }: { onNavigate: (path: string) => void }) {
                           style={{ cursor: 'pointer' }}
                         >
                           <div className="flex items-center gap-1 mb-0.5">
-                            <span className="text-[10px] truncate flex-1" style={{ color: C.textSoft }}>{method}</span>
+                            <span className="text-[11px] truncate flex-1" style={{ color: C.textSoft }}>{method}</span>
                             <span className="text-[8.5px] px-1 py-0.5 rounded-full flex-shrink-0"
                               style={{ backgroundColor: C.brandSoft, color: C.brand }}>{count}</span>
-                            <span className="text-[9.5px] font-semibold tabular-nums flex-shrink-0 w-7 text-left"
+                            <span className="text-[11.5px] font-semibold tabular-nums flex-shrink-0 w-7 text-left"
                               style={{ color: C.text }}>{pct}%</span>
                           </div>
                           <div className="w-full rounded-full overflow-hidden" style={{ height: 3, backgroundColor: C.borderSoft }}>
@@ -1201,13 +1201,13 @@ function FinanceTab({ onNavigate }: { onNavigate: (path: string) => void }) {
                         >
                           <div className="flex items-center gap-2">
                             <span
-                              className="text-[9.5px] font-bold w-4 text-center flex-shrink-0 rounded"
+                              className="text-[11.5px] font-bold w-4 text-center flex-shrink-0 rounded"
                               style={{ color: i < 3 ? C.brand : C.textMuted, backgroundColor: i < 3 ? C.card : 'transparent' }}
                             >
                               {i + 1}
                             </span>
                             <span className="text-[11px] font-medium truncate flex-1" style={{ color: C.text }}>{c.name}</span>
-                            <span className="text-[9px] px-1.5 py-0.5 rounded-full flex-shrink-0"
+                            <span className="text-[11.5px] px-1.5 py-0.5 rounded-full flex-shrink-0"
                               style={{ backgroundColor: C.card, color: C.textSoft }}>{c.count} הז׳</span>
                             <span className="text-[11px] font-bold tabular-nums flex-shrink-0"
                               style={{ color: C.brand }}>{formatCurrency(c.amount)}</span>
@@ -1260,7 +1260,7 @@ function FinanceTab({ onNavigate }: { onNavigate: (path: string) => void }) {
                   give a way to reach the rest, otherwise a smaller unpaid order
                   looks like it simply isn't tracked anywhere. */}
               {data.kpis.unpaid.count > data.openOrders.length && (
-                <span className="text-[10px]" style={{ color: C.textMuted }}>
+                <span className="text-[11px]" style={{ color: C.textMuted }}>
                   {data.openOrders.length} מתוך {data.kpis.unpaid.count} הגדולות
                 </span>
               )}
@@ -1374,7 +1374,7 @@ function DeliveriesTab({
                 <div className="flex items-center gap-1.5">
                   <span className="text-[11.5px] font-bold px-2 py-0.5 rounded-md tabular-nums"
                     style={{ backgroundColor: bg, color }}>{count}</span>
-                  {count > 0 && <span className="text-[10px]" style={{ color: C.textMuted }}>←</span>}
+                  {count > 0 && <span className="text-[11px]" style={{ color: C.textMuted }}>←</span>}
                 </div>
               </button>
             ))}
@@ -1389,8 +1389,8 @@ function DeliveriesTab({
               title={delivered > 0 ? 'לחץ לראות משלוחים שנמסרו' : undefined}
             >
               <div className="flex items-center justify-between mb-1">
-                <span className="text-[10px] font-semibold" style={{ color: C.textMuted }}>התקדמות</span>
-                <span className="text-[10px] font-bold" style={{ color: C.green }}>{progress}%</span>
+                <span className="text-[11px] font-semibold" style={{ color: C.textMuted }}>התקדמות</span>
+                <span className="text-[11px] font-bold" style={{ color: C.green }}>{progress}%</span>
               </div>
               <div className="w-full rounded-full overflow-hidden" style={{ height: 6, backgroundColor: C.borderSoft }}>
                 <div className="h-full rounded-full transition-all" style={{ width: `${progress}%`, backgroundColor: C.green }} />
@@ -1470,7 +1470,7 @@ function DeliveriesTab({
                       style={{ backgroundColor: C.blueSoft, border: `1px solid ${C.border}` }}
                     >
                       <span className="text-[11.5px] font-medium truncate flex-1" style={{ color: C.text }}>{name}</span>
-                      {d.עיר && <span className="text-[10.5px] flex-shrink-0" style={{ color: C.textSoft }}>{d.עיר}</span>}
+                      {d.עיר && <span className="text-[11.5px] flex-shrink-0" style={{ color: C.textSoft }}>{d.עיר}</span>}
                       <span className="text-[11px] flex-shrink-0" style={{ color: C.textMuted }}>←</span>
                     </Link>
                   </li>
@@ -1532,11 +1532,11 @@ function InsightCard({
       }}
     >
       <div className="flex items-start justify-between gap-2">
-        <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: C.textMuted }}>
+        <span className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.textMuted }}>
           {title}
         </span>
         <span
-          className="text-[9px] font-semibold px-1.5 py-0.5 rounded-md flex-shrink-0"
+          className="text-[11.5px] font-semibold px-1.5 py-0.5 rounded-md flex-shrink-0"
           style={{ backgroundColor: bg, color: accent }}
         >
           {chip}
@@ -1545,7 +1545,7 @@ function InsightCard({
       <span className="text-[15px] font-bold tabular-nums leading-tight" style={{ color: accent }}>
         {value}
       </span>
-      <p className="text-[10.5px] leading-snug" style={{ color: C.textSoft }}>
+      <p className="text-[11.5px] leading-snug" style={{ color: C.textSoft }}>
         {explanation}
       </p>
     </button>
@@ -1692,7 +1692,7 @@ function InsightsTab({
     <>
       {drill && <DrillModal state={drill} onClose={() => setDrill(null)} />}
       <div className="space-y-2" dir="rtl">
-        <p className="text-[10.5px] px-1" style={{ color: C.textMuted }}>
+        <p className="text-[11.5px] px-1" style={{ color: C.textMuted }}>
           מה דורש את תשומת ליבך עכשיו. לחץ על כרטיס לפתיחת הרשומות.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2">

@@ -28,11 +28,11 @@ const STATUS_LABEL: Record<PrepBucket['status'], string> = {
 };
 
 const STATUS_STYLE: Record<PrepBucket['status'], { bg: string; fg: string; border: string }> = {
-  enough_stock:      { bg: C.greenSoft, fg: C.green, border: '#BFD4C2' },
-  partial_stock:     { bg: C.amberSoft, fg: C.amber, border: '#E2C9A0' },
-  needs_preparation: { bg: C.amberSoft, fg: C.amber, border: '#E2C9A0' },
-  missing_finished:  { bg: C.redSoft,   fg: C.red,   border: '#E2B8B5' },
-  unknown:           { bg: '#EEE7DC',   fg: C.textSoft, border: C.border },
+  enough_stock:      { bg: C.greenSoft, fg: C.green, border: '#BDD5C0' },
+  partial_stock:     { bg: C.amberSoft, fg: C.amber, border: '#EDC898' },
+  needs_preparation: { bg: C.amberSoft, fg: C.amber, border: '#EDC898' },
+  missing_finished:  { bg: C.redSoft,   fg: C.red,   border: '#D8BCB6' },
+  unknown:           { bg: '#F0EAE0',   fg: C.textSoft, border: C.border },
 };
 
 const KIND_LABEL: Record<PrepBucket['kind'], string> = {
@@ -49,7 +49,7 @@ function KindHeader({ label, count }: { label: string; count: number }) {
     >
       <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: C.textSoft }}>{label}</span>
       <span
-        className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+        className="text-[11px] font-bold px-1.5 py-0.5 rounded-full"
         style={{ backgroundColor: C.brandSoft, color: C.brand }}
       >{count}</span>
     </div>
@@ -69,13 +69,13 @@ function PrepRow({ b }: { b: PrepBucket }) {
         style={{ backgroundColor: C.brandSoft, border: `1px solid ${C.border}` }}
       >
         <span className="text-[18px] font-bold tabular-nums leading-none" style={{ color: C.brand }}>{b.totalDemand}</span>
-        <span className="text-[8px] font-semibold uppercase tracking-wide mt-0.5" style={{ color: C.textMuted }}>יח׳</span>
+        <span className="text-[11.5px] font-semibold uppercase tracking-wide mt-0.5" style={{ color: C.textMuted }}>יח׳</span>
       </div>
 
       {/* Name + meta */}
       <div className="flex-1 min-w-0 pt-0.5">
         <p className="text-[13.5px] font-semibold leading-snug" style={{ color: C.text }}>{b.name}</p>
-        <div className="flex items-center gap-2 mt-1 flex-wrap text-[10.5px]" style={{ color: C.textSoft }}>
+        <div className="flex items-center gap-2 mt-1 flex-wrap text-[11.5px]" style={{ color: C.textSoft }}>
           <span>{b.earliestDueLabel}</span>
           <span>·</span>
           <span>{b.orderCount} {b.orderCount === 1 ? 'הזמנה' : 'הזמנות'}</span>
@@ -87,13 +87,13 @@ function PrepRow({ b }: { b: PrepBucket }) {
           )}
         </div>
         {b.notes.length > 0 && (
-          <p className="text-[10px] mt-0.5 truncate" style={{ color: C.textMuted }}>{b.notes.join(' · ')}</p>
+          <p className="text-[11px] mt-0.5 truncate" style={{ color: C.textMuted }}>{b.notes.join(' · ')}</p>
         )}
       </div>
 
       {/* Status badge */}
       <span
-        className="flex-shrink-0 self-start px-2 py-0.5 rounded-full text-[9.5px] font-bold whitespace-nowrap mt-0.5"
+        className="flex-shrink-0 self-start px-2 py-0.5 rounded-full text-[11.5px] font-bold whitespace-nowrap mt-0.5"
         style={{ backgroundColor: style.bg, color: style.fg, border: `1px solid ${style.border}` }}
       >
         {STATUS_LABEL[b.status]}
@@ -114,7 +114,7 @@ export function KitchenPrepBoard({ data, loading }: { data: KitchenPrepResponse 
     return (
       <section className="rounded-xl border px-3 py-3" style={{ backgroundColor: C.card, borderColor: C.border }}>
         <h2 className="text-[13px] font-bold" style={{ color: C.text }}>מה צריך להכין</h2>
-        <p className="text-[10.5px] mt-0.5" style={{ color: C.textSoft }}>אין הזמנות פעילות שדורשות הכנה בטווח של 14 הימים הקרובים.</p>
+        <p className="text-[11.5px] mt-0.5" style={{ color: C.textSoft }}>אין הזמנות פעילות שדורשות הכנה בטווח של 14 הימים הקרובים.</p>
       </section>
     );
   }
@@ -131,7 +131,7 @@ export function KitchenPrepBoard({ data, loading }: { data: KitchenPrepResponse 
       <div className="flex items-center justify-between px-3 py-2.5" style={{ borderBottom: `1px solid ${C.border}` }}>
         <div>
           <h2 className="text-[13px] font-bold" style={{ color: C.text }}>מה צריך להכין</h2>
-          <p className="text-[10.5px] mt-0.5" style={{ color: C.textSoft }}>
+          <p className="text-[11.5px] mt-0.5" style={{ color: C.textSoft }}>
             {data.ordersConsidered} הזמנות · 14 ימים קדימה · מוקדם ביותר ראשון
           </p>
         </div>

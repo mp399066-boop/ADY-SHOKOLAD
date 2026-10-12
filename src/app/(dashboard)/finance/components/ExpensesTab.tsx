@@ -315,7 +315,7 @@ export default function ExpensesTab({ box, boxReady, expenses, suppliers, employ
                       <Td>
                         {e.קטגוריה}
                         {isLongTermExpense(e) && (
-                          <span className="block mt-0.5 w-fit text-[11px] px-1.5 py-0.5 rounded" style={{ backgroundColor: '#F3E7D3', color: C.brand }} title="לא נכללת בהוצאות החודשיות ובממוצע החודשי">
+                          <span className="block mt-0.5 w-fit text-[11px] px-1.5 py-0.5 rounded" style={{ backgroundColor: '#E8DED2', color: C.brand }} title="לא נכללת בהוצאות החודשיות ובממוצע החודשי">
                             {LONG_TERM_LABEL}
                           </span>
                         )}

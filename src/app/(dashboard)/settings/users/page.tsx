@@ -35,7 +35,7 @@ const SETTINGS_TABS = [
 
 function SettingsTabs({ active }: { active: string }) {
   return (
-    <div className="flex gap-1 mb-6 border-b" style={{ borderColor: '#EAE0D4' }}>
+    <div className="flex gap-1 mb-6 border-b" style={{ borderColor: '#E8DED2' }}>
       {SETTINGS_TABS.map(tab => {
         const isActive = active === tab.href;
         return (
@@ -192,11 +192,11 @@ export default function UsersPage() {
       <SettingsTabs active="/settings/users" />
 
       {/* Info card */}
-      <Card style={{ backgroundColor: '#FAF7F0', border: '1px solid #EAE0D4' }}>
+      <Card style={{ backgroundColor: '#FAF7F0', border: '1px solid #E8DED2' }}>
         <div className="flex gap-3 items-start">
           <div
             className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5"
-            style={{ backgroundColor: '#EFE4D3', color: '#8B5E34' }}
+            style={{ backgroundColor: '#E8DED2', color: '#8B5E34' }}
           >
             <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
               <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
@@ -255,7 +255,7 @@ export default function UsersPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr style={{ borderBottom: '1px solid #EAE0D4' }}>
+                <tr style={{ borderBottom: '1px solid #E8DED2' }}>
                   {['אימייל', 'תפקיד', 'סטטוס', 'תאריך הוספה', 'פעולות'].map(h => (
                     <th
                       key={h}
@@ -301,8 +301,8 @@ export default function UsersPage() {
                         <span
                           className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium"
                           style={user.is_active
-                            ? { backgroundColor: '#E8F5EE', color: '#2A7A4F' }
-                            : { backgroundColor: '#FDE8E7', color: '#A0362C' }
+                            ? { backgroundColor: '#E4EEE8', color: '#2A7A4F' }
+                            : { backgroundColor: '#FEE2E2', color: '#A0362C' }
                           }
                         >
                           <span
@@ -332,7 +332,7 @@ export default function UsersPage() {
                           <button
                             onClick={() => setDeactivateTarget(user)}
                             className="text-xs px-2.5 py-1 rounded-lg border font-medium transition-colors hover:bg-red-50"
-                            style={{ borderColor: '#FCCACA', color: '#A0362C' }}
+                            style={{ borderColor: '#FECACA', color: '#A0362C' }}
                           >
                             השבת
                           </button>
@@ -340,7 +340,7 @@ export default function UsersPage() {
                           <button
                             onClick={() => handlePatch(user.id, { is_active: true })}
                             className="text-xs px-2.5 py-1 rounded-lg border font-medium transition-colors hover:bg-green-50"
-                            style={{ borderColor: '#BBE0CE', color: '#2A7A4F' }}
+                            style={{ borderColor: '#B4D2BE', color: '#2A7A4F' }}
                           >
                             הפעל
                           </button>
@@ -363,7 +363,7 @@ export default function UsersPage() {
             <div key={role} className="flex items-start gap-3">
               <span
                 className="text-xs px-2 py-0.5 rounded font-medium flex-shrink-0 mt-0.5"
-                style={{ backgroundColor: '#EFE4D3', color: '#5C3410' }}
+                style={{ backgroundColor: '#E8DED2', color: '#5C3410' }}
               >
                 {label}
               </span>

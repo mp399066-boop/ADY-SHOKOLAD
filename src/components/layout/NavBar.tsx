@@ -2,36 +2,43 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import {
-  IconDashboard, IconOrders, IconCustomers, IconProducts,
-  IconDeliveries, IconInventory, IconRecipes, IconInvoices,
-  IconSuppliers, IconEmployees, IconRawMaterials, IconImport, IconSettings, IconMenu, IconX, IconExport, IconSearch,
-} from '@/components/icons';
+  LayoutDashboard, ShoppingBag, Users, Truck, Gift, Boxes, ChefHat, Factory, Calculator,
+  Receipt, Wallet, UserCog, BarChart3, Upload, Settings, Search, Menu, X, type LucideIcon,
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
 import type { BusinessSettings } from '@/types/database';
 
-const NAV_MAIN = [
-  { href: '/dashboard',  label: 'דשבורד',   Icon: IconDashboard  },
-  { href: '/orders',     label: 'הזמנות',       Icon: IconOrders     },
-  { href: '/customers',  label: 'לקוחות',       Icon: IconCustomers  },
-  { href: '/products',   label: 'מוצרים',       Icon: IconProducts   },
-  { href: '/deliveries', label: 'משלוחים',      Icon: IconDeliveries },
-  { href: '/inventory',  label: 'מלאי',     Icon: IconInventory },
-  { href: '/recipes',    label: 'מתכונים', Icon: IconRecipes   },
-  { href: '/invoices',   label: 'חשבוניות וקבלות', Icon: IconInvoices },
-  { href: '/finance',    label: 'פיננסים',         Icon: IconInvoices },
-  { href: '/costs',      label: 'עלויות מוצרים',   Icon: IconRawMaterials },
-  { href: '/suppliers',  label: 'ספקים',            Icon: IconSuppliers  },
-  { href: '/employees', label: 'עובדים / משימות',  Icon: IconEmployees  },
+interface NavItem { href: string; label: string; Icon: LucideIcon }
+
+// Same order and names the team is used to.
+const NAV_MAIN: NavItem[] = [
+  { href: '/dashboard',  label: 'דשבורד',          Icon: LayoutDashboard },
+  { href: '/orders',     label: 'הזמנות',          Icon: ShoppingBag },
+  { href: '/customers',  label: 'לקוחות',          Icon: Users },
+  { href: '/products',   label: 'מוצרים',          Icon: Gift },
+  { href: '/deliveries', label: 'משלוחים',         Icon: Truck },
+  { href: '/inventory',  label: 'מלאי',            Icon: Boxes },
+  { href: '/recipes',    label: 'מתכונים',         Icon: ChefHat },
+  { href: '/invoices',   label: 'חשבוניות וקבלות', Icon: Receipt },
+  { href: '/finance',    label: 'פיננסים',         Icon: Wallet },
+  { href: '/costs',      label: 'עלויות מוצרים',   Icon: Calculator },
+  { href: '/suppliers',  label: 'ספקים',           Icon: Factory },
+  { href: '/employees',  label: 'עובדים / משימות', Icon: UserCog },
 ];
 
-const NAV_SYSTEM = [
-  { href: '/reports/orders', label: 'דוחות',   Icon: IconExport   },
-  { href: '/import',         label: 'ייבוא',   Icon: IconImport   },
-  { href: '/settings',       label: 'הגדרות',  Icon: IconSettings },
+const NAV_SYSTEM: NavItem[] = [
+  { href: '/reports/orders', label: 'דוחות',  Icon: BarChart3 },
+  { href: '/import',         label: 'ייבוא',  Icon: Upload },
+  { href: '/settings',       label: 'הגדרות', Icon: Settings },
 ];
 
 const ALL_NAV = [...NAV_MAIN, ...NAV_SYSTEM];
+
+function openSearch() {
+  window.dispatchEvent(new Event('global-search:open'));
+}
 
 export default function NavBar() {
   const pathname = usePathname();
@@ -46,188 +53,114 @@ export default function NavBar() {
       .catch(() => {});
   }, []);
 
+  // Close the mobile menu whenever the route changes.
+  useEffect(() => { setMobileOpen(false); }, [pathname]);
+
   const isActive = (href: string) =>
-    pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
+    pathname === href || (href !== '/dashboard' && pathname.startsWith(href + '/'));
+
+  const businessName = settings?.business_name || 'עדי תכשיט שוקולד';
+
+  const desktopLink = ({ href, label }: NavItem) => {
+    const active = isActive(href);
+    return (
+      <Link
+        key={href}
+        href={href}
+        aria-current={active ? 'page' : undefined}
+        className={cn(
+          'relative flex items-center whitespace-nowrap px-3 xl:px-3.5 text-[13.5px] transition-colors',
+          active
+            ? 'font-bold text-[#5C3A1E] bg-[#FBF3E8]'
+            : 'font-medium text-[#6B4A2D] hover:text-[#2B1A10] hover:bg-[#FAF4EC]',
+        )}
+      >
+        {label}
+        {active && <span className="absolute inset-x-2 bottom-0 h-[2.5px] rounded-t-full bg-[#C9A46A]" aria-hidden />}
+      </Link>
+    );
+  };
 
   return (
     <>
-      <header
-        className="flex-shrink-0 flex items-center px-5 gap-3 z-40"
-        style={{
-          backgroundColor: '#FFFFFF',
-          borderBottom: '1px solid #EAE0D4',
-          boxShadow: '0 1px 3px rgba(58,42,26,0.06)',
-          direction: 'rtl',
-          height: '54px',
-        }}
-      >
+      <header className="no-print z-40 flex h-14 flex-shrink-0 items-center gap-3 border-b border-[#E8DED2] bg-white px-4 shadow-[0_1px_3px_rgba(58,42,26,0.06)]">
         {/* Brand */}
-        <div className="flex items-center gap-2 flex-shrink-0" style={{ marginLeft: '16px' }}>
-          <img
-            src={settings?.logo_url || '/logo.png'}
-            alt={settings?.business_name || 'עדי תכשיט שוקולד'}
-            className="h-7 w-7 object-contain"
-          />
-          <div className="hidden sm:flex flex-col" style={{ gap: '1px' }}>
-            <span className="text-sm font-medium" style={{ color: '#3A2A1A', letterSpacing: '0.02em', lineHeight: 1.3 }}>
-              {settings?.business_name || 'עדי תכשיט שוקולד'}
-            </span>
-            <span style={{ fontSize: '10px', fontWeight: 400, color: '#8E7D6A', letterSpacing: '0.05em', lineHeight: 1.3 }}>
-              Adi Chocolate Boutique
-            </span>
-          </div>
-        </div>
+        <Link href="/dashboard" className="ml-3 flex flex-shrink-0 items-center gap-2.5">
+          <img src={settings?.logo_url || '/logo.png'} alt={businessName} className="h-8 w-8 object-contain" />
+          <span className="hidden flex-col leading-tight sm:flex">
+            <span className="text-[14.5px] font-bold text-[#3A2A1A]">{businessName}</span>
+            <span className="text-[11px] tracking-wider text-[#9B7A5A]">Adi Chocolate Boutique</span>
+          </span>
+        </Link>
 
         {/* Desktop nav */}
-        <nav className="hidden md:flex items-stretch flex-1 overflow-x-auto h-full px-1">
-          {NAV_MAIN.map(({ href, label }) => {
-            const active = isActive(href);
-            return (
-              <Link
-                key={href}
-                href={href}
-                className="flex items-center px-4 whitespace-nowrap relative transition-all duration-150"
-                style={active
-                  ? {
-                      color: '#5C3410',
-                      fontWeight: 700,
-                      fontSize: '13px',
-                      borderBottom: '2.5px solid #C9A46A',
-                      marginBottom: '-1px',
-                      backgroundColor: '#FBF3E8',
-                    }
-                  : {
-                      color: '#6B5544',
-                      fontWeight: 500,
-                      fontSize: '13px',
-                    }
-                }
-                onMouseEnter={e => {
-                  if (!active) {
-                    (e.currentTarget as HTMLAnchorElement).style.color = '#2B1A10';
-                    (e.currentTarget as HTMLAnchorElement).style.backgroundColor = '#FAF4EC';
-                  }
-                }}
-                onMouseLeave={e => {
-                  if (!active) {
-                    (e.currentTarget as HTMLAnchorElement).style.color = '#6B5544';
-                    (e.currentTarget as HTMLAnchorElement).style.backgroundColor = 'transparent';
-                  }
-                }}
-              >
-                {label}
-              </Link>
-            );
-          })}
-
-          <span className="w-px self-center h-4 mx-1 flex-shrink-0" style={{ backgroundColor: '#DDD0C0' }} />
-
-          {NAV_SYSTEM.map(({ href, label }) => {
-            const active = isActive(href);
-            return (
-              <Link
-                key={href}
-                href={href}
-                className="flex items-center px-4 whitespace-nowrap relative transition-all duration-150"
-                style={active
-                  ? {
-                      color: '#5C3410',
-                      fontWeight: 700,
-                      fontSize: '13px',
-                      borderBottom: '2.5px solid #C9A46A',
-                      marginBottom: '-1px',
-                      backgroundColor: '#FBF3E8',
-                    }
-                  : {
-                      color: '#6B5544',
-                      fontWeight: 500,
-                      fontSize: '13px',
-                    }
-                }
-                onMouseEnter={e => {
-                  if (!active) {
-                    (e.currentTarget as HTMLAnchorElement).style.color = '#2B1A10';
-                    (e.currentTarget as HTMLAnchorElement).style.backgroundColor = '#FAF4EC';
-                  }
-                }}
-                onMouseLeave={e => {
-                  if (!active) {
-                    (e.currentTarget as HTMLAnchorElement).style.color = '#6B5544';
-                    (e.currentTarget as HTMLAnchorElement).style.backgroundColor = 'transparent';
-                  }
-                }}
-              >
-                {label}
-              </Link>
-            );
-          })}
+        <nav className="hidden h-full flex-1 items-stretch overflow-x-auto md:flex" aria-label="ניווט ראשי">
+          {NAV_MAIN.map(desktopLink)}
+          <span className="mx-1 h-4 w-px flex-shrink-0 self-center bg-[#DDD0BC]" aria-hidden />
+          {NAV_SYSTEM.map(desktopLink)}
         </nav>
 
-        {/* Global search trigger — desktop pill */}
+        {/* Global search — desktop pill */}
         <button
-          onClick={() => window.dispatchEvent(new Event('global-search:open'))}
-          className="hidden md:flex items-center"
-          style={{
-            height: '32px',
-            padding: '0 10px 0 12px',
-            fontSize: '12px',
-            color: '#8A7664',
-            backgroundColor: '#FAF7F0',
-            border: '1px solid #EAE0D4',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            minWidth: '180px',
-            gap: '8px',
-            flexShrink: 0,
-            marginInline: '8px',
-          }}
-          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#F2EBDD'; }}
-          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#FAF7F0'; }}
+          type="button"
+          onClick={openSearch}
           aria-label="חיפוש גלובלי"
+          className="mx-2 hidden h-9 min-w-[180px] flex-shrink-0 items-center gap-2 rounded-[10px] border border-[#E8DED2] bg-[#FAF7F0] px-3 text-[13px] text-[#8A7664] hover:bg-[#F2EBDD] md:flex"
         >
-          <IconSearch className="w-3.5 h-3.5" />
-          <span style={{ flex: 1, textAlign: 'right' }}>חיפוש...</span>
-          <kbd style={{ fontSize: '10px', padding: '1px 5px', border: '1px solid #E8DED2', borderRadius: '3px', backgroundColor: '#FFFFFF', color: '#5C4A38', fontFamily: 'inherit' }}>Ctrl K</kbd>
+          <Search className="h-4 w-4" />
+          <span className="flex-1 text-right">חיפוש...</span>
+          <kbd className="rounded border border-[#E8DED2] bg-white px-1.5 text-[11px] text-[#6B4A2D]">Ctrl K</kbd>
         </button>
 
-        {/* Mobile hamburger */}
-        <button
-          className="md:hidden p-1.5 rounded-lg transition-colors ml-auto"
-          style={{ color: '#8A7664' }}
-          onClick={() => setMobileOpen(o => !o)}
-        >
-          {mobileOpen ? <IconX className="w-4 h-4" /> : <IconMenu className="w-4 h-4" />}
-        </button>
+        {/* Mobile: search + menu */}
+        <div className="mr-auto flex items-center gap-1 md:hidden">
+          <button
+            type="button"
+            onClick={openSearch}
+            aria-label="חיפוש"
+            className="flex h-11 w-11 items-center justify-center rounded-lg text-[#6B4A2D] hover:bg-[#FAF4EC]"
+          >
+            <Search className="h-5 w-5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobileOpen(o => !o)}
+            aria-label={mobileOpen ? 'סגירת תפריט' : 'פתיחת תפריט'}
+            aria-expanded={mobileOpen}
+            className="flex h-11 w-11 items-center justify-center rounded-lg text-[#6B4A2D] hover:bg-[#FAF4EC]"
+          >
+            {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
+        </div>
       </header>
 
       {/* Mobile dropdown */}
       {mobileOpen && (
         <div
-          className="md:hidden fixed inset-0 z-30"
-          style={{ paddingTop: '48px', backgroundColor: 'rgba(0,0,0,0.18)' }}
+          className="no-print fixed inset-0 top-14 z-30 bg-[rgba(20,12,4,0.25)] md:hidden"
           onClick={() => setMobileOpen(false)}
         >
           <div
-            className="bg-white p-3 shadow-lg"
-            style={{ borderBottom: '1px solid #EAE0D4', direction: 'rtl' }}
+            className="max-h-[calc(100dvh-3.5rem)] overflow-y-auto border-b border-[#E8DED2] bg-white p-3 shadow-lg"
             onClick={e => e.stopPropagation()}
           >
-            <div className="grid grid-cols-4 gap-1.5">
-              {ALL_NAV.map(({ href, label, Icon }) => (
-                <Link
-                  key={href}
-                  href={href}
-                  onClick={() => setMobileOpen(false)}
-                  className="flex flex-col items-center gap-1 px-2 py-2.5 rounded-xl text-xs transition-colors"
-                  style={isActive(href)
-                    ? { backgroundColor: '#FBF5EC', color: '#8B5E34', fontWeight: 500 }
-                    : { color: '#8A7664' }
-                  }
-                >
-                  <Icon className="w-4 h-4" />
-                  <span className="text-center leading-tight">{label}</span>
-                </Link>
-              ))}
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+              {ALL_NAV.map(({ href, label, Icon }) => {
+                const active = isActive(href);
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    className={cn(
+                      'flex min-h-[64px] flex-col items-center justify-center gap-1.5 rounded-xl px-2 py-2.5 text-[12.5px] transition-colors',
+                      active ? 'bg-[#F5EBDD] font-semibold text-[#5C3A1E]' : 'text-[#6B4A2D] hover:bg-[#FAF7F0]',
+                    )}
+                  >
+                    <Icon className={cn('h-5 w-5', active ? 'text-[#8B5E34]' : 'text-[#9B7A5A]')} />
+                    <span className="text-center leading-tight">{label}</span>
+                  </Link>
+                );
+              })}
             </div>
           </div>
         </div>

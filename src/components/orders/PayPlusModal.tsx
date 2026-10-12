@@ -36,7 +36,7 @@ export function PayPlusModal({
     >
       <div
         className="w-full max-w-sm rounded-2xl shadow-xl p-5"
-        style={{ backgroundColor: '#FFFDF8', border: '1px solid #EAE0D4', direction: 'rtl' }}
+        style={{ backgroundColor: '#F8F6F2', border: '1px solid #E8DED2', direction: 'rtl' }}
         onClick={e => e.stopPropagation()}
       >
         <h2 className="text-base font-bold mb-4" style={{ color: '#2B1A10' }}>
@@ -46,7 +46,7 @@ export function PayPlusModal({
         <div className="mb-4 space-y-1.5">
           <div
             className="flex justify-between items-center px-3 py-2.5 rounded-xl"
-            style={{ backgroundColor: '#F4E8D8', border: '1px solid #E8CFA8' }}
+            style={{ backgroundColor: '#F4E8D8', border: '1px solid #EDD9B4' }}
           >
             <span className="text-xs font-medium" style={{ color: '#6B4A2D' }}>סכום לתשלום</span>
             <span className="text-xl font-bold tabular-nums" style={{ color: '#8B5E34' }}>
@@ -69,9 +69,9 @@ export function PayPlusModal({
             onClick={() => copyText(amount.toFixed(2), setCopiedAmount)}
             className="flex-1 py-2 rounded-lg text-xs font-semibold transition-colors"
             style={{
-              backgroundColor: copiedAmount ? '#D1FAE5' : '#F4E8D8',
-              color:           copiedAmount ? '#065F46' : '#7A4A27',
-              border:          `1px solid ${copiedAmount ? '#A7F3D0' : '#E8CFA8'}`,
+              backgroundColor: copiedAmount ? '#DCFCE7' : '#F4E8D8',
+              color:           copiedAmount ? '#2D6648' : '#7A4820',
+              border:          `1px solid ${copiedAmount ? '#BBF7D0' : '#EDD9B4'}`,
             }}
           >
             {copiedAmount ? '✓ הועתק' : 'העתק סכום'}
@@ -81,9 +81,9 @@ export function PayPlusModal({
             onClick={() => copyText(orderNumber, setCopiedOrder)}
             className="flex-1 py-2 rounded-lg text-xs font-semibold transition-colors"
             style={{
-              backgroundColor: copiedOrder ? '#D1FAE5' : '#F4E8D8',
-              color:           copiedOrder ? '#065F46' : '#7A4A27',
-              border:          `1px solid ${copiedOrder ? '#A7F3D0' : '#E8CFA8'}`,
+              backgroundColor: copiedOrder ? '#DCFCE7' : '#F4E8D8',
+              color:           copiedOrder ? '#2D6648' : '#7A4820',
+              border:          `1px solid ${copiedOrder ? '#BBF7D0' : '#EDD9B4'}`,
             }}
           >
             {copiedOrder ? '✓ הועתק' : 'העתק מספר הזמנה'}
@@ -96,14 +96,14 @@ export function PayPlusModal({
             target="_blank"
             rel="noopener noreferrer"
             className="block w-full py-2.5 rounded-xl text-sm font-bold text-center mb-3"
-            style={{ backgroundColor: '#166534', color: '#FFFFFF' }}
+            style={{ backgroundColor: '#33623a', color: '#FFFFFF' }}
           >
             פתח קישור PayPlus
           </a>
         ) : (
           <p
             className="text-xs text-center mb-3 px-2 py-2 rounded-lg"
-            style={{ backgroundColor: '#FEF9C3', color: '#92400E', border: '1px solid #FDE68A' }}
+            style={{ backgroundColor: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A' }}
           >
             קישור PayPlus לא מוגדר — הוסף NEXT_PUBLIC_PAYPLUS_STATIC_PAYMENT_LINK בהגדרות הסביבה.
           </p>
@@ -117,7 +117,7 @@ export function PayPlusModal({
           type="button"
           onClick={onClose}
           className="w-full py-2 rounded-lg text-xs font-medium"
-          style={{ backgroundColor: '#F0E8DE', color: '#8A735F', border: '1px solid #E0D0BC' }}
+          style={{ backgroundColor: '#F0EAE0', color: '#8A7664', border: '1px solid #E0D4C2' }}
         >
           סגור
         </button>

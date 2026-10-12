@@ -7,8 +7,8 @@ import { WorkQueueItem, type WorkQueueItemHandlers } from './WorkQueueItem';
 import type { QueueItem } from './queue-builder';
 
 const TONE: Record<'red' | 'amber' | 'muted', { bg: string; text: string; dot: string }> = {
-  red:   { bg: '#FFF7F5', text: C.red,      dot: C.red },
-  amber: { bg: '#FFFBF4', text: C.amber,    dot: C.gold },
+  red:   { bg: '#F0EAE8', text: C.red,      dot: C.red },
+  amber: { bg: '#FAF7F0', text: C.amber,    dot: C.gold },
   muted: { bg: '#FFFCF8', text: C.textSoft, dot: C.textMuted },
 };
 

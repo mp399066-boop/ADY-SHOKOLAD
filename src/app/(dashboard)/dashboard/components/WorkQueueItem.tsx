@@ -48,9 +48,9 @@ export function WorkQueueItem({
   // is genuinely urgent or paid — neutrals otherwise so a wall of orders
   // doesn't look like a traffic-light.
   const rowBg = isUrgent
-    ? '#FFF6F2'
-    : (order?.סטטוס_תשלום === 'שולם' ? '#F6FAF4' : '#FFFFFF');
-  const rowBorder = isUrgent ? '#E9C9C3' : C.borderSoft;
+    ? '#F0EAE8'
+    : (order?.סטטוס_תשלום === 'שולם' ? '#EAF0E7' : '#FFFFFF');
+  const rowBorder = isUrgent ? '#D8BCB6' : C.borderSoft;
 
   return (
     <li
@@ -78,15 +78,15 @@ export function WorkQueueItem({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5 flex-wrap">
             <span
-              className="inline-flex items-center justify-center text-[10px] font-bold px-1.5 py-0.5 rounded"
+              className="inline-flex items-center justify-center text-[11px] font-bold px-1.5 py-0.5 rounded"
               style={{ backgroundColor: tone.bg, color: tone.text, border: `1px solid ${tone.border}` }}
             >
               {tone.label}
             </span>
             {isUrgent && (
               <span
-                className="inline-flex items-center justify-center text-[10px] font-bold px-1.5 py-0.5 rounded"
-                style={{ backgroundColor: C.redSoft, color: C.red, border: '1px solid #E4C2BE' }}
+                className="inline-flex items-center justify-center text-[11px] font-bold px-1.5 py-0.5 rounded"
+                style={{ backgroundColor: C.redSoft, color: C.red, border: '1px solid #D8BCB6' }}
               >
                 דחוף
               </span>
@@ -141,7 +141,7 @@ export function WorkQueueItem({
               style={{
                 backgroundColor: expanded ? C.brandSoft : '#FFFFFF',
                 color: expanded ? C.brand : C.textSoft,
-                border: `1px solid ${expanded ? '#E7D1BE' : C.borderSoft}`,
+                border: `1px solid ${expanded ? '#E0D4C2' : C.borderSoft}`,
               }}
               title={expanded ? 'סגור פירוט' : 'פתח פירוט'}
               aria-label={expanded ? 'סגור פירוט' : 'פתח פירוט'}
@@ -203,7 +203,7 @@ export function WorkQueueItem({
 function StatusPill({ label, accent }: { label: string; accent: string }) {
   return (
     <span
-      className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded"
+      className="inline-flex items-center gap-1 text-[11px] font-semibold px-1.5 py-0.5 rounded"
       style={{ color: accent, backgroundColor: '#FFFFFF', border: `1px solid ${C.borderSoft}` }}
     >
       <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: accent }} />
@@ -218,7 +218,7 @@ function ProgressField({ label, children }: { label: string; children: React.Rea
       className="min-w-0 rounded-lg px-3 py-2"
       style={{ backgroundColor: '#FFFFFF', border: `1px solid ${C.borderSoft}` }}
     >
-      <p className="mb-1.5 text-[10.5px] font-bold" style={{ color: C.textSoft }}>
+      <p className="mb-1.5 text-[11.5px] font-bold" style={{ color: C.textSoft }}>
         {label}
       </p>
       {children}
@@ -229,7 +229,7 @@ function ProgressField({ label, children }: { label: string; children: React.Rea
 function CompactProgressField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="min-w-0">
-      <p className="mb-1.5 text-[10.5px] font-bold" style={{ color: C.textSoft }}>
+      <p className="mb-1.5 text-[11.5px] font-bold" style={{ color: C.textSoft }}>
         {label}
       </p>
       {children}
@@ -267,7 +267,7 @@ function DeliveryStatusStepper({
               style={{ minWidth: 44 }}
             >
               <span
-                className="flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-bold"
+                className="flex h-5 w-5 items-center justify-center rounded-full text-[11.5px] font-bold"
                 style={{
                   backgroundColor: active || reached ? C.blue : C.card,
                   color: active || reached ? '#FFFFFF' : C.textMuted,
@@ -278,7 +278,7 @@ function DeliveryStatusStepper({
                 {idx + 1}
               </span>
               <span
-                className="text-[9.5px] whitespace-nowrap"
+                className="text-[11.5px] whitespace-nowrap"
                 style={{ color: active ? C.text : reached ? C.textSoft : C.textMuted, fontWeight: active ? 700 : 600 }}
               >
                 {status}
@@ -329,8 +329,8 @@ function PrimaryActionButton({
 }
 
 const TYPE_TONE: Record<QueueItemType, { bg: string; text: string; label: string; border: string }> = {
-  order:    { bg: C.brandSoft, text: C.brand, label: 'הזמנה', border: '#E7D1BE' },
-  delivery: { bg: C.blueSoft,  text: C.blue,  label: 'משלוח', border: '#CADDE4' },
-  payment:  { bg: C.amberSoft, text: C.amber, label: 'תשלום', border: '#E9CF9E' },
-  stock:    { bg: C.redSoft,   text: C.red,   label: 'מלאי', border: '#E4C2BE' },
+  order:    { bg: C.brandSoft, text: C.brand, label: 'הזמנה', border: '#E0D4C2' },
+  delivery: { bg: C.blueSoft,  text: C.blue,  label: 'משלוח', border: '#C8D8DF' },
+  payment:  { bg: C.amberSoft, text: C.amber, label: 'תשלום', border: '#EDCF98' },
+  stock:    { bg: C.redSoft,   text: C.red,   label: 'מלאי', border: '#D8BCB6' },
 };

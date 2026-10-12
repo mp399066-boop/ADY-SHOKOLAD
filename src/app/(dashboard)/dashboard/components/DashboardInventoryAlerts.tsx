@@ -17,7 +17,7 @@ function sortBySeverity(rows: StockRow[]): StockRow[] {
 
 function severityColor(status: string): string {
   if (status === 'אזל מהמלאי') return C.red;
-  if (status === 'קריטי') return '#C05621';
+  if (status === 'קריטי') return '#B45309';
   return C.amber;
 }
 
@@ -39,7 +39,7 @@ function AlertRow({ row, isLast, onEdit }: { row: StockRow; isLast: boolean; onE
     >
       <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
       <span className="flex-1 text-[12px] font-medium truncate" style={{ color: C.text }}>{row.שם}</span>
-      <span className="text-[10.5px] font-bold flex-shrink-0" style={{ color }}>
+      <span className="text-[11.5px] font-bold flex-shrink-0" style={{ color }}>
         {severityLabel(row.status)}
       </span>
     </div>
@@ -62,7 +62,7 @@ export function DashboardInventoryAlerts({ stock, onEdit }: { stock: Stock; onEd
       <div className="flex items-center justify-between mb-2.5">
         <h2 className="text-[12.5px] font-bold" style={{ color: C.textSoft }}>התראות מלאי</h2>
         <span
-          className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[10px] font-bold"
+          className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[11px] font-bold"
           style={{ backgroundColor: C.redSoft, color: C.red }}
         >
           {totalAlerts}
@@ -71,7 +71,7 @@ export function DashboardInventoryAlerts({ stock, onEdit }: { stock: Stock; onEd
 
       {finishedGoods.length > 0 && (
         <div className="mb-2">
-          <p className="text-[10px] font-semibold uppercase tracking-wide mb-1" style={{ color: C.textMuted }}>
+          <p className="text-[11px] font-semibold uppercase tracking-wide mb-1" style={{ color: C.textMuted }}>
             מוצרים ופטיפורים
           </p>
           {finishedGoods.map((r, i) => (
@@ -85,7 +85,7 @@ export function DashboardInventoryAlerts({ stock, onEdit }: { stock: Stock; onEd
 
       {rawMats.length > 0 && (
         <div className="mb-2.5">
-          <p className="text-[10px] font-semibold uppercase tracking-wide mb-1" style={{ color: C.textMuted }}>
+          <p className="text-[11px] font-semibold uppercase tracking-wide mb-1" style={{ color: C.textMuted }}>
             חומרי גלם
           </p>
           {rawMats.map((r, i) => (

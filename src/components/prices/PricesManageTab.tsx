@@ -182,8 +182,8 @@ export default function PricesManageTab({ onImportClick }: { onImportClick: () =
       {/* Products with no active price at all — these never show up in the table
           below since it's built from מחירון rows, not from the product catalog. */}
       {!loading && productsWithoutPrice.length > 0 && (
-        <div className="rounded-xl border p-4" style={{ backgroundColor: '#FEF9EF', borderColor: '#F0DCA8' }}>
-          <p className="text-sm font-semibold mb-2" style={{ color: '#7C5A1E' }}>
+        <div className="rounded-xl border p-4" style={{ backgroundColor: '#FEF9EF', borderColor: '#EDD9B4' }}>
+          <p className="text-sm font-semibold mb-2" style={{ color: '#7A5820' }}>
             {productsWithoutPrice.length} מוצרים פעילים בלי מחיר במחירון בכלל
           </p>
           <p className="text-xs mb-3" style={{ color: '#8A7664' }}>
@@ -196,7 +196,7 @@ export default function PricesManageTab({ onImportClick }: { onImportClick: () =
                 type="button"
                 onClick={() => openAddModal(p.id)}
                 className="text-xs px-2.5 py-1 rounded-full border bg-white transition-colors hover:bg-amber-50"
-                style={{ borderColor: '#F0DCA8', color: '#7C5A1E' }}
+                style={{ borderColor: '#EDD9B4', color: '#7A5820' }}
               >
                 {p.שם_מוצר} · הוסף מחיר
               </button>
@@ -258,7 +258,7 @@ export default function PricesManageTab({ onImportClick }: { onImportClick: () =
           <div className="overflow-x-auto">
             <table className="w-full text-sm" style={{ direction: 'rtl' }}>
               <thead>
-                <tr style={{ borderBottom: '2px solid #EDE0CE' }}>
+                <tr style={{ borderBottom: '2px solid #E8DED2' }}>
                   {['שם מוצר', 'SKU', 'סוג מחירון', 'כמות מינ׳', 'מחיר', 'כולל מע״מ', 'סטטוס', ''].map(h => (
                     <th
                       key={h}
@@ -283,7 +283,7 @@ export default function PricesManageTab({ onImportClick }: { onImportClick: () =
                       <td className="py-2.5 px-3 font-medium" style={{ color: '#2B1A10' }}>
                         {name}
                         {!row.מוצר_id && (
-                          <span className="mr-1.5 text-[10px] px-1.5 py-0.5 rounded-full align-middle" style={{ backgroundColor: '#FDE2DC', color: '#8A2E1E' }}>
+                          <span className="mr-1.5 text-[11px] px-1.5 py-0.5 rounded-full align-middle" style={{ backgroundColor: '#FEE2E2', color: '#8A3228' }}>
                             לא מקושר
                           </span>
                         )}
@@ -326,8 +326,8 @@ export default function PricesManageTab({ onImportClick }: { onImportClick: () =
                           onClick={() => toggleActive(row)}
                           className="text-xs px-2 py-0.5 rounded-full border transition-colors"
                           style={row.פעיל
-                            ? { backgroundColor: '#D1FAE5', color: '#065F46', borderColor: '#A7F3D0' }
-                            : { backgroundColor: '#FEE2E2', color: '#991B1B', borderColor: '#FECACA' }
+                            ? { backgroundColor: '#DCFCE7', color: '#2D6648', borderColor: '#BBF7D0' }
+                            : { backgroundColor: '#FEE2E2', color: '#8A3228', borderColor: '#FECACA' }
                           }
                         >
                           {row.פעיל ? 'פעיל' : 'מושבת'}
@@ -513,9 +513,9 @@ function UnlinkedPricesPanel({ rows, products, onLinked }: {
   };
 
   return (
-    <div className="rounded-xl border p-4" style={{ backgroundColor: '#FDF2F0', borderColor: '#F0C8BE' }}>
+    <div className="rounded-xl border p-4" style={{ backgroundColor: '#FDF2F0', borderColor: '#E7B7B0' }}>
       <button type="button" onClick={() => setOpen(o => !o)} className="w-full text-right">
-        <p className="text-sm font-semibold" style={{ color: '#8A2E1E' }}>
+        <p className="text-sm font-semibold" style={{ color: '#8A3228' }}>
           {total} מחירים לא מקושרים למוצר ({groups.length} שמות) {open ? '▴' : '▾'}
         </p>
       </button>
@@ -532,7 +532,7 @@ function UnlinkedPricesPanel({ rows, products, onLinked }: {
                 .map(r => `${PRICE_TYPE_LABELS[r.price_type ?? 'retail'] ?? r.price_type}${r.min_quantity ? ` (${r.min_quantity}+)` : ''}: ₪${Number(r.מחיר)}`)
                 .join(' · ');
               return (
-                <div key={key || '_'} className="flex flex-wrap items-center gap-2 rounded-lg bg-white px-3 py-2 border" style={{ borderColor: '#F0E0D8' }}>
+                <div key={key || '_'} className="flex flex-wrap items-center gap-2 rounded-lg bg-white px-3 py-2 border" style={{ borderColor: '#E8DED2' }}>
                   <div className="min-w-[10rem] flex-1">
                     <div className="text-sm font-medium" style={{ color: '#2B1A10' }}>{key || 'ללא שם'}</div>
                     <div className="text-xs" style={{ color: '#9B7A5A' }}>{summary}</div>

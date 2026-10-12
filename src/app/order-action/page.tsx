@@ -57,14 +57,14 @@ export default async function OrderActionPage(props: PageProps) {
     sig: searchParams.sig || '',
   });
   const msg = messageFor(result);
-  const color = msg.tone === 'success' ? '#476D53' : '#9D4B4A';
-  const bg = msg.tone === 'success' ? '#E8F0E7' : '#F4E4E1';
+  const color = msg.tone === 'success' ? '#2D6648' : '#9D4B4A';
+  const bg = msg.tone === 'success' ? '#EAF0E7' : '#F0EAE8';
 
   return (
-    <main dir="rtl" className="min-h-screen px-4 py-10" style={{ backgroundColor: '#F8F3EC' }}>
+    <main dir="rtl" className="min-h-screen px-4 py-10" style={{ backgroundColor: '#F5F1EB' }}>
       <div
         className="mx-auto max-w-md rounded-2xl border p-6 text-center shadow-sm"
-        style={{ backgroundColor: '#FFFDF9', borderColor: '#E8D8C6' }}
+        style={{ backgroundColor: '#FFFDF9', borderColor: '#E0D4C2' }}
       >
         <div
           className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full text-xl font-bold"
@@ -72,7 +72,7 @@ export default async function OrderActionPage(props: PageProps) {
         >
           {msg.tone === 'success' ? '✓' : '!'}
         </div>
-        <h1 className="mb-2 text-xl font-bold" style={{ color: '#2F1B14' }}>
+        <h1 className="mb-2 text-xl font-bold" style={{ color: '#2B1A10' }}>
           {msg.title}
         </h1>
         <p className="text-sm leading-6" style={{ color: '#7B604D' }}>

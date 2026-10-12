@@ -25,7 +25,7 @@ export function AttentionCard({ label, value, sub, accent, rows, cta }: Props) {
     <>
       {/* Header: label + value */}
       <div className="flex items-baseline justify-between gap-3 mb-1">
-        <span className="text-[10px] uppercase font-semibold" style={{ color: C.textSoft, letterSpacing: '0.08em' }}>
+        <span className="text-[11px] uppercase font-semibold" style={{ color: C.textSoft, letterSpacing: '0.08em' }}>
           {label}
         </span>
         <span className="text-[18px] font-bold tabular-nums" style={{ color: accent ?? C.text, letterSpacing: '-0.01em' }}>
@@ -40,7 +40,7 @@ export function AttentionCard({ label, value, sub, accent, rows, cta }: Props) {
             <li key={r.id} className="flex items-center justify-between gap-2 text-[12px]">
               <span className="truncate" style={{ color: C.text }}>{r.primary}</span>
               {r.secondary && (
-                <span className="text-[10.5px] tabular-nums whitespace-nowrap" style={{ color: C.textSoft }}>
+                <span className="text-[11.5px] tabular-nums whitespace-nowrap" style={{ color: C.textSoft }}>
                   {r.secondary}
                 </span>
               )}

@@ -30,7 +30,7 @@ interface SyncResult {
 
 const STATUS: Record<RowStatus, { label: string; fg: string; bg: string }> = {
   new: { label: 'חדשה — תיקלט', fg: C.green, bg: C.greenBg },
-  synced: { label: 'כבר נקלטה', fg: C.sub, bg: '#F0EAE2' },
+  synced: { label: 'כבר נקלטה', fg: C.sub, bg: '#F0EAE0' },
   'manual-duplicate': { label: 'כבר הוזנה ידנית — תדלג', fg: C.amber, bg: C.amberBg },
 };
 

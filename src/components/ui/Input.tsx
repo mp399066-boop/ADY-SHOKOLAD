@@ -12,7 +12,7 @@ export function Input({ label, error, hint, className, id, required, ...props }:
   return (
     <div className="space-y-1">
       {label && (
-        <label htmlFor={inputId} className="block text-xs font-medium" style={{ color: '#8A7664' }}>
+        <label htmlFor={inputId} className="block text-[12.5px] font-medium" style={{ color: '#6B4A2D' }}>
           {label}
           {required && <span className="mr-0.5" style={{ color: '#A0362C' }}>*</span>}
         </label>
@@ -21,7 +21,7 @@ export function Input({ label, error, hint, className, id, required, ...props }:
         id={inputId}
         required={required}
         className={cn(
-          'w-full px-3 py-2 text-sm rounded-lg border bg-white transition-all duration-200',
+          'w-full px-3 py-2.5 text-sm rounded-[10px] border bg-white hover:border-[#DDD0BC] transition-all duration-200',
           error ? 'border-[#D8BCB6]' : 'border-[#E8DED2]',
           'focus:outline-none focus:ring-2',
           error ? 'focus:border-[#D8BCB6] focus:ring-[#D8BCB6]/15' : 'focus:border-[#C9A46A] focus:ring-[#C9A46A]/12',
@@ -47,7 +47,7 @@ export function Textarea({ label, error, className, id, required, ...props }: Te
   return (
     <div className="space-y-1">
       {label && (
-        <label htmlFor={inputId} className="block text-xs font-medium" style={{ color: '#8A7664' }}>
+        <label htmlFor={inputId} className="block text-[12.5px] font-medium" style={{ color: '#6B4A2D' }}>
           {label}
           {required && <span className="mr-0.5" style={{ color: '#A0362C' }}>*</span>}
         </label>
@@ -56,7 +56,7 @@ export function Textarea({ label, error, className, id, required, ...props }: Te
         id={inputId}
         required={required}
         className={cn(
-          'w-full px-3 py-2 text-sm rounded-lg border bg-white transition-all duration-200 resize-y',
+          'w-full px-3 py-2.5 text-sm rounded-[10px] border bg-white hover:border-[#DDD0BC] transition-all duration-200 resize-y',
           error ? 'border-[#D8BCB6]' : 'border-[#E8DED2]',
           'focus:outline-none focus:ring-2',
           error ? 'focus:border-[#D8BCB6] focus:ring-[#D8BCB6]/15' : 'focus:border-[#C9A46A] focus:ring-[#C9A46A]/12',
@@ -81,7 +81,7 @@ export function Select({ label, error, className, id, required, children, ...pro
   return (
     <div className="space-y-1">
       {label && (
-        <label htmlFor={inputId} className="block text-xs font-medium" style={{ color: '#8A7664' }}>
+        <label htmlFor={inputId} className="block text-[12.5px] font-medium" style={{ color: '#6B4A2D' }}>
           {label}
           {required && <span className="mr-0.5" style={{ color: '#A0362C' }}>*</span>}
         </label>
@@ -90,7 +90,7 @@ export function Select({ label, error, className, id, required, children, ...pro
         id={inputId}
         required={required}
         className={cn(
-          'w-full px-3 py-2 text-sm rounded-lg border bg-white transition-all duration-200',
+          'w-full px-3 py-2.5 text-sm rounded-[10px] border bg-white hover:border-[#DDD0BC] transition-all duration-200',
           error ? 'border-[#D8BCB6]' : 'border-[#E8DED2]',
           'focus:outline-none focus:ring-2',
           error ? 'focus:border-[#D8BCB6] focus:ring-[#D8BCB6]/15' : 'focus:border-[#C9A46A] focus:ring-[#C9A46A]/12',
