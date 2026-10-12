@@ -39,11 +39,33 @@ export function CatalogItemEditModal({ target, onClose, onSaved }: {
 }) {
   const [form, setForm] = useState<Form>({});
   const [saving, setSaving] = useState(false);
+  // Sale price = the product's active retail price-list row, else its base
+  // price — the same price the order form and /costs show. Saved through the
+  // costs sale-price route, which updates both.
+  const [salePrice, setSalePrice] = useState<string>('');
+  const [initialSalePrice, setInitialSalePrice] = useState<number | null>(null);
   const { values: categories } = useOptionList('product_categories', String(form.קטגוריית_מוצר || 'אחר'));
 
   useEffect(() => {
     if (!target) return;
     setForm({ ...(target.item as unknown as Form) });
+    if (target.kind !== 'product') return;
+    const base = target.item.מחיר == null ? null : Number(target.item.מחיר);
+    setSalePrice(base == null ? '' : String(base));
+    setInitialSalePrice(base);
+    let cancelled = false;
+    fetch('/api/prices')
+      .then(r => (r.ok ? r.json() : null))
+      .then((json: { data?: { מוצר_id: string | null; price_type: string; מחיר: unknown }[] } | null) => {
+        if (cancelled || !json?.data) return;
+        const row = json.data.find(p => p.מוצר_id === target.item.id && p.price_type === 'retail' && p.מחיר != null);
+        if (!row) return;
+        const retail = Number(row.מחיר);
+        setSalePrice(String(retail));
+        setInitialSalePrice(retail);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
   }, [target]);
 
   const set = (k: string, v: string | number | boolean | null) => setForm(f => ({ ...f, [k]: v }));
@@ -65,7 +87,6 @@ export function CatalogItemEditModal({ target, onClose, onSaved }: {
       ? {
           ...stock,
           שם_מוצר:       String(form.שם_מוצר).trim(),
-          מחיר:          Number(form.מחיר) || 0,
           קטגוריית_מוצר: form.קטגוריית_מוצר || null,
           sku:           form.sku ? String(form.sku).trim() : null,
           תיאור:         form.תיאור || null,
@@ -75,15 +96,30 @@ export function CatalogItemEditModal({ target, onClose, onSaved }: {
           שם_פטיפור: String(form.שם_פטיפור).trim(),
           הערות:     form.הערות || null,
         };
+    const newSalePrice = salePrice.trim() === '' ? null : Number(salePrice);
+    if (isProduct && (newSalePrice == null || !Number.isFinite(newSalePrice) || newSalePrice < 0)) {
+      toast.error('מחיר מכירה לא תקין'); return;
+    }
+    const salePriceChanged = isProduct && newSalePrice !== initialSalePrice;
     setSaving(true);
     try {
+      let savedPrice: { מחיר?: number } = {};
+      if (salePriceChanged) {
+        const priceRes = await fetch(`/api/costs/sale-price/${target.item.id}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ מחיר: newSalePrice }),
+        });
+        const priceJson = await priceRes.json().catch(() => ({}));
+        if (!priceRes.ok) throw new Error(priceJson.error || 'עדכון מחיר המכירה נכשל');
+        savedPrice = { מחיר: Number(priceJson.data?.price ?? newSalePrice) };
+        setInitialSalePrice(savedPrice.מחיר ?? null);
+      }
       const url = isProduct ? `/api/products/${target.item.id}` : `/api/petit-four-types/${target.item.id}`;
       const res = await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'שגיאה בשמירה');
       toast.success('נשמר');
       onSaved(isProduct
-        ? { kind: 'product', item: { ...(target.item as Product), ...json.data } }
+        ? { kind: 'product', item: { ...(target.item as Product), ...json.data, ...savedPrice } }
         : { kind: 'petitfour', item: { ...(target.item as PetitFourType), ...json.data } });
       onClose();
     } catch (err: unknown) {
@@ -104,9 +140,9 @@ export function CatalogItemEditModal({ target, onClose, onSaved }: {
                 </Select>
                 <Input label='מק"ט' value={String(form.sku || '')} onChange={e => set('sku', e.target.value)} />
                 <Input
-                  label="מחיר בסיס (₪)" type="number" min={0} step={0.01}
-                  value={num('מחיר')} onChange={e => set('מחיר', e.target.value === '' ? 0 : Number(e.target.value))}
-                  hint="מחיר מהמחירון גובר עליו בהזמנה"
+                  label="מחיר מכירה (₪)" type="number" min={0} step={0.01}
+                  value={salePrice} onChange={e => setSalePrice(e.target.value)}
+                  hint="מתעדכן גם במחירון (לקוח פרטי) וגם במחיר הבסיס"
                 />
               </div>
               <Textarea label="תיאור" rows={2} value={String(form.תיאור || '')} onChange={e => set('תיאור', e.target.value)} />
