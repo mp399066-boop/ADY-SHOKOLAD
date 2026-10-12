@@ -18,6 +18,7 @@ import toast from 'react-hot-toast';
 import type { Order, OrderItem, OrderRecipient, Customer, Product, Package, PetitFourType, Employee, WorkTask } from '@/types/database';
 import { DeliveryTypeCards } from '@/components/orders/DeliveryTypeCards';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
+import { CustomerEditModal } from '@/components/customers/CustomerEditModal';
 
 // ─── Interfaces ────────────────────────────────────────────────────────────────
 
@@ -311,6 +312,8 @@ export default function OrderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const [order, setOrder] = useState<FullOrder | null>(null);
+  // Customer card edited in place from the order.
+  const [editCustomerId, setEditCustomerId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
@@ -1586,7 +1589,20 @@ export default function OrderDetailPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
               {/* Customer column */}
               <div className="space-y-4">
-                <p className="text-[11px] uppercase tracking-wider font-semibold" style={{ color: '#8B5E34' }}>לקוח</p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[11px] uppercase tracking-wider font-semibold" style={{ color: '#8B5E34' }}>לקוח</p>
+                  {customer?.id && (
+                    <button
+                      type="button"
+                      onClick={() => setEditCustomerId(customer.id)}
+                      className="text-[11px] font-medium px-2 py-0.5 rounded-lg border transition-colors hover:bg-[#FAF7F2]"
+                      style={{ borderColor: '#E8DED2', color: '#8B5E34' }}
+                      title="עריכת פרטי הלקוח בלי לצאת מההזמנה"
+                    >
+                      עריכת לקוח
+                    </button>
+                  )}
+                </div>
                 <InfoField icon="user" label="שם">
                   {customer?.id ? (
                     <Link
@@ -2492,6 +2508,8 @@ export default function OrderDetailPage() {
           </Card>
         </aside>
       </div>
+
+      <CustomerEditModal customerId={editCustomerId} onClose={() => setEditCustomerId(null)} onSaved={() => loadOrder()} />
 
       {/* ══════════════════════════════════════════════════════════════════════
           Delete-order confirm — the order number is spelled out so there is no

@@ -3,6 +3,7 @@
 import { Pencil, Warehouse } from 'lucide-react';
 import type { KitchenInventoryItem } from '@/lib/dashboard/kitchen-view';
 import { C } from './theme';
+import type { StockItemRef } from '@/components/inventory/StockItemEditor';
 
 function statusLabel(status: string): 'תקין' | 'נמוך' | 'חסר' {
   if (status === 'אזל מהמלאי' || status === 'קריטי') return 'חסר';
@@ -19,9 +20,12 @@ function statusColors(label: string) {
 export function KitchenInventoryPanel({
   items,
   onOpenInventory,
+  onEditItem,
 }: {
   items: KitchenInventoryItem[];
   onOpenInventory: () => void;
+  /** Edit the item in place; falls back to /inventory when not provided. */
+  onEditItem?: (ref: StockItemRef) => void;
 }) {
   return (
     <section className="rounded-lg border p-3" style={{ backgroundColor: C.card, borderColor: C.border }}>
@@ -66,7 +70,7 @@ export function KitchenInventoryPanel({
                 </p>
                 <button
                   type="button"
-                  onClick={onOpenInventory}
+                  onClick={() => (onEditItem ? onEditItem({ kind: item.kind, id: item.id }) : onOpenInventory())}
                   className="flex h-6 w-fit items-center gap-1 rounded-md border px-2 text-[10px] font-bold"
                   style={{ borderColor: C.border, color: C.cocoa, backgroundColor: C.brandSoft }}
                 >

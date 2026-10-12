@@ -6,6 +6,7 @@ import type { KitchenPrepResponse } from '@/app/api/dashboard/kitchen-prep/route
 import type { Delivery, TodayOrder } from './types';
 import { KitchenAlerts } from './KitchenAlerts';
 import { KitchenInventoryPanel } from './KitchenInventoryPanel';
+import type { StockItemRef } from '@/components/inventory/StockItemEditor';
 import { KitchenPrepBoard } from './KitchenPrepBoard';
 import { KitchenQuickActions } from './KitchenQuickActions';
 import { KitchenTaskRow } from './KitchenTaskRow';
@@ -147,6 +148,7 @@ export function KitchenView({
   onPaymentStatus,
   onDeliveryStatus,
   onOpenOrder,
+  onEditStock,
 }: {
   data: KitchenViewData;
   updatingId: string | null;
@@ -156,6 +158,7 @@ export function KitchenView({
   onPaymentStatus: (order: TodayOrder, status: PaymentStatus) => void;
   onDeliveryStatus: (delivery: Delivery, status: DeliveryStatus) => void;
   onOpenOrder: (order: TodayOrder) => void;
+  onEditStock?: (ref: StockItemRef) => void;
 }) {
   // Item-aggregated prep board — fetched once when the kitchen view
   // mounts. Kept separate from the dashboard's main fetch so a
@@ -221,7 +224,7 @@ export function KitchenView({
       <KitchenPrepBoard data={prepData} loading={prepLoading} />
 
       {/* 4. Secondary sections — below fold, minimized */}
-      <KitchenInventoryPanel items={data.inventoryWarnings} onOpenInventory={() => onNavigate('/inventory')} />
+      <KitchenInventoryPanel items={data.inventoryWarnings} onOpenInventory={() => onNavigate('/inventory')} onEditItem={onEditStock} />
 
       <KitchenAlerts alerts={data.alerts} onAction={handleAlert} />
 

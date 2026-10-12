@@ -1,11 +1,11 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import {
   computeRowCost, marginPct, formatMinutes,
-  type CostRawMaterial, type CostRecipe, type CostRow, type CostsData, type RowCost,
+  type CatalogItem, type CostRawMaterial, type CostRecipe, type CostRow, type CostsData, type RowCost,
 } from '@/lib/product-costs';
 import { downloadExcel, type Cell } from '@/lib/finance-export';
 import { C, money, StatCard, ExportButtons, Th, Td, EmptyNote, THEAD_STYLE, TOTAL_ROW_STYLE } from '../../finance/components/shared';
@@ -191,7 +191,7 @@ export default function ProductCostsTab({ data, rawById, recipesById, reload }: 
                     </span>
                     {cost.total != null && !cost.complete && <div className="text-xs" style={{ color: C.amber }}>חלקי</div>}
                   </Td>
-                  <Td><span className="tabular-nums">{item?.price ? money(item.price) : '—'}</span></Td>
+                  <Td><SalePriceCell item={item} onSaved={reload} /></Td>
                   <Td>
                     {margin == null ? <span style={{ color: C.faint }}>—</span> : (
                       <div className="tabular-nums" style={{ color: margin >= 0 ? C.green : C.red }}>
@@ -253,6 +253,75 @@ export default function ProductCostsTab({ data, rawById, recipesById, reload }: 
         loading={deleting}
       />
     </div>
+  );
+}
+
+function SalePriceCell({ item, onSaved }: { item: CatalogItem | undefined; onSaved: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState('');
+  const [saving, setSaving] = useState(false);
+  // Enter saves and then the input blurs — the ref stops that second save.
+  const busy = useRef(false);
+
+  // Only catalog products carry a price; petit-fours and unlinked rows don't.
+  if (!item || item.type !== 'sale_product') {
+    return (
+      <span style={{ color: C.faint }} title={item ? undefined : 'כדי להזין מחיר — יש לקשר את השורה למוצר בקטלוג (עריכה)'}>—</span>
+    );
+  }
+
+  const start = (e: { stopPropagation: () => void }) => {
+    e.stopPropagation();
+    setValue(item.price ? String(item.price) : '');
+    setEditing(true);
+  };
+  const save = async () => {
+    if (busy.current) return;
+    const n = Number(value);
+    if (value.trim() === '' || n === Number(item.price ?? 0)) { setEditing(false); return; }
+    if (!Number.isFinite(n) || n < 0) { toast.error('מחיר לא תקין'); return; }
+    busy.current = true;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/costs/sale-price/${item.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ מחיר: n }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || 'עדכון המחיר נכשל');
+      toast.success(`מחיר המכירה של "${item.name}" עודכן`);
+      setEditing(false);
+      onSaved();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'עדכון המחיר נכשל');
+    } finally {
+      busy.current = false;
+      setSaving(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+        <span className="text-sm" style={{ color: C.sub }}>₪</span>
+        <input
+          autoFocus type="number" min={0} step={0.5} value={value} disabled={saving}
+          onChange={e => setValue(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') setEditing(false); }}
+          onBlur={save}
+          aria-label="מחיר מכירה"
+          className="w-20 px-2 py-1 text-sm rounded-md border border-[#C9A46A] bg-white tabular-nums focus:outline-none"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button" onClick={start} title="לחצי לעדכון מחיר המכירה"
+      className="tabular-nums rounded-md px-1.5 py-0.5 -mx-1.5 border border-dashed border-transparent hover:border-[#C9A46A]"
+      style={{ color: item.price ? C.text : C.amber }}>
+      {item.price ? money(item.price) : '+ מחיר'}
+    </button>
   );
 }
 

@@ -17,6 +17,7 @@ import { MovementsTab } from '@/components/inventory/MovementsTab';
 import { RawMaterialsSummaryPanel } from '@/components/inventory/RawMaterialsSummaryPanel';
 import { DuplicateReviewModal } from '@/components/inventory/DuplicateReviewModal';
 import { AliasEditor } from '@/components/inventory/AliasEditor';
+import { CatalogItemEditModal, type CatalogEditTarget } from '@/components/inventory/CatalogItemEditModal';
 import { exportToCsv } from '@/lib/exportCsv';
 import { useOptionList } from '@/hooks/useOptionList';
 import { useSystemConfig } from '@/hooks/useSystemConfig';
@@ -94,6 +95,13 @@ export default function InventoryPage() {
   const [editLow, setEditLow] = useState(0);
   const [editCritical, setEditCritical] = useState(0);
   const [savingThreshold, setSavingThreshold] = useState(false);
+  // Full edit (name, category, stock, thresholds…) of a product / petit four
+  // without leaving the inventory screen.
+  const [catalogEdit, setCatalogEdit] = useState<CatalogEditTarget | null>(null);
+  const handleCatalogSaved = (t: CatalogEditTarget) => {
+    if (t.kind === 'product') setStockProducts(prev => prev.map(p => p.id === t.item.id ? t.item : p));
+    else setStockPetitFours(prev => prev.map(p => p.id === t.item.id ? t.item : p));
+  };
 
   // Bulk state
   const [selRaw, setSelRaw] = useState<Set<string>>(new Set());
@@ -916,6 +924,7 @@ export default function InventoryPage() {
                           <td className="px-4 py-3">
                             {editStockId !== p.id && editThresholdId !== p.id && (
                               <div className="flex items-center gap-2">
+                                <ActionBtn title="עריכה" onClick={() => setCatalogEdit({ kind: 'product', item: p })} icon={<IconEdit className="w-4 h-4" />} />
                                 <button className="text-xs hover:underline" style={{ color: '#8B5E34' }} onClick={() => { setEditStockId(p.id); setEditStockQty(p.כמות_במלאי ?? 0); }}>
                                   עדכן מלאי
                                 </button>
@@ -1057,6 +1066,7 @@ export default function InventoryPage() {
                           <td className="px-4 py-3">
                             {editStockId !== pf.id && editThresholdId !== pf.id && (
                               <div className="flex items-center gap-2">
+                                <ActionBtn title="עריכה" onClick={() => setCatalogEdit({ kind: 'petitfour', item: pf })} icon={<IconEdit className="w-4 h-4" />} />
                                 <button className="text-xs hover:underline" style={{ color: '#8B5E34' }} onClick={() => { setEditStockId(pf.id); setEditStockQty(pf.כמות_במלאי ?? 0); }}>
                                   עדכן מלאי
                                 </button>
@@ -1153,7 +1163,7 @@ export default function InventoryPage() {
                               <div>סף קריטי: {p.סף_מלאי_קריטי ?? 0} יח׳</div>
                             </div>
                             <button
-                              onClick={() => { setTab('products'); setEditStockId(p.id); setEditStockQty(p.כמות_במלאי ?? 0); }}
+                              onClick={() => setCatalogEdit({ kind: 'product', item: p })}
                               className="mt-3 text-xs hover:underline"
                               style={{ color: '#8B5E34' }}
                             >
@@ -1180,7 +1190,7 @@ export default function InventoryPage() {
                               <div>סף נמוך: {p.סף_מלאי_נמוך ?? 0} יח׳</div>
                             </div>
                             <button
-                              onClick={() => { setTab('products'); setEditStockId(p.id); setEditStockQty(p.כמות_במלאי ?? 0); }}
+                              onClick={() => setCatalogEdit({ kind: 'product', item: p })}
                               className="mt-3 text-xs hover:underline"
                               style={{ color: '#8B5E34' }}
                             >
@@ -1416,6 +1426,9 @@ export default function InventoryPage() {
           </div>
         </div>
       </Modal>
+
+      {/* Product / petit-four full edit */}
+      <CatalogItemEditModal target={catalogEdit} onClose={() => setCatalogEdit(null)} onSaved={handleCatalogSaved} />
 
       {/* Duplicate detection review */}
       <DuplicateReviewModal

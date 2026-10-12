@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { logActivity, userActor } from '@/lib/activity-log';
 import { dbErrorResponse } from '@/lib/api-error';
+import { parseCatalogPatch, customerPatchSchema } from '@/lib/catalog-patch-schema';
 
 export async function GET(_: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -45,7 +46,9 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
-  const body = await req.json();
+  const parsed = parseCatalogPatch(customerPatchSchema, await req.json().catch(() => null));
+  if ('error' in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 });
+  const body = parsed.data;
 
   const { data, error } = await supabase
     .from('לקוחות')

@@ -2,17 +2,33 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
+import { parseCatalogPatch, petitFourPatchSchema } from '@/lib/catalog-patch-schema';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { recordStockMovement } from '@/lib/inventory-movements';
 import { missingColumnMessage } from '@/lib/db-error';
 import { dbErrorResponse, dbErrorDetail } from '@/lib/api-error';
+
+// Single petit-four type — for the shared edit window on the dashboard.
+export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
+  const auth = await requireManagementUser();
+  if (!auth) return unauthorizedResponse();
+  if (!/^[0-9a-f-]{36}$/i.test(params.id)) return NextResponse.json({ error: 'מזהה לא תקין' }, { status: 400 });
+  const supabase = createAdminClient();
+  const { data, error } = await supabase.from('סוגי_פטיפורים').select('*').eq('id', params.id).maybeSingle();
+  if (error) return dbErrorResponse(error, 'petit-four-types/[id] GET');
+  if (!data) return NextResponse.json({ error: 'הפטיפור לא נמצא' }, { status: 404 });
+  return NextResponse.json({ data });
+}
 
 export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
-  const body = await req.json();
+  const parsed = parseCatalogPatch(petitFourPatchSchema, await req.json().catch(() => null));
+  if ('error' in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 });
+  const patch = parsed.data;
 
   const { data: prev } = await supabase
     .from('סוגי_פטיפורים')
@@ -22,7 +38,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
 
   const { data, error } = await supabase
     .from('סוגי_פטיפורים')
-    .update({ ...body, תאריך_עדכון: new Date().toISOString() })
+    .update({ ...patch,תאריך_עדכון: new Date().toISOString() })
     .eq('id', params.id)
     .select()
     .single();

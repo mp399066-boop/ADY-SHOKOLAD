@@ -16,6 +16,8 @@ import toast from 'react-hot-toast';
 import type { Customer, Order, Invoice, CommunicationLog, CustomerCredit } from '@/types/database';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 
+const ORDER_STATUSES: string[] = ['חדשה', 'בהכנה', 'מוכנה למשלוח', 'נשלחה', 'הושלמה בהצלחה', 'בוטלה'];
+
 /* ─── types ──────────────────────────────────────────────────────────────── */
 type FullCustomer = Customer & {
   הזמנות: Order[];
@@ -252,6 +254,29 @@ export default function CustomerDetailPage() {
   const router = useRouter();
 
   const [customer, setCustomer] = useState<FullCustomer | null>(null);
+  const [statusSavingId, setStatusSavingId] = useState<string | null>(null);
+
+  // Order status changed right from the customer's history — same PATCH as
+  // the orders list, so all server-side side effects still fire.
+  const changeOrderStatus = async (orderId: string, next: string) => {
+    const prev = customer?.הזמנות.find(o => o.id === orderId)?.סטטוס_הזמנה;
+    if (!prev || prev === next) return;
+    setStatusSavingId(orderId);
+    setCustomer(c => c ? { ...c, הזמנות: c.הזמנות.map(o => o.id === orderId ? { ...o, סטטוס_הזמנה: next as Order['סטטוס_הזמנה'] } : o) } : c);
+    try {
+      const res = await fetch(`/api/orders/${orderId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ סטטוס_הזמנה: next }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'שגיאה בעדכון');
+      toast.success('הסטטוס עודכן');
+    } catch (err) {
+      setCustomer(c => c ? { ...c, הזמנות: c.הזמנות.map(o => o.id === orderId ? { ...o, סטטוס_הזמנה: prev } : o) } : c);
+      toast.error(err instanceof Error ? err.message : 'שגיאה בעדכון');
+    } finally { setStatusSavingId(null); }
+  };
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -901,8 +926,19 @@ export default function CustomerDetailPage() {
                         <td className="px-3 py-3 font-semibold text-xs" style={{ color: '#3A2A1A' }}>
                           {formatCurrency(o.סך_הכל_לתשלום)}
                         </td>
-                        <td className="px-3 py-3">
-                          <StatusBadge status={o.סטטוס_הזמנה} type="order" />
+                        <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
+                          <select
+                            value={o.סטטוס_הזמנה}
+                            disabled={statusSavingId === o.id}
+                            onChange={e => changeOrderStatus(o.id, e.target.value)}
+                            title="שינוי סטטוס הזמנה"
+                            className="text-xs rounded-full px-2 py-0.5 border bg-white cursor-pointer focus:outline-none disabled:opacity-50"
+                            style={{ borderColor: '#E8DED2', color: '#3A2A1A' }}
+                          >
+                            {(ORDER_STATUSES.includes(o.סטטוס_הזמנה) ? ORDER_STATUSES : [o.סטטוס_הזמנה, ...ORDER_STATUSES]).map(st => (
+                              <option key={st} value={st}>{st}</option>
+                            ))}
+                          </select>
                         </td>
                         <td className="px-3 py-3">
                           <span style={{ color: '#C6A77D' }}><IEye className="w-3.5 h-3.5" /></span>
