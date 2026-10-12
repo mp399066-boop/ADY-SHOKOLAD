@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from 'crypto';
 import { createAdminClient } from '@/lib/supabase/server';
 import { logActivity, PUBLIC_TOKEN_ACTOR } from '@/lib/activity-log';
+import { appBaseUrl } from '@/lib/app-url';
 
 export type EmployeeReportAction = 'acknowledged' | 'ready_for_delivery';
 
@@ -39,14 +40,6 @@ function statusRank(s: string | null | undefined): number {
   if (!s) return 0;
   const r = STATUS_RANK[s];
   return typeof r === 'number' ? r : 0;
-}
-
-function appBaseUrl(): string {
-  const explicit = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL;
-  if (explicit) return explicit.replace(/\/+$/, '');
-  const vercel = process.env.VERCEL_URL;
-  if (vercel) return `https://${vercel}`.replace(/\/+$/, '');
-  return '';
 }
 
 function reportActionSecret(): string {
