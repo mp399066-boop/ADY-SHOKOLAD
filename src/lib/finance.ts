@@ -293,6 +293,9 @@ export interface Expense {
    *  fridge, oven, tables… Kept out of the regular monthly expenses and the
    *  monthly average; shown separately in profit & loss. */
   השקעה_לטווח_ארוך?: boolean | null;
+  /** Expense box (migration 065): 'עסק' (default) or 'קורסים'. Courses
+   *  expenses are kept out of the business expenses, P&L and averages. */
+  קופה?: ExpenseBox | null;
 }
 
 /** Category every payslip (תלוש שכר) is filed under. */
@@ -314,7 +317,21 @@ export const LONG_TERM_LABEL = 'השקעה לטווח ארוך';
 
 export const isLongTermExpense = (e: Pick<Expense, 'השקעה_לטווח_ארוך'>) => e.השקעה_לטווח_ארוך === true;
 
-export const expenseSupplierName = (e: Pick<Expense, 'שם_ספק'>) => (e.שם_ספק ?? '').trim() || 'ללא ספק';
+// ── Expense boxes (קופות) ─────────────────────────────────────────────────────
+// Owner's rule: expenses that belong to the courses live in their own box —
+// listed separately and NOT counted in the business expenses / P&L / average.
+
+export const EXPENSE_BOXES = ['עסק', 'קורסים'] as const;
+export type ExpenseBox = typeof EXPENSE_BOXES[number];
+export const BUSINESS_BOX: ExpenseBox = 'עסק';
+export const COURSES_BOX: ExpenseBox = 'קורסים';
+export const EXPENSE_BOX_LABEL: Record<ExpenseBox, string> = { עסק: 'קופת העסק', קורסים: 'קופת קורסים' };
+
+/** Missing / unknown box (before migration 065) = the business box. */
+export const expenseBox = (e: Pick<Expense, 'קופה'>): ExpenseBox => (e.קופה === COURSES_BOX ? COURSES_BOX : BUSINESS_BOX);
+export const isCoursesExpense = (e: Pick<Expense, 'קופה'>) => expenseBox(e) === COURSES_BOX;
+
+export const expenseSupplierName =(e: Pick<Expense, 'שם_ספק'>) => (e.שם_ספק ?? '').trim() || 'ללא ספק';
 
 // ── Months ──────────────────────────────────────────────────────────────────
 
@@ -386,7 +403,7 @@ export interface PnlMonth {
   income: number;        // into the pocket: without delivery, before VAT
   incomeGross: number;   // the same, with VAT
   open: number;          // net of VAT, not yet paid
-  expenses: number;      // regular expenses, net of VAT (long-term investments excluded)
+  expenses: number;      // regular business expenses, net of VAT (long-term investments and the courses box excluded)
   expensesGross: number; // what was paid (regular expenses)
   longTerm: number;      // long-term investments, net of VAT
   longTermGross: number; // long-term investments, what was paid
@@ -420,7 +437,7 @@ export function buildPnl(orders: FinanceOrder[], expenses: Expense[], year: numb
   const months: PnlMonth[] = Array.from({ length: 12 }, (_, i) => {
     const key = monthKey(year, i);
     const s = summarize(orders.filter(o => orderBasisDate(o, basis)?.slice(0, 7) === key));
-    const inMonth = expenses.filter(e => e.תאריך.slice(0, 7) === key);
+    const inMonth = expenses.filter(e => !isCoursesExpense(e) && e.תאריך.slice(0, 7) === key);
     const ex = inMonth.filter(e => !isLongTermExpense(e));
     const lt = inMonth.filter(isLongTermExpense);
     const exp = round2(ex.reduce((t, e) => t + expenseNet(e), 0));

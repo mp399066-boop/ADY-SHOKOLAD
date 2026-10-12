@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { FileDown, CalendarDays, ListFilter, ChevronDown } from 'lucide-react';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
-import { todayJerusalem, type FinanceOrder, type Expense, type DateBasis } from '@/lib/finance';
+import { todayJerusalem, isCoursesExpense, type FinanceOrder, type Expense, type DateBasis } from '@/lib/finance';
 import type { ManualIncome } from '@/lib/finance-manual-income';
 import IncomeTab from './components/IncomeTab';
 import ExpensesTab from './components/ExpensesTab';
@@ -13,7 +13,7 @@ import type { SupplierOption } from './components/ExpenseFormModal';
 import type { EmployeeOption } from './components/SalaryModal';
 import { C } from './components/shared';
 
-type TabKey = 'income' | 'expenses' | 'pnl';
+type TabKey = 'income' | 'expenses' | 'courses' | 'pnl';
 
 const selectCls = 'h-9 pr-8 pl-8 text-sm font-medium rounded-lg border border-[#E2D6C6] bg-white text-[#2A1C10] shadow-sm appearance-none cursor-pointer hover:border-[#C9A46A] focus:outline-none focus:ring-2 focus:ring-[#C9A46A]/30 focus:border-[#C9A46A]';
 
@@ -46,6 +46,7 @@ export default function FinancePage() {
   const [expensesReady, setExpensesReady] = useState(true);
   const [salariesReady, setSalariesReady] = useState(true);
   const [longTermReady, setLongTermReady] = useState(true);
+  const [boxReady, setBoxReady] = useState(true);
   const [employees, setEmployees] = useState<EmployeeOption[]>([]);
   const [expensesHint, setExpensesHint] = useState<string | null>(null);
   const [expensesLoading, setExpensesLoading] = useState(true);
@@ -90,6 +91,7 @@ export default function FinancePage() {
       setExpensesHint(json.hint ?? null);
       setSalariesReady(json.salariesReady !== false);
       setLongTermReady(json.longTermReady !== false);
+      setBoxReady(json.boxReady !== false);
     } catch {
       setExpenses([]);
     } finally {
@@ -121,7 +123,12 @@ export default function FinancePage() {
     );
   }
 
-  const loading = tab === 'expenses' ? expensesLoading : incomeLoading || (tab === 'pnl' && expensesLoading);
+  // Two expense boxes: the business box feeds expenses / P&L / reports; the
+  // courses box is shown on its own and never counted in the business figures.
+  const businessExpenses = expenses.filter(e => !isCoursesExpense(e));
+  const coursesExpenses = expenses.filter(isCoursesExpense);
+  const isExpensesTab = tab === 'expenses' || tab === 'courses';
+  const loading = isExpensesTab ? expensesLoading : incomeLoading || (tab === 'pnl' && expensesLoading);
 
   return (
     <div className="space-y-5" dir="rtl">
@@ -142,7 +149,7 @@ export default function FinancePage() {
             <FileDown size={16} />
             דוח מלא (PDF / אקסל)
           </button>
-          {tab !== 'expenses' && (
+          {!isExpensesTab && (
             <FilterSelect icon={ListFilter} value={basis} onChange={e => setBasis(e.target.value as DateBasis)} aria-label="שיוך הזמנה לחודש">
               <option value="order">הזמנות לפי תאריך הזמנה</option>
               <option value="delivery">הזמנות לפי תאריך אספקה</option>
@@ -154,7 +161,8 @@ export default function FinancePage() {
       <div className="inline-flex gap-1 p-1 rounded-xl" style={{ backgroundColor: '#F1E9DD' }} role="tablist">
         {([
           { key: 'income', label: 'הכנסות' },
-          { key: 'expenses', label: 'הוצאות', count: expensesReady ? expenses.length : undefined },
+          { key: 'expenses', label: 'הוצאות', count: expensesReady ? businessExpenses.length : undefined },
+          { key: 'courses', label: 'קופת קורסים', count: expensesReady ? coursesExpenses.length : undefined },
           { key: 'pnl', label: 'רווח והפסד' },
         ] as { key: TabKey; label: string; count?: number }[]).map(t => {
           const active = tab === t.key;
@@ -176,23 +184,25 @@ export default function FinancePage() {
         })}
       </div>
 
-      {incomeError && tab !== 'expenses' ? (
+      {incomeError && !isExpensesTab ? (
         <div className="rounded-xl p-4 text-sm" style={{ backgroundColor: C.redBg, color: C.red }}>{incomeError}</div>
       ) : loading ? (
         <div className="flex justify-center py-16"><LoadingSpinner /></div>
       ) : tab === 'income' ? (
         <IncomeTab orders={orders} year={year} basis={basis} undatedCount={undatedCount} manualIncomes={manualIncomes} manualReady={manualReady} reload={loadIncome} />
       ) : tab === 'expenses' ? (
-        <ExpensesTab expenses={expenses} suppliers={suppliers} employees={employees} salariesReady={salariesReady} longTermReady={longTermReady} year={year} tableReady={expensesReady} hint={expensesHint} reload={loadExpenses} />
+        <ExpensesTab key="business" box="עסק" boxReady={boxReady} expenses={businessExpenses} suppliers={suppliers} employees={employees} salariesReady={salariesReady} longTermReady={longTermReady} year={year} tableReady={expensesReady} hint={expensesHint} reload={loadExpenses} />
+      ) : tab === 'courses' ? (
+        <ExpensesTab key="courses" box="קורסים" boxReady={boxReady} expenses={coursesExpenses} suppliers={suppliers} employees={employees} salariesReady={salariesReady} longTermReady={longTermReady} year={year} tableReady={expensesReady} hint={expensesHint} reload={loadExpenses} />
       ) : (
-        <ProfitLossTab orders={orders} expenses={expenses} year={year} basis={basis} expensesReady={expensesReady} />
+        <ProfitLossTab orders={orders} expenses={businessExpenses} coursesExpenses={coursesExpenses} year={year} basis={basis} expensesReady={expensesReady} />
       )}
 
       <FullReportModal
         open={reportOpen}
         onClose={() => setReportOpen(false)}
         orders={orders}
-        expenses={expensesReady ? expenses : []}
+        expenses={expensesReady ? businessExpenses : []}
         year={year}
         basis={basis}
         expensesReady={expensesReady}

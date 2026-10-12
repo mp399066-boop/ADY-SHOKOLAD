@@ -6,7 +6,8 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import {
-  expenseNet, expenseSupplierName, isLongTermExpense, paymentMethodLabel, round2, LONG_TERM_LABEL, HEBREW_MONTHS, todayJerusalem, type Expense,
+  expenseNet, expenseSupplierName, isLongTermExpense, paymentMethodLabel, round2, LONG_TERM_LABEL, HEBREW_MONTHS, todayJerusalem,
+  BUSINESS_BOX, COURSES_BOX, EXPENSE_BOX_LABEL, type Expense, type ExpenseBox,
 } from '@/lib/finance';
 import { downloadExcel, downloadElementPng, fmtDate, type Cell } from '@/lib/finance-export';
 import { C, money, StatCard, ExportButtons, Th, Td, EmptyNote, THEAD_STYLE, TOTAL_ROW_STYLE } from './shared';
@@ -34,7 +35,12 @@ function groupBy(list: Expense[], keyOf: (e: Expense) => string): Group[] {
 
 const selectCls = 'px-3 py-1.5 text-sm rounded-lg border border-[#E8DED2] bg-white focus:outline-none focus:border-[#C9A46A]';
 
-export default function ExpensesTab({ expenses, suppliers, employees, salariesReady, longTermReady, year, tableReady, hint, reload }: {
+export default function ExpensesTab({ box, boxReady, expenses, suppliers, employees, salariesReady, longTermReady, year, tableReady, hint, reload }: {
+  /** Which box this tab shows: the business expenses or קופת קורסים. */
+  box: ExpenseBox;
+  /** false until migration 065 (expense box) has been run. */
+  boxReady: boolean;
+  /** Only the expenses of this box. */
   expenses: Expense[];
   suppliers: SupplierOption[];
   employees: EmployeeOption[];
@@ -61,6 +67,14 @@ export default function ExpensesTab({ expenses, suppliers, employees, salariesRe
   const [morningOpen, setMorningOpen] = useState(false);
   const [toDelete, setToDelete] = useState<Expense | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [moving, setMoving] = useState(false);
+
+  const isCourses = box === COURSES_BOX;
+  const otherBox: ExpenseBox = isCourses ? BUSINESS_BOX : COURSES_BOX;
+  const moveLabel = isCourses ? 'החזרה לקופת העסק' : 'העברה לקופת קורסים';
+  const boxTitle = isCourses ? EXPENSE_BOX_LABEL[COURSES_BOX] : 'הוצאות';
+  const filePrefix = isCourses ? 'קופת_קורסים' : 'הוצאות';
 
   const inMonth = useMemo(
     () => (month === 'all' ? expenses : expenses.filter(e => Number(e.תאריך.slice(5, 7)) === month)),
@@ -87,6 +101,38 @@ export default function ExpensesTab({ expenses, suppliers, employees, salariesRe
     longTermNet: round2(filtered.filter(isLongTermExpense).reduce((s, e) => s + expenseNet(e), 0)),
     longTermCount: filtered.filter(isLongTermExpense).length,
   }), [filtered]);
+
+  // Only rows still visible count as selected (filters may hide some).
+  const selectedVisible = useMemo(() => filtered.filter(e => selected.has(e.id)), [filtered, selected]);
+  const allVisibleSelected = filtered.length > 0 && selectedVisible.length === filtered.length;
+  function toggleOne(id: string) {
+    setSelected(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  }
+  function toggleAll() {
+    setSelected(allVisibleSelected ? new Set() : new Set(filtered.map(e => e.id)));
+  }
+
+  async function moveTo(ids: string[]) {
+    if (!ids.length) return;
+    if (!boxReady) { toast.error('יש להריץ את מיגרציה 065 ב-Supabase כדי להעביר הוצאות בין קופות'); return; }
+    setMoving(true);
+    try {
+      const res = await fetch('/api/finance/expenses/move', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids, קופה: otherBox }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || 'ההעברה נכשלה');
+      toast.success(`${json.moved ?? ids.length} הוצאות הועברו ל${EXPENSE_BOX_LABEL[otherBox]}`);
+      setSelected(new Set());
+      reload();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'ההעברה נכשלה');
+    } finally {
+      setMoving(false);
+    }
+  }
 
   const allCategories = useMemo(() => Array.from(new Set(inMonth.map(e => e.קטגוריה))).sort(), [inMonth]);
   const allSuppliers = useMemo(() => Array.from(new Set(inMonth.map(expenseSupplierName))).sort(), [inMonth]);
@@ -124,7 +170,7 @@ export default function ExpensesTab({ expenses, suppliers, employees, salariesRe
       ...gs.map(g => [g.name, g.count, g.net, g.vat, g.gross] as Cell[]),
       ['סה״כ', filtered.length, totals.net, totals.vat, totals.gross],
     ];
-    await downloadExcel(`הוצאות_${month === 'all' ? year : `${year}-${String(month).padStart(2, '0')}`}`, [
+    await downloadExcel(`${filePrefix}_${month === 'all' ? year : `${year}-${String(month).padStart(2, '0')}`}`, [
       {
         name: 'כל ההוצאות',
         rows: [
@@ -157,12 +203,16 @@ export default function ExpensesTab({ expenses, suppliers, employees, salariesRe
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-2">
-        <Button onClick={openNew}>+ הוצאה חדשה</Button>
-        <Button variant="secondary" onClick={() => setMorningOpen(true)}>סנכרון ממורנינג</Button>
-        <Button variant="outline" onClick={() => setImportOpen(true)}>ייבוא מקובץ הנהלת חשבונות</Button>
-        <Button variant="outline" onClick={() => (salariesReady ? setSalaryOpen(true) : toast.error('יש להריץ את מיגרציה 059 ב-Supabase כדי להזין תלושי משכורת'))}>
-          תלושי משכורת (ברוטו)
-        </Button>
+        <Button onClick={openNew}>{isCourses ? '+ הוצאה חדשה לקורסים' : '+ הוצאה חדשה'}</Button>
+        {!isCourses && (
+          <>
+            <Button variant="secondary" onClick={() => setMorningOpen(true)}>סנכרון ממורנינג</Button>
+            <Button variant="outline" onClick={() => setImportOpen(true)}>ייבוא מקובץ הנהלת חשבונות</Button>
+            <Button variant="outline" onClick={() => (salariesReady ? setSalaryOpen(true) : toast.error('יש להריץ את מיגרציה 059 ב-Supabase כדי להזין תלושי משכורת'))}>
+              תלושי משכורת (ברוטו)
+            </Button>
+          </>
+        )}
         <div className="flex-1" />
         <select className={selectCls} value={month} onChange={e => setMonth(e.target.value === 'all' ? 'all' : Number(e.target.value))}>
           <option value="all">כל השנה</option>
@@ -190,10 +240,24 @@ export default function ExpensesTab({ expenses, suppliers, employees, salariesRe
         <input className={selectCls} placeholder="חיפוש…" value={search} onChange={e => setSearch(e.target.value)} />
       </div>
 
+      {!boxReady && (
+        <div className="rounded-xl px-4 py-3 text-sm" style={{ backgroundColor: C.soft, color: C.sub, border: `1px solid ${C.border}` }}>
+          {isCourses ? 'כדי להשתמש בקופת קורסים' : 'כדי להעביר הוצאות לקופת קורסים'} — יש להריץ את מיגרציה 065 (supabase/migrations/065_expense_box.sql) ב-Supabase SQL Editor ולרענן את הדף.
+        </div>
+      )}
+
+      {selectedVisible.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl px-4 py-2.5 text-sm" style={{ backgroundColor: '#FBF6EE', border: `1px solid ${C.border}`, color: C.text }}>
+          <span>נבחרו <b>{selectedVisible.length}</b> הוצאות · {money(round2(selectedVisible.reduce((t, e) => t + Number(e.סכום), 0)))} כולל מע״מ</span>
+          <Button onClick={() => moveTo(selectedVisible.map(e => e.id))} loading={moving}>{moveLabel}</Button>
+          <button className="text-xs" style={{ color: C.sub }} onClick={() => setSelected(new Set())}>ביטול הבחירה</button>
+        </div>
+      )}
+
       <div ref={ref} className="space-y-5 bg-white sm:bg-transparent">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold" style={{ color: C.text }}>הוצאות — {periodLabel}{category ? ` · ${category}` : ''}{supplier ? ` · ${supplier}` : ''}{method ? ` · ${method}` : ''}{kind === 'regular' ? ' · שוטפות' : kind === 'longTerm' ? ' · השקעות לטווח ארוך' : ''}</h2>
-          <ExportButtons onExcel={exportExcel} onImage={() => ref.current ? downloadElementPng(ref.current, `הוצאות_${periodLabel}`) : undefined} />
+          <h2 className="text-sm font-semibold" style={{ color: C.text }}>{boxTitle} — {periodLabel}{category ? ` · ${category}` : ''}{supplier ? ` · ${supplier}` : ''}{method ? ` · ${method}` : ''}{kind === 'regular' ? ' · שוטפות' : kind === 'longTerm' ? ' · השקעות לטווח ארוך' : ''}</h2>
+          <ExportButtons onExcel={exportExcel} onImage={() => ref.current ? downloadElementPng(ref.current, `${filePrefix}_${periodLabel}`) : undefined} />
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -203,10 +267,20 @@ export default function ExpensesTab({ expenses, suppliers, employees, salariesRe
           <StatCard label="ספקים / מקבלים" value={String(bySupplier.length)} icon={Users} />
         </div>
 
+        {isCourses && (
+          <p className="text-xs" style={{ color: C.sub }}>
+            הוצאות ששולמו מהעסק אבל שייכות לקורסים. הן לא נכללות בהוצאות של העסק, ברווח והפסד ובממוצע החודשי.
+          </p>
+        )}
+
         <SalariesMatrix expenses={expenses} employees={employees} year={year} />
 
         {expenses.length === 0 ? (
-          <EmptyNote>עוד לא הוזנו הוצאות לשנת {year}. אפשר להוסיף ידנית או לייבא קובץ מהנהלת החשבונות.</EmptyNote>
+          <EmptyNote>
+            {isCourses
+              ? <>עוד אין הוצאות בקופת קורסים לשנת {year}. אפשר להוסיף כאן הוצאה חדשה, או לסמן הוצאות בלשונית &quot;הוצאות&quot; וללחוץ &quot;העברה לקופת קורסים&quot;.</>
+              : <>עוד לא הוזנו הוצאות לשנת {year}. אפשר להוסיף ידנית או לייבא קובץ מהנהלת החשבונות.</>}
+          </EmptyNote>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
             <GroupTable title="לפי קטגוריה" groups={byCategory} total={totals} onPick={setCategory} />
@@ -220,11 +294,22 @@ export default function ExpensesTab({ expenses, suppliers, employees, salariesRe
             <div className="overflow-auto" style={{ maxHeight: 560 }} data-export-expand>
               <table className="w-full">
                 <thead className="sticky top-0" style={THEAD_STYLE}>
-                  <tr><Th>תאריך</Th><Th>ספק / שם</Th><Th>קטגוריה</Th><Th>תיאור</Th><Th>לפני מע״מ</Th><Th>מע״מ</Th><Th>כולל מע״מ</Th><Th>אמצעי תשלום</Th><Th>מס׳ מסמך</Th><Th /></tr>
+                  <tr>
+                    {boxReady && (
+                      <Th>
+                        <input type="checkbox" data-export-hide aria-label="בחירת כל ההוצאות" checked={allVisibleSelected} onChange={toggleAll} />
+                      </Th>
+                    )}
+                    <Th>תאריך</Th><Th>ספק / שם</Th><Th>קטגוריה</Th><Th>תיאור</Th><Th>לפני מע״מ</Th><Th>מע״מ</Th><Th>כולל מע״מ</Th><Th>אמצעי תשלום</Th><Th>מס׳ מסמך</Th><Th /></tr>
                 </thead>
                 <tbody>
                   {filtered.map(e => (
-                    <tr key={e.id} style={{ borderTop: `1px solid ${C.border}` }}>
+                    <tr key={e.id} style={{ borderTop: `1px solid ${C.border}`, backgroundColor: selected.has(e.id) ? '#FBF6EE' : undefined }}>
+                      {boxReady && (
+                        <Td>
+                          <input type="checkbox" data-export-hide aria-label="בחירת הוצאה" checked={selected.has(e.id)} onChange={() => toggleOne(e.id)} />
+                        </Td>
+                      )}
                       <Td>{fmtDate(e.תאריך)}</Td>
                       <Td className="font-medium">{expenseSupplierName(e)}</Td>
                       <Td>
@@ -245,12 +330,18 @@ export default function ExpensesTab({ expenses, suppliers, employees, salariesRe
                         <div className="flex gap-2 text-xs" data-export-hide>
                           <button onClick={() => openEdit(e)} style={{ color: C.brand }}>עריכה</button>
                           <button onClick={() => openDuplicate(e)} style={{ color: C.sub }} title="יצירת הוצאה זהה (למשל הוצאה חודשית קבועה)">שכפול</button>
+                          {boxReady && (
+                            <button onClick={() => moveTo([e.id])} disabled={moving} style={{ color: C.brand }} title={isCourses ? 'החזרת ההוצאה להוצאות של העסק' : 'העברת ההוצאה לקופת קורסים'}>
+                              {isCourses ? 'לקופת העסק' : 'לקורסים'}
+                            </button>
+                          )}
                           <button onClick={() => setToDelete(e)} style={{ color: C.red }}>מחיקה</button>
                         </div>
                       </Td>
                     </tr>
                   ))}
                   <tr style={TOTAL_ROW_STYLE}>
+                    {boxReady && <Td />}
                     <Td className="font-bold">סה״כ</Td><Td /><Td />
                     <Td className="font-bold">{filtered.length} הוצאות</Td>
                     <Td className="font-bold tabular-nums">{money(totals.net)}</Td>
@@ -265,7 +356,7 @@ export default function ExpensesTab({ expenses, suppliers, employees, salariesRe
         )}
       </div>
 
-      <ExpenseFormModal open={formOpen} initial={formInitial} suppliers={suppliers} longTermReady={longTermReady} onClose={() => setFormOpen(false)} onSaved={reload} />
+      <ExpenseFormModal open={formOpen} initial={formInitial} suppliers={suppliers} longTermReady={longTermReady} boxReady={boxReady} defaultBox={box} onClose={() => setFormOpen(false)} onSaved={reload} />
       <ExpenseImportModal open={importOpen} onClose={() => setImportOpen(false)} onImported={reload} />
       <MorningSyncModal open={morningOpen} onClose={() => setMorningOpen(false)} onSynced={reload} year={year} />
       <SalaryModal open={salaryOpen} onClose={() => setSalaryOpen(false)} onSaved={reload} year={year} employees={employees} expenses={expenses} />

@@ -1,6 +1,6 @@
 // Server-side validation for expense writes (/api/finance/expenses*).
 import { z } from 'zod';
-import { round2 } from '@/lib/finance';
+import { round2, EXPENSE_BOXES } from '@/lib/finance';
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'תאריך לא תקין').refine(s => {
   const d = new Date(`${s}T00:00:00Z`);
@@ -25,6 +25,8 @@ export const expenseInputSchema = z.object({
   הערות:       optText(1000),
   // Migration 062. Sent only once the column exists (see GET longTermReady).
   השקעה_לטווח_ארוך: z.boolean().optional(),
+  // Migration 065. Sent only once the column exists (see GET boxReady).
+  קופה: z.enum(EXPENSE_BOXES, { message: 'קופה לא תקינה' }).optional(),
 }).refine(e => e.מעמ <= e.סכום, { message: 'המע"מ לא יכול להיות גדול מהסכום', path: ['מעמ'] });
 
 export type ExpenseInput = z.infer<typeof expenseInputSchema>;
