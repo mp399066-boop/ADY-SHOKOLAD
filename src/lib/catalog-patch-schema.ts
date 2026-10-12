@@ -67,6 +67,41 @@ export const petitFourPatchSchema = z.object({
   הערות:          optText(2000),
 }).partial();
 
+export const customerPatchSchema = z.object({
+  שם_פרטי:      name('שם פרטי'),
+  שם_משפחה:     optText(100),
+  טלפון:        optText(30),
+  אימייל:       optText(200),
+  מספר_זהות:    optText(20),
+  סוג_לקוח:     z.string().trim().min(1).max(30),
+  סטטוס_לקוח:   optText(30),
+  מקור_הגעה:    optText(100),
+  אחוז_הנחה:    z.union([z.null(), numeric('אחוז הנחה לא תקין').pipe(z.number().min(0, 'אחוז הנחה לא יכול להיות שלילי').max(100, 'אחוז הנחה עד 100'))]),
+  הערות:        optText(2000),
+  כתובת:        optText(500),
+  עיר:          optText(100),
+  הערות_כתובת:  optText(500),
+  פטור_ממעמ:    z.boolean(),
+}).partial();
+
+const optIso = z.union([z.null(), z.string().max(40).refine(v => !Number.isNaN(Date.parse(v)), 'תאריך לא תקין')]);
+
+export const deliveryPatchSchema = z.object({
+  סטטוס_משלוח:      z.enum(['ממתין', 'נאסף', 'נמסר']),
+  courier_id:       optUuid,
+  תאריך_משלוח:      optDate,
+  שעת_משלוח:        optText(20),
+  כתובת:            optText(500),
+  עיר:              optText(100),
+  הוראות_משלוח:     optText(1000),
+  הערות:            optText(2000),
+  delivered_at:     optIso,
+  whatsapp_sent_at: optIso,
+}).partial();
+
+// NOT NULL text columns — an emptied value is stored as '' rather than null.
+const KEEP_EMPTY_STRING = new Set(['שם_חומר_גלם', 'שם_מוצר', 'שם_פטיפור', 'שם_פרטי', 'שם_משפחה']);
+
 /**
  * Parses a PATCH body against one of the schemas above. Empty strings in
  * nullable text/uuid/date fields become null. Returns the clean update or a
@@ -89,7 +124,7 @@ export function parseCatalogPatch(
   const data: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(parsed.data as Record<string, unknown>)) {
     if (v === undefined) continue;
-    data[k] = v === '' && k !== 'שם_חומר_גלם' && k !== 'שם_מוצר' && k !== 'שם_פטיפור' ? null : v;
+    data[k] = v === '' && !KEEP_EMPTY_STRING.has(k) ? null : v;
   }
   if (Object.keys(data).length === 0) return { error: 'אין שדות לעדכון' };
   return { data };

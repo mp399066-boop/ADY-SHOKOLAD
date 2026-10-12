@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { missingColumnMessage } from '@/lib/db-error';
 import { dbErrorResponse } from '@/lib/api-error';
+import { parseCatalogPatch, productPatchSchema } from '@/lib/catalog-patch-schema';
 
 export async function GET(req: NextRequest) {
   const auth = await requireManagementUser();
@@ -48,7 +49,9 @@ export async function POST(req: NextRequest) {
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
-  const body = await req.json();
+  const parsed = parseCatalogPatch(productPatchSchema, await req.json().catch(() => null));
+  if ('error' in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 });
+  const body = parsed.data as Record<string, unknown> & { sku?: string | null };
 
   if (!body.שם_מוצר) return NextResponse.json({ error: 'שם המוצר הוא שדה חובה' }, { status: 400 });
 

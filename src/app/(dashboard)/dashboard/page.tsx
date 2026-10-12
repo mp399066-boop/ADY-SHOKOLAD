@@ -36,6 +36,7 @@ import { KitchenAttendanceTab } from './components/KitchenAttendanceTab';
 import { ProductionRecipeModal } from './components/ProductionRecipeModal';
 import { C } from './components/theme';
 import { ExecutiveDashboard } from './components/ExecutiveDashboard';
+import { StockItemEditor, type StockItemRef } from '@/components/inventory/StockItemEditor';
 
 // ─── Constants ────────────────────────────────────────────────────────────
 
@@ -172,6 +173,9 @@ export default function DashboardPage() {
   const inflightRef = useRef(0);
 
   // ── Data fetching ───────────────────────────────────────────────────────
+
+  // Stock alert opened for editing right here on the dashboard.
+  const [editStock, setEditStock] = useState<StockItemRef | null>(null);
 
   const fetchAll = useCallback(async (silent: boolean) => {
     if (silent && inflightRef.current > 0) return;
@@ -577,6 +581,7 @@ export default function DashboardPage() {
           stock={stock}
           urgentItems={queueItems.filter(it => it.urgency === 'urgent_now')}
           onNavigate={(path) => router.push(path)}
+          onEditStock={setEditStock}
         />
       ) : dashboardMode === 'attendance' ? (
         <KitchenAttendanceTab />
@@ -590,8 +595,12 @@ export default function DashboardPage() {
           onPaymentStatus={onPickPaymentStatus}
           onDeliveryStatus={(delivery, next) => patchDelivery(delivery.id, next, delivery.סטטוס_משלוח)}
           onOpenOrder={(order) => router.push(`/orders/${order.id}`)}
+          onEditStock={setEditStock}
         />
       )}
+
+      {/* Stock item edited in place from an alert (no trip to /inventory) */}
+      <StockItemEditor item={editStock} onClose={() => setEditStock(null)} onSaved={() => fetchAll(true)} />
 
       {/* Modals — kept inline because they're cross-cutting state */}
       <ProductionRecipeModal

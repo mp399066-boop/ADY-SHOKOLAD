@@ -17,6 +17,7 @@ import { exportToCsv } from '@/lib/exportCsv';
 import { buildCourierWhatsAppMessage, type CourierItem } from '@/lib/courier-notification';
 import toast from 'react-hot-toast';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
+import { CustomerEditModal } from '@/components/customers/CustomerEditModal';
 
 // ─── Delivery summary KPI cards (grouped by date → city) ───────────────────
 
@@ -282,6 +283,50 @@ function DeliveriesContent() {
   // Delete-confirmation modal state. Holds the delivery being deleted; null = closed.
   const [deletingDelivery, setDeletingDelivery] = useState<DeliveryWithCourier | null>(null);
   const [deleting, setDeleting] = useState(false);
+  // In-place edit of the stop itself (date, time, address, instructions…)
+  // and of the customer's card — no trip to the order/customer page.
+  const [editDelivery, setEditDelivery] = useState<DeliveryWithCourier | null>(null);
+  const [editForm, setEditForm] = useState({ תאריך_משלוח: '', שעת_משלוח: '', כתובת: '', עיר: '', הוראות_משלוח: '', הערות: '' });
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editCustomerId, setEditCustomerId] = useState<string | null>(null);
+
+  const openEditDelivery = (d: DeliveryWithCourier) => {
+    setEditDelivery(d);
+    setEditForm({
+      תאריך_משלוח:  d.תאריך_משלוח?.slice(0, 10) ?? '',
+      שעת_משלוח:    d.שעת_משלוח ?? '',
+      כתובת:        d.כתובת ?? '',
+      עיר:          d.עיר ?? '',
+      הוראות_משלוח: d.הוראות_משלוח ?? '',
+      הערות:        d.הערות ?? '',
+    });
+  };
+
+  const saveEditDelivery = async () => {
+    if (!editDelivery) return;
+    setSavingEdit(true);
+    try {
+      const res = await fetch(`/api/deliveries/${editDelivery.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          תאריך_משלוח:  editForm.תאריך_משלוח || null,
+          שעת_משלוח:    editForm.שעת_משלוח.trim() || null,
+          כתובת:        editForm.כתובת.trim() || null,
+          עיר:          editForm.עיר.trim() || null,
+          הוראות_משלוח: editForm.הוראות_משלוח.trim() || null,
+          הערות:        editForm.הערות.trim() || null,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || 'שגיאה בשמירה');
+      toast.success('פרטי המשלוח עודכנו');
+      setEditDelivery(null);
+      await loadDeliveries();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'שגיאה בשמירה');
+    } finally { setSavingEdit(false); }
+  };
 
   // Delete a single delivery row. The DELETE endpoint is admin-only and only
   // touches the משלוחים table — the order, customer, invoices, and inventory
@@ -770,9 +815,21 @@ function DeliveriesContent() {
                     <div className="text-sm font-medium">
                       {customerName ? (
                         order?.לקוח_id ? (
-                          <Link href={`/customers/${order.לקוח_id}`} className="hover:underline" style={{ color: '#1E120A' }}>
-                            {customerName}
-                          </Link>
+                          <span className="inline-flex items-center gap-1">
+                            <Link href={`/customers/${order.לקוח_id}`} className="hover:underline" style={{ color: '#1E120A' }}>
+                              {customerName}
+                            </Link>
+                            <button
+                              type="button"
+                              onClick={() => setEditCustomerId(order.לקוח_id!)}
+                              title="עריכת פרטי הלקוח"
+                              aria-label="עריכת פרטי הלקוח"
+                              className="p-0.5 rounded transition-colors hover:bg-amber-50"
+                              style={{ color: '#B0A090' }}
+                            >
+                              <IconEdit className="w-3.5 h-3.5" />
+                            </button>
+                          </span>
                         ) : (
                           <span style={{ color: '#1E120A' }}>{customerName}</span>
                         )
@@ -859,7 +916,10 @@ function DeliveriesContent() {
 
                   {/* Right: actions */}
                   <div className="flex flex-col gap-1.5 flex-shrink-0 items-end">
-                    <ActionBtn title="צפייה בהזמנה" href={`/orders/${d.הזמנה_id}`} icon={<IconEye className="w-4 h-4" />} />
+                    <div className="flex items-center gap-0.5">
+                      <ActionBtn title="עריכת פרטי המשלוח" onClick={() => openEditDelivery(d)} icon={<IconEdit className="w-4 h-4" />} />
+                      <ActionBtn title="צפייה בהזמנה" href={`/orders/${d.הזמנה_id}`} icon={<IconEye className="w-4 h-4" />} />
+                    </div>
 
                     {!d._noRecord && (
                       <button
@@ -919,6 +979,31 @@ function DeliveriesContent() {
           })}
         </div>
       )}
+
+      {/* Edit the stop's own details in place */}
+      <Modal open={!!editDelivery} onClose={() => { if (!savingEdit) setEditDelivery(null); }} title="עריכת פרטי משלוח">
+        {editDelivery && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <Input label="תאריך משלוח" type="date" value={editForm.תאריך_משלוח} onChange={e => setEditForm(f => ({ ...f, תאריך_משלוח: e.target.value }))} />
+              <Input label="שעת משלוח" type="time" value={editForm.שעת_משלוח.slice(0, 5)} onChange={e => setEditForm(f => ({ ...f, שעת_משלוח: e.target.value }))} />
+              <Input label="כתובת" value={editForm.כתובת} onChange={e => setEditForm(f => ({ ...f, כתובת: e.target.value }))} />
+              <Input label="עיר" value={editForm.עיר} onChange={e => setEditForm(f => ({ ...f, עיר: e.target.value }))} />
+            </div>
+            <Textarea label="הוראות משלוח" rows={2} value={editForm.הוראות_משלוח} onChange={e => setEditForm(f => ({ ...f, הוראות_משלוח: e.target.value }))} />
+            <Textarea label="הערות" rows={2} value={editForm.הערות} onChange={e => setEditForm(f => ({ ...f, הערות: e.target.value }))} />
+            <p className="text-xs" style={{ color: '#8A7664' }}>
+              השינוי חל על המשלוח הזה בלבד. תאריך האספקה של ההזמנה עצמה לא משתנה.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <Button variant="outline" onClick={() => setEditDelivery(null)} disabled={savingEdit}>ביטול</Button>
+              <Button onClick={saveEditDelivery} loading={savingEdit}>שמור</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <CustomerEditModal customerId={editCustomerId} onClose={() => setEditCustomerId(null)} onSaved={() => loadDeliveries()} />
 
       {/* Delete-delivery confirmation. Stronger warning copy when the row was
           already 'נמסר' (the operator is unwinding a completed delivery). */}

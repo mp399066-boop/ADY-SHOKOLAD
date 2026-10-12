@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   parseCatalogPatch, rawMaterialPatchSchema, productPatchSchema, petitFourPatchSchema,
+  customerPatchSchema, deliveryPatchSchema,
 } from '@/lib/catalog-patch-schema';
 
 describe('parseCatalogPatch', () => {
@@ -32,6 +33,19 @@ describe('parseCatalogPatch', () => {
 
   it('ignores null in a NOT NULL column instead of failing the save', () => {
     expect(parseCatalogPatch(productPatchSchema, { כמות_במלאי: null, פעיל: true })).toEqual({ data: { פעיל: true } });
+  });
+
+  it('customer: strips nested arrays sent back from GET, keeps empty last name as ""', () => {
+    const r = parseCatalogPatch(customerPatchSchema, { שם_פרטי: 'דנה', שם_משפחה: '', הזמנות: [{}], טלפון: '' });
+    expect(r).toEqual({ data: { שם_פרטי: 'דנה', שם_משפחה: '', טלפון: null } });
+    expect(parseCatalogPatch(customerPatchSchema, { אחוז_הנחה: 150 })).toHaveProperty('error');
+  });
+
+  it('delivery: only known statuses and fields pass', () => {
+    expect(parseCatalogPatch(deliveryPatchSchema, { סטטוס_משלוח: 'נמסר', delivery_token: 'x', delivered_at: '2026-10-12T10:00:00Z' }))
+      .toEqual({ data: { סטטוס_משלוח: 'נמסר', delivered_at: '2026-10-12T10:00:00Z' } });
+    expect(parseCatalogPatch(deliveryPatchSchema, { סטטוס_משלוח: 'אבד' })).toHaveProperty('error');
+    expect(parseCatalogPatch(deliveryPatchSchema, { courier_id: 'not-a-uuid' })).toHaveProperty('error');
   });
 
   it('rejects a body with nothing editable', () => {

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { C } from './theme';
 import type { Stock, StockRow } from './types';
+import type { StockItemRef } from '@/components/inventory/StockItemEditor';
 
 const SEVERITY_ORDER: Record<string, number> = {
   'אזל מהמלאי': 0,
@@ -26,12 +27,15 @@ function severityLabel(status: string): string {
   return 'נמוך';
 }
 
-function AlertRow({ row, isLast }: { row: StockRow; isLast: boolean }) {
+function AlertRow({ row, isLast, onEdit }: { row: StockRow; isLast: boolean; onEdit?: () => void }) {
   const color = severityColor(row.status);
   return (
     <div
-      className="flex items-center gap-2 py-1.5"
+      className={`flex items-center gap-2 py-1.5${onEdit ? ' cursor-pointer hover:bg-[#FBF6EE] rounded' : ''}`}
       style={isLast ? undefined : { borderBottom: `1px solid ${C.borderSoft}` }}
+      onClick={onEdit}
+      title={onEdit ? 'לחצי לעריכה' : undefined}
+      role={onEdit ? 'button' : undefined}
     >
       <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
       <span className="flex-1 text-[12px] font-medium truncate" style={{ color: C.text }}>{row.שם}</span>
@@ -42,7 +46,8 @@ function AlertRow({ row, isLast }: { row: StockRow; isLast: boolean }) {
   );
 }
 
-export function DashboardInventoryAlerts({ stock }: { stock: Stock }) {
+export function DashboardInventoryAlerts({ stock, onEdit }: { stock: Stock; onEdit?: (ref: StockItemRef) => void }) {
+  const productIds = new Set(stock.products.map(p => p.id));
   const finishedGoods = sortBySeverity([...stock.products, ...stock.petitFours]).slice(0, 3);
   const rawMats = sortBySeverity(stock.raw).slice(0, 3);
   const totalAlerts = stock.products.length + stock.petitFours.length + stock.raw.length;
@@ -69,7 +74,12 @@ export function DashboardInventoryAlerts({ stock }: { stock: Stock }) {
           <p className="text-[10px] font-semibold uppercase tracking-wide mb-1" style={{ color: C.textMuted }}>
             מוצרים ופטיפורים
           </p>
-          {finishedGoods.map((r, i) => <AlertRow key={`p-${r.id}`} row={r} isLast={i === finishedGoods.length - 1} />)}
+          {finishedGoods.map((r, i) => (
+            <AlertRow
+              key={`p-${r.id}`} row={r} isLast={i === finishedGoods.length - 1}
+              onEdit={onEdit ? () => onEdit({ kind: productIds.has(r.id) ? 'product' : 'petitFour', id: r.id }) : undefined}
+            />
+          ))}
         </div>
       )}
 
@@ -78,7 +88,12 @@ export function DashboardInventoryAlerts({ stock }: { stock: Stock }) {
           <p className="text-[10px] font-semibold uppercase tracking-wide mb-1" style={{ color: C.textMuted }}>
             חומרי גלם
           </p>
-          {rawMats.map((r, i) => <AlertRow key={`r-${r.id}`} row={r} isLast={i === rawMats.length - 1} />)}
+          {rawMats.map((r, i) => (
+            <AlertRow
+              key={`r-${r.id}`} row={r} isLast={i === rawMats.length - 1}
+              onEdit={onEdit ? () => onEdit({ kind: 'raw', id: r.id }) : undefined}
+            />
+          ))}
         </div>
       )}
 

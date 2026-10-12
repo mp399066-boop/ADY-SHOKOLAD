@@ -13,6 +13,7 @@ import { IconSearch, IconExport, IconEye, IconEdit, IconTrash } from '@/componen
 import { ActionBtn } from '@/components/ui/RowActions';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { BulkActionBar } from '@/components/ui/BulkActionBar';
+import { CustomerEditModal } from '@/components/customers/CustomerEditModal';
 import toast from 'react-hot-toast';
 import { exportToCsv } from '@/lib/exportCsv';
 import { formatDate, formatCurrency } from '@/lib/utils';
@@ -769,6 +770,33 @@ function OrdersContent() {
     }
   };
 
+  // Inline edit of plain order fields (date, time, urgent) straight from the
+  // list. Same PATCH as the order page — it also keeps the linked delivery
+  // row's date/time in sync.
+  const applyFieldPatch = async (order: Order, patch: Partial<Pick<Order, 'תאריך_אספקה' | 'שעת_אספקה' | 'הזמנה_דחופה'>>) => {
+    const before = { ...order };
+    setUpdatingId(order.id);
+    setOrders(prev => prev.map(o => (o.id === order.id ? { ...o, ...patch } as Order : o)));
+    try {
+      const res = await fetch(`/api/orders/${order.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || 'שגיאה בעדכון');
+      toast.success('ההזמנה עודכנה');
+    } catch (err) {
+      setOrders(prev => prev.map(o => (o.id === order.id ? before : o)));
+      toast.error(err instanceof Error ? err.message : 'שגיאה בעדכון');
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  // Customer details edited in place from the list.
+  const [editCustomerId, setEditCustomerId] = useState<string | null>(null);
+
   const handleOrderStatusChange = (order: Order, newStatus: string) => {
     if (newStatus === order.סטטוס_הזמנה) return;
     // No confirm for the בהכנה transition — under the current policy
@@ -941,7 +969,7 @@ function OrdersContent() {
                   return (
                     <Fragment key={order.id}>
                       <tr
-                        className="hover:bg-amber-50 transition-colors cursor-pointer border-b"
+                        className="group hover:bg-amber-50 transition-colors cursor-pointer border-b"
                         style={{
                           borderColor: '#F5ECD8',
                           backgroundColor: isExpanded ? '#FEF9EF' : isSelected ? '#FEF9EF' : undefined,
@@ -964,16 +992,64 @@ function OrdersContent() {
                               {order.מספר_הזמנה}
                             </span>
                             {order.הזמנה_דחופה && <UrgentBadge />}
+                            <button
+                              type="button"
+                              onClick={e => { e.stopPropagation(); applyFieldPatch(order, { הזמנה_דחופה: !order.הזמנה_דחופה }); }}
+                              disabled={updatingId === order.id}
+                              title={order.הזמנה_דחופה ? 'בטלי סימון דחופה' : 'סמני כדחופה'}
+                              className="text-[10px] px-1.5 py-0.5 rounded-full border transition-opacity opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-amber-50 disabled:opacity-50"
+                              style={{ borderColor: '#E8DED2', color: '#9B7A5A' }}
+                            >
+                              {order.הזמנה_דחופה ? 'לא דחוף' : 'דחוף?'}
+                            </button>
                           </div>
                         </td>
                         <td className="px-4 py-3 font-medium text-xs" style={{ color: '#2B1A10' }}>
-                          {customer ? `${customer.שם_פרטי} ${customer.שם_משפחה}` : '-'}
+                          <span className="inline-flex items-center gap-1">
+                            {customer ? `${customer.שם_פרטי} ${customer.שם_משפחה}` : '-'}
+                            {order.לקוח_id && (
+                              <button
+                                type="button"
+                                onClick={e => { e.stopPropagation(); setEditCustomerId(order.לקוח_id); }}
+                                title="עריכת פרטי הלקוח"
+                                aria-label="עריכת פרטי הלקוח"
+                                className="p-0.5 rounded transition-colors hover:bg-amber-100"
+                                style={{ color: '#B0A090' }}
+                              >
+                                <IconEdit className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </span>
                         </td>
-                        <td className="px-4 py-3 text-xs" style={{ color: '#6B4A2D' }}>
-                          {formatDate(order.תאריך_אספקה)}
+                        <td className="px-2 py-2 text-xs" onClick={e => e.stopPropagation()}>
+                          <input
+                            type="date"
+                            value={order.תאריך_אספקה ? order.תאריך_אספקה.slice(0, 10) : ''}
+                            disabled={updatingId === order.id}
+                            onChange={e => { if (e.target.value) applyFieldPatch(order, { תאריך_אספקה: e.target.value }); }}
+                            title="שינוי תאריך אספקה"
+                            className="px-1.5 py-1 rounded-lg border bg-transparent hover:bg-white focus:bg-white focus:outline-none disabled:opacity-50"
+                            style={{ borderColor: 'transparent', color: '#6B4A2D' }}
+                            onFocus={e => (e.currentTarget.style.borderColor = '#DDD0BC')}
+                            onBlur={e => (e.currentTarget.style.borderColor = 'transparent')}
+                          />
                         </td>
-                        <td className="px-4 py-3 text-xs" style={{ color: '#6B4A2D' }}>
-                          {order.שעת_אספקה || '-'}
+                        <td className="px-2 py-2 text-xs" onClick={e => e.stopPropagation()}>
+                          <input
+                            type="time"
+                            defaultValue={order.שעת_אספקה ? order.שעת_אספקה.slice(0, 5) : ''}
+                            key={`${order.id}:${order.שעת_אספקה ?? ''}`}
+                            disabled={updatingId === order.id}
+                            onBlur={e => {
+                              e.currentTarget.style.borderColor = 'transparent';
+                              const v = e.target.value || null;
+                              if ((v ?? '') !== (order.שעת_אספקה ?? '').slice(0, 5)) applyFieldPatch(order, { שעת_אספקה: v });
+                            }}
+                            onFocus={e => (e.currentTarget.style.borderColor = '#DDD0BC')}
+                            title="שינוי שעת אספקה"
+                            className="px-1.5 py-1 rounded-lg border bg-transparent hover:bg-white focus:bg-white focus:outline-none disabled:opacity-50"
+                            style={{ borderColor: 'transparent', color: '#6B4A2D' }}
+                          />
                         </td>
                         <td className="px-4 py-3">
                           <InlineStatusPicker
@@ -1062,6 +1138,14 @@ function OrdersContent() {
           </div>
         </Card>
       )}
+
+      <CustomerEditModal
+        customerId={editCustomerId}
+        onClose={() => setEditCustomerId(null)}
+        onSaved={row => setOrders(prev => prev.map(o => (o.לקוח_id === row.id
+          ? { ...o, לקוחות: { ...((o as Order & { לקוחות?: object }).לקוחות ?? {}), שם_פרטי: row.שם_פרטי, שם_משפחה: row.שם_משפחה, טלפון: row.טלפון } } as Order
+          : o)))}
+      />
 
       {/* Single delete */}
       <ConfirmModal

@@ -16,6 +16,7 @@ import { PageLoading } from '@/components/ui/LoadingSpinner';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Input, Select } from '@/components/ui/Input';
 import type { Customer } from '@/types/database';
+import { CustomerEditModal } from '@/components/customers/CustomerEditModal';
 
 export default function CustomersPage() {
   const router = useRouter();
@@ -30,6 +31,8 @@ export default function CustomersPage() {
   const [count, setCount] = useState(0);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  // Customer being edited in place (no navigation to /customers/[id]).
+  const [editId, setEditId] = useState<string | null>(null);
 
   // Bulk selection
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -205,7 +208,7 @@ export default function CustomersPage() {
                       <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                         <div className="flex items-center gap-0.5">
                           <ActionBtn title="צפייה" href={`/customers/${c.id}`} icon={<IconEye className="w-4 h-4" />} />
-                          <ActionBtn title="עריכה" href={`/customers/${c.id}`} icon={<IconEdit className="w-4 h-4" />} />
+                          <ActionBtn title="עריכה" onClick={() => setEditId(c.id)} icon={<IconEdit className="w-4 h-4" />} />
                           <ActionBtn title="מחיקה" variant="danger" onClick={() => setConfirmId(c.id)} icon={<IconTrash className="w-4 h-4" />} />
                         </div>
                       </td>
@@ -217,6 +220,12 @@ export default function CustomersPage() {
           </div>
         </Card>
       )}
+
+      <CustomerEditModal
+        customerId={editId}
+        onClose={() => setEditId(null)}
+        onSaved={row => setCustomers(prev => prev.map(c => (c.id === row.id ? { ...c, ...row } : c)))}
+      />
 
       <ConfirmModal
         open={!!confirmId}

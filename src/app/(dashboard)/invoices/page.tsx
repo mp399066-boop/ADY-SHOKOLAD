@@ -17,7 +17,8 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { formatDate, formatCurrency } from '@/lib/utils';
 import type { Invoice } from '@/types/database';
 import { exportToCsv } from '@/lib/exportCsv';
-import { IconExport, IconExternalLink } from '@/components/icons';
+import { IconExport, IconExternalLink, IconEdit } from '@/components/icons';
+import { CustomerEditModal } from '@/components/customers/CustomerEditModal';
 
 // ── Doc-type meta ─────────────────────────────────────────────────────────
 
@@ -76,6 +77,8 @@ const FILTER_CHIPS: { value: Filter; label: string }[] = [
 
 export default function InvoicesPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  // Customer details edited in place (the document itself is issued and fixed).
+  const [editCustomerId, setEditCustomerId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<Filter>('all');
 
@@ -228,7 +231,23 @@ export default function InvoicesPage() {
                           )}
                         </div>
                       </td>
-                      <td className="px-4 py-3">{customer ? `${customer.שם_פרטי} ${customer.שם_משפחה}` : '-'}</td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center gap-1">
+                          {customer ? `${customer.שם_פרטי} ${customer.שם_משפחה}` : '-'}
+                          {customer && inv.לקוח_id && (
+                            <button
+                              type="button"
+                              onClick={() => setEditCustomerId(inv.לקוח_id)}
+                              title="עריכת פרטי הלקוח (משפיע על מסמכים עתידיים בלבד)"
+                              aria-label="עריכת פרטי הלקוח"
+                              className="p-0.5 rounded transition-colors hover:bg-amber-100"
+                              style={{ color: '#B0A090' }}
+                            >
+                              <IconEdit className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </span>
+                      </td>
                       <td className="px-4 py-3">
                         <Link href={`/orders/${inv.הזמנה_id}`} className="hover:underline text-xs" style={{ color: '#8B5E34' }}>
                           {order?.מספר_הזמנה || '-'}
@@ -278,6 +297,14 @@ export default function InvoicesPage() {
           </div>
         </Card>
       )}
+
+      <CustomerEditModal
+        customerId={editCustomerId}
+        onClose={() => setEditCustomerId(null)}
+        onSaved={row => setInvoices(prev => prev.map(i => (i.לקוח_id === row.id && i.לקוחות
+          ? { ...i, לקוחות: { ...i.לקוחות, שם_פרטי: row.שם_פרטי, שם_משפחה: row.שם_משפחה } }
+          : i)))}
+      />
     </div>
   );
 }

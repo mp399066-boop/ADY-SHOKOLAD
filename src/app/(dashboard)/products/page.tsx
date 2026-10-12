@@ -688,12 +688,31 @@ export default function ProductsPage() {
               >
                 {productCategories.map(c => <option key={c} value={c}>{c}</option>)}
               </Select>
+              <div className="grid grid-cols-2 gap-3">
+                <Input
+                  label='מק"ט'
+                  value={String(form.sku || '')}
+                  onChange={e => setForm(p => ({ ...p, sku: e.target.value }))}
+                />
+                <Input
+                  label="מחיר בסיס (₪)"
+                  type="number" min={0} step={0.01}
+                  value={form.מחיר == null ? '' : String(form.מחיר)}
+                  onChange={e => setForm(p => ({ ...p, מחיר: e.target.value === '' ? 0 : Number(e.target.value) }))}
+                  hint="מחיר מהמחירון גובר עליו בהזמנה"
+                />
+              </div>
               <Textarea
                 label="תיאור"
                 value={String(form.תיאור || '')}
                 onChange={e => setForm(p => ({ ...p, תיאור: e.target.value }))}
                 rows={2}
               />
+              <div className="grid grid-cols-3 gap-3">
+                <Input label="כמות במלאי" type="number" min={0} value={form.כמות_במלאי == null ? '' : String(form.כמות_במלאי)} onChange={e => setForm(p => ({ ...p, כמות_במלאי: e.target.value === '' ? 0 : Number(e.target.value) }))} />
+                <Input label="סף מלאי נמוך" type="number" min={0} value={form.סף_מלאי_נמוך == null ? '' : String(form.סף_מלאי_נמוך)} onChange={e => setForm(p => ({ ...p, סף_מלאי_נמוך: e.target.value === '' ? 0 : Number(e.target.value) }))} />
+                <Input label="סף מלאי קריטי" type="number" min={0} value={form.סף_מלאי_קריטי == null ? '' : String(form.סף_מלאי_קריטי)} onChange={e => setForm(p => ({ ...p, סף_מלאי_קריטי: e.target.value === '' ? 0 : Number(e.target.value) }))} />
+              </div>
               <PreorderToggle
                 checked={form.בהזמנה_מראש === true}
                 onChange={v => setForm(p => ({ ...p, בהזמנה_מראש: v }))}
@@ -746,6 +765,11 @@ export default function ProductsPage() {
                 onChange={e => setForm(p => ({ ...p, הערות: e.target.value }))}
                 rows={2}
               />
+              <div className="grid grid-cols-3 gap-3">
+                <Input label="כמות במלאי" type="number" min={0} value={form.כמות_במלאי == null ? '' : String(form.כמות_במלאי)} onChange={e => setForm(p => ({ ...p, כמות_במלאי: e.target.value === '' ? 0 : Number(e.target.value) }))} />
+                <Input label="סף מלאי נמוך" type="number" min={0} value={form.סף_מלאי_נמוך == null ? '' : String(form.סף_מלאי_נמוך)} onChange={e => setForm(p => ({ ...p, סף_מלאי_נמוך: e.target.value === '' ? 0 : Number(e.target.value) }))} />
+                <Input label="סף מלאי קריטי" type="number" min={0} value={form.סף_מלאי_קריטי == null ? '' : String(form.סף_מלאי_קריטי)} onChange={e => setForm(p => ({ ...p, סף_מלאי_קריטי: e.target.value === '' ? 0 : Number(e.target.value) }))} />
+              </div>
               <PreorderToggle
                 checked={form.בהזמנה_מראש === true}
                 onChange={v => setForm(p => ({ ...p, בהזמנה_מראש: v }))}

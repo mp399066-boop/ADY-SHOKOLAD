@@ -13,6 +13,7 @@ import type { DashboardStats } from '@/types/database';
 import type { QueueItem } from './queue-builder';
 import { Modal } from '@/components/ui/Modal';
 import { DashboardInventoryAlerts } from './DashboardInventoryAlerts';
+import type { StockItemRef } from '@/components/inventory/StockItemEditor';
 import { DashboardEmployeeTasks } from './DashboardEmployeeTasks';
 import { AttentionPanel } from './AttentionPanel';
 import { AnalyticsTabs } from './AnalyticsTabs';
@@ -383,6 +384,7 @@ export function ExecutiveDashboard({
   stock,
   urgentItems,
   onNavigate,
+  onEditStock,
 }: {
   stats: DashboardStats | null;
   activeOrders: TodayOrder[];
@@ -390,6 +392,7 @@ export function ExecutiveDashboard({
   stock: Stock;
   urgentItems: QueueItem[];
   onNavigate: (path: string) => void;
+  onEditStock?: (ref: StockItemRef) => void;
 }) {
   const liveOrders = useMemo(
     () => activeOrders.filter(o =>
@@ -585,7 +588,7 @@ export function ExecutiveDashboard({
       {/* ── Secondary insights — compact 4-card row ─────────── */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-2 items-start">
         <CompactProductionSummary />
-        <DashboardInventoryAlerts stock={stock} />
+        <DashboardInventoryAlerts stock={stock} onEdit={onEditStock} />
         <DashboardEmployeeTasks />
         <AttentionPanel />
       </div>

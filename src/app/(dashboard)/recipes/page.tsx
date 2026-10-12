@@ -15,6 +15,7 @@ import { useSystemConfig } from '@/hooks/useSystemConfig';
 import { IconEdit, IconExport, IconTrash } from '@/components/icons';
 import { ActionBtn } from '@/components/ui/RowActions';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
+import { RawMaterialEditModal } from '@/components/inventory/RawMaterialEditModal';
 import type { Recipe, Product, RawMaterial, Production, RecipeIngredient } from '@/types/database';
 
 type Tab = 'recipes' | 'production';
@@ -36,6 +37,8 @@ export default function RecipesPage() {
   const [productions, setProductions] = useState<Production[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [materials, setMaterials] = useState<RawMaterial[]>([]);
+  // Raw material edited in place from a recipe card (unit, stock, price…).
+  const [editMaterialId, setEditMaterialId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [showRecipeModal, setShowRecipeModal] = useState(false);
   const [showProductionModal, setShowProductionModal] = useState(false);
@@ -548,9 +551,21 @@ export default function RecipesPage() {
                               return (
                                 <div key={i} className="flex justify-between items-center text-xs p-1.5 rounded"
                                   style={{ backgroundColor: isUnlinked ? '#FEF3C7' : '#FAF7F0' }}>
-                                  <span style={{ color: isUnlinked ? '#92400E' : '#2B1A10' }}>
+                                  <span className="inline-flex items-center gap-1" style={{ color: isUnlinked ? '#92400E' : '#2B1A10' }}>
                                     {isUnlinked && <span className="ml-1">⚠</span>}
                                     {ingName}
+                                    {!isUnlinked && (
+                                      <button
+                                        type="button"
+                                        onClick={() => setEditMaterialId(ing.חומר_גלם_id)}
+                                        title="עריכת חומר הגלם — יחידה, כמות במלאי, מחיר"
+                                        aria-label={'עריכת ' + ingName}
+                                        className="p-0.5 rounded transition-colors hover:bg-amber-100"
+                                        style={{ color: '#B0A090' }}
+                                      >
+                                        <IconEdit className="w-3 h-3" />
+                                      </button>
+                                    )}
                                   </span>
                                   <div className="flex items-center gap-2">
                                     <span style={{ color: '#6B4A2D' }}>{ing.כמות_נדרשת} {ing.יחידת_מידה}</span>
@@ -677,6 +692,12 @@ export default function RecipesPage() {
           </div>
         </div>
       </Modal>
+
+      <RawMaterialEditModal
+        materialId={editMaterialId}
+        onClose={() => setEditMaterialId(null)}
+        onSaved={() => fetchAll()}
+      />
 
       <ConfirmModal
         open={!!confirmId}

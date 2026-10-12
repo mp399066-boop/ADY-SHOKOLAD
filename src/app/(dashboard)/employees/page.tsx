@@ -7,6 +7,7 @@ import { formatDate } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import type { Employee, WorkTask } from '@/types/database';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
+import { IconEdit } from '@/components/icons';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -303,6 +304,7 @@ export default function EmployeesPage() {
                       employee={emp}
                       tasks={empTasks}
                       onAddTask={() => openAddTask(emp.id)}
+                      onEditEmployee={() => openEditEmp(emp)}
                       onEditTask={openEditTask}
                       onStatusChange={updateTaskStatus}
                       onDelete={deleteTask}
@@ -670,11 +672,12 @@ function FormField({ label, children }: { label: string; children: React.ReactNo
 }
 
 function EmployeeColumn({
-  employee, tasks, onAddTask, onEditTask, onStatusChange, onDelete,
+  employee, tasks, onAddTask, onEditEmployee, onEditTask, onStatusChange, onDelete,
 }: {
   employee: Employee;
   tasks: WorkTask[];
   onAddTask: () => void;
+  onEditEmployee: () => void;
   onEditTask: (t: WorkTask) => void;
   onStatusChange: (id: string, s: TaskStatus) => void;
   onDelete: (id: string) => void;
@@ -687,7 +690,19 @@ function EmployeeColumn({
       {/* Employee header */}
       <div className="flex items-start justify-between pb-2" style={{ borderBottom: '1px solid #EAE0D4' }}>
         <div className="min-w-0">
-          <p className="font-bold text-[13px]" style={{ color: '#2B1A10' }}>{employee.שם_עובד}</p>
+          <p className="font-bold text-[13px] inline-flex items-center gap-1" style={{ color: '#2B1A10' }}>
+            {employee.שם_עובד}
+            <button
+              type="button"
+              onClick={onEditEmployee}
+              title="עריכת פרטי העובד"
+              aria-label={'עריכת ' + employee.שם_עובד}
+              className="p-0.5 rounded transition-colors hover:bg-[#F4E8D8]"
+              style={{ color: '#B0A090' }}
+            >
+              <IconEdit className="w-3 h-3" />
+            </button>
+          </p>
           {employee.תפקיד && <p className="text-[11px]" style={{ color: '#8A735F' }}>{employee.תפקיד}</p>}
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">

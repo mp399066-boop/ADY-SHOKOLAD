@@ -8,6 +8,20 @@ import { recordStockMovement } from '@/lib/inventory-movements';
 import { missingColumnMessage } from '@/lib/db-error';
 import { dbErrorResponse, dbErrorDetail } from '@/lib/api-error';
 
+// Single product — lets the shared edit window open from screens that only
+// hold an id (dashboard alerts).
+export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
+  const auth = await requireManagementUser();
+  if (!auth) return unauthorizedResponse();
+  if (!/^[0-9a-f-]{36}$/i.test(params.id)) return NextResponse.json({ error: 'מזהה לא תקין' }, { status: 400 });
+  const supabase = createAdminClient();
+  const { data, error } = await supabase.from('מוצרים_למכירה').select('*').eq('id', params.id).maybeSingle();
+  if (error) return dbErrorResponse(error, 'products/[id] GET');
+  if (!data) return NextResponse.json({ error: 'המוצר לא נמצא' }, { status: 404 });
+  return NextResponse.json({ data });
+}
+
 export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   const auth = await requireManagementUser();
