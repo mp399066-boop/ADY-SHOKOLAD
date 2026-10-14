@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireAdminUser, forbiddenResponse } from '@/lib/auth/requireAuthorizedUser';
 import { isMissingTable } from '@/lib/finance-expense-schema';
+import { missingColumnMessage } from '@/lib/db-error';
 import {
   costRowInputSchema, COSTS_MIGRATION_HINT, COST_COLUMNS, normalizeCostRow,
 } from '@/lib/product-costs-schema';
@@ -13,13 +14,22 @@ import { validateCostLinks, isDuplicateName, DUPLICATE_NAME_ERROR, loadCostRawMa
 //      { rows, tableReady, recipes, rawMaterials, catalog, hourlyRate }
 // POST /api/costs → create one cost row
 
+// Cost rows with their own sale price (migration 069). Until that migration is
+// run the column is missing — load the rows without it so the page still works.
+async function loadCostRows(supabase: ReturnType<typeof createAdminClient>) {
+  const fetchRows = (columns: string) => supabase.from('עלויות_מוצרים').select(columns).order('סדר').order('שם');
+  const res = await fetchRows(`${COST_COLUMNS}, מחיר_מכירה`);
+  if (res.error && missingColumnMessage(res.error)) return fetchRows(COST_COLUMNS);
+  return res;
+}
+
 export async function GET() {
   const auth = await requireAdminUser();
   if (!auth) return forbiddenResponse();
   const supabase = createAdminClient();
 
   const [rowsRes, recipesRes, rawRes, productsRes, pfRes, rateRes, retailRes] = await Promise.all([
-    supabase.from('עלויות_מוצרים').select(COST_COLUMNS).order('סדר').order('שם'),
+    loadCostRows(supabase),
     supabase.from('מתכונים')
       .select('id, שם_מתכון, כמות_תוצר, יחידת_תפוקה, production_target_type, production_target_id, רכיבי_מתכון(חומר_גלם_id, כמות_נדרשת, יחידת_מידה)')
       .order('שם_מתכון'),
