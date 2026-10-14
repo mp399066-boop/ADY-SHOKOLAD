@@ -30,6 +30,8 @@ export function RawMaterialEditModal({ materialId, onClose, onSaved }: {
   const [suppliers, setSuppliers] = useState<{ id: string; שם_ספק: string; פעיל?: boolean }[]>([]);
   const [saving, setSaving] = useState(false);
   const [showPurchase, setShowPurchase] = useState(false);
+  // false when the loaded row has no תאריך_תפוגה column (migration 068 not run).
+  const [hasExpiry, setHasExpiry] = useState(true);
   const { values: unitOptions } = useOptionList('units_of_measure', form?.יחידת_מידה ?? null);
 
   useEffect(() => {
@@ -43,6 +45,7 @@ export function RawMaterialEditModal({ materialId, onClose, onSaved }: {
         if (cancelled) return;
         if (!ok || !j.data) { toast.error(j.error || 'טעינת חומר הגלם נכשלה'); onClose(); return; }
         setForm(j.data);
+        setHasExpiry('תאריך_תפוגה' in j.data);
         setOrigUnit(j.data.יחידת_מידה || '');
       })
       .catch(() => { if (!cancelled) { toast.error('טעינת חומר הגלם נכשלה'); onClose(); } });
@@ -91,7 +94,10 @@ export function RawMaterialEditModal({ materialId, onClose, onSaved }: {
           סף_מלאי_נמוך:     Number(form.סף_מלאי_נמוך) || 0,
           סף_מלאי_קריטי:    Number(form.סף_מלאי_קריטי) || 0,
           מחיר_ליחידה:      form.מחיר_ליחידה == null || String(form.מחיר_ליחידה) === '' ? null : Number(form.מחיר_ליחידה),
-          תאריך_תפוגה:      form.תאריך_תפוגה || null,
+          // Only when the column exists (the row came back with it) —
+          // otherwise a database without תאריך_תפוגה (migration 068 not run)
+          // would fail every save from this window.
+          ...(hasExpiry ? { תאריך_תפוגה: form.תאריך_תפוגה || null } : {}),
           הערות:            form.הערות || null,
           ספק_מועדף_id:     form.ספק_מועדף_id || null,
           שם_מוצר_אצל_הספק: form.שם_מוצר_אצל_הספק || null,
@@ -161,7 +167,9 @@ export function RawMaterialEditModal({ materialId, onClose, onSaved }: {
               value={form.מחיר_ליחידה == null ? '' : String(form.מחיר_ליחידה)}
               onChange={e => set('מחיר_ליחידה', e.target.value === '' ? null : Number(e.target.value))}
             />
-            <Input label="תאריך תפוגה" type="date" value={form.תאריך_תפוגה || ''} onChange={e => set('תאריך_תפוגה', e.target.value || null)} />
+            {hasExpiry && (
+              <Input label="תאריך תפוגה" type="date" value={form.תאריך_תפוגה || ''} onChange={e => set('תאריך_תפוגה', e.target.value || null)} />
+            )}
           </div>
           <Textarea label="הערות" rows={2} value={form.הערות || ''} onChange={e => set('הערות', e.target.value)} />
 

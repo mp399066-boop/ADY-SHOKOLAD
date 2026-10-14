@@ -1352,7 +1352,10 @@ export default function InventoryPage() {
             <Input label="סף מלאי נמוך" type="number" value={editItem?.סף_מלאי_נמוך ?? 0} onChange={e => setEditItem(p => ({ ...p, סף_מלאי_נמוך: Number(e.target.value) }))} min={0} step={0.01} />
             <Input label="סף מלאי קריטי" type="number" value={editItem?.סף_מלאי_קריטי ?? 0} onChange={e => setEditItem(p => ({ ...p, סף_מלאי_קריטי: Number(e.target.value) }))} min={0} step={0.01} />
             <Input label="מחיר ליחידה (₪)" type="number" value={editItem?.מחיר_ליחידה ?? 0} onChange={e => setEditItem(p => ({ ...p, מחיר_ליחידה: Number(e.target.value) }))} min={0} step={0.01} />
-            <Input label="תאריך תפוגה" type="date" value={editItem?.תאריך_תפוגה || ''} onChange={e => setEditItem(p => ({ ...p, תאריך_תפוגה: e.target.value || null }))} />
+            {/* Hidden while the DB has no תאריך_תפוגה column (migration 068) — saving a date would fail. */}
+            {(materials.length === 0 || 'תאריך_תפוגה' in materials[0]) && (
+              <Input label="תאריך תפוגה" type="date" value={editItem?.תאריך_תפוגה || ''} onChange={e => setEditItem(p => ({ ...p, תאריך_תפוגה: e.target.value || null }))} />
+            )}
           </div>
           <Textarea label="הערות" value={editItem?.הערות || ''} onChange={e => setEditItem(p => ({ ...p, הערות: e.target.value }))} rows={2} />
 
