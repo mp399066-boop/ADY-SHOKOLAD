@@ -3,12 +3,14 @@
 // עלות ליחידה = עלות חומרים + עלות עבודה
 //   חומרים — from the linked recipe (raw-material price × ingredient quantity
 //            ÷ recipe yield) when חומרים_לפי_מתכון is on, else the manual amount.
+//            Raw-material prices always count BEFORE VAT (the business gets
+//            the VAT back) — a price entered with VAT is divided by 1.18.
 //   עבודה  — production time × hourly rate ÷ units made in that time; falls
 //            back to the manual amount until a time (and a rate) is entered.
 //
 // Pure functions only — used by the page for live previews.
 
-import { round2 } from '@/lib/finance';
+import { round2, VAT_RATE } from '@/lib/finance';
 
 export interface CostRow {
   id: string;
@@ -32,7 +34,16 @@ export interface CostRawMaterial {
   שם_חומר_גלם: string;
   יחידת_מידה: string;
   מחיר_ליחידה: number | null;
+  /** true = מחיר_ליחידה was entered with VAT (migration 067; missing = before VAT). */
+  מחיר_כולל_מעמ?: boolean;
   תאריך_עדכון: string | null;
+}
+
+/** The raw material's price per unit BEFORE VAT — what product cost uses. */
+export function netUnitPrice(m: Pick<CostRawMaterial, 'מחיר_ליחידה' | 'מחיר_כולל_מעמ'>): number | null {
+  if (m.מחיר_ליחידה == null) return null;
+  const p = Number(m.מחיר_ליחידה);
+  return m.מחיר_כולל_מעמ ? p / (1 + VAT_RATE) : p;
 }
 
 export interface CostRecipeIngredient {
@@ -98,6 +109,7 @@ export interface RecipeCostLine {
   qty: number;
   unit: string;
   materialUnit: string | null;
+  /** Price per material unit, before VAT. */
   price: number | null;
   cost: number | null;
   issue: LineIssue | null;
@@ -127,14 +139,14 @@ export function recipeCost(recipe: CostRecipe, rawById: Map<string, CostRawMater
       qty,
       unit: ing.יחידת_מידה,
       materialUnit: m?.יחידת_מידה ?? null,
-      price: m?.מחיר_ליחידה ?? null,
+      price: m ? netUnitPrice(m) : null,
       suspicious: !!m && isSuspiciousPrice(m),
     };
     if (!m) return { ...base, cost: null, issue: 'missing_material' as const };
     if (m.מחיר_ליחידה == null || Number(m.מחיר_ליחידה) <= 0) return { ...base, price: null, cost: null, issue: 'no_price' as const };
     const f = unitFactor(ing.יחידת_מידה, m.יחידת_מידה);
     if (f == null) return { ...base, cost: null, issue: 'unit_mismatch' as const };
-    return { ...base, cost: qty * f * Number(m.מחיר_ליחידה), issue: null };
+    return { ...base, cost: qty * f * netUnitPrice(m)!, issue: null };
   });
   const batchTotal = lines.reduce((s, l) => s + (l.cost ?? 0), 0);
   const y = Number(recipe.כמות_תוצר) > 0 ? Number(recipe.כמות_תוצר) : 1;
@@ -256,6 +268,8 @@ export interface CostsData {
   hint: string | null;
   recipes: CostRecipe[];
   rawMaterials: CostRawMaterial[];
+  /** false until migration 067 (מחיר_כולל_מעמ) is run. */
+  vatFlagReady: boolean;
   catalog: CatalogItem[];
   hourlyRate: number | null;
 }

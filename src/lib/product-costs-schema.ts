@@ -34,8 +34,10 @@ export const hourlyRateSchema = z.object({
 
 export const rawPriceSchema = z.object({
   מחיר_ליחידה: z.union([z.null(), z.coerce.number().finite().min(0, 'מחיר לא יכול להיות שלילי').max(1_000_000)])
-    .transform(v => (v == null ? null : round2(v))),
-});
+    .transform(v => (v == null ? null : round2(v))).optional(),
+  /** true = the price above includes VAT (migration 067). */
+  מחיר_כולל_מעמ: z.boolean().optional(),
+}).refine(b => b.מחיר_ליחידה !== undefined || b.מחיר_כולל_מעמ !== undefined, { message: 'אין מה לעדכן' });
 
 export const salePriceSchema = z.object({
   // No coercion of null / '' — an empty field must not silently become ₪0.

@@ -197,7 +197,7 @@ export default function CostFormModal({ open, initial, data, rawById, recipesByI
                           <td className="px-2 py-1" style={{ color: C.text }}>{l.name}</td>
                           <td className="px-2 py-1 tabular-nums whitespace-nowrap">{l.qty} {l.unit}</td>
                           <td className="px-2 py-1 whitespace-nowrap" style={l.suspicious ? { color: C.amber } : undefined}>
-                            {l.price != null ? `${money(l.price)} ל-${l.materialUnit}` : ''}
+                            {l.price != null ? `${money(l.price)} ל-${l.materialUnit} (לפני מע״מ)` : ''}
                             {l.suspicious ? ' ⚠ מחיר חשוד' : ''}
                           </td>
                           <td className="px-2 py-1 whitespace-nowrap tabular-nums" style={{ color: l.issue ? C.amber : C.text }}>

@@ -4,6 +4,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { isMissingTable } from '@/lib/finance-expense-schema';
 import { COST_COLUMNS, normalizeCostRow } from '@/lib/product-costs-schema';
+import { loadCostRawMaterials } from '@/lib/product-costs-server';
 import {
   computeRowCost, type CostRow, type CostRecipe, type CostRawMaterial,
 } from '@/lib/product-costs';
@@ -24,7 +25,7 @@ export async function loadUnitCosts(supabase: SupabaseClient): Promise<UnitCosts
     supabase.from('עלויות_מוצרים').select(COST_COLUMNS).order('סדר').order('שם'),
     supabase.from('מתכונים')
       .select('id, שם_מתכון, כמות_תוצר, יחידת_תפוקה, production_target_type, production_target_id, רכיבי_מתכון(חומר_גלם_id, כמות_נדרשת, יחידת_מידה)'),
-    supabase.from('מלאי_חומרי_גלם').select('id, שם_חומר_גלם, יחידת_מידה, מחיר_ליחידה, תאריך_עדכון'),
+    loadCostRawMaterials(supabase),
     supabase.from('system_config').select('value').eq('key', 'labor_hourly_rate').maybeSingle(),
   ]);
 
@@ -44,10 +45,7 @@ export async function loadUnitCosts(supabase: SupabaseClient): Promise<UnitCosts
       רכיבי_מתכון: (r.רכיבי_מתכון ?? []).map(i => ({ ...i, כמות_נדרשת: Number(i.כמות_נדרשת) || 0 })),
     }]),
   );
-  type RawRow = Omit<CostRawMaterial, 'מחיר_ליחידה'> & { מחיר_ליחידה: unknown };
-  const rawById = new Map<string, CostRawMaterial>(
-    ((rawRes.data ?? []) as unknown as RawRow[]).map(m => [m.id, { ...m, מחיר_ליחידה: m.מחיר_ליחידה == null ? null : Number(m.מחיר_ליחידה) }]),
-  );
+  const rawById = new Map<string, CostRawMaterial>(rawRes.data.map(m => [m.id, m]));
   const rateNum = Number(rateRes.data?.value);
   const hourlyRate = rateRes.data?.value && rateNum > 0 ? rateNum : null;
 

@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
-  unitFactor, normalizeUnit, recipeCost, computeRowCost, laborFromTime, marginPct,
+  unitFactor, normalizeUnit, recipeCost, computeRowCost, laborFromTime, marginPct, netUnitPrice,
   type CostRecipe, type CostRawMaterial, type CostInputs,
 } from '@/lib/product-costs';
+import { rawPriceSchema } from '@/lib/product-costs-schema';
 
 const raw = (id: string, unit: string, price: number | null): CostRawMaterial =>
   ({ id, שם_חומר_גלם: id, יחידת_מידה: unit, מחיר_ליחידה: price, תאריך_עדכון: null });
@@ -61,5 +62,23 @@ describe('row cost & margin', () => {
     expect(marginPct(100, 60)).toBe(40);
     expect(marginPct(0, 10)).toBeNull();
     expect(marginPct(100, null)).toBeNull();
+  });
+});
+
+describe('VAT on raw-material prices', () => {
+  it('uses the price before VAT for cost', () => {
+    const withVat: CostRawMaterial = { ...raw('choc', 'ק"ג', 118), מחיר_כולל_מעמ: true };
+    expect(netUnitPrice(withVat)).toBeCloseTo(100, 6);
+    expect(netUnitPrice(raw('choc', 'ק"ג', 118))).toBe(118);
+    expect(netUnitPrice(raw('x', 'ק"ג', null))).toBeNull();
+    const rc = recipeCost(recipe([['choc', 500, 'גרם']]), new Map([['choc', withVat]]));
+    expect(rc.batchTotal).toBe(50);
+    expect(rc.lines[0].price).toBeCloseTo(100, 6);
+  });
+  it('validates the PATCH body', () => {
+    expect(rawPriceSchema.safeParse({ מחיר_כולל_מעמ: true }).success).toBe(true);
+    expect(rawPriceSchema.safeParse({ מחיר_ליחידה: 12 }).success).toBe(true);
+    expect(rawPriceSchema.safeParse({}).success).toBe(false);
+    expect(rawPriceSchema.safeParse({ מחיר_כולל_מעמ: 'yes' }).success).toBe(false);
   });
 });
