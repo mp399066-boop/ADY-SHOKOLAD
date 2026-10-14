@@ -5,6 +5,8 @@ import { RawMaterialEditModal } from '@/components/inventory/RawMaterialEditModa
 import { IconEdit } from '@/components/icons';
 import Link from 'next/link';
 import { IconRawMaterials } from '@/components/icons';
+import toast from 'react-hot-toast';
+import { useConfirm } from '@/components/ui/ConfirmProvider';
 
 // ── Response types ────────────────────────────────────────────────────────
 
@@ -115,6 +117,8 @@ export default function RawMaterialsSummaryPage() {
   const [expanded,     setExpanded]     = useState<Set<string>>(new Set());
   // Fix a raw material (e.g. its stock unit) right here instead of in /inventory.
   const [editId,       setEditId]       = useState<string | null>(null);
+  const [addingToCart, setAddingToCart] = useState(false);
+  const confirm = useConfirm();
 
   const fetchData = useCallback(async () => {
     if (statuses.length === 0) {
@@ -136,6 +140,40 @@ export default function RawMaterialsSummaryPage() {
   }, [dateFrom, dateTo, statuses]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Every missing raw material → the shopping cart (סל קניות), quantity in the
+  // stock unit the shortage was computed in. Materials already in the cart are
+  // skipped server-side so a second click never doubles an amount.
+  async function addMissingToCart() {
+    const missing = (data?.raw_materials ?? []).filter(r => r.missing > 0);
+    if (missing.length === 0) return;
+    const ok = await confirm(`להוסיף ${missing.length} חומרים חסרים לסל הקניות, בכמות שחסרה לכל אחד?`, {
+      title: 'הוספה לסל הקניות', confirmLabel: 'הוספה לסל',
+    });
+    if (!ok) return;
+    setAddingToCart(true);
+    try {
+      const res = await fetch('/api/purchasing/cart/from-shortages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items: missing.map(r => ({ חומר_גלם_id: r.חומר_גלם_id, כמות: r.missing })),
+          note: `חוסר להזמנות ${fmtDate(dateFrom)}–${fmtDate(dateTo)}`,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'ההוספה לסל נכשלה');
+      const skipped = (json.alreadyInCart as string[]).length;
+      toast.success(
+        `נוספו ${json.added} חומרים לסל הקניות` + (skipped ? ` · ${skipped} כבר היו בסל ולא שונו` : ''),
+        { duration: 6000 },
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'ההוספה לסל נכשלה');
+    } finally {
+      setAddingToCart(false);
+    }
+  }
 
   function applyPreset(p: Preset) {
     const { from, to } = getPreset(p);
@@ -269,6 +307,21 @@ export default function RawMaterialsSummaryPage() {
             <Section title="חסר במלאי" badge={`${missingCount} חומרים`}
               badgeStyle={{ backgroundColor: B.red, color: '#FFFFFF' }}
               headerStyle={{ backgroundColor: '#F0EAE8' }}>
+              <div className="flex flex-wrap items-center gap-2 px-4 py-2.5"
+                style={{ borderBottom: `1px solid ${B.borderSoft}`, backgroundColor: B.bg }}>
+                <span className="text-xs" style={{ color: B.textSoft }}>
+                  הכמות שחסרה לכל חומר נכנסת לסל, אצל הספק הקבוע שלו.
+                </span>
+                <button onClick={addMissingToCart} disabled={addingToCart}
+                  className="mr-auto min-h-[40px] px-3 rounded-lg text-xs font-semibold text-white disabled:opacity-50"
+                  style={{ backgroundColor: B.brand }}>
+                  {addingToCart ? 'מוסיף…' : 'הוספת כל החסרים לסל הקניות'}
+                </button>
+                <Link href="/suppliers?tab=cart" className="min-h-[40px] inline-flex items-center px-3 rounded-lg text-xs font-medium border"
+                  style={{ color: B.brand, borderColor: B.border }}>
+                  לסל הקניות ←
+                </Link>
+              </div>
               <RawMaterialTable
                 items={data.raw_materials.filter(r => r.missing > 0)}
                 expanded={expanded}

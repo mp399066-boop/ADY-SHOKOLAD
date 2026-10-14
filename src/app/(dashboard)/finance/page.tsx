@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { FileDown, CalendarDays, ListFilter, ChevronDown } from 'lucide-react';
+import Link from 'next/link';
+import { FileDown, CalendarDays, ListFilter, ChevronDown, TrendingUp } from 'lucide-react';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { todayJerusalem, isCoursesExpense, type FinanceOrder, type Expense, type DateBasis } from '@/lib/finance';
 import type { ManualIncome } from '@/lib/finance-manual-income';
@@ -138,6 +139,12 @@ export default function FinancePage() {
           <p className="text-sm mt-1" style={{ color: C.sub }}>כמה נכנס, כמה יצא, ומה נשאר — לפי חודש ולפי שנה</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Link href="/profit"
+            className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg bg-white border border-[#E2D6C6] shadow-sm hover:border-[#C9A46A]"
+            style={{ color: C.brand }}>
+            <TrendingUp size={15} />
+            רווחיות לפי מוצר
+          </Link>
           <FilterSelect icon={CalendarDays} value={year} onChange={e => setYear(Number(e.target.value))} aria-label="שנה">
             {years.map(y => <option key={y} value={y}>{y}</option>)}
           </FilterSelect>

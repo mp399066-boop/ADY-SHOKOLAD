@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import {
   LayoutDashboard, ShoppingBag, Users, Truck, Gift, Boxes, ChefHat, Factory, Calculator,
-  Receipt, Wallet, UserCog, BarChart3, Upload, Settings, Search, Menu, X, ChevronDown,
+  Receipt, Wallet, UserCog, BarChart3, Upload, Settings, Search, Menu, X, ChevronDown, Megaphone,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -24,6 +24,7 @@ const NAV_MAIN: NavItem[] = [
   { href: '/dashboard',  label: 'דשבורד',          Icon: LayoutDashboard },
   { href: '/orders',     label: 'הזמנות',          Icon: ShoppingBag },
   { href: '/customers',  label: 'לקוחות',          Icon: Users },
+  { href: '/sales',      label: 'מכירות',          Icon: Megaphone,  secondary: true },
   { href: '/products',   label: 'מוצרים',          Icon: Gift },
   { href: '/deliveries', label: 'משלוחים',         Icon: Truck },
   { href: '/inventory',  label: 'מלאי',            Icon: Boxes },
@@ -88,7 +89,7 @@ export default function NavBar() {
   const secondaryActive = SECONDARY.some(i => isActive(i.href));
 
   const linkClass = (active: boolean) => cn(
-    'flex h-9 items-center whitespace-nowrap rounded-lg px-2.5 2xl:px-3 text-[14px] transition-colors',
+    'flex h-9 items-center whitespace-nowrap rounded-lg px-2.5 xl:px-2 min-[1700px]:px-3 text-[14px] transition-colors',
     active
       ? 'bg-[#F5EBDD] font-semibold text-[#4A2E14] shadow-[inset_0_0_0_1px_#EAD8BE]'
       : 'font-medium text-[#5C4434] hover:bg-[#FAF4EC] hover:text-[#2B1A10]',
