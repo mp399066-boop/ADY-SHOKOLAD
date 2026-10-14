@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import Link from 'next/link';
 import { Tabs } from '@/components/ui/Tabs';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
-import type { CostsData } from '@/lib/product-costs';
+import type { CostsData, CostRawMaterial } from '@/lib/product-costs';
 import { C, money } from '../finance/components/shared';
 import ProductCostsTab from './components/ProductCostsTab';
 import RawPricesTab from './components/RawPricesTab';
@@ -52,10 +52,10 @@ export default function CostsPage() {
 
   // A price edit only touches one raw material — patch it locally so every
   // recipe-based cost recalculates instantly, without a reload.
-  const onPriceSaved = useCallback((id: string, price: number | null, updatedAt: string | null) => {
+  const onPriceSaved = useCallback((id: string, patch: Partial<CostRawMaterial>) => {
     setData(d => d && ({
       ...d,
-      rawMaterials: d.rawMaterials.map(m => (m.id === id ? { ...m, מחיר_ליחידה: price, תאריך_עדכון: updatedAt } : m)),
+      rawMaterials: d.rawMaterials.map(m => (m.id === id ? { ...m, ...patch } : m)),
     }));
   }, []);
 
@@ -99,7 +99,7 @@ export default function CostsPage() {
       ) : tab === 'products' ? (
         <ProductCostsTab data={data} rawById={rawById} recipesById={recipesById} reload={() => load(true)} />
       ) : (
-        <RawPricesTab rawMaterials={data.rawMaterials} recipes={data.recipes} rows={data.rows} onPriceSaved={onPriceSaved} onMaterialEdited={() => load(true)} />
+        <RawPricesTab rawMaterials={data.rawMaterials} recipes={data.recipes} rows={data.rows} vatFlagReady={data.vatFlagReady !== false} onPriceSaved={onPriceSaved} onMaterialEdited={() => load(true)} />
       )}
     </div>
   );

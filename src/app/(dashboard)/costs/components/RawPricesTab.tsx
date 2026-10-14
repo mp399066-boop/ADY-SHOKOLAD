@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
-import { isSuspiciousPrice, type CostRawMaterial, type CostRecipe, type CostRow } from '@/lib/product-costs';
+import { isSuspiciousPrice, netUnitPrice, type CostRawMaterial, type CostRecipe, type CostRow } from '@/lib/product-costs';
 import { fmtDate } from '@/lib/finance-export';
 import { C, StatCard, Th, Td, EmptyNote, THEAD_STYLE } from '../../finance/components/shared';
 import { RawMaterialEditModal } from '@/components/inventory/RawMaterialEditModal';
@@ -12,11 +12,15 @@ type Filter = 'used' | 'used_missing' | 'missing' | 'suspicious' | 'all';
 
 const selectCls = 'px-3 py-1.5 text-sm rounded-lg border border-[#E8DED2] bg-white focus:outline-none focus:border-[#C9A46A]';
 
-export default function RawPricesTab({ rawMaterials, recipes, rows, onPriceSaved, onMaterialEdited }: {
+type OnPriceSaved = (id: string, patch: Partial<CostRawMaterial>) => void;
+
+export default function RawPricesTab({ rawMaterials, recipes, rows, vatFlagReady, onPriceSaved, onMaterialEdited }: {
   rawMaterials: CostRawMaterial[];
   recipes: CostRecipe[];
   rows: CostRow[];
-  onPriceSaved: (id: string, price: number | null, updatedAt: string | null) => void;
+  /** false until migration 067 is run — the VAT choice is shown disabled. */
+  vatFlagReady: boolean;
+  onPriceSaved: OnPriceSaved;
   /** Called after the full edit window saved — unit/name may have changed. */
   onMaterialEdited: () => void;
 }) {
@@ -89,7 +93,14 @@ export default function RawPricesTab({ rawMaterials, recipes, rows, onPriceSaved
 
       <div className="text-xs" style={{ color: C.sub }}>
         המחיר הוא לפי יחידת המידה של חומר הגלם במלאי (למשל ₪ לק״ג). שינוי מחיר נשמר מיד ומעדכן את עלות כל המוצרים שמחושבים לפי מתכון.
+        {' '}ליד כל מחיר מסמנים אם הוא <b>כולל מע״מ</b> או <b>לפני מע״מ</b> — העלות מחושבת תמיד לפני מע״מ (כי המע״מ חוזר לעסק), ומחיר כולל מע״מ מחולק ב-1.18.
       </div>
+
+      {!vatFlagReady && (
+        <div className="rounded-xl px-4 py-3 text-sm" style={{ backgroundColor: C.amberBg, color: C.amber }}>
+          כדי לסמן מחירים ככוללים מע״מ יש להריץ את מיגרציה 067 (supabase/migrations/067_raw_material_price_vat.sql) ב-Supabase SQL Editor. עד אז כל המחירים נחשבים לפני מע״מ.
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         <input
@@ -126,7 +137,7 @@ export default function RawPricesTab({ rawMaterials, recipes, rows, onPriceSaved
                 return (
                   <tr key={m.id} className="border-t" style={{ borderColor: C.border }}>
                     <Td><span className="font-medium">{m.שם_חומר_גלם}</span></Td>
-                    <Td><PriceCell material={m} onSaved={onPriceSaved} /></Td>
+                    <Td><PriceCell material={m} vatFlagReady={vatFlagReady} onSaved={onPriceSaved} /></Td>
                     <Td>
                       {recipeNames.length ? (
                         <span title={recipeNames.join('\n')} className="text-xs" style={{ color: C.sub }}>
@@ -161,36 +172,48 @@ export default function RawPricesTab({ rawMaterials, recipes, rows, onPriceSaved
   );
 }
 
-function PriceCell({ material, onSaved }: {
+function PriceCell({ material, vatFlagReady, onSaved }: {
   material: CostRawMaterial;
-  onSaved: (id: string, price: number | null, updatedAt: string | null) => void;
+  vatFlagReady: boolean;
+  onSaved: OnPriceSaved;
 }) {
   const current = material.מחיר_ליחידה != null && Number(material.מחיר_ליחידה) > 0 ? String(material.מחיר_ליחידה) : '';
   const [value, setValue] = useState(current);
   const [saving, setSaving] = useState(false);
+  const inclVat = material.מחיר_כולל_מעמ === true;
 
   useEffect(() => { setValue(current); }, [current]);
+
+  const patch = async (body: { מחיר_ליחידה?: number | null; מחיר_כולל_מעמ?: boolean }, okMsg: string) => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/costs/raw-materials/${material.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || 'עדכון המחיר נכשל');
+      const next: Partial<CostRawMaterial> = { תאריך_עדכון: json.data?.תאריך_עדכון ?? null };
+      if (body.מחיר_ליחידה !== undefined) next.מחיר_ליחידה = json.data?.מחיר_ליחידה ?? null;
+      if (body.מחיר_כולל_מעמ !== undefined) next.מחיר_כולל_מעמ = json.data?.מחיר_כולל_מעמ === true;
+      onSaved(material.id, next);
+      toast.success(okMsg);
+      return true;
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'עדכון המחיר נכשל');
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const save = async () => {
     if (value.trim() === current) return;
     const n = value.trim() === '' ? null : Number(value);
     if (n != null && (!Number.isFinite(n) || n < 0)) { toast.error('מחיר לא תקין'); setValue(current); return; }
-    setSaving(true);
-    try {
-      const res = await fetch(`/api/costs/raw-materials/${material.id}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ מחיר_ליחידה: n }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error || 'עדכון המחיר נכשל');
-      onSaved(material.id, json.data?.מחיר_ליחידה ?? null, json.data?.תאריך_עדכון ?? null);
-      toast.success(`המחיר של ${material.שם_חומר_גלם} עודכן`);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'עדכון המחיר נכשל');
-      setValue(current);
-    } finally {
-      setSaving(false);
-    }
+    if (!(await patch({ מחיר_ליחידה: n }, `המחיר של ${material.שם_חומר_גלם} עודכן`))) setValue(current);
   };
+
+  const net = current ? netUnitPrice(material) : null;
 
   return (
     <div>
@@ -207,7 +230,26 @@ function PriceCell({ material, onSaved }: {
           aria-label={`מחיר ${material.שם_חומר_גלם}`}
         />
         <span className="text-xs whitespace-nowrap" style={{ color: C.sub }}>ל{material.יחידת_מידה}</span>
+        <select
+          value={inclVat ? 'incl' : 'net'}
+          disabled={saving || !vatFlagReady}
+          onChange={e => {
+            const incl = e.target.value === 'incl';
+            void patch({ מחיר_כולל_מעמ: incl }, `${material.שם_חומר_גלם}: המחיר מסומן ${incl ? 'כולל מע״מ' : 'לפני מע״מ'}`);
+          }}
+          className="px-1.5 py-1 text-xs rounded-lg border border-[#E8DED2] bg-white focus:outline-none focus:border-[#C9A46A] disabled:opacity-50"
+          aria-label={`האם המחיר של ${material.שם_חומר_גלם} כולל מע״מ`}
+          title={vatFlagReady ? 'האם המחיר שהוזן כולל מע״מ' : 'יש להריץ את מיגרציה 067'}
+        >
+          <option value="net">לפני מע״מ</option>
+          <option value="incl">כולל מע״מ</option>
+        </select>
       </div>
+      {inclVat && net != null && (
+        <div className="text-xs mt-0.5 tabular-nums" style={{ color: C.sub }}>
+          לחישוב העלות: ₪{net < 1 ? net.toFixed(4) : net.toFixed(2)} לפני מע״מ
+        </div>
+      )}
       {isSuspiciousPrice(material) && (
         <div className="text-xs mt-0.5 whitespace-normal max-w-xs" style={{ color: C.amber }}>
           נראה כמו מחיר לק״ג/ליטר. כדי שהחישוב יהיה נכון — לחצי על העיפרון בשורה ושני את יחידת המידה לק״ג/ליטר (ואת הכמות במלאי בהתאם).
