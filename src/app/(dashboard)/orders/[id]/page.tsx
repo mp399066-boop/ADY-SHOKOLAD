@@ -23,6 +23,7 @@ import type { EditForm, EditOrderItem, EditPackageItem, EditCustomItem, FullOrde
 import { ORDER_STATUSES, PAYMENT_PILL, PAYPLUS_STATIC_LINK, PAYPLUS_API_ENABLED } from './_components/constants';
 import { EditRecipientSelect, FieldInput, FieldSelect, Icon, InfoField, StatusTimeline } from './_components/fields';
 import { FinancialActionsBar, InvRow, FinancialDocumentsList, InvoicePreviewModal } from './_components/financial';
+import { OrderProfitCard } from './_components/OrderProfitCard';
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
@@ -1991,6 +1992,12 @@ export default function OrderDetailPage() {
               );
             })()}
           </Card>
+
+          {/* Profit (admin only — the card hides itself for everyone else) */}
+          <OrderProfitCard
+            orderId={order.id}
+            version={`${order.סך_הכל_לתשלום}|${(order.מוצרים_בהזמנה ?? []).map(i => `${i.id}:${i.כמות}:${i.סהכ}`).join(',')}`}
+          />
 
           {/* Order status timeline */}
           <Card>

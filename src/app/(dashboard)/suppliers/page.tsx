@@ -90,6 +90,12 @@ export default function SuppliersPage() {
   const confirm = useConfirm();
   const [tab, setTab] = useState<PageTab>('suppliers');
 
+  // /suppliers?tab=cart opens the shopping cart directly (link from the
+  // raw-materials summary after adding the shortages).
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('tab') === 'cart') setTab('cart');
+  }, []);
+
   // ── Suppliers tab state ──────────────────────────────────────────────────
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loadingSuppliers, setLoadingSuppliers] = useState(true);

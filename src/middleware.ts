@@ -70,8 +70,11 @@ export async function middleware(request: NextRequest) {
   return supabaseResponse;
 }
 
+// Public customer pages (no login; each checks its own random token):
+//   /q/<token>          — a price quote + approve button
+//   /order-form/<token> — the order request form
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|auth/|api/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|auth/|api/|q/|order-form/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 };

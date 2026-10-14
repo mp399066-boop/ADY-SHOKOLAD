@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
+import Link from 'next/link';
 import { Tabs } from '@/components/ui/Tabs';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import type { CostsData } from '@/lib/product-costs';
@@ -76,6 +77,7 @@ export default function CostsPage() {
           <h1 className="text-xl font-semibold" style={{ color: C.text }}>עלויות מוצרים</h1>
           <p className="text-sm mt-0.5" style={{ color: C.sub }}>
             עלות חומרים + זמן עבודה = עלות מוצר. עדכון מחיר חומר גלם מעדכן מיד כל מוצר שמחושב לפי מתכון.
+            {' '}<Link href="/profit" className="underline font-medium" style={{ color: C.brand }}>כמה כל מוצר מרוויח בפועל ←</Link>
           </p>
         </div>
         {data && <HourlyRateEditor rate={data.hourlyRate} onSaved={r => setData(d => d && ({ ...d, hourlyRate: r }))} />}
