@@ -35,10 +35,11 @@ export default function ProductCostsTab({ data, rawById, recipesById, reload }: 
   const computed = useMemo(() => data.rows.map(row => {
     const cost = computeRowCost(row, recipesById, rawById, data.hourlyRate);
     const item = row.סוג_יעד && row.יעד_id ? catalogByKey.get(`${row.סוג_יעד}:${row.יעד_id}`) : undefined;
-    const price = Number(item?.price);
-    // Profit per unit in ₪ — same basis as the % margin (catalog price − unit cost).
+    const salePrice = rowSalePrice(row, item);
+    const price = Number(salePrice);
+    // Profit per unit in ₪ — same basis as the % margin (sale price − unit cost).
     const profit = price > 0 && cost.total != null ? Math.round((price - cost.total) * 100) / 100 : null;
-    return { row, cost, item, margin: marginPct(item?.price, cost.total), profit };
+    return { row, cost, item, salePrice, margin: marginPct(salePrice, cost.total), profit };
   }), [data.rows, data.hourlyRate, recipesById, rawById, catalogByKey]);
 
   const visible = useMemo(() => {
@@ -88,12 +89,12 @@ export default function ProductCostsTab({ data, rawById, recipesById, reload }: 
 
   const exportExcel = async () => {
     const header: Cell[] = ['שם המוצר', 'גודל', 'מוצר בקטלוג', 'עלות חומרים', 'מקור עלות החומרים', 'זמן עבודה (דקות)', 'ליחידות', 'עלות עבודה', 'מקור עלות העבודה', 'עלות ליחידה', 'מחיר מכירה', 'רווח ₪', 'רווח %', 'הערות'];
-    const rows: Cell[][] = computed.map(({ row, cost, item, margin, profit }) => [
+    const rows: Cell[][] = computed.map(({ row, cost, item, salePrice, margin, profit }) => [
       row.שם, row.גודל ?? '', item?.name ?? '',
       cost.materials, materialsSourceText(cost),
       row.זמן_עבודה_דקות, row.זמן_עבודה_דקות ? row.יחידות_בזמן_עבודה : null,
       cost.labor, laborSourceText(cost),
-      cost.total, item?.price || null, profit, margin, row.הערות ?? '',
+      cost.total, salePrice || null, profit, margin, row.הערות ?? '',
     ]);
     const meta: Cell[][] = [[`עלות שעת עבודה: ${data.hourlyRate != null ? data.hourlyRate : 'לא הוגדרה'}`], []];
     await downloadExcel(`עלויות_מוצרים_${new Date().toISOString().slice(0, 10)}`, [{ name: 'עלויות מוצרים', rows: [...meta, header, ...rows] }]);
@@ -191,7 +192,7 @@ export default function ProductCostsTab({ data, rawById, recipesById, reload }: 
                     </span>
                     {cost.total != null && !cost.complete && <div className="text-xs" style={{ color: C.amber }}>חלקי</div>}
                   </Td>
-                  <Td><SalePriceCell item={item} onSaved={reload} /></Td>
+                  <Td><SalePriceCell row={row} item={item} onSaved={reload} /></Td>
                   <Td>
                     {margin == null ? <span style={{ color: C.faint }}>—</span> : (
                       <div className="tabular-nums" style={{ color: margin >= 0 ? C.green : C.red }}>
@@ -224,7 +225,7 @@ export default function ProductCostsTab({ data, rawById, recipesById, reload }: 
                       </div>
                     </>
                   ) : (
-                    <span style={{ color: C.sub }}>כדי לדעת איזה מוצר הכי שווה לייצר — צריך מוצרים עם עלות מלאה ומחיר מכירה מהקטלוג.</span>
+                    <span style={{ color: C.sub }}>כדי לדעת איזה מוצר הכי שווה לייצר — צריך מוצרים עם עלות מלאה ומחיר מכירה.</span>
                   )}
                 </td>
               </tr>
@@ -256,39 +257,48 @@ export default function ProductCostsTab({ data, rawById, recipesById, reload }: 
   );
 }
 
-function SalePriceCell({ item, onSaved }: { item: CatalogItem | undefined; onSaved: () => void }) {
+/**
+ * Sale price of a cost row: a linked catalog product's price (price list /
+ * base price), otherwise the price entered on the row itself (unlinked rows
+ * and petit-fours, which have no catalog price).
+ */
+function rowSalePrice(row: CostRow, item: CatalogItem | undefined): number | null {
+  if (item?.type === 'sale_product') return item.price;
+  return row.מחיר_מכירה ?? null;
+}
+
+function SalePriceCell({ row, item, onSaved }: { row: CostRow; item: CatalogItem | undefined; onSaved: () => void }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState('');
   const [saving, setSaving] = useState(false);
   // Enter saves and then the input blurs — the ref stops that second save.
   const busy = useRef(false);
 
-  // Only catalog products carry a price; petit-fours and unlinked rows don't.
-  if (!item || item.type !== 'sale_product') {
-    return (
-      <span style={{ color: C.faint }} title={item ? undefined : 'כדי להזין מחיר — יש לקשר את השורה למוצר בקטלוג (עריכה)'}>—</span>
-    );
-  }
+  // A linked catalog product is priced in the catalog (and price list); any
+  // other row keeps its own sale price on the cost row.
+  const catalogProduct = item?.type === 'sale_product' ? item : null;
+  const price = rowSalePrice(row, item);
 
   const start = (e: { stopPropagation: () => void }) => {
     e.stopPropagation();
-    setValue(item.price ? String(item.price) : '');
+    setValue(price ? String(price) : '');
     setEditing(true);
   };
   const save = async () => {
     if (busy.current) return;
     const n = Number(value);
-    if (value.trim() === '' || n === Number(item.price ?? 0)) { setEditing(false); return; }
+    if (value.trim() === '' || n === Number(price ?? 0)) { setEditing(false); return; }
     if (!Number.isFinite(n) || n < 0) { toast.error('מחיר לא תקין'); return; }
     busy.current = true;
     setSaving(true);
     try {
-      const res = await fetch(`/api/costs/sale-price/${item.id}`, {
+      const url = catalogProduct ? `/api/costs/sale-price/${catalogProduct.id}` : `/api/costs/${row.id}/sale-price`;
+      const res = await fetch(url, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ מחיר: n }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || 'עדכון המחיר נכשל');
-      toast.success(`מחיר המכירה של "${item.name}" עודכן`);
+      toast.success(`מחיר המכירה של "${catalogProduct?.name ?? row.שם}" עודכן`);
       setEditing(false);
       onSaved();
     } catch (e) {
@@ -319,8 +329,8 @@ function SalePriceCell({ item, onSaved }: { item: CatalogItem | undefined; onSav
     <button
       type="button" onClick={start} title="לחצי לעדכון מחיר המכירה"
       className="tabular-nums rounded-md px-1.5 py-0.5 -mx-1.5 border border-dashed border-transparent hover:border-[#C9A46A]"
-      style={{ color: item.price ? C.text : C.amber }}>
-      {item.price ? money(item.price) : '+ מחיר'}
+      style={{ color: price ? C.text : C.amber }}>
+      {price ? money(price) : '+ מחיר'}
     </button>
   );
 }

@@ -74,7 +74,9 @@ export default function CostFormModal({ open, initial, data, rawById, recipesByI
     יחידות_בזמן_עבודה: Number(units) > 0 ? Number(units) : 1,
     עלות_עבודה_ידנית: parseNum(manualLabor),
   }, recipesById, rawById, data.hourlyRate);
-  const margin = marginPct(item?.price, preview.total);
+  // A linked catalog product's price, else the price saved on the row itself.
+  const salePrice = item?.type === 'sale_product' ? item.price : (initial?.מחיר_מכירה ?? null);
+  const margin = marginPct(salePrice, preview.total);
 
   // Linking a catalog item that has a recipe → suggest that recipe.
   const onTargetChange = (key: string) => {
@@ -252,9 +254,9 @@ export default function CostFormModal({ open, initial, data, rawById, recipesByI
           <span style={{ color: C.sub }}>חומרים <b className="tabular-nums" style={{ color: C.text }}>{preview.materials == null ? '—' : money(preview.materials)}</b></span>
           <span style={{ color: C.sub }}>+ עבודה <b className="tabular-nums" style={{ color: C.text }}>{preview.labor == null ? '—' : money(preview.labor)}</b></span>
           <span style={{ color: C.sub }}>= עלות ליחידה <b className="tabular-nums text-base" style={{ color: C.brand }}>{preview.total == null ? '—' : money(preview.total)}</b></span>
-          {item?.price ? (
+          {salePrice ? (
             <span style={{ color: C.sub }}>
-              מחיר מכירה {money(item.price)}
+              מחיר מכירה {money(salePrice)}
               {margin != null && <> · רווח <b style={{ color: margin >= 0 ? C.green : C.red }}>{margin}%</b></>}
             </span>
           ) : null}

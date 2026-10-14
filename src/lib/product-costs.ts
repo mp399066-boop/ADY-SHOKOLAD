@@ -25,6 +25,8 @@ export interface CostRow {
   יחידות_בזמן_עבודה: number;
   עלות_עבודה_ידנית: number | null;
   הערות: string | null;
+  /** Sale price entered on the row itself (migration 069) — used when it isn't linked to a catalog product. */
+  מחיר_מכירה?: number | null;
   סדר: number;
   תאריך_עדכון: string | null;
 }
