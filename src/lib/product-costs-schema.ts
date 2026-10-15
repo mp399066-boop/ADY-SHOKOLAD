@@ -16,6 +16,14 @@ export const costRowInputSchema = z.object({
   סוג_יעד:            z.enum(['sale_product', 'petit_four']).optional().nullable().transform(v => v ?? null),
   יעד_id:             optUuid,
   מתכון_id:           optUuid,
+  // Sub-recipes (migration 070): one batch of each recipe makes `יחידות` units of this product.
+  מתכונים:            z.array(z.object({
+    מתכון_id: z.string().uuid(),
+    יחידות:   z.coerce.number().finite().gt(0, 'מספר היחידות מכל מתכון חייב להיות גדול מ-0').max(1_000_000).transform(round2),
+  })).max(30, 'אפשר לשייך עד 30 מתכונים למוצר')
+    .refine(list => new Set(list.map(l => l.מתכון_id)).size === list.length, { message: 'אותו מתכון נבחר פעמיים' })
+    // Missing = leave the row's sub-recipes as they are.
+    .optional(),
   חומרים_לפי_מתכון:   z.boolean().default(false),
   עלות_חומרים_ידנית:  optMoney,
   זמן_עבודה_דקות:     z.union([z.null(), z.coerce.number().finite().min(0, 'זמן לא יכול להיות שלילי').max(100_000)])
@@ -24,7 +32,9 @@ export const costRowInputSchema = z.object({
   עלות_עבודה_ידנית:   optMoney,
   הערות:              optText(1000),
 }).refine(r => (r.סוג_יעד == null) === (r.יעד_id == null), { message: 'קישור לקטלוג לא שלם', path: ['יעד_id'] })
-  .refine(r => !r.חומרים_לפי_מתכון || r.מתכון_id != null, { message: 'כדי לחשב לפי מתכון יש לבחור מתכון', path: ['מתכון_id'] });
+  .refine(r => !r.חומרים_לפי_מתכון || (r.מתכונים ? r.מתכונים.length > 0 : r.מתכון_id != null), { message: 'כדי לחשב לפי מתכון יש לבחור מתכון', path: ['מתכון_id'] })
+  // מתכון_id (kept for older screens) = the first sub-recipe.
+  .transform(r => ({ ...r, מתכון_id: r.מתכונים ? r.מתכונים[0]?.מתכון_id ?? null : r.מתכון_id }));
 
 export type CostRowInput = z.infer<typeof costRowInputSchema>;
 
@@ -50,6 +60,9 @@ export const salePriceSchema = z.object({
 
 export const COSTS_MIGRATION_HINT =
   'טבלת עלויות המוצרים עדיין לא קיימת. יש להריץ את מיגרציה 058 (supabase/migrations/058_product_costs.sql) ב-Supabase SQL Editor.';
+
+export const RECIPE_LINKS_MIGRATION_HINT =
+  'כדי לשייך כמה מתכונים למוצר (או לשנות כמה יחידות יוצאות ממתכון) יש להריץ את מיגרציה 070 (supabase/migrations/070_cost_row_recipes.sql) ב-Supabase SQL Editor.';
 
 export const COST_COLUMNS =
   'id, שם, גודל, סוג_יעד, יעד_id, מתכון_id, חומרים_לפי_מתכון, עלות_חומרים_ידנית, זמן_עבודה_דקות, יחידות_בזמן_עבודה, עלות_עבודה_ידנית, הערות, סדר, תאריך_עדכון';

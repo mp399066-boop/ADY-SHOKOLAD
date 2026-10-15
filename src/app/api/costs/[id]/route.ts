@@ -4,8 +4,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireAdminUser, forbiddenResponse } from '@/lib/auth/requireAuthorizedUser';
-import { costRowInputSchema, COST_COLUMNS, normalizeCostRow } from '@/lib/product-costs-schema';
-import { validateCostLinks, isDuplicateName, DUPLICATE_NAME_ERROR } from '@/lib/product-costs-server';
+import { costRowInputSchema, COST_COLUMNS, RECIPE_LINKS_MIGRATION_HINT, normalizeCostRow } from '@/lib/product-costs-schema';
+import {
+  validateCostLinks, isDuplicateName, DUPLICATE_NAME_ERROR,
+  needsRecipeLinksTable, recipeLinksTableReady, saveCostRecipeLinks,
+} from '@/lib/product-costs-server';
 
 // PATCH  /api/costs/:id → replace the editable fields of one cost row
 // DELETE /api/costs/:id → remove it
@@ -26,10 +29,14 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
   const supabase = createAdminClient();
   const linkError = await validateCostLinks(supabase, parsed.data);
   if (linkError) return NextResponse.json({ error: linkError }, { status: 400 });
+  const { מתכונים: recipeLinks, ...fields } = parsed.data;
+  if (recipeLinks && await needsRecipeLinksTable(supabase, recipeLinks) && !(await recipeLinksTableReady(supabase))) {
+    return NextResponse.json({ error: RECIPE_LINKS_MIGRATION_HINT }, { status: 400 });
+  }
 
   const { data, error } = await supabase
     .from('עלויות_מוצרים')
-    .update({ ...parsed.data, עודכן_על_ידי: auth.email ?? null, תאריך_עדכון: new Date().toISOString() })
+    .update({ ...fields, עודכן_על_ידי: auth.email ?? null, תאריך_עדכון: new Date().toISOString() })
     .eq('id', params.id)
     .select(COST_COLUMNS)
     .maybeSingle();
@@ -39,6 +46,11 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
     return NextResponse.json({ error: 'שמירת העלות נכשלה' }, { status: 500 });
   }
   if (!data) return NextResponse.json({ error: 'השורה לא נמצאה' }, { status: 404 });
+  const saved = recipeLinks ? await saveCostRecipeLinks(supabase, params.id, recipeLinks) : 'ok';
+  if (saved !== 'ok' && saved !== 'missing') {
+    console.error('[costs PATCH recipes]', { id: params.id, code: saved.code });
+    return NextResponse.json({ error: 'הפרטים נשמרו, אבל שיוך המתכונים נכשל — נסי לשמור שוב' }, { status: 500 });
+  }
   return NextResponse.json({ data: normalizeCostRow(data as Record<string, unknown>) });
 }
 

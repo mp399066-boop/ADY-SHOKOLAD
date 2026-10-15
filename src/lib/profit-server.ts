@@ -4,7 +4,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { isMissingTable } from '@/lib/finance-expense-schema';
 import { COST_COLUMNS, normalizeCostRow } from '@/lib/product-costs-schema';
-import { loadCostRawMaterials } from '@/lib/product-costs-server';
+import { loadCostRawMaterials, loadCostRecipeLinks } from '@/lib/product-costs-server';
 import {
   computeRowCost, type CostRow, type CostRecipe, type CostRawMaterial,
 } from '@/lib/product-costs';
@@ -21,19 +21,20 @@ export interface UnitCostsResult {
 export async function loadUnitCosts(supabase: SupabaseClient): Promise<UnitCostsResult> {
   const costs: UnitCosts = { product: new Map(), petitFour: new Map() };
 
-  const [rowsRes, recipesRes, rawRes, rateRes] = await Promise.all([
+  const [rowsRes, recipesRes, rawRes, rateRes, linksRes] = await Promise.all([
     supabase.from('עלויות_מוצרים').select(COST_COLUMNS).order('סדר').order('שם'),
     supabase.from('מתכונים')
       .select('id, שם_מתכון, כמות_תוצר, יחידת_תפוקה, production_target_type, production_target_id, רכיבי_מתכון(חומר_גלם_id, כמות_נדרשת, יחידת_מידה)'),
     loadCostRawMaterials(supabase),
     supabase.from('system_config').select('value').eq('key', 'labor_hourly_rate').maybeSingle(),
+    loadCostRecipeLinks(supabase),
   ]);
 
   if (rowsRes.error) {
     if (isMissingTable(rowsRes.error)) return { costs, tableReady: false, error: null };
     return { costs, tableReady: true, error: rowsRes.error };
   }
-  const firstError = recipesRes.error || rawRes.error;
+  const firstError = recipesRes.error || rawRes.error || linksRes.error;
   if (firstError) return { costs, tableReady: true, error: firstError };
 
   type Ing = { חומר_גלם_id: string; כמות_נדרשת: unknown; יחידת_מידה: string };
@@ -50,7 +51,7 @@ export async function loadUnitCosts(supabase: SupabaseClient): Promise<UnitCosts
   const hourlyRate = rateRes.data?.value && rateNum > 0 ? rateNum : null;
 
   for (const raw of (rowsRes.data ?? []) as unknown as Record<string, unknown>[]) {
-    const row = normalizeCostRow(raw) as unknown as CostRow;
+    const row = { ...normalizeCostRow(raw), מתכונים: linksRes.byRow.get(raw.id as string) ?? [] } as unknown as CostRow;
     if (!row.סוג_יעד || !row.יעד_id) continue;
     const map = row.סוג_יעד === 'sale_product' ? costs.product : costs.petitFour;
     if (map.has(row.יעד_id)) continue; // first row (by סדר) wins
