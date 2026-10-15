@@ -18,6 +18,11 @@ export default function CostsPage() {
   const [data, setData] = useState<CostsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // ?q=<name> (from a recipe card) — pre-fills the product search.
+  const [initialSearch, setInitialSearch] = useState('');
+  useEffect(() => {
+    setInitialSearch(new URLSearchParams(window.location.search).get('q') ?? '');
+  }, []);
 
   useEffect(() => {
     fetch('/api/me').then(r => (r.ok ? r.json() : null)).then(j => setRole(j?.role ?? null)).catch(() => setRole(null));
@@ -78,6 +83,7 @@ export default function CostsPage() {
           <p className="text-sm mt-0.5" style={{ color: C.sub }}>
             עלות חומרים + זמן עבודה = עלות מוצר. עדכון מחיר חומר גלם מעדכן מיד כל מוצר שמחושב לפי מתכון.
             {' '}<Link href="/profit" className="underline font-medium" style={{ color: C.brand }}>כמה כל מוצר מרוויח בפועל ←</Link>
+            {' · '}<Link href="/recipes" className="underline font-medium" style={{ color: C.brand }}>למתכונים ←</Link>
           </p>
         </div>
         {data && <HourlyRateEditor rate={data.hourlyRate} onSaved={r => setData(d => d && ({ ...d, hourlyRate: r }))} />}
@@ -97,7 +103,7 @@ export default function CostsPage() {
       ) : loading || !data ? (
         <div className="flex justify-center py-16"><LoadingSpinner /></div>
       ) : tab === 'products' ? (
-        <ProductCostsTab data={data} rawById={rawById} recipesById={recipesById} reload={() => load(true)} />
+        <ProductCostsTab key={initialSearch} initialSearch={initialSearch} data={data} rawById={rawById} recipesById={recipesById} reload={() => load(true)} />
       ) : (
         <RawPricesTab rawMaterials={data.rawMaterials} recipes={data.recipes} rows={data.rows} vatFlagReady={data.vatFlagReady !== false} onPriceSaved={onPriceSaved} onMaterialEdited={() => load(true)} />
       )}

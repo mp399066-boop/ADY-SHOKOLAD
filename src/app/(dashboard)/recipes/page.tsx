@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
+import { ChevronDown, Search } from 'lucide-react';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { PageLoading } from '@/components/ui/LoadingSpinner';
@@ -210,6 +212,41 @@ export default function RecipesPage() {
   };
 
   useEffect(() => { fetchAll(); }, []);
+
+  // ── List: search + collapsed rows ───────────────────────────────────────
+  const [search, setSearch] = useState('');
+  const [openIds, setOpenIds] = useState<Set<string>>(new Set());
+  // ?open=<id> (from /costs) — expand that recipe and scroll to it once loaded.
+  const [focusId, setFocusId] = useState<string | null>(null);
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('open');
+    if (id) setFocusId(id);
+  }, []);
+  useEffect(() => {
+    if (!focusId || loading || !recipes.some(r => r.id === focusId)) return;
+    setOpenIds(prev => new Set(prev).add(focusId));
+    setTimeout(() => document.getElementById(`recipe-${focusId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+    setFocusId(null);
+  }, [focusId, loading, recipes]);
+
+  const toggleOpen = (id: string) => setOpenIds(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
+  // Alphabetical; the search matches the recipe name or any ingredient name.
+  const visibleRecipes = useMemo(() => {
+    const q = search.trim();
+    return [...recipes]
+      .sort((a, b) => a.שם_מתכון.localeCompare(b.שם_מתכון, 'he'))
+      .filter(r => {
+        if (!q) return true;
+        if (r.שם_מתכון.includes(q)) return true;
+        const ings = (r as Recipe & { רכיבי_מתכון?: RecipeIngredient[] }).רכיבי_מתכון ?? [];
+        return ings.some(i => ((i.מלאי_חומרי_גלם as { שם_חומר_גלם?: string } | undefined)?.שם_חומר_גלם ?? '').includes(q));
+      });
+  }, [recipes, search]);
 
   // ── Recipe form helpers ─────────────────────────────────────────────────
 
@@ -445,6 +482,9 @@ export default function RecipesPage() {
             שייכי אוטומטית לפי שמות
           </button>
         )}
+        <Link href="/costs" className="text-xs font-medium underline" style={{ color: '#8B5E34' }}>
+          עלויות מוצרים ←
+        </Link>
         <div className="mr-auto">
           {tab === 'recipes'
             ? <Button size="sm" onClick={openNewRecipe}>+ מתכון חדש</Button>
@@ -459,8 +499,38 @@ export default function RecipesPage() {
             recipes.length === 0
               ? <EmptyState title="אין מתכונים" action={<Button onClick={openNewRecipe}>+ מתכון חדש</Button>} />
               : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {recipes.map(r => {
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="relative">
+                      <Search className="w-4 h-4 absolute top-1/2 -translate-y-1/2 right-2.5 pointer-events-none" style={{ color: '#9B7A5A' }} />
+                      <input
+                        value={search}
+                        onChange={e => setSearch(e.target.value)}
+                        placeholder="חיפוש מתכון או חומר גלם…"
+                        aria-label="חיפוש מתכון"
+                        className="pr-8 pl-3 py-1.5 text-sm rounded-lg border border-[#E8DED2] bg-white focus:outline-none focus:border-[#C9A46A] w-64 max-w-full"
+                      />
+                    </div>
+                    <span className="text-xs" style={{ color: '#9B7A5A' }}>
+                      {search.trim() ? `${visibleRecipes.length} מתוך ${recipes.length} מתכונים` : `${recipes.length} מתכונים`}
+                    </span>
+                    <div className="mr-auto flex gap-1.5">
+                      <button type="button" onClick={() => setOpenIds(new Set(visibleRecipes.map(r => r.id)))}
+                        className="text-xs px-2.5 py-1 rounded-lg border bg-white hover:bg-[#FAF7F2]" style={{ borderColor: '#E7D2A6', color: '#8B5E34' }}>
+                        פתחי הכל
+                      </button>
+                      <button type="button" onClick={() => setOpenIds(new Set())}
+                        className="text-xs px-2.5 py-1 rounded-lg border bg-white hover:bg-[#FAF7F2]" style={{ borderColor: '#E7D2A6', color: '#8B5E34' }}>
+                        סגרי הכל
+                      </button>
+                    </div>
+                  </div>
+
+                  {visibleRecipes.length === 0 ? (
+                    <p className="text-sm py-8 text-center" style={{ color: '#9B7A5A' }}>לא נמצאו מתכונים שמתאימים לחיפוש.</p>
+                  ) : (
+                  <div className="rounded-xl bg-white overflow-hidden" style={{ border: '1px solid #E8DED2' }}>
+                  {visibleRecipes.map(r => {
                     const ings = (r as Recipe & { רכיבי_מתכון?: RecipeIngredient[] }).רכיבי_מתכון ?? [];
                     const targetType = (r as Recipe & { production_target_type?: 'sale_product' | 'petit_four' | null }).production_target_type ?? null;
                     const targetId   = (r as Recipe & { production_target_id?: string | null }).production_target_id ?? null;
@@ -476,15 +546,37 @@ export default function RecipesPage() {
                       : linkedPetitFour
                         ? `סוג פטיפור: ${linkedPetitFour.שם_פטיפור}`
                         : null;
+                    const isOpen = openIds.has(r.id);
                     return (
-                      <Card key={r.id}>
-                        <div className="flex justify-between mb-3">
-                          <div>
-                            <h3 className="font-semibold" style={{ color: '#2B1A10' }}>{r.שם_מתכון}</h3>
-                            <p className="text-xs mt-0.5" style={{ color: '#9B7A5A' }}>
-                              יוצא מהמתכון: {r.כמות_תוצר} יחידות
-                            </p>
-                          </div>
+                      <div key={r.id} id={`recipe-${r.id}`} className="border-b last:border-b-0 scroll-mt-20" style={{ borderColor: '#F0E8DA' }}>
+                        <button
+                          type="button"
+                          onClick={() => toggleOpen(r.id)}
+                          aria-expanded={isOpen}
+                          className="w-full flex items-center gap-3 px-4 py-3 text-right hover:bg-[#FDFBF7] transition-colors"
+                          style={isOpen ? { backgroundColor: '#FAF7F0' } : undefined}
+                        >
+                          <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} style={{ color: '#8B5E34' }} />
+                          <span className="font-semibold flex-1 min-w-0 truncate" style={{ color: '#2B1A10' }}>{r.שם_מתכון}</span>
+                          <span className="text-[11px] hidden sm:inline" style={{ color: '#9B7A5A' }}>
+                            {ings.length} חומרי גלם · {r.כמות_תוצר} יחידות
+                          </span>
+                          {!isLinked && (
+                            <span className="text-[11px] px-1.5 py-0.5 rounded-full shrink-0" style={{ backgroundColor: '#FBF0E4', color: '#8B5E34' }}>
+                              לא משויך
+                            </span>
+                          )}
+                        </button>
+                        {isOpen && (
+                        <div className="px-4 pb-4 pt-2">
+                        <div className="flex flex-wrap justify-between items-center gap-2 mb-3">
+                          <p className="text-xs" style={{ color: '#9B7A5A' }}>
+                            יוצא מהמתכון: {r.כמות_תוצר} יחידות
+                            {' · '}
+                            <Link href={`/costs?q=${encodeURIComponent(r.שם_מתכון)}`} className="underline font-medium" style={{ color: '#8B5E34' }}>
+                              לעלות המוצר ←
+                            </Link>
+                          </p>
                           <div className="flex items-start gap-1">
                             <button
                               type="button"
@@ -587,9 +679,13 @@ export default function RecipesPage() {
                         ) : (
                           <p className="text-xs italic" style={{ color: '#9B7A5A' }}>הוסיפי חומרי גלם למתכון</p>
                         )}
-                      </Card>
+                        </div>
+                        )}
+                      </div>
                     );
                   })}
+                  </div>
+                  )}
                 </div>
               )
           )}
