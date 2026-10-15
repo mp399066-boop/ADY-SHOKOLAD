@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import toast from 'react-hot-toast';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import {
@@ -15,13 +16,14 @@ type Filter = 'all' | 'missing' | 'recipe' | 'no_time';
 
 const selectCls = 'px-3 py-1.5 text-sm rounded-lg border border-[#E8DED2] bg-white focus:outline-none focus:border-[#C9A46A]';
 
-export default function ProductCostsTab({ data, rawById, recipesById, reload }: {
+export default function ProductCostsTab({ data, rawById, recipesById, reload, initialSearch }: {
   data: CostsData;
   rawById: Map<string, CostRawMaterial>;
   recipesById: Map<string, CostRecipe>;
   reload: () => void;
+  initialSearch?: string;
 }) {
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(initialSearch ?? '');
   const [filter, setFilter] = useState<Filter>('all');
   const [editing, setEditing] = useState<CostRow | null | 'new'>(null);
   const [toDelete, setToDelete] = useState<CostRow | null>(null);
@@ -45,13 +47,14 @@ export default function ProductCostsTab({ data, rawById, recipesById, reload }: 
   const visible = useMemo(() => {
     const q = search.trim();
     return computed.filter(({ row, cost }) => {
-      if (q && !`${row.שם} ${row.גודל ?? ''}`.includes(q)) return false;
+      const recipeName = row.מתכון_id ? recipesById.get(row.מתכון_id)?.שם_מתכון ?? '' : '';
+      if (q && !`${row.שם} ${row.גודל ?? ''} ${recipeName}`.includes(q)) return false;
       if (filter === 'missing') return !cost.complete;
       if (filter === 'recipe') return cost.materialsSource === 'recipe';
       if (filter === 'no_time') return !(Number(row.זמן_עבודה_דקות) > 0);
       return true;
     });
-  }, [computed, search, filter]);
+  }, [computed, search, filter, recipesById]);
 
   const stats = useMemo(() => ({
     total: computed.length,
@@ -171,6 +174,12 @@ export default function ProductCostsTab({ data, rawById, recipesById, reload }: 
                     <div className="text-xs" style={{ color: C.faint }}>
                       {[row.גודל, item ? `${item.type === 'petit_four' ? 'פטיפור' : 'קטלוג'}: ${item.name}` : null].filter(Boolean).join(' · ') || ' '}
                     </div>
+                    {row.מתכון_id && recipesById.has(row.מתכון_id) && (
+                      <Link href={`/recipes?open=${row.מתכון_id}`} onClick={e => e.stopPropagation()}
+                        className="text-xs underline" style={{ color: C.brand }}>
+                        למתכון ←
+                      </Link>
+                    )}
                   </Td>
                   <Td>
                     <Amount value={cost.materials} />
