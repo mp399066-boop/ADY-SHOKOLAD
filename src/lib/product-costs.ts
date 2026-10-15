@@ -1,8 +1,10 @@
 // Product cost calculation for the /costs page (עלויות מוצרים).
 //
 // עלות ליחידה = עלות חומרים + עלות עבודה
-//   חומרים — from the linked recipe (raw-material price × ingredient quantity
-//            ÷ recipe yield) when חומרים_לפי_מתכון is on, else the manual amount.
+//   חומרים — when חומרים_לפי_מתכון is on, the sum over the row's sub-recipes
+//            (migration 070) of: recipe batch cost ÷ units of this product one
+//            batch makes. Without sub-recipes, the single linked recipe ÷ its
+//            yield (the behaviour before 070). Otherwise the manual amount.
 //            Raw-material prices always count BEFORE VAT (the business gets
 //            the VAT back) — a price entered with VAT is divided by 1.18.
 //   עבודה  — production time × hourly rate ÷ units made in that time; falls
@@ -27,8 +29,16 @@ export interface CostRow {
   הערות: string | null;
   /** Sale price entered on the row itself (migration 069) — used when it isn't linked to a catalog product. */
   מחיר_מכירה?: number | null;
+  /** Sub-recipes that make up the product (migration 070). Missing/empty = the single מתכון_id. */
+  מתכונים?: CostRowRecipe[];
   סדר: number;
   תאריך_עדכון: string | null;
+}
+
+/** One sub-recipe of a cost row: one batch of the recipe is enough for `יחידות` units of the product. */
+export interface CostRowRecipe {
+  מתכון_id: string;
+  יחידות: number;
 }
 
 export interface CostRawMaterial {
@@ -185,10 +195,44 @@ export interface RowCost {
 }
 
 export type CostInputs = Pick<CostRow,
-  'מתכון_id' | 'חומרים_לפי_מתכון' | 'עלות_חומרים_ידנית' | 'זמן_עבודה_דקות' | 'יחידות_בזמן_עבודה' | 'עלות_עבודה_ידנית'>;
+  'מתכון_id' | 'מתכונים' | 'חומרים_לפי_מתכון' | 'עלות_חומרים_ידנית' | 'זמן_עבודה_דקות' | 'יחידות_בזמן_עבודה' | 'עלות_עבודה_ידנית'>;
 
 export function laborFromTime(minutes: number, units: number, hourlyRate: number): number {
   return (minutes / 60) * hourlyRate / (units > 0 ? units : 1);
+}
+
+export interface RecipePart {
+  recipe: CostRecipe;
+  /** Units of the product one batch of this recipe makes. */
+  units: number;
+  cost: RecipeCost;
+  /** This recipe's share of the product's unit cost (unrounded). */
+  perUnit: number;
+}
+
+/**
+ * The sub-recipes a row's material cost is built from: its מתכונים list, or —
+ * when it has none (before migration 070) — the single מתכון_id at the
+ * recipe's own yield. Links to deleted recipes are skipped.
+ */
+export function rowRecipeParts(
+  row: Pick<CostRow, 'מתכון_id' | 'מתכונים'>,
+  recipesById: Map<string, CostRecipe>,
+  rawById: Map<string, CostRawMaterial>,
+): RecipePart[] {
+  const links: { מתכון_id: string; יחידות: number | null }[] = row.מתכונים?.length
+    ? row.מתכונים
+    : row.מתכון_id ? [{ מתכון_id: row.מתכון_id, יחידות: null }] : [];
+  const parts: RecipePart[] = [];
+  for (const l of links) {
+    const recipe = recipesById.get(l.מתכון_id);
+    if (!recipe) continue;
+    const cost = recipeCost(recipe, rawById);
+    const units = Number(l.יחידות) > 0 ? Number(l.יחידות) : cost.yield;
+    // cost.perUnit × cost.yield = the unrounded batch total.
+    parts.push({ recipe, units, cost, perUnit: (cost.perUnit * cost.yield) / units });
+  }
+  return parts;
 }
 
 export function computeRowCost(
@@ -201,13 +245,12 @@ export function computeRowCost(
   let materialsSource: MaterialsSource = 'none';
   let recipeIssues = 0;
   let recipeSuspicious = 0;
-  const recipe = row.מתכון_id ? recipesById.get(row.מתכון_id) : undefined;
-  if (row.חומרים_לפי_מתכון && recipe) {
-    const rc = recipeCost(recipe, rawById);
-    materials = rc.perUnit;
+  const parts = row.חומרים_לפי_מתכון ? rowRecipeParts(row, recipesById, rawById) : [];
+  if (parts.length) {
+    materials = parts.reduce((s, p) => s + p.perUnit, 0);
     materialsSource = 'recipe';
-    recipeIssues = rc.issues;
-    recipeSuspicious = rc.suspicious;
+    recipeIssues = parts.reduce((s, p) => s + p.cost.issues, 0);
+    recipeSuspicious = parts.reduce((s, p) => s + p.cost.suspicious, 0);
   } else if (row.עלות_חומרים_ידנית != null) {
     materials = Number(row.עלות_חומרים_ידנית);
     materialsSource = 'manual';
@@ -272,6 +315,8 @@ export interface CostsData {
   rawMaterials: CostRawMaterial[];
   /** false until migration 067 (מחיר_כולל_מעמ) is run. */
   vatFlagReady: boolean;
+  /** false until migration 070 (מתכוני_עלות — several sub-recipes per product) is run. */
+  recipeLinksReady: boolean;
   catalog: CatalogItem[];
   hourlyRate: number | null;
 }

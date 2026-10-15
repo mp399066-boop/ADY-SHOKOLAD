@@ -1,8 +1,10 @@
 // Server-only helpers for /api/costs routes.
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { CostRowInput } from '@/lib/product-costs-schema';
-import type { CostRawMaterial } from '@/lib/product-costs';
+import type { CostRawMaterial, CostRowRecipe } from '@/lib/product-costs';
 import { missingColumnMessage } from '@/lib/db-error';
+import { isMissingTable } from '@/lib/finance-expense-schema';
+import { fetchAllPages } from '@/lib/supabase/fetch-all';
 
 const RAW_COLUMNS = 'id, שם_חומר_גלם, יחידת_מידה, מחיר_ליחידה, תאריך_עדכון';
 
@@ -40,11 +42,80 @@ export async function validateCostLinks(supabase: SupabaseClient, input: CostRow
     const { data } = await supabase.from(table).select('id').eq('id', input.יעד_id).maybeSingle();
     if (!data) return 'המוצר המקושר לא נמצא בקטלוג';
   }
-  if (input.מתכון_id) {
-    const { data } = await supabase.from('מתכונים').select('id').eq('id', input.מתכון_id).maybeSingle();
-    if (!data) return 'המתכון המקושר לא נמצא';
+  const recipeIds = [...new Set([input.מתכון_id, ...(input.מתכונים ?? []).map(l => l.מתכון_id)].filter((id): id is string => !!id))];
+  if (recipeIds.length) {
+    const { data } = await supabase.from('מתכונים').select('id').in('id', recipeIds);
+    if ((data ?? []).length !== recipeIds.length) return 'המתכון המקושר לא נמצא';
   }
   return null;
+}
+
+/**
+ * Sub-recipe links of every cost row (migration 070), keyed by cost row id.
+ * ready=false until the migration is run — rows then fall back to their
+ * single מתכון_id.
+ */
+export async function loadCostRecipeLinks(supabase: SupabaseClient): Promise<{
+  byRow: Map<string, CostRowRecipe[]>;
+  ready: boolean;
+  error: { code?: string | null } | null;
+}> {
+  const byRow = new Map<string, CostRowRecipe[]>();
+  type LinkRow = { עלות_id: string; מתכון_id: string; יחידות_מהמתכון: unknown };
+  type LinkPage = { data: LinkRow[] | null; error: { message: string; code?: string } | null };
+  const res = await fetchAllPages<LinkRow>((from, to) =>
+    supabase.from('מתכוני_עלות').select('עלות_id, מתכון_id, יחידות_מהמתכון')
+      .order('סדר').order('id').range(from, to) as unknown as PromiseLike<LinkPage>);
+  if (res.error) {
+    if (isMissingTable(res.error)) return { byRow, ready: false, error: null };
+    return { byRow, ready: true, error: res.error };
+  }
+  for (const l of res.data) {
+    const list = byRow.get(l.עלות_id) ?? [];
+    list.push({ מתכון_id: l.מתכון_id, יחידות: Number(l.יחידות_מהמתכון) || 1 });
+    byRow.set(l.עלות_id, list);
+  }
+  return { byRow, ready: true, error: null };
+}
+
+/** True when the sub-recipe table (migration 070) exists. */
+export async function recipeLinksTableReady(supabase: SupabaseClient): Promise<boolean> {
+  const { error } = await supabase.from('מתכוני_עלות').select('id').limit(1);
+  return !isMissingTable(error);
+}
+
+/**
+ * Does saving these links need migration 070? A single recipe at its own
+ * yield is exactly what the old מתכון_id column already expresses.
+ */
+export async function needsRecipeLinksTable(supabase: SupabaseClient, links: CostRowRecipe[]): Promise<boolean> {
+  if (links.length > 1) return true;
+  if (links.length === 0) return false;
+  const { data } = await supabase.from('מתכונים').select('כמות_תוצר').eq('id', links[0].מתכון_id).maybeSingle();
+  const recipeYield = Number((data as { כמות_תוצר?: unknown } | null)?.כמות_תוצר) || 1;
+  return Math.abs(recipeYield - links[0].יחידות) > 0.001;
+}
+
+/**
+ * Replaces a cost row's sub-recipe links: upserts the new list (with its
+ * order), then removes links no longer in it — so a failure part-way never
+ * leaves the row with no recipes. Returns 'missing' before migration 070.
+ */
+export async function saveCostRecipeLinks(
+  supabase: SupabaseClient, costId: string, links: CostRowRecipe[],
+): Promise<'ok' | 'missing' | { code?: string | null }> {
+  if (links.length) {
+    const { error } = await supabase.from('מתכוני_עלות').upsert(
+      links.map((l, i) => ({ עלות_id: costId, מתכון_id: l.מתכון_id, יחידות_מהמתכון: l.יחידות, סדר: i })),
+      { onConflict: 'עלות_id,מתכון_id' },
+    );
+    if (error) return isMissingTable(error) ? 'missing' : error;
+  }
+  let del = supabase.from('מתכוני_עלות').delete().eq('עלות_id', costId);
+  if (links.length) del = del.not('מתכון_id', 'in', `(${links.map(l => l.מתכון_id).join(',')})`);
+  const { error } = await del;
+  if (error) return isMissingTable(error) ? 'missing' : error;
+  return 'ok';
 }
 
 /** Postgres unique violation on (שם, גודל). */

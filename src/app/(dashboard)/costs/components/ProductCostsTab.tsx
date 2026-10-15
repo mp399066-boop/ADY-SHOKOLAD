@@ -47,8 +47,8 @@ export default function ProductCostsTab({ data, rawById, recipesById, reload, in
   const visible = useMemo(() => {
     const q = search.trim();
     return computed.filter(({ row, cost }) => {
-      const recipeName = row.מתכון_id ? recipesById.get(row.מתכון_id)?.שם_מתכון ?? '' : '';
-      if (q && !`${row.שם} ${row.גודל ?? ''} ${recipeName}`.includes(q)) return false;
+      const recipeNames = rowRecipeIds(row).map(id => recipesById.get(id)?.שם_מתכון ?? '').join(' ');
+      if (q && !`${row.שם} ${row.גודל ?? ''} ${recipeNames}`.includes(q)) return false;
       if (filter === 'missing') return !cost.complete;
       if (filter === 'recipe') return cost.materialsSource === 'recipe';
       if (filter === 'no_time') return !(Number(row.זמן_עבודה_דקות) > 0);
@@ -174,12 +174,7 @@ export default function ProductCostsTab({ data, rawById, recipesById, reload, in
                     <div className="text-xs" style={{ color: C.faint }}>
                       {[row.גודל, item ? `${item.type === 'petit_four' ? 'פטיפור' : 'קטלוג'}: ${item.name}` : null].filter(Boolean).join(' · ') || ' '}
                     </div>
-                    {row.מתכון_id && recipesById.has(row.מתכון_id) && (
-                      <Link href={`/recipes?open=${row.מתכון_id}`} onClick={e => e.stopPropagation()}
-                        className="text-xs underline" style={{ color: C.brand }}>
-                        למתכון ←
-                      </Link>
-                    )}
+                    <RecipeLinks ids={rowRecipeIds(row)} recipesById={recipesById} />
                   </Td>
                   <Td>
                     <Amount value={cost.materials} />
@@ -341,6 +336,38 @@ function SalePriceCell({ row, item, onSaved }: { row: CostRow; item: CatalogItem
       style={{ color: price ? C.text : C.amber }}>
       {price ? money(price) : '+ מחיר'}
     </button>
+  );
+}
+
+/** The row's sub-recipes (migration 070), or its single recipe before that. */
+function rowRecipeIds(row: CostRow): string[] {
+  if (row.מתכונים?.length) return row.מתכונים.map(l => l.מתכון_id);
+  return row.מתכון_id ? [row.מתכון_id] : [];
+}
+
+function RecipeLinks({ ids, recipesById }: { ids: string[]; recipesById: Map<string, CostRecipe> }) {
+  const recipes = ids.map(id => recipesById.get(id)).filter((r): r is CostRecipe => !!r);
+  if (!recipes.length) return null;
+  if (recipes.length === 1) {
+    return (
+      <Link href={`/recipes?open=${recipes[0].id}`} onClick={e => e.stopPropagation()}
+        className="text-xs underline" style={{ color: C.brand }}>
+        למתכון ←
+      </Link>
+    );
+  }
+  return (
+    <div className="text-xs" style={{ color: C.faint }}>
+      {recipes.length} מתכונים:{' '}
+      {recipes.map((r, i) => (
+        <span key={r.id}>
+          {i > 0 && ' · '}
+          <Link href={`/recipes?open=${r.id}`} onClick={e => e.stopPropagation()} className="underline" style={{ color: C.brand }}>
+            {r.שם_מתכון}
+          </Link>
+        </span>
+      ))}
+    </div>
   );
 }
 
