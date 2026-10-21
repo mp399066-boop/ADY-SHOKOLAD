@@ -293,7 +293,7 @@ export default function ProfitPage() {
               <div className="rounded-2xl bg-white p-4 space-y-3" style={{ border: `1px solid ${C.border}` }}>
                 <p className="text-sm" style={{ color: C.sub }}>
                   לפריטים האלה אין עלות בעמוד <Link href="/costs" className="underline" style={{ color: C.brand }}>עלויות מוצרים</Link>.
-                  מארז מחושב לפי הפטיפורים שנבחרו בו, אז מארז בלי פטיפורים או עם פטיפור בלי עלות יופיע כאן.
+                  מארז מחושב לפי ממוצע העלות של פטיפור × מספר היחידות במארז, אז מארז יופיע כאן רק אם לאף פטיפור אין עלות.
                   פריט ידני (שנכתב בהזמנה ביד) לא מקבל עלות.
                 </p>
                 <ul className="divide-y" style={{ borderColor: C.border }}>

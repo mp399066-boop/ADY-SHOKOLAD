@@ -6,8 +6,9 @@
 // to each line's סהכ, so a discount or a used credit lowers every line alike.
 //
 // Cost comes from the /costs sheet (עלויות_מוצרים): a unit cost per sale
-// product and per petit-four type. A package line costs the sum of its
-// petit-four selections. A line whose cost isn't known is NOT guessed — the
+// product and per petit-four type. A package line costs the average
+// petit-four cost × the units in the package. A line whose cost isn't known
+// is NOT guessed — the
 // order is marked incomplete and the profit is shown only for the part
 // that could be costed.
 //
@@ -82,6 +83,12 @@ function lineIdentity(l: ProfitLineSource, kind: LineKind): { key: string; label
   return { key: `${kind === 'charge' ? 'x' : 'c'}:${name}`, label: name };
 }
 
+/** Mean unit cost over every petit-four type that has a cost; null when none. */
+export function averagePetitFourCost(costs: UnitCosts): number | null {
+  const vals = [...costs.petitFour.values()];
+  return vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : null;
+}
+
 /** Unit-cost of one line × its quantity, or null when any part is unknown. */
 export function lineCost(l: ProfitLineSource, costs: UnitCosts): number | null {
   const kind = lineKind(l.סוג_שורה);
@@ -92,14 +99,12 @@ export function lineCost(l: ProfitLineSource, costs: UnitCosts): number | null {
     return c == null ? null : qty * c;
   }
   if (kind === 'package') {
-    if (!l.בחירות.length) return null;
-    let perPackage = 0;
-    for (const s of l.בחירות) {
-      const c = costs.petitFour.get(s.פטיפור_id);
-      if (c == null) return null;
-      perPackage += (Number(s.כמות) || 0) * c;
-    }
-    return qty * perPackage;
+    // Average petit-four cost × units in the package (most packages are sold
+    // without a per-flavour selection). Size falls back to the selections.
+    const avg = averagePetitFourCost(costs);
+    const size = Number(l.גודל_מארז) || l.בחירות.reduce((s, x) => s + (Number(x.כמות) || 0), 0);
+    if (avg == null || !(size > 0)) return null;
+    return qty * size * avg;
   }
   return null; // free-text item — nothing to look a cost up by
 }
