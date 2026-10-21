@@ -66,6 +66,26 @@ describe('orderProfit', () => {
     expect(p.profit).toBe(-60);
   });
 
+  it('costs a free-text line typed with an exact product name as that product', () => {
+    const named: UnitCosts = { ...costs, productByName: new Map([['מיני כרית', 'cake']]) };
+    const p = orderProfit(100, [custom('  מיני   כרית ', 100)], named);
+    expect(p.complete).toBe(true);
+    expect(p.cost).toBe(60);
+    expect(p.lines[0]).toMatchObject({ key: 'p:cake', label: 'מיני כרית' });
+  });
+
+  it('says why each item has no cost', () => {
+    const c: UnitCosts = {
+      product: new Map(), petitFour: new Map(),
+      productByName: new Map([['אוראו', 'oreo']]),
+      productIssue: new Map([['oreo', 'empty'], ['bad', 'suspicious']]),
+    };
+    const p = orderProfit(400, [
+      custom('משהו ביד', 100), custom('אוראו', 100), product('bad', 1, 100), product('nothing', 1, 50), pkg(16, 1, 50, []),
+    ], c);
+    expect(p.missingDetails.map(m => m.reason)).toEqual(['manual', 'empty', 'suspicious', 'no-row', 'package']);
+  });
+
   it('handles an empty order', () => {
     const p = orderProfit(0, [], costs);
     expect(p).toMatchObject({ revenue: 0, cost: 0, profit: 0, complete: true });
