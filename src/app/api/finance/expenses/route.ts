@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireAdminUser, forbiddenResponse } from '@/lib/auth/requireAuthorizedUser';
 import { todayJerusalem } from '@/lib/finance';
-import { expenseInputSchema, isMissingTable, EXPENSES_MIGRATION_HINT } from '@/lib/finance-expense-schema';
+import { expenseInputSchema, isMissingTable, isBoxConstraintError, EXPENSES_MIGRATION_HINT, HOME_BOX_MIGRATION_HINT } from '@/lib/finance-expense-schema';
 import { missingColumnMessage } from '@/lib/db-error';
 
 // GET  /api/finance/expenses?year=2026 → { data, tableReady }
@@ -89,6 +89,7 @@ export async function POST(req: NextRequest) {
 
   if (error) {
     if (isMissingTable(error)) return NextResponse.json({ error: EXPENSES_MIGRATION_HINT }, { status: 400 });
+    if (isBoxConstraintError(error)) return NextResponse.json({ error: HOME_BOX_MIGRATION_HINT }, { status: 400 });
     const missing = missingColumnMessage(error);
     if (missing) return NextResponse.json({ error: missing }, { status: 400 });
     console.error('[finance/expenses POST]', { code: error.code });

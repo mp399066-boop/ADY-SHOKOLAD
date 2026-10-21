@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   vatModeFor, toFinanceOrder, isBarterOrder, isCountableOrder, orderIncome, summarize,
-  vatFromGross, expenseNet, buildPnl, expenseBox, isCoursesExpense, type FinanceOrderSource, type Expense,
+  vatFromGross, expenseNet, buildPnl, expenseBox, isCoursesExpense, isHomeExpense, isBusinessExpense, type FinanceOrderSource, type Expense,
 } from '@/lib/finance';
 
 const order = (
@@ -113,5 +113,14 @@ describe('expense boxes (קופת קורסים)', () => {
     expect(pnl.totals.expenses).toBe(100);
     expect(pnl.totals.expensesGross).toBe(118);
     expect(pnl.totals.result).toBe(-100);
+  });
+
+  it('home expenses (קופת בית) are kept out of the business profit & loss too', () => {
+    expect(expenseBox({ קופה: 'בית' })).toBe('בית');
+    expect(isHomeExpense({ קופה: 'בית' })).toBe(true);
+    expect(isBusinessExpense({ קופה: 'בית' })).toBe(false);
+    const pnl = buildPnl([], [exp({ id: 'a' }), exp({ id: 'h', קופה: 'בית', סכום: 1180, מעמ: 180 })], 2026, 'order', '2026-10-12');
+    expect(pnl.totals.expenses).toBe(100);
+    expect(pnl.totals.expensesGross).toBe(118);
   });
 });

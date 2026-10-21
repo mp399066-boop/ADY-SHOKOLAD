@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireAdminUser, forbiddenResponse } from '@/lib/auth/requireAuthorizedUser';
-import { expenseInputSchema, isMissingTable, EXPENSES_MIGRATION_HINT } from '@/lib/finance-expense-schema';
+import { expenseInputSchema, isMissingTable, isBoxConstraintError, EXPENSES_MIGRATION_HINT, HOME_BOX_MIGRATION_HINT } from '@/lib/finance-expense-schema';
 import { missingColumnMessage } from '@/lib/db-error';
 
 // PATCH  /api/finance/expenses/[id] → replace the editable fields of one expense
@@ -42,6 +42,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
 
   if (error) {
     if (isMissingTable(error)) return NextResponse.json({ error: EXPENSES_MIGRATION_HINT }, { status: 400 });
+    if (isBoxConstraintError(error)) return NextResponse.json({ error: HOME_BOX_MIGRATION_HINT }, { status: 400 });
     const missing = missingColumnMessage(error);
     if (missing) return NextResponse.json({ error: missing }, { status: 400 });
     console.error('[finance/expenses PATCH]', { id: params.id, code: error.code });

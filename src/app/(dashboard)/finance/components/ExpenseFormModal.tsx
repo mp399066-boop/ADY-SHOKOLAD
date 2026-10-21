@@ -178,7 +178,9 @@ export default function ExpenseFormModal({ open, initial, suppliers, longTermRea
               ? 'כדי לבחור קופה — יש להריץ את מיגרציה 065 ב-Supabase SQL Editor.'
               : box === 'קורסים'
                 ? 'הוצאה של הקורסים — לא נכנסת להוצאות של העסק ולרווח והפסד, מוצגת בלשונית "קופת קורסים".'
-                : 'הוצאה רגילה של העסק.'}
+                : box === 'בית'
+                  ? 'הוצאה של הבית — לא נכנסת להוצאות של העסק ולרווח והפסד, מוצגת בלשונית "קופת בית". (דורש הרצה של מיגרציה 072 ב-Supabase)'
+                  : 'הוצאה רגילה של העסק.'}
           </p>
         </div>
         <div className="sm:col-span-2 rounded-lg px-3 py-2.5" style={{ border: `1px solid ${C.border}`, backgroundColor: longTerm ? '#FBF6EE' : undefined }}>

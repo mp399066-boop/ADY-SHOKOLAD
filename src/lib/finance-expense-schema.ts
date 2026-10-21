@@ -40,3 +40,12 @@ export function isMissingTable(error: { code?: string | null; message?: string |
   return error.code === '42P01' || error.code === 'PGRST205' ||
     /could not find the table|relation .* does not exist/i.test(error.message ?? '');
 }
+
+export const HOME_BOX_MIGRATION_HINT =
+  'כדי להשתמש בקופת בית — יש להריץ את מיגרציה 072 (supabase/migrations/072_home_expense_box.sql) ב-Supabase SQL Editor.';
+
+/** True when the DB still has the old box constraint (migration 072 not run yet). */
+export function isBoxConstraintError(error: { code?: string | null; message?: string | null } | null | undefined): boolean {
+  if (!error) return false;
+  return error.code === '23514' && /קופה_check/.test(error.message ?? '');
+}

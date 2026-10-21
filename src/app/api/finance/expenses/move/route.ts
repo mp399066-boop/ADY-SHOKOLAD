@@ -5,11 +5,11 @@ import { z } from 'zod';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireAdminUser, forbiddenResponse } from '@/lib/auth/requireAuthorizedUser';
 import { EXPENSE_BOXES } from '@/lib/finance';
-import { isMissingTable, EXPENSES_MIGRATION_HINT } from '@/lib/finance-expense-schema';
+import { isMissingTable, isBoxConstraintError, EXPENSES_MIGRATION_HINT, HOME_BOX_MIGRATION_HINT } from '@/lib/finance-expense-schema';
 import { missingColumnMessage } from '@/lib/db-error';
 
 // POST /api/finance/expenses/move { ids, קופה } → move expenses to another box
-// (קופת העסק / קופת קורסים). Only the box changes — amounts stay as they are.
+// (קופת העסק / קופת קורסים / קופת בית). Only the box changes — amounts stay as they are.
 
 const moveSchema = z.object({
   ids: z.array(z.string().uuid('מזהה לא תקין')).min(1, 'לא נבחרו הוצאות').max(1000, 'אפשר להעביר עד 1000 הוצאות בפעם אחת'),
@@ -38,6 +38,7 @@ export async function POST(req: NextRequest) {
       .select('id');
     if (error) {
       if (isMissingTable(error)) return NextResponse.json({ error: EXPENSES_MIGRATION_HINT }, { status: 400 });
+      if (isBoxConstraintError(error)) return NextResponse.json({ error: HOME_BOX_MIGRATION_HINT }, { status: 400 });
       const missing = missingColumnMessage(error);
       if (missing) return NextResponse.json({ error: missing }, { status: 400 });
       console.error('[finance/expenses/move POST]', { box, count: ids.length, code: error.code });
