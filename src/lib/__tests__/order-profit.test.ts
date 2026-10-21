@@ -22,14 +22,18 @@ describe('lineCost', () => {
   it('costs a product by unit cost × quantity', () => {
     expect(lineCost(product('cake', 2, 400), costs)).toBe(120);
   });
-  it('costs a package by its petit-four selections × package quantity', () => {
-    // per package: 10×2 + 6×3 = 38; × 3 packages
-    expect(lineCost(pkg(16, 3, 600, [['pf1', 10], ['pf2', 6]]), costs)).toBe(114);
+  it('costs a package by average petit-four cost × units × package quantity', () => {
+    // average (2+3)/2 = 2.5; 16 units × 2.5 = 40 per package; × 3 packages
+    expect(lineCost(pkg(16, 3, 600, [['pf1', 10], ['pf2', 6]]), costs)).toBe(120);
+    // no selection saved — still costed by the package size
+    expect(lineCost(pkg(16, 1, 200, []), costs)).toBe(40);
+    // no size — falls back to the selected units
+    expect(lineCost(pkg(0, 1, 200, [['pf1', 4]]), costs)).toBe(10);
   });
   it('returns null when a cost is unknown', () => {
     expect(lineCost(product('unknown', 1, 50), costs)).toBeNull();
-    expect(lineCost(pkg(16, 1, 200, [['pf1', 10], ['nope', 6]]), costs)).toBeNull();
-    expect(lineCost(pkg(16, 1, 200, []), costs)).toBeNull();
+    expect(lineCost(pkg(16, 1, 200, []), { product: new Map(), petitFour: new Map() })).toBeNull();
+    expect(lineCost(pkg(0, 1, 200, []), costs)).toBeNull();
     expect(lineCost(custom('עוגה מיוחדת', 300), costs)).toBeNull();
   });
   it('treats a surcharge line as costless', () => {
@@ -75,7 +79,7 @@ describe('aggregateByProduct', () => {
     const rows = aggregateByProduct([o1, o2]);
     const cake = rows.find(r => r.key === 'p:cake')!;
     expect(cake).toMatchObject({ qty: 3, orders: 2, revenue: 900, cost: 180, profit: 720, margin: 80 });
-    expect(rows.find(r => r.key === 'pkg:16')).toMatchObject({ label: 'מארז 16 יח׳', cost: 32 });
+    expect(rows.find(r => r.key === 'pkg:16')).toMatchObject({ label: 'מארז 16 יח׳', cost: 40 });
   });
 
   it('leaves surcharge lines out and reports uncosted units', () => {
