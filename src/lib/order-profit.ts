@@ -7,7 +7,8 @@
 //
 // Cost comes from the /costs sheet (עלויות_מוצרים): a unit cost per sale
 // product and per petit-four type. A package line costs the average
-// petit-four cost × the units in the package. A line whose cost isn't known
+// petit-four cost × the units in the package. A free-text line typed with
+// the exact name of a sale product is costed as that product. A line whose cost isn't known
 // is NOT guessed — the
 // order is marked incomplete and the profit is shown only for the part
 // that could be costed.
@@ -35,6 +36,25 @@ export interface ProfitLineSource {
 export interface UnitCosts {
   product: Map<string, number>;
   petitFour: Map<string, number>;
+  /** Sale-product name (normalized) → id, so a free-text line typed with an
+   *  exact product name is costed like that product. Ambiguous names left out. */
+  productByName?: Map<string, string>;
+  /** Why a sale product has no cost: its /costs row is empty, or its recipe
+   *  looks priced in the wrong unit. A product missing here has no row at all. */
+  productIssue?: Map<string, 'empty' | 'suspicious'>;
+}
+
+/** Why an item has no cost — shown on /profit so the owner knows what to fix. */
+export type MissingReason = 'manual' | 'no-row' | 'empty' | 'suspicious' | 'package';
+
+export interface MissingItem {
+  label: string;
+  reason: MissingReason;
+}
+
+/** Name key for matching a free-text line to a sale product. */
+export function normalizeName(s: string | null | undefined): string {
+  return (s ?? '').trim().replace(/\s+/g, ' ');
 }
 
 export type LineKind = 'product' | 'package' | 'custom' | 'charge';
@@ -63,6 +83,8 @@ export interface OrderProfit {
   complete: boolean;
   /** Names of the items with no cost. */
   missing: string[];
+  /** Same items with the reason each has no cost. */
+  missingDetails: MissingItem[];
   lines: LineProfit[];
 }
 
@@ -73,8 +95,18 @@ function lineKind(t: string): LineKind {
   return 'custom';
 }
 
-function lineIdentity(l: ProfitLineSource, kind: LineKind): { key: string; label: string } {
+/** The sale product a line stands for: its own id, or — for a free-text line —
+ *  the product whose name it carries exactly. */
+function lineProductId(l: ProfitLineSource, kind: LineKind, costs: UnitCosts): string | null {
+  if (kind === 'product') return l.מוצר_id;
+  if (kind === 'custom') return costs.productByName?.get(normalizeName(l.שם_פריט_מותאם)) ?? null;
+  return null;
+}
+
+function lineIdentity(l: ProfitLineSource, kind: LineKind, costs: UnitCosts): { key: string; label: string } {
   if (kind === 'product' && l.מוצר_id) return { key: `p:${l.מוצר_id}`, label: l.שם_מוצר?.trim() || 'מוצר' };
+  const matched = kind === 'custom' ? lineProductId(l, kind, costs) : null;
+  if (matched) return { key: `p:${matched}`, label: normalizeName(l.שם_פריט_מותאם) };
   if (kind === 'package') {
     const size = Number(l.גודל_מארז) || 0;
     return { key: `pkg:${size}`, label: size ? `מארז ${size} יח׳` : 'מארז' };
@@ -94,8 +126,9 @@ export function lineCost(l: ProfitLineSource, costs: UnitCosts): number | null {
   const kind = lineKind(l.סוג_שורה);
   const qty = Number(l.כמות) || 0;
   if (kind === 'charge') return 0; // a surcharge / discount line has no goods behind it
-  if (kind === 'product') {
-    const c = l.מוצר_id ? costs.product.get(l.מוצר_id) : undefined;
+  if (kind === 'product' || kind === 'custom') {
+    const id = lineProductId(l, kind, costs);
+    const c = id ? costs.product.get(id) : undefined;
     return c == null ? null : qty * c;
   }
   if (kind === 'package') {
@@ -106,7 +139,16 @@ export function lineCost(l: ProfitLineSource, costs: UnitCosts): number | null {
     if (avg == null || !(size > 0)) return null;
     return qty * size * avg;
   }
-  return null; // free-text item — nothing to look a cost up by
+  return null;
+}
+
+/** Why lineCost returned null for this line. */
+export function missingReason(l: ProfitLineSource, costs: UnitCosts): MissingReason {
+  const kind = lineKind(l.סוג_שורה);
+  if (kind === 'package') return 'package';
+  const id = lineProductId(l, kind, costs);
+  if (!id) return kind === 'custom' ? 'manual' : 'no-row';
+  return costs.productIssue?.get(id) ?? 'no-row';
 }
 
 export function orderProfit(pocket: number, lines: ProfitLineSource[], costs: UnitCosts): OrderProfit {
@@ -115,16 +157,20 @@ export function orderProfit(pocket: number, lines: ProfitLineSource[], costs: Un
 
   const out: LineProfit[] = [];
   const missing: string[] = [];
+  const missingDetails: MissingItem[] = [];
   let cost = 0;
   let coveredRevenue = 0;
 
   for (const l of lines) {
     const kind = lineKind(l.סוג_שורה);
-    const { key, label } = lineIdentity(l, kind);
+    const { key, label } = lineIdentity(l, kind, costs);
     const revenue = (Number(l.סהכ) || 0) * factor;
     const c = lineCost(l, costs);
     if (c == null) {
-      if (!missing.includes(label)) missing.push(label);
+      if (!missing.includes(label)) {
+        missing.push(label);
+        missingDetails.push({ label, reason: missingReason(l, costs) });
+      }
     } else {
       cost += c;
       coveredRevenue += revenue;
@@ -141,6 +187,7 @@ export function orderProfit(pocket: number, lines: ProfitLineSource[], costs: Un
     coveredRevenue: round2(coveredRevenue),
     complete,
     missing,
+    missingDetails,
     lines: out,
   };
 }

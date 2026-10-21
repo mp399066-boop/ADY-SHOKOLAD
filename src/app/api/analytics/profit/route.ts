@@ -6,7 +6,7 @@ import { requireAdminUser, forbiddenResponse } from '@/lib/auth/requireAuthorize
 import { dbErrorResponse } from '@/lib/api-error';
 import { fetchAllPages } from '@/lib/supabase/fetch-all';
 import { isCountableOrder, round2 } from '@/lib/finance';
-import { orderProfit, aggregateByProduct, profitMargin } from '@/lib/order-profit';
+import { orderProfit, aggregateByProduct, profitMargin, type MissingReason } from '@/lib/order-profit';
 import { loadUnitCosts, PROFIT_ORDER_SELECT, profitInput } from '@/lib/profit-server';
 
 // GET /api/analytics/profit?from=YYYY-MM-DD&to=YYYY-MM-DD&basis=delivery|order
@@ -46,6 +46,9 @@ export async function GET(req: NextRequest) {
   const profits = [];
   let barterCount = 0;
   let barterCost = 0;
+  const missingCount = new Map<string, { reason: MissingReason; orders: number }>();
+  type PayAcc = { method: string; orders: number; incomplete: number; revenue: number; coveredRevenue: number; cost: number };
+  const byPay = new Map<string, PayAcc>();
   for (const row of rows) {
     const { order, lines } = profitInput(row);
     if (!isCountableOrder({ סטטוס_הזמנה: (row as { סטטוס_הזמנה: string }).סטטוס_הזמנה, סטטוס_תשלום: order.paymentStatus })) continue;
@@ -55,6 +58,19 @@ export async function GET(req: NextRequest) {
       barterCost += p.cost;
     } else {
       profits.push(p);
+      const method = order.paymentMethod?.trim() || 'לא צוין';
+      let a = byPay.get(method);
+      if (!a) { a = { method, orders: 0, incomplete: 0, revenue: 0, coveredRevenue: 0, cost: 0 }; byPay.set(method, a); }
+      a.orders++;
+      if (!p.complete) a.incomplete++;
+      a.revenue += p.revenue;
+      a.coveredRevenue += p.coveredRevenue;
+      a.cost += p.cost;
+    }
+    for (const m of p.missingDetails) {
+      const e = missingCount.get(m.label);
+      if (e) e.orders++;
+      else missingCount.set(m.label, { reason: m.reason, orders: 1 });
     }
     orders.push({
       id: order.id,
@@ -80,11 +96,24 @@ export async function GET(req: NextRequest) {
   const profitOnCovered = round2(coveredRevenue - cost);
 
   // Items sold with no cost, most frequent first — what to fill in on /costs.
-  const missingCount = new Map<string, number>();
-  for (const o of orders) for (const m of o.missing) missingCount.set(m, (missingCount.get(m) ?? 0) + 1);
   const missingItems = [...missingCount.entries()]
-    .map(([label, count]) => ({ label, orders: count }))
+    .map(([label, m]) => ({ label, reason: m.reason, orders: m.orders }))
     .sort((a, b) => b.orders - a.orders);
+
+  // Same totals split by payment method (barter excluded, like the totals).
+  const paymentMethods = [...byPay.values()].map(a => {
+    const profit = round2(a.coveredRevenue - a.cost);
+    return {
+      method: a.method,
+      orders: a.orders,
+      incomplete: a.incomplete,
+      revenue: round2(a.revenue),
+      cost: round2(a.cost),
+      profit,
+      margin: profitMargin(profit, a.coveredRevenue),
+      share: revenue > 0 ? Math.round((a.revenue / revenue) * 1000) / 10 : null,
+    };
+  }).sort((x, y) => y.revenue - x.revenue);
 
   return NextResponse.json({
     tableReady,
@@ -103,6 +132,7 @@ export async function GET(req: NextRequest) {
     },
     products: aggregateByProduct(profits),
     orders,
+    paymentMethods,
     missingItems,
   });
 }

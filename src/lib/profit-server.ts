@@ -8,7 +8,8 @@ import { loadCostRawMaterials, loadCostRecipeLinks, loadCostMaterialLinks } from
 import {
   computeRowCost, type CostRow, type CostRecipe, type CostRawMaterial,
 } from '@/lib/product-costs';
-import type { UnitCosts, ProfitLineSource } from '@/lib/order-profit';
+import { normalizeName, type UnitCosts, type ProfitLineSource } from '@/lib/order-profit';
+import { fetchAllPages } from '@/lib/supabase/fetch-all';
 import { toFinanceOrder, type FinanceOrder, type FinanceOrderSource } from '@/lib/finance';
 
 export interface UnitCostsResult {
@@ -19,9 +20,9 @@ export interface UnitCostsResult {
 }
 
 export async function loadUnitCosts(supabase: SupabaseClient): Promise<UnitCostsResult> {
-  const costs: UnitCosts = { product: new Map(), petitFour: new Map() };
+  const costs: UnitCosts = { product: new Map(), petitFour: new Map(), productByName: new Map(), productIssue: new Map() };
 
-  const [rowsRes, recipesRes, rawRes, rateRes, linksRes, materialsRes] = await Promise.all([
+  const [rowsRes, recipesRes, rawRes, rateRes, linksRes, materialsRes, productsRes] = await Promise.all([
     supabase.from('עלויות_מוצרים').select(COST_COLUMNS).order('סדר').order('שם'),
     supabase.from('מתכונים')
       .select('id, שם_מתכון, כמות_תוצר, יחידת_תפוקה, production_target_type, production_target_id, רכיבי_מתכון(חומר_גלם_id, כמות_נדרשת, יחידת_מידה)'),
@@ -29,14 +30,26 @@ export async function loadUnitCosts(supabase: SupabaseClient): Promise<UnitCosts
     supabase.from('system_config').select('value').eq('key', 'labor_hourly_rate').maybeSingle(),
     loadCostRecipeLinks(supabase),
     loadCostMaterialLinks(supabase),
+    fetchAllPages((a, b) => supabase.from('מוצרים_למכירה').select('id, שם_מוצר').order('id').range(a, b)),
   ]);
 
   if (rowsRes.error) {
     if (isMissingTable(rowsRes.error)) return { costs, tableReady: false, error: null };
     return { costs, tableReady: true, error: rowsRes.error };
   }
-  const firstError = recipesRes.error || rawRes.error || linksRes.error || materialsRes.error;
+  const firstError = recipesRes.error || rawRes.error || linksRes.error || materialsRes.error || productsRes.error;
   if (firstError) return { costs, tableReady: true, error: firstError };
+
+  // Exact product names, for free-text order lines. A name two products share
+  // is ambiguous and left out.
+  const nameCount = new Map<string, number>();
+  for (const p of productsRes.data as unknown as { id: string; שם_מוצר: string | null }[]) {
+    const n = normalizeName(p.שם_מוצר);
+    if (!n) continue;
+    nameCount.set(n, (nameCount.get(n) ?? 0) + 1);
+    costs.productByName!.set(n, p.id);
+  }
+  for (const [n, c] of nameCount) if (c > 1) costs.productByName!.delete(n);
 
   type Ing = { חומר_גלם_id: string; כמות_נדרשת: unknown; יחידת_מידה: string };
   type RecipeRow = Omit<CostRecipe, 'כמות_תוצר' | 'רכיבי_מתכון'> & { כמות_תוצר: unknown; רכיבי_מתכון: Ing[] | null };
@@ -59,11 +72,14 @@ export async function loadUnitCosts(supabase: SupabaseClient): Promise<UnitCosts
     } as unknown as CostRow;
     if (!row.סוג_יעד || !row.יעד_id) continue;
     const map = row.סוג_יעד === 'sale_product' ? costs.product : costs.petitFour;
-    if (map.has(row.יעד_id)) continue; // first row (by סדר) wins
+    if (map.has(row.יעד_id) || costs.productIssue!.has(row.יעד_id)) continue; // first row (by סדר) wins
     const rc = computeRowCost(row, recipesById, rawById, hourlyRate);
     // A recipe priced with a per-kg price on a gram unit inflates the cost
     // ×1000 — better "no cost" than a wildly wrong profit.
-    if (rc.total == null || rc.recipeSuspicious > 0) continue;
+    if (rc.total == null || rc.recipeSuspicious > 0) {
+      if (row.סוג_יעד === 'sale_product') costs.productIssue!.set(row.יעד_id, rc.total == null ? 'empty' : 'suspicious');
+      continue;
+    }
     map.set(row.יעד_id, rc.total);
   }
 

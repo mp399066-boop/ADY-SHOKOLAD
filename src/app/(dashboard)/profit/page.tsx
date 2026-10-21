@@ -2,12 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { TrendingUp, Coins, PiggyBank, Percent, AlertTriangle } from 'lucide-react';
+import { TrendingUp, Coins, Percent, AlertTriangle } from 'lucide-react';
 import { Tabs } from '@/components/ui/Tabs';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { exportToCsv } from '@/lib/exportCsv';
 import { todayJerusalem } from '@/lib/finance';
-import type { ProductProfitRow } from '@/lib/order-profit';
+import type { ProductProfitRow, MissingReason } from '@/lib/order-profit';
 import { C, money, StatCard, Th, Td, THEAD_STYLE, ROW_CLS, EmptyNote } from '../finance/components/shared';
 
 interface OrderRow {
@@ -41,8 +41,28 @@ interface ProfitData {
   };
   products: ProductProfitRow[];
   orders: OrderRow[];
-  missingItems: { label: string; orders: number }[];
+  paymentMethods: PaymentRow[];
+  missingItems: { label: string; reason: MissingReason; orders: number }[];
 }
+
+interface PaymentRow {
+  method: string;
+  orders: number;
+  incomplete: number;
+  revenue: number;
+  cost: number;
+  profit: number;
+  margin: number | null;
+  share: number | null;
+}
+
+const REASON_TEXT: Record<MissingReason, string> = {
+  manual: 'פריט ידני — נכתב בהזמנה ביד, ואין מוצר בשם הזה בדיוק',
+  'no-row': 'אין לו שורה בעמוד עלויות מוצרים',
+  empty: 'יש לו שורה בעלויות מוצרים, אבל בלי עלות חומרים ובלי עלות עבודה',
+  suspicious: 'המתכון שלו נראה מתומחר ביחידה לא נכונה (ק״ג מול גרם)',
+  package: 'אין עלות לאף סוג פטיפור',
+};
 
 type Preset = 'month' | 'lastMonth' | 'quarter' | 'year';
 const PRESETS: { key: Preset; label: string }[] = [
@@ -65,7 +85,7 @@ function presetRange(p: Preset): { from: string; to: string } {
 const fmtDate = (iso: string | null) => (iso ? iso.split('-').reverse().join('/') : '—');
 const pct = (n: number | null) => (n == null ? '—' : `${n}%`);
 
-type TabKey = 'products' | 'orders' | 'missing';
+type TabKey = 'products' | 'orders' | 'payments' | 'missing';
 type SortKey = 'revenue' | 'profit' | 'margin';
 
 export default function ProfitPage() {
@@ -174,7 +194,7 @@ export default function ProfitPage() {
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <StatCard label="הכנסה (לפני מע״מ, ללא משלוח)" value={money(t.revenue)} sub={`${t.orders} הזמנות`} icon={Coins} tone="brand" />
-            <StatCard label="עלות סחורה" value={money(t.cost)} sub="של המוצרים שיש להם עלות" icon={PiggyBank} />
+            <StatCard label="עלות סחורה" value={money(t.cost)} sub="של המוצרים שיש להם עלות" />
             <StatCard label="רווח" value={money(t.profitOnCovered)} sub={t.coverage != null && t.coverage < 100 ? `על ${t.coverage}% מההכנסה שיש לה עלות` : 'על כל ההכנסה'}
               icon={TrendingUp} tone={t.profitOnCovered >= 0 ? 'green' : 'red'} />
             <StatCard label="שיעור רווח" value={pct(t.margin)} sub="רווח ÷ הכנסה" icon={Percent} tone="green" />
@@ -199,6 +219,7 @@ export default function ProfitPage() {
             tabs={[
               { key: 'products', label: 'לפי מוצר', count: data.products.length },
               { key: 'orders', label: 'לפי הזמנה', count: data.orders.length },
+              { key: 'payments', label: 'לפי אמצעי תשלום', count: (data.paymentMethods ?? []).length },
               { key: 'missing', label: 'חסרות עלויות', count: data.missingItems.length },
             ]}
             activeTab={tab}
@@ -288,19 +309,59 @@ export default function ProfitPage() {
             )
           )}
 
+          {tab === 'payments' && (
+            (data.paymentMethods ?? []).length === 0 ? <EmptyNote>אין הזמנות בתקופה הזו.</EmptyNote> : (
+              <div className="space-y-2">
+                <div className="rounded-2xl bg-white overflow-x-auto" style={{ border: `1px solid ${C.border}` }}>
+                  <table className="w-full">
+                    <thead style={THEAD_STYLE}>
+                      <tr><Th>אמצעי תשלום</Th><Th>הזמנות</Th><Th>הכנסה</Th><Th>מההכנסה</Th><Th>עלות</Th><Th>רווח</Th><Th>שיעור רווח</Th></tr>
+                    </thead>
+                    <tbody>
+                      {(data.paymentMethods ?? []).map(r => (
+                        <tr key={r.method} className={ROW_CLS}>
+                          <Td className="font-medium">
+                            {r.method}
+                            {r.incomplete > 0 && (
+                              <span className="block text-[11px] font-normal" style={{ color: C.amber }}>
+                                {r.incomplete} הזמנות עם עלות חסרה
+                              </span>
+                            )}
+                          </Td>
+                          <Td className="tabular-nums">{r.orders}</Td>
+                          <Td className="tabular-nums">{money(r.revenue)}</Td>
+                          <Td className="tabular-nums">{pct(r.share)}</Td>
+                          <Td className="tabular-nums">{money(r.cost)}</Td>
+                          <Td className="tabular-nums font-semibold" style={{ color: r.profit >= 0 ? C.green : C.red }}>{money(r.profit)}</Td>
+                          <Td className="tabular-nums"><MarginBar value={r.margin} /></Td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="text-xs" style={{ color: C.sub }}>
+                  הרווח ושיעור הרווח מחושבים רק על הפריטים שיש להם עלות. הזמנות בארטר לא נכללות.
+                </p>
+              </div>
+            )
+          )}
+
           {tab === 'missing' && (
             data.missingItems.length === 0 ? <EmptyNote>לכל מה שנמכר בתקופה יש עלות.</EmptyNote> : (
               <div className="rounded-2xl bg-white p-4 space-y-3" style={{ border: `1px solid ${C.border}` }}>
                 <p className="text-sm" style={{ color: C.sub }}>
                   לפריטים האלה אין עלות בעמוד <Link href="/costs" className="underline" style={{ color: C.brand }}>עלויות מוצרים</Link>.
                   מארז מחושב לפי ממוצע העלות של פטיפור × מספר היחידות במארז, אז מארז יופיע כאן רק אם לאף פטיפור אין עלות.
-                  פריט ידני (שנכתב בהזמנה ביד) לא מקבל עלות.
+                  פריט ידני (שנכתב בהזמנה ביד) מקבל עלות רק אם שמו זהה בדיוק לשם של מוצר קיים.
                 </p>
                 <ul className="divide-y" style={{ borderColor: C.border }}>
                   {data.missingItems.map(m => (
-                    <li key={m.label} className="py-2 flex items-center justify-between text-sm">
-                      <span style={{ color: C.text }}>{m.label}</span>
-                      <span className="text-xs tabular-nums" style={{ color: C.sub }}>ב-{m.orders} הזמנות</span>
+                    <li key={m.label} className="py-2 flex items-center justify-between gap-3 text-sm">
+                      <span className="min-w-0">
+                        <span style={{ color: C.text }}>{m.label}</span>
+                        <span className="block text-xs" style={{ color: C.amber }}>{REASON_TEXT[m.reason]}</span>
+                      </span>
+                      <span className="text-xs tabular-nums shrink-0" style={{ color: C.sub }}>ב-{m.orders} הזמנות</span>
                     </li>
                   ))}
                 </ul>
