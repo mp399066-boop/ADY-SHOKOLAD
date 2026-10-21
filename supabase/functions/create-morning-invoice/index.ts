@@ -143,17 +143,18 @@ const PAYMENT_BUILDERS: Record<string, (price: number, date: string) => MorningP
 const BUSINESS_TYPES = new Set(['עסקי', 'עסקי - קבוע', 'עסקי - כמות']);
 
 async function getMorningToken(apiId: string, apiSecret: string): Promise<string> {
-  const res = await fetch(`${MORNING_API_BASE}/account/token`, {
+  // Morning retired /account/token (Oct 2026) — tokens now come from its OAuth endpoint.
+  const res = await fetch('https://api.morning.co/idp/v1/oauth/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id: apiId, secret: apiSecret }),
+    body: JSON.stringify({ grant_type: 'client_credentials', client_id: apiId, client_secret: apiSecret }),
   });
   const rawBody = await res.text();
   console.log('[morning] Auth status:', res.status);
   if (!res.ok) throw new Error(`Morning auth failed ${res.status}: ${rawBody}`);
   const data = JSON.parse(rawBody);
-  if (!data.token) throw new Error('No token in Morning auth response');
-  return data.token;
+  if (!data.accessToken) throw new Error('No token in Morning auth response');
+  return data.accessToken;
 }
 
 serve(async (req: Request) => {
