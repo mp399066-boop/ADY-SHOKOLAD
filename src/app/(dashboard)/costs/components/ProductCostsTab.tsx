@@ -381,14 +381,14 @@ function SourceNote({ text, warn }: { text: string; warn?: boolean }) {
 }
 
 function materialsSourceText(cost: RowCost): string {
-  if (cost.materialsSource === 'recipe') {
-    const parts = ['לפי מתכון'];
-    if (cost.recipeIssues) parts.push(`${cost.recipeIssues} רכיבים לא חושבו`);
-    if (cost.recipeSuspicious) parts.push('מחיר חשוד');
-    return parts.join(' · ');
-  }
-  if (cost.materialsSource === 'manual') return 'ידני';
-  return '';
+  const parts: string[] = [];
+  if (cost.materialsSource === 'recipe') parts.push('לפי מתכון');
+  else if (cost.materialsSource === 'manual') parts.push('ידני');
+  // Direct raw materials (box, note card…) on top of the recipe / manual amount.
+  if (cost.extraCount) parts.push(cost.materialsSource === 'items' ? `${cost.extraCount} חומרי גלם` : `+ ${cost.extraCount} חומרי גלם`);
+  if (cost.recipeIssues) parts.push(`${cost.recipeIssues} רכיבים לא חושבו`);
+  if (cost.recipeSuspicious) parts.push('מחיר חשוד');
+  return parts.join(' · ');
 }
 
 function laborSourceText(cost: RowCost): string {

@@ -24,6 +24,16 @@ export const costRowInputSchema = z.object({
     .refine(list => new Set(list.map(l => l.מתכון_id)).size === list.length, { message: 'אותו מתכון נבחר פעמיים' })
     // Missing = leave the row's sub-recipes as they are.
     .optional(),
+  // Raw materials used directly per unit — box, note card… (migration 071).
+  חומרים:             z.array(z.object({
+    חומר_גלם_id: z.string().uuid(),
+    כמות:        z.coerce.number().finite().gt(0, 'הכמות של חומר גלם חייבת להיות גדולה מ-0').max(1_000_000)
+      .transform(v => Math.round(v * 10_000) / 10_000),
+    יחידת_מידה:  z.string().trim().min(1, 'חסרה יחידת מידה לחומר הגלם').max(30),
+  })).max(50, 'אפשר להוסיף עד 50 חומרי גלם למוצר')
+    .refine(list => new Set(list.map(l => l.חומר_גלם_id)).size === list.length, { message: 'אותו חומר גלם נבחר פעמיים' })
+    // Missing = leave the row's raw materials as they are.
+    .optional(),
   חומרים_לפי_מתכון:   z.boolean().default(false),
   עלות_חומרים_ידנית:  optMoney,
   זמן_עבודה_דקות:     z.union([z.null(), z.coerce.number().finite().min(0, 'זמן לא יכול להיות שלילי').max(100_000)])
@@ -63,6 +73,9 @@ export const COSTS_MIGRATION_HINT =
 
 export const RECIPE_LINKS_MIGRATION_HINT =
   'כדי לשייך כמה מתכונים למוצר (או לשנות כמה יחידות יוצאות ממתכון) יש להריץ את מיגרציה 070 (supabase/migrations/070_cost_row_recipes.sql) ב-Supabase SQL Editor.';
+
+export const MATERIAL_LINKS_MIGRATION_HINT =
+  'כדי להוסיף חומרי גלם ישירות למוצר (קופסה, פתקית וכו׳) יש להריץ את מיגרציה 071 (supabase/migrations/071_cost_row_materials.sql) ב-Supabase SQL Editor.';
 
 export const COST_COLUMNS =
   'id, שם, גודל, סוג_יעד, יעד_id, מתכון_id, חומרים_לפי_מתכון, עלות_חומרים_ידנית, זמן_עבודה_דקות, יחידות_בזמן_עבודה, עלות_עבודה_ידנית, הערות, סדר, תאריך_עדכון';

@@ -1,7 +1,7 @@
 // Server-only helpers for /api/costs routes.
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { CostRowInput } from '@/lib/product-costs-schema';
-import type { CostRawMaterial, CostRowRecipe } from '@/lib/product-costs';
+import type { CostRawMaterial, CostRowMaterial, CostRowRecipe } from '@/lib/product-costs';
 import { missingColumnMessage } from '@/lib/db-error';
 import { isMissingTable } from '@/lib/finance-expense-schema';
 import { fetchAllPages } from '@/lib/supabase/fetch-all';
@@ -47,7 +47,66 @@ export async function validateCostLinks(supabase: SupabaseClient, input: CostRow
     const { data } = await supabase.from('מתכונים').select('id').in('id', recipeIds);
     if ((data ?? []).length !== recipeIds.length) return 'המתכון המקושר לא נמצא';
   }
+  const materialIds = (input.חומרים ?? []).map(l => l.חומר_גלם_id);
+  if (materialIds.length) {
+    const { data } = await supabase.from('מלאי_חומרי_גלם').select('id').in('id', materialIds);
+    if ((data ?? []).length !== materialIds.length) return 'חומר הגלם שנבחר לא נמצא';
+  }
   return null;
+}
+
+/**
+ * Direct raw materials of every cost row (migration 071), keyed by cost row
+ * id. ready=false until the migration is run — rows then have none.
+ */
+export async function loadCostMaterialLinks(supabase: SupabaseClient): Promise<{
+  byRow: Map<string, CostRowMaterial[]>;
+  ready: boolean;
+  error: { code?: string | null } | null;
+}> {
+  const byRow = new Map<string, CostRowMaterial[]>();
+  type LinkRow = { עלות_id: string; חומר_גלם_id: string; כמות: unknown; יחידת_מידה: string };
+  type LinkPage = { data: LinkRow[] | null; error: { message: string; code?: string } | null };
+  const res = await fetchAllPages<LinkRow>((from, to) =>
+    supabase.from('חומרי_עלות').select('עלות_id, חומר_גלם_id, כמות, יחידת_מידה')
+      .order('סדר').order('id').range(from, to) as unknown as PromiseLike<LinkPage>);
+  if (res.error) {
+    if (isMissingTable(res.error)) return { byRow, ready: false, error: null };
+    return { byRow, ready: true, error: res.error };
+  }
+  for (const l of res.data) {
+    const list = byRow.get(l.עלות_id) ?? [];
+    list.push({ חומר_גלם_id: l.חומר_גלם_id, כמות: Number(l.כמות) || 0, יחידת_מידה: l.יחידת_מידה });
+    byRow.set(l.עלות_id, list);
+  }
+  return { byRow, ready: true, error: null };
+}
+
+/** True when the direct raw-materials table (migration 071) exists. */
+export async function materialLinksTableReady(supabase: SupabaseClient): Promise<boolean> {
+  const { error } = await supabase.from('חומרי_עלות').select('id').limit(1);
+  return !isMissingTable(error);
+}
+
+/**
+ * Replaces a cost row's direct raw materials: upserts the new list, then
+ * removes materials no longer in it. Returns 'missing' before migration 071.
+ */
+export async function saveCostMaterialLinks(
+  supabase: SupabaseClient, costId: string, links: CostRowMaterial[],
+): Promise<'ok' | 'missing' | { code?: string | null }> {
+  if (links.length) {
+    const { error } = await supabase.from('חומרי_עלות').upsert(
+      links.map((l, i) => ({ עלות_id: costId, חומר_גלם_id: l.חומר_גלם_id, כמות: l.כמות, יחידת_מידה: l.יחידת_מידה, סדר: i })),
+      { onConflict: 'עלות_id,חומר_גלם_id' },
+    );
+    if (error) return isMissingTable(error) ? 'missing' : error;
+  }
+  let del = supabase.from('חומרי_עלות').delete().eq('עלות_id', costId);
+  if (links.length) del = del.not('חומר_גלם_id', 'in', `(${links.map(l => l.חומר_גלם_id).join(',')})`);
+  const { error } = await del;
+  if (error) return isMissingTable(error) ? 'missing' : error;
+  return 'ok';
 }
 
 /**

@@ -5,6 +5,8 @@
 //            (migration 070) of: recipe batch cost ÷ units of this product one
 //            batch makes. Without sub-recipes, the single linked recipe ÷ its
 //            yield (the behaviour before 070). Otherwise the manual amount.
+//            On top of either: the row's direct raw materials (migration 071 —
+//            a box, a note card…) × quantity per unit at today's price.
 //            Raw-material prices always count BEFORE VAT (the business gets
 //            the VAT back) — a price entered with VAT is divided by 1.18.
 //   עבודה  — production time × hourly rate ÷ units made in that time; falls
@@ -31,6 +33,8 @@ export interface CostRow {
   מחיר_מכירה?: number | null;
   /** Sub-recipes that make up the product (migration 070). Missing/empty = the single מתכון_id. */
   מתכונים?: CostRowRecipe[];
+  /** Raw materials used directly per unit — packaging etc. (migration 071). */
+  חומרים?: CostRowMaterial[];
   סדר: number;
   תאריך_עדכון: string | null;
 }
@@ -39,6 +43,13 @@ export interface CostRow {
 export interface CostRowRecipe {
   מתכון_id: string;
   יחידות: number;
+}
+
+/** A raw material used directly by one unit of the product: `כמות` in `יחידת_מידה`. */
+export interface CostRowMaterial {
+  חומר_גלם_id: string;
+  כמות: number;
+  יחידת_מידה: string;
 }
 
 export interface CostRawMaterial {
@@ -141,25 +152,42 @@ export interface RecipeCost {
   complete: boolean;
 }
 
+/** Prices `qty` `unit` of one raw material (before VAT). */
+export function costLine(materialId: string, qty: number, unit: string, rawById: Map<string, CostRawMaterial>): RecipeCostLine {
+  const m = rawById.get(materialId);
+  const base = {
+    materialId,
+    name: m?.שם_חומר_גלם ?? 'חומר גלם שנמחק',
+    qty,
+    unit,
+    materialUnit: m?.יחידת_מידה ?? null,
+    price: m ? netUnitPrice(m) : null,
+    suspicious: !!m && isSuspiciousPrice(m),
+  };
+  if (!m) return { ...base, cost: null, issue: 'missing_material' };
+  if (m.מחיר_ליחידה == null || Number(m.מחיר_ליחידה) <= 0) return { ...base, price: null, cost: null, issue: 'no_price' };
+  const f = unitFactor(unit, m.יחידת_מידה);
+  if (f == null) return { ...base, cost: null, issue: 'unit_mismatch' };
+  return { ...base, cost: qty * f * netUnitPrice(m)!, issue: null };
+}
+
+/** The row's direct raw-material lines (migration 071), each priced for ONE unit of the product. */
+export function rowMaterialLines(row: Pick<CostRow, 'חומרים'>, rawById: Map<string, CostRawMaterial>): RecipeCostLine[] {
+  return (row.חומרים ?? []).map(l => costLine(l.חומר_גלם_id, Number(l.כמות) || 0, l.יחידת_מידה, rawById));
+}
+
+/** Units a raw material's quantity can be entered in: its own unit + convertible ones (גרם ↔ ק״ג…). */
+export function compatibleUnits(materialUnit: string): string[] {
+  const own = UNIT_TABLE[normalizeUnit(materialUnit)];
+  if (!own) return [materialUnit];
+  const canonical: Record<Family, string[]> = { mass: ['גרם', 'ק"ג'], volume: ['מ"ל', 'ליטר'], count: ['יחידה'] };
+  const others = canonical[own.family].filter(u => normalizeUnit(u) !== normalizeUnit(materialUnit) && unitFactor(u, materialUnit) != null);
+  return [materialUnit, ...others];
+}
+
 export function recipeCost(recipe: CostRecipe, rawById: Map<string, CostRawMaterial>): RecipeCost {
-  const lines: RecipeCostLine[] = (recipe.רכיבי_מתכון ?? []).map(ing => {
-    const m = rawById.get(ing.חומר_גלם_id);
-    const qty = Number(ing.כמות_נדרשת) || 0;
-    const base = {
-      materialId: ing.חומר_גלם_id,
-      name: m?.שם_חומר_גלם ?? 'חומר גלם שנמחק',
-      qty,
-      unit: ing.יחידת_מידה,
-      materialUnit: m?.יחידת_מידה ?? null,
-      price: m ? netUnitPrice(m) : null,
-      suspicious: !!m && isSuspiciousPrice(m),
-    };
-    if (!m) return { ...base, cost: null, issue: 'missing_material' as const };
-    if (m.מחיר_ליחידה == null || Number(m.מחיר_ליחידה) <= 0) return { ...base, price: null, cost: null, issue: 'no_price' as const };
-    const f = unitFactor(ing.יחידת_מידה, m.יחידת_מידה);
-    if (f == null) return { ...base, cost: null, issue: 'unit_mismatch' as const };
-    return { ...base, cost: qty * f * netUnitPrice(m)!, issue: null };
-  });
+  const lines: RecipeCostLine[] = (recipe.רכיבי_מתכון ?? []).map(ing =>
+    costLine(ing.חומר_גלם_id, Number(ing.כמות_נדרשת) || 0, ing.יחידת_מידה, rawById));
   const batchTotal = lines.reduce((s, l) => s + (l.cost ?? 0), 0);
   const y = Number(recipe.כמות_תוצר) > 0 ? Number(recipe.כמות_תוצר) : 1;
   const issues = lines.filter(l => l.issue).length;
@@ -175,7 +203,8 @@ export function recipeCost(recipe: CostRecipe, rawById: Map<string, CostRawMater
 }
 
 // ── Row cost ─────────────────────────────────────────────────────────────
-export type MaterialsSource = 'recipe' | 'manual' | 'none';
+/** 'items' = only direct raw materials (no recipe and no manual amount). */
+export type MaterialsSource = 'recipe' | 'manual' | 'items' | 'none';
 export type LaborSource = 'time' | 'manual' | 'none';
 
 export interface RowCost {
@@ -185,6 +214,10 @@ export interface RowCost {
   recipeIssues: number;
   /** Recipe lines priced with a suspicious per-gram/ml price. */
   recipeSuspicious: number;
+  /** Direct raw materials (migration 071) included in `materials`, ₪ per unit; 0 when none. */
+  extraMaterials: number;
+  /** Number of direct raw-material lines. */
+  extraCount: number;
   labor: number | null;
   laborSource: LaborSource;
   /** Time was entered but there's no hourly rate yet → manual/none fallback used. */
@@ -195,7 +228,7 @@ export interface RowCost {
 }
 
 export type CostInputs = Pick<CostRow,
-  'מתכון_id' | 'מתכונים' | 'חומרים_לפי_מתכון' | 'עלות_חומרים_ידנית' | 'זמן_עבודה_דקות' | 'יחידות_בזמן_עבודה' | 'עלות_עבודה_ידנית'>;
+  'מתכון_id' | 'מתכונים' | 'חומרים' | 'חומרים_לפי_מתכון' | 'עלות_חומרים_ידנית' | 'זמן_עבודה_דקות' | 'יחידות_בזמן_עבודה' | 'עלות_עבודה_ידנית'>;
 
 export function laborFromTime(minutes: number, units: number, hourlyRate: number): number {
   return (minutes / 60) * hourlyRate / (units > 0 ? units : 1);
@@ -255,6 +288,15 @@ export function computeRowCost(
     materials = Number(row.עלות_חומרים_ידנית);
     materialsSource = 'manual';
   }
+  // Direct raw materials (box, note card…) add to whichever base was used.
+  const extraLines = rowMaterialLines(row, rawById);
+  const extra = extraLines.reduce((s, l) => s + (l.cost ?? 0), 0);
+  if (extraLines.length) {
+    materials = (materials ?? 0) + extra;
+    if (materialsSource === 'none') materialsSource = 'items';
+    recipeIssues += extraLines.filter(l => l.issue).length;
+    recipeSuspicious += extraLines.filter(l => l.suspicious && l.cost != null).length;
+  }
 
   let labor: number | null = null;
   let laborSource: LaborSource = 'none';
@@ -275,6 +317,8 @@ export function computeRowCost(
     materialsSource,
     recipeIssues,
     recipeSuspicious,
+    extraMaterials: round2(extra),
+    extraCount: extraLines.length,
     labor: labor == null ? null : round2(labor),
     laborSource,
     laborNeedsRate: hasTime && !rate,
@@ -317,6 +361,8 @@ export interface CostsData {
   vatFlagReady: boolean;
   /** false until migration 070 (מתכוני_עלות — several sub-recipes per product) is run. */
   recipeLinksReady: boolean;
+  /** false until migration 071 (חומרי_עלות — raw materials directly on a product) is run. */
+  materialLinksReady: boolean;
   catalog: CatalogItem[];
   hourlyRate: number | null;
 }
