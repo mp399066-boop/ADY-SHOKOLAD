@@ -13,21 +13,23 @@
 // server only and never logged.
 
 const MORNING_API_BASE = 'https://api.greeninvoice.co.il/api/v1';
+// Morning retired /account/token (Oct 2026) — tokens now come from its OAuth endpoint.
+const MORNING_TOKEN_URL = 'https://api.morning.co/idp/v1/oauth/token';
 
 async function getMorningToken(): Promise<string> {
   const apiId = process.env.MORNING_API_ID ?? '';
   const apiSecret = process.env.MORNING_API_SECRET ?? '';
   if (!apiId || !apiSecret) throw new Error('שירות מורנינג אינו מוגדר (MORNING_API_ID / MORNING_API_SECRET)');
 
-  const res = await fetch(`${MORNING_API_BASE}/account/token`, {
+  const res = await fetch(MORNING_TOKEN_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id: apiId, secret: apiSecret }),
+    body: JSON.stringify({ grant_type: 'client_credentials', client_id: apiId, client_secret: apiSecret }),
   });
   if (!res.ok) throw new Error(`Morning auth failed: ${res.status}`);
   const data = await res.json();
-  if (!data.token) throw new Error('No token in Morning auth response');
-  return data.token as string;
+  if (!data.accessToken) throw new Error('No token in Morning auth response');
+  return data.accessToken as string;
 }
 
 // Pull the Morning document id out of whatever URL form is stored:
