@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { ChevronDown, Search } from 'lucide-react';
+import { ChevronDown, Copy, Search } from 'lucide-react';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { PageLoading } from '@/components/ui/LoadingSpinner';
@@ -52,6 +52,8 @@ export default function RecipesPage() {
   }>({ שם_מתכון: '', מוצר_id: '', כמות_תוצר: 1, הערות: '', רכיבים: [] });
   // null → the recipe modal creates a new recipe; an id → it edits that one.
   const [editingRecipeId, setEditingRecipeId] = useState<string | null>(null);
+  // Name of the recipe being duplicated (new-recipe modal pre-filled with a copy).
+  const [duplicatingFrom, setDuplicatingFrom] = useState<string | null>(null);
 
   // Managed units list (with hardcoded fallback) + default unit for new rows.
   const { values: unitOptions } = useOptionList('units_of_measure');
@@ -271,13 +273,35 @@ export default function RecipesPage() {
 
   const openNewRecipe = () => {
     setEditingRecipeId(null);
+    setDuplicatingFrom(null);
     setRecipeForm({ שם_מתכון: '', מוצר_id: '', כמות_תוצר: 1, הערות: '', רכיבים: [] });
+    setShowRecipeModal(true);
+  };
+
+  // Duplicate = the new-recipe form pre-filled with a copy (no product link,
+  // ingredient row ids dropped) — nothing is saved until the user clicks save.
+  const openDuplicateRecipe = (r: Recipe) => {
+    const ings = (r as Recipe & { רכיבי_מתכון?: RecipeIngredient[] }).רכיבי_מתכון ?? [];
+    setEditingRecipeId(null);
+    setDuplicatingFrom(r.שם_מתכון);
+    setRecipeForm({
+      שם_מתכון: `${r.שם_מתכון} (עותק)`,
+      מוצר_id: '',
+      כמות_תוצר: Number(r.כמות_תוצר) || 1,
+      הערות: r.הערות || '',
+      רכיבים: ings.map(i => ({
+        חומר_גלם_id: i.חומר_גלם_id || '',
+        כמות_נדרשת: Number(i.כמות_נדרשת) || 0,
+        יחידת_מידה: i.יחידת_מידה,
+      })),
+    });
     setShowRecipeModal(true);
   };
 
   const openEditRecipe = (r: Recipe) => {
     const ings = (r as Recipe & { רכיבי_מתכון?: RecipeIngredient[] }).רכיבי_מתכון ?? [];
     setEditingRecipeId(r.id);
+    setDuplicatingFrom(null);
     setRecipeForm({
       שם_מתכון: r.שם_מתכון,
       מוצר_id: '',
@@ -315,7 +339,7 @@ export default function RecipesPage() {
           });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
-      toast.success(editingRecipeId ? 'המתכון עודכן' : 'מתכון נשמר');
+      toast.success(editingRecipeId ? 'המתכון עודכן' : duplicatingFrom ? 'המתכון שוכפל' : 'מתכון נשמר');
       setShowRecipeModal(false);
       fetchAll();
     } catch (err: unknown) {
@@ -588,6 +612,7 @@ export default function RecipesPage() {
                               הפק ייצור
                             </button>
                             <ActionBtn title="עריכת מתכון" onClick={() => openEditRecipe(r)} icon={<IconEdit className="w-4 h-4" />} />
+                            <ActionBtn title="שכפול מתכון" onClick={() => openDuplicateRecipe(r)} icon={<Copy className="w-4 h-4" />} />
                             <ActionBtn title="מחיקה" variant="danger" onClick={() => setConfirmId(r.id)} icon={<IconTrash className="w-4 h-4" />} />
                           </div>
                         </div>
@@ -730,8 +755,13 @@ export default function RecipesPage() {
       )}
 
       {/* ── Recipe modal ──────────────────────────────────────────────────── */}
-      <Modal open={showRecipeModal} onClose={() => setShowRecipeModal(false)} title={editingRecipeId ? 'עריכת מתכון' : 'מתכון חדש'} size="lg">
+      <Modal open={showRecipeModal} onClose={() => setShowRecipeModal(false)} title={editingRecipeId ? 'עריכת מתכון' : duplicatingFrom ? 'שכפול מתכון' : 'מתכון חדש'} size="lg">
         <div className="space-y-4">
+          {duplicatingFrom && (
+            <p className="text-[12px] px-3 py-2 rounded-lg" style={{ backgroundColor: '#FAF7F0', color: '#6B4A2D', border: '1px solid #E8DED2' }}>
+              עותק של <strong style={{ color: '#2B1A10' }}>{duplicatingFrom}</strong> — אפשר לשנות שם, כמויות ורכיבים לפני השמירה. המתכון המקורי לא משתנה.
+            </p>
+          )}
           <div className="grid grid-cols-2 gap-4">
             <Input label="שם מתכון *" value={recipeForm.שם_מתכון}
               onChange={e => setRecipeForm(p => ({ ...p, שם_מתכון: e.target.value }))} />
