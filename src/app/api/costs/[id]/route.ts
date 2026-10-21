@@ -4,10 +4,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireAdminUser, forbiddenResponse } from '@/lib/auth/requireAuthorizedUser';
-import { costRowInputSchema, COST_COLUMNS, RECIPE_LINKS_MIGRATION_HINT, normalizeCostRow } from '@/lib/product-costs-schema';
+import {
+  costRowInputSchema, COST_COLUMNS, RECIPE_LINKS_MIGRATION_HINT, MATERIAL_LINKS_MIGRATION_HINT, normalizeCostRow,
+} from '@/lib/product-costs-schema';
 import {
   validateCostLinks, isDuplicateName, DUPLICATE_NAME_ERROR,
   needsRecipeLinksTable, recipeLinksTableReady, saveCostRecipeLinks,
+  materialLinksTableReady, saveCostMaterialLinks,
 } from '@/lib/product-costs-server';
 
 // PATCH  /api/costs/:id → replace the editable fields of one cost row
@@ -29,9 +32,12 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
   const supabase = createAdminClient();
   const linkError = await validateCostLinks(supabase, parsed.data);
   if (linkError) return NextResponse.json({ error: linkError }, { status: 400 });
-  const { מתכונים: recipeLinks, ...fields } = parsed.data;
+  const { מתכונים: recipeLinks, חומרים: materialLinks, ...fields } = parsed.data;
   if (recipeLinks && await needsRecipeLinksTable(supabase, recipeLinks) && !(await recipeLinksTableReady(supabase))) {
     return NextResponse.json({ error: RECIPE_LINKS_MIGRATION_HINT }, { status: 400 });
+  }
+  if (materialLinks?.length && !(await materialLinksTableReady(supabase))) {
+    return NextResponse.json({ error: MATERIAL_LINKS_MIGRATION_HINT }, { status: 400 });
   }
 
   const { data, error } = await supabase
@@ -50,6 +56,11 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
   if (saved !== 'ok' && saved !== 'missing') {
     console.error('[costs PATCH recipes]', { id: params.id, code: saved.code });
     return NextResponse.json({ error: 'הפרטים נשמרו, אבל שיוך המתכונים נכשל — נסי לשמור שוב' }, { status: 500 });
+  }
+  const savedMaterials = materialLinks ? await saveCostMaterialLinks(supabase, params.id, materialLinks) : 'ok';
+  if (savedMaterials !== 'ok' && savedMaterials !== 'missing') {
+    console.error('[costs PATCH materials]', { id: params.id, code: savedMaterials.code });
+    return NextResponse.json({ error: 'הפרטים נשמרו, אבל שמירת חומרי הגלם נכשלה — נסי לשמור שוב' }, { status: 500 });
   }
   return NextResponse.json({ data: normalizeCostRow(data as Record<string, unknown>) });
 }

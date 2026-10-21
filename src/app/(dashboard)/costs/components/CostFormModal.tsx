@@ -6,7 +6,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import {
-  computeRowCost, rowRecipeParts, marginPct, LINE_ISSUE_LABEL,
+  computeRowCost, rowRecipeParts, costLine, compatibleUnits, marginPct, LINE_ISSUE_LABEL,
   type CostRawMaterial, type CostRecipe, type CostRow, type CostsData,
 } from '@/lib/product-costs';
 import { C, money } from '../../finance/components/shared';
@@ -18,6 +18,9 @@ const parseNum = (s: string): number | null => (s.trim() === '' ? null : Number(
 
 /** A sub-recipe row being edited: units = how many of this product one batch makes. */
 interface PartDraft { recipeId: string; units: string }
+
+/** A direct raw material being edited: qty of `unit` used by ONE unit of the product. */
+interface MaterialDraft { materialId: string; qty: string; unit: string }
 
 export default function CostFormModal({ open, initial, data, rawById, recipesById, onClose, onSaved }: {
   open: boolean;
@@ -34,6 +37,8 @@ export default function CostFormModal({ open, initial, data, rawById, recipesByI
   const [targetKey, setTargetKey] = useState('');
   // Sub-recipes: one batch of each is enough for `units` units of this product.
   const [parts, setParts] = useState<PartDraft[]>([]);
+  // Raw materials used directly per unit (box, note card…).
+  const [items, setItems] = useState<MaterialDraft[]>([]);
   const [useRecipe, setUseRecipe] = useState(false);
   const [manualMaterials, setManualMaterials] = useState('');
   const [hours, setHours] = useState('');
@@ -55,6 +60,7 @@ export default function CostFormModal({ open, initial, data, rawById, recipesByI
       ? r.מתכונים
       : r?.מתכון_id ? [{ מתכון_id: r.מתכון_id, יחידות: recipesById.get(r.מתכון_id)?.כמות_תוצר ?? 1 }] : [];
     setParts(links.map(l => ({ recipeId: l.מתכון_id, units: String(l.יחידות) })));
+    setItems((r?.חומרים ?? []).map(l => ({ materialId: l.חומר_גלם_id, qty: String(l.כמות), unit: l.יחידת_מידה })));
     setUseRecipe(!!r?.חומרים_לפי_מתכון);
     setManualMaterials(r?.עלות_חומרים_ידנית != null ? String(r.עלות_חומרים_ידנית) : '');
     const total = Number(r?.זמן_עבודה_דקות) || 0;
@@ -79,10 +85,17 @@ export default function CostFormModal({ open, initial, data, rawById, recipesByI
   const recipeParts = useMemo(() => rowRecipeParts({ מתכון_id: null, מתכונים: links }, recipesById, rawById), [links, recipesById, rawById]);
   const partByRecipe = new Map(recipeParts.map(p => [p.recipe.id, p]));
   const hasRecipes = links.length > 0;
+  // Rows with a material and a valid quantity.
+  const materialLinks = useMemo(() => items.filter(m => m.materialId && Number(m.qty) > 0).map(m => ({
+    חומר_גלם_id: m.materialId,
+    כמות: Number(m.qty),
+    יחידת_מידה: m.unit || rawById.get(m.materialId)?.יחידת_מידה || '',
+  })), [items, rawById]);
 
   const preview = computeRowCost({
     מתכון_id: links[0]?.מתכון_id ?? null,
     מתכונים: links,
+    חומרים: materialLinks,
     חומרים_לפי_מתכון: useRecipe && hasRecipes,
     עלות_חומרים_ידנית: parseNum(manualMaterials),
     זמן_עבודה_דקות: totalMinutes > 0 ? totalMinutes : null,
@@ -101,6 +114,14 @@ export default function CostFormModal({ open, initial, data, rawById, recipesByI
     const prevYield = prev?.recipeId ? recipesById.get(prev.recipeId)?.כמות_תוצר : undefined;
     const keepUnits = prev && prev.units.trim() !== '' && Number(prev.units) !== prevYield;
     setPart(i, { recipeId: id, units: keepUnits ? prev.units : String(recipesById.get(id)?.כמות_תוצר ?? '') });
+  };
+
+  const setItem = (i: number, patch: Partial<MaterialDraft>) =>
+    setItems(ms => ms.map((m, j) => (j === i ? { ...m, ...patch } : m)));
+  // Choosing a material sets the unit to the material's own (packaging → יחידה, quantity 1).
+  const chooseItemMaterial = (i: number, id: string) => {
+    const unit = rawById.get(id)?.יחידת_מידה ?? '';
+    setItem(i, { materialId: id, unit, qty: items[i]?.qty.trim() ? items[i].qty : '1' });
   };
 
   // Linking a catalog item that has a recipe → suggest that recipe.
@@ -128,6 +149,9 @@ export default function CostFormModal({ open, initial, data, rawById, recipesByI
     if (useRecipe && !chosen.length) { toast.error('כדי לחשב לפי מתכון יש לבחור מתכון'); return; }
     if (chosen.some(p => p.units.trim() !== '' && !(Number(p.units) > 0))) { toast.error('מספר היחידות מכל מתכון חייב להיות גדול מ-0'); return; }
     if (new Set(chosen.map(p => p.recipeId)).size !== chosen.length) { toast.error('אותו מתכון נבחר פעמיים'); return; }
+    const chosenItems = items.filter(m => m.materialId);
+    if (chosenItems.some(m => !(Number(m.qty) > 0))) { toast.error('הכמות של חומר גלם חייבת להיות גדולה מ-0'); return; }
+    if (new Set(chosenItems.map(m => m.materialId)).size !== chosenItems.length) { toast.error('אותו חומר גלם נבחר פעמיים'); return; }
 
     const [type, id] = targetKey ? targetKey.split(':') : [null, null];
     const body = {
@@ -137,6 +161,8 @@ export default function CostFormModal({ open, initial, data, rawById, recipesByI
       יעד_id: id,
       מתכון_id: links[0]?.מתכון_id ?? null,
       מתכונים: links,
+      // Before migration 071 send nothing, so saving other fields still works.
+      ...(data.materialLinksReady || materialLinks.length ? { חומרים: materialLinks } : {}),
       חומרים_לפי_מתכון: useRecipe && hasRecipes,
       עלות_חומרים_ידנית: parseNum(manualMaterials),
       זמן_עבודה_דקות: totalMinutes > 0 ? Math.round(totalMinutes * 100) / 100 : null,
@@ -285,6 +311,78 @@ export default function CostFormModal({ open, initial, data, rawById, recipesByI
             {!data.recipeLinksReady && (
               <div className="text-xs" style={{ color: C.amber }}>
                 כדי לשייך יותר ממתכון אחד, או לשנות כמה יחידות יוצאות ממתכון, יש להריץ את מיגרציה 070 ב-Supabase.
+              </div>
+            )}
+          </div>
+
+          {/* ── Direct raw materials (box, note card…) ── */}
+          <div className="space-y-2 pt-1">
+            <div className="text-xs font-medium" style={{ color: C.sub }}>
+              חומרי גלם נוספים ליחידה — קופסה, פתקית, סרט וכו׳ (בלי מתכון). נוספים לעלות החומרים בכל מקרה
+            </div>
+            {items.length === 0 && (
+              <div className="text-xs" style={{ color: C.faint }}>עדיין לא נוספו חומרי גלם.</div>
+            )}
+            {items.map((m, i) => {
+              const mat = m.materialId ? rawById.get(m.materialId) : undefined;
+              const line = m.materialId && Number(m.qty) > 0 ? costLine(m.materialId, Number(m.qty), m.unit || mat?.יחידת_מידה || '', rawById) : null;
+              return (
+                <div key={i} className="rounded-lg bg-white p-2.5 space-y-1.5" style={{ border: `1px solid ${C.border}` }}>
+                  <div className="flex flex-wrap items-end gap-2">
+                    <div className="flex-1 min-w-[180px] space-y-1">
+                      <label className="block text-[11px]" style={{ color: C.sub }}>חומר גלם</label>
+                      <select className={selectCls} value={m.materialId} onChange={e => chooseItemMaterial(i, e.target.value)} aria-label={`חומר גלם ${i + 1}`}>
+                        <option value="">— בחירת חומר גלם —</option>
+                        {data.rawMaterials
+                          .filter(r => r.id === m.materialId || !items.some(x => x.materialId === r.id))
+                          .map(r => <option key={r.id} value={r.id}>{r.שם_חומר_גלם} ({r.יחידת_מידה})</option>)}
+                      </select>
+                    </div>
+                    <div className="w-24 space-y-1">
+                      <label className="block text-[11px]" style={{ color: C.sub }}>כמות ליחידה</label>
+                      <input type="number" min={0} step="any" value={m.qty} disabled={!m.materialId}
+                        onChange={e => setItem(i, { qty: e.target.value })} aria-label={`כמות חומר גלם ${i + 1}`}
+                        className="w-full px-3 py-2 text-sm rounded-lg border border-[#E8DED2] bg-white tabular-nums focus:outline-none focus:border-[#C9A46A]" />
+                    </div>
+                    <div className="w-24 space-y-1">
+                      <label className="block text-[11px]" style={{ color: C.sub }}>יחידה</label>
+                      <select className={selectCls} value={m.unit} disabled={!mat} onChange={e => setItem(i, { unit: e.target.value })} aria-label={`יחידת מידה ${i + 1}`}>
+                        {(mat ? [...new Set([...compatibleUnits(mat.יחידת_מידה), ...(m.unit ? [m.unit] : [])])] : [m.unit]).map(u => (
+                          <option key={u} value={u}>{u || '—'}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <button type="button" onClick={() => setItems(ms => ms.filter((_, j) => j !== i))}
+                      className="px-2 py-2 text-xs rounded-md" style={{ color: C.red }}>
+                      הסרה
+                    </button>
+                  </div>
+                  {line && (
+                    <div className="text-xs" style={{ color: line.issue || line.suspicious ? C.amber : C.sub }}>
+                      {line.issue
+                        ? LINE_ISSUE_LABEL[line.issue] + (line.issue === 'unit_mismatch' ? ` (${line.unit} ↔ ${line.materialUnit})` : '')
+                        : <>{line.qty} {line.unit} × {money(line.price ?? 0)} ל-{line.materialUnit} (לפני מע״מ) = <b style={{ color: C.text }}>{money(Math.round((line.cost ?? 0) * 100) / 100)} ליחידה</b></>}
+                      {line.suspicious && ' · ⚠ מחיר חשוד (מחיר לגרם/מ״ל גבוה מדי)'}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <button type="button" onClick={() => setItems(ms => [...ms, { materialId: '', qty: '', unit: '' }])}
+                disabled={items.length >= 50}
+                className="text-xs font-medium underline" style={{ color: C.brand }}>
+                + הוספת חומר גלם
+              </button>
+              {preview.extraCount > 1 && (
+                <span className="text-xs" style={{ color: C.sub }}>
+                  סה״כ חומרי גלם נוספים: <b style={{ color: C.text }}>{money(preview.extraMaterials)} ליחידה</b>
+                </span>
+              )}
+            </div>
+            {!data.materialLinksReady && (
+              <div className="text-xs" style={{ color: C.amber }}>
+                כדי לשמור חומרי גלם ישירות למוצר יש להריץ את מיגרציה 071 ב-Supabase.
               </div>
             )}
           </div>

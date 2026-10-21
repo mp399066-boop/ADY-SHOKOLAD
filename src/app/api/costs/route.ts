@@ -6,11 +6,13 @@ import { requireAdminUser, forbiddenResponse } from '@/lib/auth/requireAuthorize
 import { isMissingTable } from '@/lib/finance-expense-schema';
 import { missingColumnMessage } from '@/lib/db-error';
 import {
-  costRowInputSchema, COSTS_MIGRATION_HINT, RECIPE_LINKS_MIGRATION_HINT, COST_COLUMNS, normalizeCostRow,
+  costRowInputSchema, COSTS_MIGRATION_HINT, RECIPE_LINKS_MIGRATION_HINT, MATERIAL_LINKS_MIGRATION_HINT,
+  COST_COLUMNS, normalizeCostRow,
 } from '@/lib/product-costs-schema';
 import {
   validateCostLinks, isDuplicateName, DUPLICATE_NAME_ERROR, loadCostRawMaterials,
   loadCostRecipeLinks, needsRecipeLinksTable, recipeLinksTableReady, saveCostRecipeLinks,
+  loadCostMaterialLinks, materialLinksTableReady, saveCostMaterialLinks,
 } from '@/lib/product-costs-server';
 
 // GET  /api/costs → everything the /costs page needs to compute costs live:
@@ -31,7 +33,7 @@ export async function GET() {
   if (!auth) return forbiddenResponse();
   const supabase = createAdminClient();
 
-  const [rowsRes, recipesRes, rawRes, productsRes, pfRes, rateRes, retailRes, linksRes] = await Promise.all([
+  const [rowsRes, recipesRes, rawRes, productsRes, pfRes, rateRes, retailRes, linksRes, materialsRes] = await Promise.all([
     loadCostRows(supabase),
     supabase.from('מתכונים')
       .select('id, שם_מתכון, כמות_תוצר, יחידת_תפוקה, production_target_type, production_target_id, רכיבי_מתכון(חומר_גלם_id, כמות_נדרשת, יחידת_מידה)')
@@ -42,9 +44,10 @@ export async function GET() {
     supabase.from('system_config').select('value').eq('key', 'labor_hourly_rate').maybeSingle(),
     supabase.from('מחירון').select('מוצר_id, מחיר').eq('price_type', 'retail').eq('פעיל', true).not('מוצר_id', 'is', null),
     loadCostRecipeLinks(supabase),
+    loadCostMaterialLinks(supabase),
   ]);
 
-  const firstError = recipesRes.error || rawRes.error || productsRes.error || pfRes.error || retailRes.error || linksRes.error;
+  const firstError = recipesRes.error || rawRes.error || productsRes.error || pfRes.error || retailRes.error || linksRes.error || materialsRes.error;
   if (firstError) {
     console.error('[costs GET]', { code: firstError.code });
     return NextResponse.json({ error: 'שגיאה בטעינת נתוני העלויות' }, { status: 500 });
@@ -62,6 +65,7 @@ export async function GET() {
     rows = ((rowsRes.data ?? []) as Record<string, unknown>[]).map(r => ({
       ...normalizeCostRow(r),
       מתכונים: linksRes.byRow.get(r.id as string) ?? [],
+      חומרים: materialsRes.byRow.get(r.id as string) ?? [],
     }));
   }
 
@@ -98,7 +102,8 @@ export async function GET() {
 
   return NextResponse.json({
     rows, tableReady, hint: tableReady ? null : COSTS_MIGRATION_HINT,
-    recipes, rawMaterials, vatFlagReady: rawRes.vatFlagReady, recipeLinksReady: linksRes.ready, catalog, hourlyRate,
+    recipes, rawMaterials, vatFlagReady: rawRes.vatFlagReady, recipeLinksReady: linksRes.ready,
+    materialLinksReady: materialsRes.ready, catalog, hourlyRate,
   });
 }
 
@@ -114,9 +119,12 @@ export async function POST(req: NextRequest) {
   const supabase = createAdminClient();
   const linkError = await validateCostLinks(supabase, parsed.data);
   if (linkError) return NextResponse.json({ error: linkError }, { status: 400 });
-  const { מתכונים: recipeLinks, ...fields } = parsed.data;
+  const { מתכונים: recipeLinks, חומרים: materialLinks, ...fields } = parsed.data;
   if (recipeLinks && await needsRecipeLinksTable(supabase, recipeLinks) && !(await recipeLinksTableReady(supabase))) {
     return NextResponse.json({ error: RECIPE_LINKS_MIGRATION_HINT }, { status: 400 });
+  }
+  if (materialLinks?.length && !(await materialLinksTableReady(supabase))) {
+    return NextResponse.json({ error: MATERIAL_LINKS_MIGRATION_HINT }, { status: 400 });
   }
 
   // New rows go to the end of the list.
@@ -139,6 +147,11 @@ export async function POST(req: NextRequest) {
   if (saved !== 'ok' && saved !== 'missing') {
     console.error('[costs POST recipes]', { id: row.id, code: saved.code });
     return NextResponse.json({ error: 'המוצר נשמר, אבל שיוך המתכונים נכשל — נסי לשמור שוב' }, { status: 500 });
+  }
+  const savedMaterials = materialLinks ? await saveCostMaterialLinks(supabase, row.id, materialLinks) : 'ok';
+  if (savedMaterials !== 'ok' && savedMaterials !== 'missing') {
+    console.error('[costs POST materials]', { id: row.id, code: savedMaterials.code });
+    return NextResponse.json({ error: 'המוצר נשמר, אבל שמירת חומרי הגלם נכשלה — נסי לשמור שוב' }, { status: 500 });
   }
   return NextResponse.json({ data: row }, { status: 201 });
 }
