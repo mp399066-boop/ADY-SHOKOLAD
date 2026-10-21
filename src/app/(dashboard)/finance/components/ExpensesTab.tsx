@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import {
   expenseNet, expenseSupplierName, isLongTermExpense, paymentMethodLabel, round2, LONG_TERM_LABEL, HEBREW_MONTHS, todayJerusalem,
-  BUSINESS_BOX, COURSES_BOX, EXPENSE_BOX_LABEL, type Expense, type ExpenseBox,
+  BUSINESS_BOX, COURSES_BOX, EXPENSE_BOXES, EXPENSE_BOX_LABEL, type Expense, type ExpenseBox,
 } from '@/lib/finance';
 import { downloadExcel, downloadElementPng, fmtDate, type Cell } from '@/lib/finance-export';
 import { C, money, StatCard, ExportButtons, Th, Td, EmptyNote, THEAD_STYLE, TOTAL_ROW_STYLE } from './shared';
@@ -33,10 +33,21 @@ function groupBy(list: Expense[], keyOf: (e: Expense) => string): Group[] {
   return Array.from(map.values()).sort((a, b) => b.gross - a.gross);
 }
 
+/** Bulk-bar button text for moving to each box. */
+const MOVE_LABEL: Record<ExpenseBox, string> = { עסק: 'החזרה לקופת העסק', קורסים: 'העברה לקופת קורסים', בית: 'העברה לקופת בית' };
+/** Short per-row link text for moving to each box. */
+const MOVE_SHORT: Record<ExpenseBox, string> = { עסק: 'לקופת העסק', קורסים: 'לקורסים', בית: 'לבית' };
+/** Explanation under a side box's title. */
+const SIDE_NOTE: Record<ExpenseBox, string> = {
+  עסק: '',
+  קורסים: 'הוצאות ששולמו מהעסק אבל שייכות לקורסים. הן לא נכללות בהוצאות של העסק, ברווח והפסד ובממוצע החודשי.',
+  בית: 'הוצאות ששולמו מהעסק אבל שייכות לבית. הן לא נכללות בהוצאות של העסק, ברווח והפסד ובממוצע החודשי.',
+};
+
 const selectCls = 'px-3 py-1.5 text-sm rounded-lg border border-[#E8DED2] bg-white focus:outline-none focus:border-[#C9A46A]';
 
 export default function ExpensesTab({ box, boxReady, expenses, suppliers, employees, salariesReady, longTermReady, year, tableReady, hint, reload }: {
-  /** Which box this tab shows: the business expenses or קופת קורסים. */
+  /** Which box this tab shows: the business expenses, קופת קורסים or קופת בית. */
   box: ExpenseBox;
   /** false until migration 065 (expense box) has been run. */
   boxReady: boolean;
@@ -70,11 +81,11 @@ export default function ExpensesTab({ box, boxReady, expenses, suppliers, employ
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [moving, setMoving] = useState(false);
 
-  const isCourses = box === COURSES_BOX;
-  const otherBox: ExpenseBox = isCourses ? BUSINESS_BOX : COURSES_BOX;
-  const moveLabel = isCourses ? 'החזרה לקופת העסק' : 'העברה לקופת קורסים';
-  const boxTitle = isCourses ? EXPENSE_BOX_LABEL[COURSES_BOX] : 'הוצאות';
-  const filePrefix = isCourses ? 'קופת_קורסים' : 'הוצאות';
+  // Side box = קופת קורסים / קופת בית (kept out of the business figures).
+  const isSide = box !== BUSINESS_BOX;
+  const targets = EXPENSE_BOXES.filter(b => b !== box);
+  const boxTitle = isSide ? EXPENSE_BOX_LABEL[box] : 'הוצאות';
+  const filePrefix = isSide ? EXPENSE_BOX_LABEL[box].replace(/ /g, '_') : 'הוצאות';
 
   const inMonth = useMemo(
     () => (month === 'all' ? expenses : expenses.filter(e => Number(e.תאריך.slice(5, 7)) === month)),
@@ -112,7 +123,7 @@ export default function ExpensesTab({ box, boxReady, expenses, suppliers, employ
     setSelected(allVisibleSelected ? new Set() : new Set(filtered.map(e => e.id)));
   }
 
-  async function moveTo(ids: string[]) {
+  async function moveTo(ids: string[], target: ExpenseBox) {
     if (!ids.length) return;
     if (!boxReady) { toast.error('יש להריץ את מיגרציה 065 ב-Supabase כדי להעביר הוצאות בין קופות'); return; }
     setMoving(true);
@@ -120,11 +131,11 @@ export default function ExpensesTab({ box, boxReady, expenses, suppliers, employ
       const res = await fetch('/api/finance/expenses/move', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids, קופה: otherBox }),
+        body: JSON.stringify({ ids, קופה: target }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || 'ההעברה נכשלה');
-      toast.success(`${json.moved ?? ids.length} הוצאות הועברו ל${EXPENSE_BOX_LABEL[otherBox]}`);
+      toast.success(`${json.moved ?? ids.length} הוצאות הועברו ל${EXPENSE_BOX_LABEL[target]}`);
       setSelected(new Set());
       reload();
     } catch (e) {
@@ -203,8 +214,8 @@ export default function ExpensesTab({ box, boxReady, expenses, suppliers, employ
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-2">
-        <Button onClick={openNew}>{isCourses ? '+ הוצאה חדשה לקורסים' : '+ הוצאה חדשה'}</Button>
-        {!isCourses && (
+        <Button onClick={openNew}>{box === COURSES_BOX ? '+ הוצאה חדשה לקורסים' : isSide ? '+ הוצאה חדשה לבית' : '+ הוצאה חדשה'}</Button>
+        {!isSide && (
           <>
             <Button variant="secondary" onClick={() => setMorningOpen(true)}>סנכרון ממורנינג</Button>
             <Button variant="outline" onClick={() => setImportOpen(true)}>ייבוא מקובץ הנהלת חשבונות</Button>
@@ -242,14 +253,16 @@ export default function ExpensesTab({ box, boxReady, expenses, suppliers, employ
 
       {!boxReady && (
         <div className="rounded-xl px-4 py-3 text-sm" style={{ backgroundColor: C.soft, color: C.sub, border: `1px solid ${C.border}` }}>
-          {isCourses ? 'כדי להשתמש בקופת קורסים' : 'כדי להעביר הוצאות לקופת קורסים'} — יש להריץ את מיגרציה 065 (supabase/migrations/065_expense_box.sql) ב-Supabase SQL Editor ולרענן את הדף.
+          {isSide ? `כדי להשתמש ב${EXPENSE_BOX_LABEL[box]}` : 'כדי להעביר הוצאות לקופת קורסים או לקופת בית'} — יש להריץ את מיגרציה 065 (supabase/migrations/065_expense_box.sql) ב-Supabase SQL Editor ולרענן את הדף.
         </div>
       )}
 
       {selectedVisible.length > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-xl px-4 py-2.5 text-sm" style={{ backgroundColor: '#FBF6EE', border: `1px solid ${C.border}`, color: C.text }}>
           <span>נבחרו <b>{selectedVisible.length}</b> הוצאות · {money(round2(selectedVisible.reduce((t, e) => t + Number(e.סכום), 0)))} כולל מע״מ</span>
-          <Button onClick={() => moveTo(selectedVisible.map(e => e.id))} loading={moving}>{moveLabel}</Button>
+          {targets.map(t => (
+            <Button key={t} onClick={() => moveTo(selectedVisible.map(e => e.id), t)} loading={moving}>{MOVE_LABEL[t]}</Button>
+          ))}
           <button className="text-xs" style={{ color: C.sub }} onClick={() => setSelected(new Set())}>ביטול הבחירה</button>
         </div>
       )}
@@ -267,18 +280,16 @@ export default function ExpensesTab({ box, boxReady, expenses, suppliers, employ
           <StatCard label="ספקים / מקבלים" value={String(bySupplier.length)} icon={Users} />
         </div>
 
-        {isCourses && (
-          <p className="text-xs" style={{ color: C.sub }}>
-            הוצאות ששולמו מהעסק אבל שייכות לקורסים. הן לא נכללות בהוצאות של העסק, ברווח והפסד ובממוצע החודשי.
-          </p>
+        {isSide && (
+          <p className="text-xs" style={{ color: C.sub }}>{SIDE_NOTE[box]}</p>
         )}
 
         <SalariesMatrix expenses={expenses} employees={employees} year={year} />
 
         {expenses.length === 0 ? (
           <EmptyNote>
-            {isCourses
-              ? <>עוד אין הוצאות בקופת קורסים לשנת {year}. אפשר להוסיף כאן הוצאה חדשה, או לסמן הוצאות בלשונית &quot;הוצאות&quot; וללחוץ &quot;העברה לקופת קורסים&quot;.</>
+            {isSide
+              ? <>עוד אין הוצאות ב{EXPENSE_BOX_LABEL[box]} לשנת {year}. אפשר להוסיף כאן הוצאה חדשה, או לסמן הוצאות בלשונית &quot;הוצאות&quot; וללחוץ &quot;{MOVE_LABEL[box]}&quot;.</>
               : <>עוד לא הוזנו הוצאות לשנת {year}. אפשר להוסיף ידנית או לייבא קובץ מהנהלת החשבונות.</>}
           </EmptyNote>
         ) : (
@@ -330,11 +341,11 @@ export default function ExpensesTab({ box, boxReady, expenses, suppliers, employ
                         <div className="flex gap-2 text-xs" data-export-hide>
                           <button onClick={() => openEdit(e)} style={{ color: C.brand }}>עריכה</button>
                           <button onClick={() => openDuplicate(e)} style={{ color: C.sub }} title="יצירת הוצאה זהה (למשל הוצאה חודשית קבועה)">שכפול</button>
-                          {boxReady && (
-                            <button onClick={() => moveTo([e.id])} disabled={moving} style={{ color: C.brand }} title={isCourses ? 'החזרת ההוצאה להוצאות של העסק' : 'העברת ההוצאה לקופת קורסים'}>
-                              {isCourses ? 'לקופת העסק' : 'לקורסים'}
+                          {boxReady && targets.map(t => (
+                            <button key={t} onClick={() => moveTo([e.id], t)} disabled={moving} style={{ color: C.brand }} title={t === BUSINESS_BOX ? 'החזרת ההוצאה להוצאות של העסק' : `העברת ההוצאה ל${EXPENSE_BOX_LABEL[t]}`}>
+                              {MOVE_SHORT[t]}
                             </button>
-                          )}
+                          ))}
                           <button onClick={() => setToDelete(e)} style={{ color: C.red }}>מחיקה</button>
                         </div>
                       </Td>

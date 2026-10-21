@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { FileDown, CalendarDays, ListFilter, ChevronDown, TrendingUp } from 'lucide-react';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
-import { todayJerusalem, isCoursesExpense, type FinanceOrder, type Expense, type DateBasis } from '@/lib/finance';
+import { todayJerusalem, isBusinessExpense, isCoursesExpense, isHomeExpense, type FinanceOrder, type Expense, type DateBasis } from '@/lib/finance';
 import type { ManualIncome } from '@/lib/finance-manual-income';
 import IncomeTab from './components/IncomeTab';
 import ExpensesTab from './components/ExpensesTab';
@@ -14,7 +14,7 @@ import type { SupplierOption } from './components/ExpenseFormModal';
 import type { EmployeeOption } from './components/SalaryModal';
 import { C } from './components/shared';
 
-type TabKey = 'income' | 'expenses' | 'courses' | 'pnl';
+type TabKey = 'income' | 'expenses' | 'courses' | 'home' | 'pnl';
 
 const selectCls = 'h-9 pr-8 pl-8 text-sm font-medium rounded-lg border border-[#E2D6C6] bg-white text-[#2A1C10] shadow-sm appearance-none cursor-pointer hover:border-[#C9A46A] focus:outline-none focus:ring-2 focus:ring-[#C9A46A]/30 focus:border-[#C9A46A]';
 
@@ -124,11 +124,13 @@ export default function FinancePage() {
     );
   }
 
-  // Two expense boxes: the business box feeds expenses / P&L / reports; the
-  // courses box is shown on its own and never counted in the business figures.
-  const businessExpenses = expenses.filter(e => !isCoursesExpense(e));
+  // Expense boxes: the business box feeds expenses / P&L / reports; the
+  // courses and home boxes are shown on their own and never counted in the
+  // business figures.
+  const businessExpenses = expenses.filter(isBusinessExpense);
   const coursesExpenses = expenses.filter(isCoursesExpense);
-  const isExpensesTab = tab === 'expenses' || tab === 'courses';
+  const homeExpenses = expenses.filter(isHomeExpense);
+  const isExpensesTab = tab === 'expenses' || tab === 'courses' || tab === 'home';
   const loading = isExpensesTab ? expensesLoading : incomeLoading || (tab === 'pnl' && expensesLoading);
 
   return (
@@ -170,6 +172,7 @@ export default function FinancePage() {
           { key: 'income', label: 'הכנסות' },
           { key: 'expenses', label: 'הוצאות', count: expensesReady ? businessExpenses.length : undefined },
           { key: 'courses', label: 'קופת קורסים', count: expensesReady ? coursesExpenses.length : undefined },
+          { key: 'home', label: 'קופת בית', count: expensesReady ? homeExpenses.length : undefined },
           { key: 'pnl', label: 'רווח והפסד' },
         ] as { key: TabKey; label: string; count?: number }[]).map(t => {
           const active = tab === t.key;
@@ -201,8 +204,10 @@ export default function FinancePage() {
         <ExpensesTab key="business" box="עסק" boxReady={boxReady} expenses={businessExpenses} suppliers={suppliers} employees={employees} salariesReady={salariesReady} longTermReady={longTermReady} year={year} tableReady={expensesReady} hint={expensesHint} reload={loadExpenses} />
       ) : tab === 'courses' ? (
         <ExpensesTab key="courses" box="קורסים" boxReady={boxReady} expenses={coursesExpenses} suppliers={suppliers} employees={employees} salariesReady={salariesReady} longTermReady={longTermReady} year={year} tableReady={expensesReady} hint={expensesHint} reload={loadExpenses} />
+      ) : tab === 'home' ? (
+        <ExpensesTab key="home" box="בית" boxReady={boxReady} expenses={homeExpenses} suppliers={suppliers} employees={employees} salariesReady={salariesReady} longTermReady={longTermReady} year={year} tableReady={expensesReady} hint={expensesHint} reload={loadExpenses} />
       ) : (
-        <ProfitLossTab orders={orders} expenses={businessExpenses} coursesExpenses={coursesExpenses} year={year} basis={basis} expensesReady={expensesReady} />
+        <ProfitLossTab orders={orders} expenses={businessExpenses} coursesExpenses={coursesExpenses} homeExpenses={homeExpenses} year={year} basis={basis} expensesReady={expensesReady} />
       )}
 
       <FullReportModal

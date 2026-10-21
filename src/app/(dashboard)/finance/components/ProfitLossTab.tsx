@@ -10,11 +10,13 @@ import {
 import { downloadExcel, downloadElementPng, type Cell } from '@/lib/finance-export';
 import { C, money, StatCard, ExportButtons, Th, Td, EmptyNote, THEAD_STYLE, TOTAL_ROW_STYLE, ROW_CLS } from './shared';
 
-export default function ProfitLossTab({ orders, expenses, coursesExpenses = [], year, basis, expensesReady }: {
+export default function ProfitLossTab({ orders, expenses, coursesExpenses = [], homeExpenses = [], year, basis, expensesReady }: {
   orders: FinanceOrder[];
   expenses: Expense[];
   /** קופת קורסים — not part of this P&L; only mentioned so it's clear. */
   coursesExpenses?: Expense[];
+  /** קופת בית — same: not part of this P&L. */
+  homeExpenses?: Expense[];
   year: number;
   basis: DateBasis;
   expensesReady: boolean;
@@ -34,6 +36,7 @@ export default function ProfitLossTab({ orders, expenses, coursesExpenses = [], 
   const showLT = totals.longTermGross > 0;
   const afterLT = totals.resultAfterLongTerm;
   const coursesNet = round2(coursesExpenses.reduce((t, e) => t + expenseNet(e), 0));
+  const homeNet = round2(homeExpenses.reduce((t, e) => t + expenseNet(e), 0));
 
   async function exportExcel() {
     const sheet: Cell[][] = [
@@ -49,6 +52,7 @@ export default function ProfitLossTab({ orders, expenses, coursesExpenses = [], 
       ...(result < 0 ? [['הכנסה נוספת שנדרשת כדי לכסות את ההפסד', -result] as Cell[]] : []),
       [],
       ...(coursesNet > 0 ? [[`הוצאות קופת קורסים (לא נכללות ברווח והפסד של העסק) — לפני מע״מ`, coursesNet] as Cell[]] : []),
+      ...(homeNet > 0 ? [[`הוצאות קופת בית (לא נכללות ברווח והפסד של העסק) — לפני מע״מ`, homeNet] as Cell[]] : []),
       ['רווח והפסד מחושב לפני מע״מ: מע״מ שנגבה מלקוחות שייך למדינה, ומע״מ על הוצאות מקוזז.'],
     ];
     await downloadExcel(`רווח_והפסד_${year}`, [{ name: `רווח והפסד ${year}`, rows: sheet }]);
@@ -83,6 +87,9 @@ export default function ProfitLossTab({ orders, expenses, coursesExpenses = [], 
 
       {coursesNet > 0 && (
         <EmptyNote>הוצאות קופת קורסים ({money(coursesNet)} לפני מע״מ, {coursesExpenses.length} הוצאות) לא נכללות ברווח והפסד של העסק — הן מוצגות בלשונית &quot;קופת קורסים&quot;.</EmptyNote>
+      )}
+      {homeNet > 0 && (
+        <EmptyNote>הוצאות קופת בית ({money(homeNet)} לפני מע״מ, {homeExpenses.length} הוצאות) לא נכללות ברווח והפסד של העסק — הן מוצגות בלשונית &quot;קופת בית&quot;.</EmptyNote>
       )}
 
       {(avgExpenses > 0 || result < 0 || showLT) && (

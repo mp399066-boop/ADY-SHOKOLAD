@@ -293,8 +293,8 @@ export interface Expense {
    *  fridge, oven, tables… Kept out of the regular monthly expenses and the
    *  monthly average; shown separately in profit & loss. */
   השקעה_לטווח_ארוך?: boolean | null;
-  /** Expense box (migration 065): 'עסק' (default) or 'קורסים'. Courses
-   *  expenses are kept out of the business expenses, P&L and averages. */
+  /** Expense box (migrations 065, 072): 'עסק' (default), 'קורסים' or 'בית'.
+   *  Courses / home expenses are kept out of the business expenses, P&L and averages. */
   קופה?: ExpenseBox | null;
 }
 
@@ -318,18 +318,23 @@ export const LONG_TERM_LABEL = 'השקעה לטווח ארוך';
 export const isLongTermExpense = (e: Pick<Expense, 'השקעה_לטווח_ארוך'>) => e.השקעה_לטווח_ארוך === true;
 
 // ── Expense boxes (קופות) ─────────────────────────────────────────────────────
-// Owner's rule: expenses that belong to the courses live in their own box —
-// listed separately and NOT counted in the business expenses / P&L / average.
+// Owner's rule: expenses that belong to the courses (065) or to the home (072)
+// live in their own box — listed separately and NOT counted in the business
+// expenses / P&L / average.
 
-export const EXPENSE_BOXES = ['עסק', 'קורסים'] as const;
+export const EXPENSE_BOXES = ['עסק', 'קורסים', 'בית'] as const;
 export type ExpenseBox = typeof EXPENSE_BOXES[number];
 export const BUSINESS_BOX: ExpenseBox = 'עסק';
 export const COURSES_BOX: ExpenseBox = 'קורסים';
-export const EXPENSE_BOX_LABEL: Record<ExpenseBox, string> = { עסק: 'קופת העסק', קורסים: 'קופת קורסים' };
+export const HOME_BOX: ExpenseBox = 'בית';
+export const EXPENSE_BOX_LABEL: Record<ExpenseBox, string> = { עסק: 'קופת העסק', קורסים: 'קופת קורסים', בית: 'קופת בית' };
 
 /** Missing / unknown box (before migration 065) = the business box. */
-export const expenseBox = (e: Pick<Expense, 'קופה'>): ExpenseBox => (e.קופה === COURSES_BOX ? COURSES_BOX : BUSINESS_BOX);
+export const expenseBox = (e: Pick<Expense, 'קופה'>): ExpenseBox =>
+  (EXPENSE_BOXES as readonly string[]).includes(e.קופה ?? '') ? (e.קופה as ExpenseBox) : BUSINESS_BOX;
+export const isBusinessExpense = (e: Pick<Expense, 'קופה'>) => expenseBox(e) === BUSINESS_BOX;
 export const isCoursesExpense = (e: Pick<Expense, 'קופה'>) => expenseBox(e) === COURSES_BOX;
+export const isHomeExpense = (e: Pick<Expense, 'קופה'>) => expenseBox(e) === HOME_BOX;
 
 export const expenseSupplierName =(e: Pick<Expense, 'שם_ספק'>) => (e.שם_ספק ?? '').trim() || 'ללא ספק';
 
@@ -437,7 +442,7 @@ export function buildPnl(orders: FinanceOrder[], expenses: Expense[], year: numb
   const months: PnlMonth[] = Array.from({ length: 12 }, (_, i) => {
     const key = monthKey(year, i);
     const s = summarize(orders.filter(o => orderBasisDate(o, basis)?.slice(0, 7) === key));
-    const inMonth = expenses.filter(e => !isCoursesExpense(e) && e.תאריך.slice(0, 7) === key);
+    const inMonth = expenses.filter(e => isBusinessExpense(e) && e.תאריך.slice(0, 7) === key);
     const ex = inMonth.filter(e => !isLongTermExpense(e));
     const lt = inMonth.filter(isLongTermExpense);
     const exp = round2(ex.reduce((t, e) => t + expenseNet(e), 0));
