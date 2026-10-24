@@ -119,9 +119,9 @@ export default function RawPricesTab({ rawMaterials, recipes, rows, vatFlagReady
       {visible.length === 0 ? (
         <EmptyNote>אין חומרי גלם שמתאימים לסינון.</EmptyNote>
       ) : (
-        <div className="rounded-xl bg-white overflow-x-auto" style={{ border: `1px solid ${C.border}` }}>
+        <div className="rounded-xl bg-white overflow-auto max-h-[calc(100vh-220px)]" style={{ border: `1px solid ${C.border}` }}>
           <table className="w-full">
-            <thead style={THEAD_STYLE}>
+            <thead className="sticky top-0 z-10" style={THEAD_STYLE}>
               <tr>
                 <Th>חומר גלם</Th>
                 <Th>מחיר ליחידה</Th>

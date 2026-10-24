@@ -152,9 +152,9 @@ export default function ProductCostsTab({ data, rawById, recipesById, reload, in
       {visible.length === 0 ? (
         <EmptyNote>{computed.length === 0 ? 'עדיין אין מוצרים בטבלת העלויות.' : 'אין מוצרים שמתאימים לסינון.'}</EmptyNote>
       ) : (
-        <div className="rounded-xl bg-white overflow-x-auto" style={{ border: `1px solid ${C.border}` }}>
+        <div className="rounded-xl bg-white overflow-auto max-h-[calc(100vh-220px)]" style={{ border: `1px solid ${C.border}` }}>
           <table className="w-full">
-            <thead style={THEAD_STYLE}>
+            <thead className="sticky top-0 z-10" style={THEAD_STYLE}>
               <tr>
                 <Th>מוצר</Th>
                 <Th>עלות חומרים</Th>
