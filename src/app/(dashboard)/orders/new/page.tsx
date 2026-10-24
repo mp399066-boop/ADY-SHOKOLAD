@@ -1196,6 +1196,10 @@ export default function NewOrderPage() {
                         // this is exactly where the user must type a manual price.
                         className={item.missingPrice ? 'border-amber-400 focus:border-amber-500 focus:ring-amber-200 bg-amber-50' : undefined}
                       />
+                      {/* Private-customer prices are final, VAT already inside. */}
+                      {!isBusiness && !customerVatExempt && (
+                        <p className="text-[11px] mt-0.5" style={{ color: '#9B7A5A' }}>(מחיר כולל מע״מ)</p>
+                      )}
                     </div>
                     <div className="col-span-3">
                       <Input label="סה״כ" value={`₪${item.סהכ.toFixed(2)}`} readOnly />

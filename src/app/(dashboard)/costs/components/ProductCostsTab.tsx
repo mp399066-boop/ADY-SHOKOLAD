@@ -5,7 +5,7 @@ import Link from 'next/link';
 import toast from 'react-hot-toast';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import {
-  computeRowCost, marginPct, formatMinutes,
+  computeRowCost, marginPct, formatMinutes, salePriceBeforeVat, salePriceWithVat,
   type CatalogItem, type CostRawMaterial, type CostRecipe, type CostRow, type CostsData, type RowCost,
 } from '@/lib/product-costs';
 import { downloadExcel, type Cell } from '@/lib/finance-export';
@@ -91,7 +91,7 @@ export default function ProductCostsTab({ data, rawById, recipesById, reload, in
   };
 
   const exportExcel = async () => {
-    const header: Cell[] = ['שם המוצר', 'גודל', 'מוצר בקטלוג', 'עלות חומרים', 'מקור עלות החומרים', 'זמן עבודה (דקות)', 'ליחידות', 'עלות עבודה', 'מקור עלות העבודה', 'עלות ליחידה', 'מחיר מכירה', 'רווח ₪', 'רווח %', 'הערות'];
+    const header: Cell[] = ['שם המוצר', 'גודל', 'מוצר בקטלוג', 'עלות חומרים', 'מקור עלות החומרים', 'זמן עבודה (דקות)', 'ליחידות', 'עלות עבודה', 'מקור עלות העבודה', 'עלות ליחידה', 'מחיר מכירה לפני מע״מ', 'רווח ₪', 'רווח %', 'הערות'];
     const rows: Cell[][] = computed.map(({ row, cost, item, salePrice, margin, profit }) => [
       row.שם, row.גודל ?? '', item?.name ?? '',
       cost.materials, materialsSourceText(cost),
@@ -161,7 +161,7 @@ export default function ProductCostsTab({ data, rawById, recipesById, reload, in
                 <Th>זמן עבודה</Th>
                 <Th>עלות עבודה</Th>
                 <Th>עלות ליחידה</Th>
-                <Th>מחיר מכירה</Th>
+                <Th>מחיר מכירה (לפני מע״מ)</Th>
                 <Th>רווח</Th>
                 <Th />
               </tr>
@@ -262,12 +262,13 @@ export default function ProductCostsTab({ data, rawById, recipesById, reload, in
 }
 
 /**
- * Sale price of a cost row: a linked catalog product's price (price list /
- * base price), otherwise the price entered on the row itself (unlinked rows
- * and petit-fours, which have no catalog price).
+ * Sale price of a cost row, BEFORE VAT: a linked catalog product's retail
+ * price (price list / base price — VAT included) less VAT, otherwise the
+ * price entered on the row itself (unlinked rows and petit-fours, which have
+ * no catalog price).
  */
 function rowSalePrice(row: CostRow, item: CatalogItem | undefined): number | null {
-  if (item?.type === 'sale_product') return item.price;
+  if (item?.type === 'sale_product') return salePriceBeforeVat(item.price);
   return row.מחיר_מכירה ?? null;
 }
 
@@ -330,12 +331,19 @@ function SalePriceCell({ row, item, onSaved }: { row: CostRow; item: CatalogItem
   }
 
   return (
-    <button
-      type="button" onClick={start} title="לחצי לעדכון מחיר המכירה"
-      className="tabular-nums rounded-md px-1.5 py-0.5 -mx-1.5 border border-dashed border-transparent hover:border-[#C9A46A]"
-      style={{ color: price ? C.text : C.amber }}>
-      {price ? money(price) : '+ מחיר'}
-    </button>
+    <div>
+      <button
+        type="button" onClick={start} title="לחצי לעדכון מחיר המכירה (לפני מע״מ)"
+        className="tabular-nums rounded-md px-1.5 py-0.5 -mx-1.5 border border-dashed border-transparent hover:border-[#C9A46A]"
+        style={{ color: price ? C.text : C.amber }}>
+        {price ? money(price) : '+ מחיר'}
+      </button>
+      {price ? (
+        <div className="text-xs tabular-nums" style={{ color: C.faint }}>
+          כולל מע״מ {money(salePriceWithVat(price))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 

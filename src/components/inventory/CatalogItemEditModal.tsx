@@ -106,11 +106,11 @@ export function CatalogItemEditModal({ target, onClose, onSaved }: {
       let savedPrice: { מחיר?: number } = {};
       if (salePriceChanged) {
         const priceRes = await fetch(`/api/costs/sale-price/${target.item.id}`, {
-          method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ מחיר: newSalePrice }),
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ מחיר: newSalePrice, מחיר_כולל_מעמ: true }),
         });
         const priceJson = await priceRes.json().catch(() => ({}));
         if (!priceRes.ok) throw new Error(priceJson.error || 'עדכון מחיר המכירה נכשל');
-        savedPrice = { מחיר: Number(priceJson.data?.price ?? newSalePrice) };
+        savedPrice = { מחיר: Number(priceJson.data?.priceWithVat ?? newSalePrice) };
         setInitialSalePrice(savedPrice.מחיר ?? null);
       }
       const url = isProduct ? `/api/products/${target.item.id}` : `/api/petit-four-types/${target.item.id}`;
@@ -140,9 +140,9 @@ export function CatalogItemEditModal({ target, onClose, onSaved }: {
                 </Select>
                 <Input label='מק"ט' value={String(form.sku || '')} onChange={e => set('sku', e.target.value)} />
                 <Input
-                  label="מחיר מכירה (₪)" type="number" min={0} step={0.01}
+                  label="מחיר מכירה כולל מע״מ (₪)" type="number" min={0} step={0.01}
                   value={salePrice} onChange={e => setSalePrice(e.target.value)}
-                  hint="מתעדכן גם במחירון (לקוח פרטי) וגם במחיר הבסיס"
+                  hint="המחיר ללקוח פרטי. מתעדכן גם במחירון וגם במחיר הבסיס"
                 />
               </div>
               <Textarea label="תיאור" rows={2} value={String(form.תיאור || '')} onChange={e => set('תיאור', e.target.value)} />

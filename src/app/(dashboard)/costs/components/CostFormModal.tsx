@@ -6,7 +6,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import {
-  computeRowCost, rowRecipeParts, costLine, compatibleUnits, marginPct, LINE_ISSUE_LABEL,
+  computeRowCost, rowRecipeParts, costLine, compatibleUnits, marginPct, salePriceBeforeVat, LINE_ISSUE_LABEL,
   type CostRawMaterial, type CostRecipe, type CostRow, type CostsData,
 } from '@/lib/product-costs';
 import { C, money } from '../../finance/components/shared';
@@ -102,8 +102,9 @@ export default function CostFormModal({ open, initial, data, rawById, recipesByI
     יחידות_בזמן_עבודה: Number(units) > 0 ? Number(units) : 1,
     עלות_עבודה_ידנית: parseNum(manualLabor),
   }, recipesById, rawById, data.hourlyRate);
-  // A linked catalog product's price, else the price saved on the row itself.
-  const salePrice = item?.type === 'sale_product' ? item.price : (initial?.מחיר_מכירה ?? null);
+  // Before VAT: a linked catalog product's retail price less VAT, else the
+  // price saved on the row itself.
+  const salePrice = item?.type === 'sale_product' ? salePriceBeforeVat(item.price) : (initial?.מחיר_מכירה ?? null);
   const margin = marginPct(salePrice, preview.total);
 
   const setPart = (i: number, patch: Partial<PartDraft>) =>
@@ -429,7 +430,7 @@ export default function CostFormModal({ open, initial, data, rawById, recipesByI
           <span style={{ color: C.sub }}>= עלות ליחידה <b className="tabular-nums text-base" style={{ color: C.brand }}>{preview.total == null ? '—' : money(preview.total)}</b></span>
           {salePrice ? (
             <span style={{ color: C.sub }}>
-              מחיר מכירה {money(salePrice)}
+              מחיר מכירה {money(salePrice)} לפני מע״מ
               {margin != null && <> · רווח <b style={{ color: margin >= 0 ? C.green : C.red }}>{margin}%</b></>}
             </span>
           ) : null}
