@@ -69,6 +69,21 @@ export function netUnitPrice(m: Pick<CostRawMaterial, 'מחיר_ליחידה' | 
   return m.מחיר_כולל_מעמ ? p / (1 + VAT_RATE) : p;
 }
 
+// Sale prices on /costs are BEFORE VAT, like the costs they're compared to.
+// A catalog product's retail price (price list / base price) is what a
+// private customer pays — VAT included — so it's converted both ways.
+
+/** Retail price incl. VAT → the sale price before VAT shown on /costs. */
+export function salePriceBeforeVat(retail: number | null | undefined): number | null {
+  if (retail == null || !Number.isFinite(Number(retail))) return null;
+  return round2(Number(retail) / (1 + VAT_RATE));
+}
+
+/** Sale price before VAT → the retail price incl. VAT a private customer pays. */
+export function salePriceWithVat(net: number): number {
+  return round2(net * (1 + VAT_RATE));
+}
+
 export interface CostRecipeIngredient {
   חומר_גלם_id: string;
   כמות_נדרשת: number;

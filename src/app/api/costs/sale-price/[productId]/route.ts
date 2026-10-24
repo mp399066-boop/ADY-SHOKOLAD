@@ -5,11 +5,15 @@ import { z } from 'zod';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireAdminUser, forbiddenResponse } from '@/lib/auth/requireAuthorizedUser';
 import { salePriceSchema } from '@/lib/product-costs-schema';
+import { salePriceWithVat } from '@/lib/product-costs';
 
 // PATCH /api/costs/sale-price/:productId { מחיר } → sets a catalog product's
-// sale price from the /costs page. Writes the product's base price AND its
-// active retail price-list rows (when it has any), so the costs page and the
-// new-order form keep showing the same price.
+// sale price. From /costs מחיר is BEFORE VAT (it's compared to the pre-VAT
+// cost); the inventory edit form sends the retail price with
+// מחיר_כולל_מעמ: true. Either way the product's base price AND its active
+// retail price-list rows (when it has any) get the price WITH VAT, since
+// that's what a private customer pays on the new-order form. Business prices
+// are separate and untouched.
 
 export async function PATCH(req: NextRequest, props: { params: Promise<{ productId: string }> }) {
   const params = await props.params;
@@ -20,7 +24,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ product
   const body = await req.json().catch(() => null);
   const parsed = salePriceSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'מחיר לא תקין' }, { status: 400 });
-  const price = parsed.data.מחיר;
+  const price = parsed.data.מחיר_כולל_מעמ ? parsed.data.מחיר : salePriceWithVat(parsed.data.מחיר);
   const now = new Date().toISOString();
 
   const supabase = createAdminClient();
@@ -47,5 +51,5 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ product
     return NextResponse.json({ error: 'מחיר הבסיס עודכן, אך עדכון המחירון נכשל' }, { status: 500 });
   }
 
-  return NextResponse.json({ data: { id: params.productId, price } });
+  return NextResponse.json({ data: { id: params.productId, priceWithVat: price } });
 }

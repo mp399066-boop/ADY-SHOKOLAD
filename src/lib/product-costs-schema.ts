@@ -66,6 +66,8 @@ export const salePriceSchema = z.object({
     z.number({ required_error: 'יש להזין מחיר', invalid_type_error: 'מחיר לא תקין' }).finite('מחיר לא תקין')
       .min(0, 'מחיר לא יכול להיות שלילי').max(1_000_000, 'מחיר לא תקין'),
   ).transform(round2),
+  /** true = מחיר already includes VAT (the inventory edit form's retail price); default = before VAT (/costs). */
+  מחיר_כולל_מעמ: z.boolean().optional(),
 });
 
 export const COSTS_MIGRATION_HINT =
