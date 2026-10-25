@@ -10,6 +10,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Modal } from '@/components/ui/Modal';
 import { Input, Select, Textarea } from '@/components/ui/Input';
 import { exportToCsv } from '@/lib/exportCsv';
+import { matchesSearch, productSearchText } from '@/lib/normalize';
 import { useOptionList } from '@/hooks/useOptionList';
 import { IconExport, IconEdit, IconTrash } from '@/components/icons';
 import { ActionBtn } from '@/components/ui/RowActions';
@@ -90,7 +91,7 @@ export default function ProductsPage() {
   const currentItems = tab === 'products' ? filteredProductsArr() : tab === 'packages' ? filteredPackagesArr() : filteredPFArr();
 
   function filteredProductsArr() {
-    return products.filter(p => p.סוג_מוצר !== 'מארז פטיפורים' && (!search || p.שם_מוצר.includes(search)));
+    return products.filter(p => p.סוג_מוצר !== 'מארז פטיפורים' && matchesSearch(productSearchText(p.שם_מוצר, p.sku), search));
   }
   function filteredPackagesArr() {
     return packages.filter(p => !search || p.שם_מארז.includes(search));
@@ -286,8 +287,8 @@ export default function ProductsPage() {
     const fpf = filteredPFArr();
     if (tab === 'products') {
       exportToCsv('מוצרים.csv',
-        ['שם מוצר', 'סוג', 'פעיל', 'אופן הזמנה', 'כמות במלאי'],
-        fp.map(p => [p.שם_מוצר, p.סוג_מוצר, p.פעיל ? 'כן' : 'לא', p.בהזמנה_מראש ? 'בהזמנה מראש' : 'ממלאי', p.כמות_במלאי]),
+        ['שם מוצר', 'קוד מוצר', 'סוג', 'פעיל', 'אופן הזמנה', 'כמות במלאי'],
+        fp.map(p => [p.שם_מוצר, p.sku ?? '', p.סוג_מוצר, p.פעיל ? 'כן' : 'לא', p.בהזמנה_מראש ? 'בהזמנה מראש' : 'ממלאי', p.כמות_במלאי]),
       );
     } else if (tab === 'packages') {
       exportToCsv('מארזים.csv',
@@ -334,7 +335,7 @@ export default function ProductsPage() {
           <div className="flex items-center gap-3 mb-5">
             <input
               type="text"
-              placeholder="חיפוש..."
+              placeholder="חיפוש לפי שם או קוד מוצר..."
               value={search}
               onChange={e => setSearch(e.target.value)}
               className="px-3 py-2 text-sm rounded-lg border bg-white focus:outline-none focus:ring-2 focus:ring-amber-100"
@@ -426,6 +427,7 @@ export default function ProductsPage() {
                             <div className="flex items-start justify-between gap-2 mb-1">
                               <h3 className="font-semibold text-sm leading-tight" style={{ color: '#2B1A10' }}>
                                 {p.שם_מוצר}
+                                {p.sku && <span className="block text-[11px] font-normal font-mono mt-0.5" style={{ color: '#9B7A5A' }}>{p.sku}</span>}
                               </h3>
                               <span
                                 className="text-xs px-1.5 py-0.5 rounded-full flex-shrink-0"
@@ -690,7 +692,7 @@ export default function ProductsPage() {
               </Select>
               <div className="grid grid-cols-2 gap-3">
                 <Input
-                  label='מק"ט'
+                  label='קוד מוצר (מק"ט)'
                   value={String(form.sku || '')}
                   onChange={e => setForm(p => ({ ...p, sku: e.target.value }))}
                 />

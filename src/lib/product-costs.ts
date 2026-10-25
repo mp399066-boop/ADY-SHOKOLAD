@@ -104,6 +104,8 @@ export interface CatalogItem {
   type: 'sale_product' | 'petit_four';
   id: string;
   name: string;
+  /** Product code (מק"ט) of a catalog product — searchable on /costs. */
+  sku?: string | null;
   price: number | null;
   active: boolean;
 }

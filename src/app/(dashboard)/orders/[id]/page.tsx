@@ -9,7 +9,7 @@ import { StatusBadge, UrgentBadge } from '@/components/ui/StatusBadge';
 import { PageLoading } from '@/components/ui/LoadingSpinner';
 import { Combobox } from '@/components/ui/Combobox';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
-import { normalizeSearchText } from '@/lib/normalize';
+import { normalizeSearchText, productSearchText } from '@/lib/normalize';
 import { getOrderItemContentKey } from '@/lib/order-items-key';
 import { sumPetitFours, getCapacityInfo } from '@/lib/packageCapacity';
 import { formatDate, formatCurrency } from '@/lib/utils';
@@ -2522,8 +2522,8 @@ export default function OrderDetailPage() {
                               return {
                                 value: p.id,
                                 label: p.שם_מוצר,
-                                searchText: normalizeSearchText(p.שם_מוצר),
-                                hint: isDup ? `₪${(p.מחיר ?? 0).toFixed(2)}` : undefined,
+                                searchText: normalizeSearchText(productSearchText(p.שם_מוצר, p.sku)),
+                                hint: [p.sku, isDup ? `₪${(p.מחיר ?? 0).toFixed(2)}` : null].filter(Boolean).join(' · ') || undefined,
                               };
                             });
                           })()}

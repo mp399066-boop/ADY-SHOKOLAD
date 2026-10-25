@@ -10,6 +10,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Modal } from '@/components/ui/Modal';
 import { Input, Select, Textarea } from '@/components/ui/Input';
 import { Combobox } from '@/components/ui/Combobox';
+import { productSearchText } from '@/lib/normalize';
 import toast from 'react-hot-toast';
 import { exportToCsv } from '@/lib/exportCsv';
 import { useOptionList } from '@/hooks/useOptionList';
@@ -768,7 +769,7 @@ export default function RecipesPage() {
             {!editingRecipeId && <div>
               <Combobox label="משויך למוצר למכירה" value={recipeForm.מוצר_id}
                 onChange={v => setRecipeForm(p => ({ ...p, מוצר_id: v }))}
-                options={products.map(p => ({ value: p.id, label: p.שם_מוצר }))}
+                options={products.map(p => ({ value: p.id, label: p.שם_מוצר, searchText: productSearchText(p.שם_מוצר, p.sku), hint: p.sku || undefined }))}
                 placeholder="ללא שיוך" searchPlaceholder="חיפוש מוצר..." emptyText="לא נמצאו מוצרים" />
               <p className="text-[11.5px] mt-1" style={{ color: '#8A7664' }}>
                 שיוך זה מאפשר לרישום ייצור להוסיף מלאי למוצר המוגמר.
@@ -1131,7 +1132,7 @@ export default function RecipesPage() {
                 label="בחרי את המוצר למכירה"
                 value={linkSelectedTargetId}
                 onChange={setLinkSelectedTargetId}
-                options={products.map(p => ({ value: p.id, label: p.שם_מוצר }))}
+                options={products.map(p => ({ value: p.id, label: p.שם_מוצר, searchText: productSearchText(p.שם_מוצר, p.sku), hint: p.sku || undefined }))}
                 placeholder="בחירת מוצר…"
                 searchPlaceholder="חיפוש מוצר..."
                 emptyText="לא נמצאו מוצרים"

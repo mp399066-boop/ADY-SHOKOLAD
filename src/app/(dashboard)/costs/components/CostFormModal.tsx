@@ -205,7 +205,7 @@ export default function CostFormModal({ open, initial, data, rawById, recipesByI
           <select className={selectCls} value={targetKey} onChange={e => onTargetChange(e.target.value)}>
             <option value="">— לא מקושר —</option>
             <optgroup label="מוצרים">
-              {products.map(p => <option key={p.id} value={`sale_product:${p.id}`}>{p.name}{p.price ? ` (${money(p.price)})` : ''}</option>)}
+              {products.map(p => <option key={p.id} value={`sale_product:${p.id}`}>{p.name}{p.sku ? ` · ${p.sku}` : ''}{p.price ? ` (${money(p.price)})` : ''}</option>)}
             </optgroup>
             <optgroup label="פטיפורים">
               {petitFours.map(p => <option key={p.id} value={`petit_four:${p.id}`}>{p.name}</option>)}

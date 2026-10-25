@@ -9,6 +9,7 @@ import {
   type CatalogItem, type CostRawMaterial, type CostRecipe, type CostRow, type CostsData, type RowCost,
 } from '@/lib/product-costs';
 import { downloadExcel, type Cell } from '@/lib/finance-export';
+import { matchesSearch, productSearchText } from '@/lib/normalize';
 import { C, money, StatCard, ExportButtons, Th, Td, EmptyNote, THEAD_STYLE, TOTAL_ROW_STYLE } from '../../finance/components/shared';
 import CostFormModal from './CostFormModal';
 
@@ -46,9 +47,9 @@ export default function ProductCostsTab({ data, rawById, recipesById, reload, in
 
   const visible = useMemo(() => {
     const q = search.trim();
-    return computed.filter(({ row, cost }) => {
+    return computed.filter(({ row, cost, item }) => {
       const recipeNames = rowRecipeIds(row).map(id => recipesById.get(id)?.שם_מתכון ?? '').join(' ');
-      if (q && !`${row.שם} ${row.גודל ?? ''} ${recipeNames}`.includes(q)) return false;
+      if (q && !matchesSearch(`${productSearchText(row.שם, item?.sku)} ${row.גודל ?? ''} ${recipeNames}`, q)) return false;
       if (filter === 'missing') return !cost.complete;
       if (filter === 'recipe') return cost.materialsSource === 'recipe';
       if (filter === 'no_time') return !(Number(row.זמן_עבודה_דקות) > 0);
@@ -129,7 +130,7 @@ export default function ProductCostsTab({ data, rawById, recipesById, reload, in
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <input
-            value={search} onChange={e => setSearch(e.target.value)} placeholder="חיפוש מוצר…"
+            value={search} onChange={e => setSearch(e.target.value)} placeholder="חיפוש לפי שם או קוד מוצר…"
             className="px-3 py-1.5 text-sm rounded-lg border border-[#E8DED2] bg-white focus:outline-none focus:border-[#C9A46A] w-44"
           />
           <select className={selectCls} value={filter} onChange={e => setFilter(e.target.value as Filter)} aria-label="סינון">
@@ -172,7 +173,7 @@ export default function ProductCostsTab({ data, rawById, recipesById, reload, in
                   <Td>
                     <div className="font-medium">{row.שם}</div>
                     <div className="text-xs" style={{ color: C.faint }}>
-                      {[row.גודל, item ? `${item.type === 'petit_four' ? 'פטיפור' : 'קטלוג'}: ${item.name}` : null].filter(Boolean).join(' · ') || ' '}
+                      {[row.גודל, item ? `${item.type === 'petit_four' ? 'פטיפור' : 'קטלוג'}: ${item.name}` : null, item?.sku].filter(Boolean).join(' · ') || ' '}
                     </div>
                     <RecipeLinks ids={rowRecipeIds(row)} recipesById={recipesById} />
                   </Td>

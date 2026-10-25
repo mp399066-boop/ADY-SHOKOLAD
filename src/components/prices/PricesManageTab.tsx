@@ -7,6 +7,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Select } from '@/components/ui/Input';
 import toast from 'react-hot-toast';
 import { PriceTypeBadge, PRICE_TYPE_LABELS } from '@/lib/priceTypeUtils';
+import { matchesSearch, productSearchText } from '@/lib/normalize';
 
 type PriceType = 'retail' | 'business_fixed' | 'business_quantity' | 'retail_quantity';
 const QUANTITY_TIERS: PriceType[] = ['retail_quantity', 'business_quantity'];
@@ -22,10 +23,14 @@ type PriceRow = {
   includes_vat: boolean | null;
   פעיל: boolean | null;
   תאריך_עדכון: string | null;
-  מוצרים_למכירה?: { שם_מוצר: string } | null;
+  מוצרים_למכירה?: { שם_מוצר: string; sku?: string | null } | null;
 };
 
-type ProductOption = { id: string; שם_מוצר: string; פעיל: boolean };
+// The product's current code wins; the row's own sku is a copy taken when the
+// price was added and goes stale once the product's code is changed.
+const rowSku = (r: PriceRow) => r.מוצרים_למכירה?.sku || r.sku;
+
+type ProductOption = { id: string; שם_מוצר: string; פעיל: boolean; sku?: string | null };
 
 const emptyAddForm = { productId: '', priceType: 'retail' as PriceType, price: '', minQuantity: '', includesVat: true };
 
@@ -58,7 +63,7 @@ export default function PricesManageTab({ onImportClick }: { onImportClick: () =
   const loadProducts = () => {
     fetch('/api/products?active=true')
       .then(r => r.json())
-      .then(({ data }) => setProducts((data || []).map((p: { id: string; שם_מוצר: string; פעיל: boolean }) => ({ id: p.id, שם_מוצר: p.שם_מוצר, פעיל: p.פעיל }))))
+      .then(({ data }) => setProducts((data || []).map((p: ProductOption) => ({ id: p.id, שם_מוצר: p.שם_מוצר, פעיל: p.פעיל, sku: p.sku ?? null }))))
       .catch(() => { /* not critical to the read-only table view */ });
   };
 
@@ -115,8 +120,8 @@ export default function PricesManageTab({ onImportClick }: { onImportClick: () =
   const filtered = rows.filter(r => {
     if (!showInactive && !r.פעיל) return false;
     if (typeFilter && r.price_type !== typeFilter) return false;
-    const name = (r.מוצרים_למכירה?.שם_מוצר || r.product_name_snapshot || '').toLowerCase();
-    if (search && !name.includes(search.toLowerCase())) return false;
+    const name = r.מוצרים_למכירה?.שם_מוצר || r.product_name_snapshot || '';
+    if (!matchesSearch(productSearchText(name, rowSku(r)), search)) return false;
     return true;
   });
 
@@ -210,7 +215,7 @@ export default function PricesManageTab({ onImportClick }: { onImportClick: () =
         <div className="flex flex-wrap gap-3 items-center">
           <input
             type="text"
-            placeholder="חיפוש לפי שם מוצר..."
+            placeholder="חיפוש לפי שם או קוד מוצר..."
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-1 w-52"
@@ -288,7 +293,7 @@ export default function PricesManageTab({ onImportClick }: { onImportClick: () =
                           </span>
                         )}
                       </td>
-                      <td className="py-2.5 px-3 font-mono text-xs" style={{ color: '#9B7A5A' }}>{row.sku || '—'}</td>
+                      <td className="py-2.5 px-3 font-mono text-xs" style={{ color: '#9B7A5A' }}>{rowSku(row) || '—'}</td>
                       <td className="py-2.5 px-3">
                         <PriceTypeBadge type={row.price_type} />
                       </td>
@@ -386,7 +391,7 @@ export default function PricesManageTab({ onImportClick }: { onImportClick: () =
             onChange={e => setAddForm(f => ({ ...f, productId: e.target.value }))}
           >
             <option value="">בחר מוצר...</option>
-            {products.map(p => <option key={p.id} value={p.id}>{p.שם_מוצר}</option>)}
+            {products.map(p => <option key={p.id} value={p.id}>{p.שם_מוצר}{p.sku ? ` · ${p.sku}` : ''}</option>)}
           </Select>
           <Select
             label="סוג מחירון"
@@ -545,7 +550,7 @@ function UnlinkedPricesPanel({ rows, products, onLinked }: {
                     style={{ borderColor: '#DDD0BC', color: '#2B1A10' }}
                   >
                     <option value="">בחרי מוצר…</option>
-                    {products.map(p => <option key={p.id} value={p.id}>{p.שם_מוצר}</option>)}
+                    {products.map(p => <option key={p.id} value={p.id}>{p.שם_מוצר}{p.sku ? ` · ${p.sku}` : ''}</option>)}
                   </select>
                   <Button size="sm" onClick={() => link(key, group)} disabled={!selected || busy !== null}>
                     {busy === key ? 'מקשר…' : 'קישור'}
