@@ -9,7 +9,7 @@ import { Input, Select, Textarea } from '@/components/ui/Input';
 import { useOptionList } from '@/hooks/useOptionList';
 import { useSystemConfig } from '@/hooks/useSystemConfig';
 import { Combobox } from '@/components/ui/Combobox';
-import { normalizeSearchText } from '@/lib/normalize';
+import { normalizeSearchText, productSearchText } from '@/lib/normalize';
 import { sumPetitFours, getCapacityInfo } from '@/lib/packageCapacity';
 import { PageLoading } from '@/components/ui/LoadingSpinner';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -1140,7 +1140,8 @@ export default function NewOrderPage() {
                           // in the create form even though they were present in edit.
                           const isBusinessCustomer = !!customerType && customerType.startsWith('עסקי');
                           // searchText holds a Hebrew-normalized version of the
-                          // product name so the Combobox matches on stable text:
+                          // product name plus its code (sku), so the Combobox
+                          // matches on stable text:
                           // strips geresh ׳/' / gershayim ״/", asterisks, hyphens,
                           // collapses whitespace, and applies NFC. Without this,
                           // a query like "מג" can fail to find "מיני מג'" and
@@ -1165,8 +1166,8 @@ export default function NewOrderPage() {
                             return {
                               value: p.id,
                               label: p.שם_מוצר,
-                              searchText: normalizeSearchText(p.שם_מוצר),
-                              hint: isDup ? `₪${(p.מחיר ?? 0).toFixed(2)}` : undefined,
+                              searchText: normalizeSearchText(productSearchText(p.שם_מוצר, p.sku)),
+                              hint: [p.sku, isDup ? `₪${(p.מחיר ?? 0).toFixed(2)}` : null].filter(Boolean).join(' · ') || undefined,
                             };
                           });
                         })()}

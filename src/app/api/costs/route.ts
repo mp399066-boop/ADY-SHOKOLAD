@@ -39,7 +39,7 @@ export async function GET() {
       .select('id, שם_מתכון, כמות_תוצר, יחידת_תפוקה, production_target_type, production_target_id, רכיבי_מתכון(חומר_גלם_id, כמות_נדרשת, יחידת_מידה)')
       .order('שם_מתכון'),
     loadCostRawMaterials(supabase),
-    supabase.from('מוצרים_למכירה').select('id, שם_מוצר, מחיר, פעיל').order('שם_מוצר'),
+    supabase.from('מוצרים_למכירה').select('id, שם_מוצר, sku, מחיר, פעיל').order('שם_מוצר'),
     supabase.from('סוגי_פטיפורים').select('id, שם_פטיפור, פעיל').order('שם_פטיפור'),
     supabase.from('system_config').select('value').eq('key', 'labor_hourly_rate').maybeSingle(),
     supabase.from('מחירון').select('מוצר_id, מחיר').eq('price_type', 'retail').eq('פעיל', true).not('מוצר_id', 'is', null),
@@ -71,7 +71,7 @@ export async function GET() {
 
   type Ing = { חומר_גלם_id: string; כמות_נדרשת: unknown; יחידת_מידה: string };
   type RecipeRow = { id: string; שם_מתכון: string; כמות_תוצר: unknown; יחידת_תפוקה: string | null; production_target_type: string | null; production_target_id: string | null; רכיבי_מתכון: Ing[] | null };
-  type ProductRow = { id: string; שם_מוצר: string; מחיר: unknown; פעיל: boolean | null };
+  type ProductRow = { id: string; שם_מוצר: string; sku: string | null; מחיר: unknown; פעיל: boolean | null };
   type PetitFourRow = { id: string; שם_פטיפור: string; פעיל: boolean | null };
 
   const recipes = ((recipesRes.data ?? []) as RecipeRow[]).map(r => ({
@@ -91,7 +91,7 @@ export async function GET() {
   }
   const catalog = [
     ...((productsRes.data ?? []) as ProductRow[]).map(p => ({
-      type: 'sale_product' as const, id: p.id, name: p.שם_מוצר,
+      type: 'sale_product' as const, id: p.id, name: p.שם_מוצר, sku: p.sku ?? null,
       price: retailByProduct.get(p.id) ?? (p.מחיר == null ? null : Number(p.מחיר)),
       active: p.פעיל !== false,
     })),

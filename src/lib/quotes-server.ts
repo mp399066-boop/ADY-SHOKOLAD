@@ -7,6 +7,8 @@ import type { QuoteLine } from '@/lib/quotes';
 export interface CatalogProduct {
   id: string;
   name: string;
+  /** Product code (מק"ט) — searchable in the quote editor. */
+  sku: string | null;
   basePrice: number;
   businessOnly: boolean;
   category: string | null;
@@ -29,7 +31,7 @@ export interface SalesCatalog {
 export async function loadSalesCatalog(supabase: SupabaseClient): Promise<{ data: SalesCatalog | null; error: { code?: string | null } | null }> {
   const [pRes, pkgRes, plRes] = await Promise.all([
     supabase.from('מוצרים_למכירה')
-      .select('id, שם_מוצר, מחיר, לקוחות_עסקיים_בלבד, קטגוריית_מוצר, בהזמנה_מראש')
+      .select('id, שם_מוצר, sku, מחיר, לקוחות_עסקיים_בלבד, קטגוריית_מוצר, בהזמנה_מראש')
       .eq('פעיל', true).order('שם_מוצר'),
     supabase.from('מארזים').select('id, שם_מארז, גודל_מארז, מחיר_מארז, כמה_סוגים_מותר_לבחור').eq('פעיל', true).order('גודל_מארז'),
     supabase.from('מחירון').select('מוצר_id, price_type, מחיר, min_quantity').eq('פעיל', true).not('מוצר_id', 'is', null),
@@ -37,14 +39,14 @@ export async function loadSalesCatalog(supabase: SupabaseClient): Promise<{ data
   const error = pRes.error || pkgRes.error || plRes.error;
   if (error) return { data: null, error };
 
-  type P = { id: string; שם_מוצר: string; מחיר: unknown; לקוחות_עסקיים_בלבד: boolean | null; קטגוריית_מוצר: string | null; בהזמנה_מראש: boolean | null };
+  type P = { id: string; שם_מוצר: string; sku: string | null; מחיר: unknown; לקוחות_עסקיים_בלבד: boolean | null; קטגוריית_מוצר: string | null; בהזמנה_מראש: boolean | null };
   type Pkg = { id: string; שם_מארז: string; גודל_מארז: unknown; מחיר_מארז: unknown; כמה_סוגים_מותר_לבחור: unknown };
   type PL = { מוצר_id: string; price_type: string | null; מחיר: unknown; min_quantity: unknown };
   return {
     error: null,
     data: {
       products: ((pRes.data ?? []) as unknown as P[]).map(p => ({
-        id: p.id, name: p.שם_מוצר, basePrice: Number(p.מחיר) || 0,
+        id: p.id, name: p.שם_מוצר, sku: p.sku ?? null, basePrice: Number(p.מחיר) || 0,
         businessOnly: p.לקוחות_עסקיים_בלבד === true, category: p.קטגוריית_מוצר, preorder: p.בהזמנה_מראש === true,
       })),
       packages: ((pkgRes.data ?? []) as unknown as Pkg[]).map(p => ({

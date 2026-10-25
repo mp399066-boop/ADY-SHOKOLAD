@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
     // Full management view — all records, all fields, with product name join
     const { data, error } = await supabase
       .from('מחירון')
-      .select('*, מוצרים_למכירה(שם_מוצר)')
+      .select('*, מוצרים_למכירה(שם_מוצר, sku)')
       .order('price_type')
       .order('product_name_snapshot');
     if (error) return dbErrorResponse(error, 'prices');
@@ -138,7 +138,7 @@ export async function POST(req: NextRequest) {
       'פעיל': true,
       'תאריך_עדכון': now,
     })
-    .select('*, מוצרים_למכירה(שם_מוצר)')
+    .select('*, מוצרים_למכירה(שם_מוצר, sku)')
     .single();
   if (error) return dbErrorResponse(error, 'prices');
   return NextResponse.json({ data });

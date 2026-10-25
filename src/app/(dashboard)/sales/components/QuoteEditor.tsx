@@ -6,6 +6,7 @@ import { Trash2, Plus } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Combobox } from '@/components/ui/Combobox';
+import { productSearchText } from '@/lib/normalize';
 import { formatCurrency } from '@/lib/utils';
 import { resolvePriceListEntry } from '@/lib/order-pricing';
 import { computeQuoteTotals, lineTotal, quoteIsPreVat, type Quote, type QuoteLine } from '@/lib/quotes';
@@ -60,7 +61,10 @@ export default function QuoteEditor({ quote, onClose, onSaved }: {
 
   const productOptions = useMemo(() => (catalog?.products ?? [])
     .filter(p => !p.businessOnly || quoteIsPreVat(customer?.סוג_לקוח, false))
-    .map(p => ({ value: p.id, label: p.name, hint: formatCurrency(defaultPrice(catalog!, p.id, customer?.סוג_לקוח, 1)) })),
+    .map(p => ({
+      value: p.id, label: p.name, searchText: productSearchText(p.name, p.sku),
+      hint: [p.sku, formatCurrency(defaultPrice(catalog!, p.id, customer?.סוג_לקוח, 1))].filter(Boolean).join(' · '),
+    })),
   [catalog, customer?.סוג_לקוח]);
 
   const update = (i: number, patch: Partial<QuoteLine>) => setLines(ls => ls.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));

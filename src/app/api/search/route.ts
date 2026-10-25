@@ -66,7 +66,7 @@ export async function GET(req: NextRequest) {
   const [
     custName, custSurname, custPhone, custEmail,
     ordersRes,
-    productsRes,
+    productsRes, productsBySkuRes,
     packagesRes,
     petitFoursRes,
     inventoryRes,
@@ -83,8 +83,13 @@ export async function GET(req: NextRequest) {
       .neq('סטטוס_הזמנה', 'בוטלה')
       .limit(5),
     supabase.from('מוצרים_למכירה')
-      .select('id, שם_מוצר, מחיר, כמות_במלאי, פעיל')
+      .select('id, שם_מוצר, מחיר, כמות_במלאי, פעיל, sku')
       .ilike('שם_מוצר', like)
+      .eq('פעיל', true)
+      .limit(5),
+    supabase.from('מוצרים_למכירה')
+      .select('id, שם_מוצר, מחיר, כמות_במלאי, פעיל, sku')
+      .ilike('sku', like)
       .eq('פעיל', true)
       .limit(5),
     supabase.from('מארזים')
@@ -189,15 +194,26 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  // Products (no /products/[id] route — link to /products)
-  for (const p of ((productsRes.data || []) as Record<string, unknown>[])) {
+  // Products (no /products/[id] route — link to /products) — by name or by
+  // product code (sku), deduped, max 5
+  const seenProd = new Set<string>();
+  const products: Record<string, unknown>[] = [];
+  for (const res of [productsRes, productsBySkuRes]) {
+    for (const p of ((res.data || []) as Record<string, unknown>[])) {
+      const id = String(p['id']);
+      if (seenProd.has(id) || products.length >= 5) continue;
+      seenProd.add(id);
+      products.push(p);
+    }
+  }
+  for (const p of products) {
     const price = Number(p['מחיר']) || 0;
     const stock = Number(p['כמות_במלאי']) || 0;
     results.push({
       type: 'product',
       id: String(p['id']),
       title: String(p['שם_מוצר']),
-      subtitle: `₪${price.toFixed(2)} · ${stock} יח׳ במלאי`,
+      subtitle: [p['sku'] as string | null, `₪${price.toFixed(2)}`, `${stock} יח׳ במלאי`].filter(Boolean).join(' · '),
       href: '/products',
       badge: 'מוצר',
       meta: { stock },

@@ -33,6 +33,14 @@ export function normalizeSearchText(input: string | null | undefined): string {
     .trim();
 }
 
+// Text to search a product by: its name and its product code (sku / מק"ט).
+// The code is added twice — as typed and with its separators dropped — so
+// "PRD-012", "prd 012" and "prd012" all find it.
+export function productSearchText(name: string | null | undefined, sku?: string | null): string {
+  const code = (sku ?? '').trim();
+  return [name ?? '', code, code.replace(/[^\p{L}\p{N}]/gu, '')].filter(Boolean).join(' ');
+}
+
 // All-tokens substring match: every whitespace-separated token in `query` must
 // appear (as a substring) in `haystack`. Both inputs are normalized first.
 // Returns true on empty query so callers don't have to special-case it.
