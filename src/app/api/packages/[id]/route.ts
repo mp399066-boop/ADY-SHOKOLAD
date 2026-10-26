@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { dbErrorResponse } from '@/lib/api-error';
+import { syncPackagePriceToPriceList } from '@/lib/package-prices';
 
 export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -18,6 +19,11 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
     .select()
     .single();
   if (error) return dbErrorResponse(error, 'packages/[id]');
+  // Package prices are read from the price list, so an edit here must land there too.
+  const price = Number(data?.מחיר_מארז);
+  if (body && 'מחיר_מארז' in body && Number(data?.גודל_מארז) > 0 && Number.isFinite(price) && price > 0) {
+    await syncPackagePriceToPriceList(supabase, Number(data.גודל_מארז), price);
+  }
   return NextResponse.json({ data });
 }
 
