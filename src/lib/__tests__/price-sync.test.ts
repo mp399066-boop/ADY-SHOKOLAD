@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { packageSizeFromPriceName } from '../package-prices';
+import { packageSizeFromPriceName } from '../price-sync';
 
 describe('packageSizeFromPriceName', () => {
   it('reads the size from package price-list names', () => {

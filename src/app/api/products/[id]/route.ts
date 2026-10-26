@@ -7,6 +7,7 @@ import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireA
 import { recordStockMovement } from '@/lib/inventory-movements';
 import { missingColumnMessage } from '@/lib/db-error';
 import { dbErrorResponse, dbErrorDetail } from '@/lib/api-error';
+import { syncPriceRowsFromProducts } from '@/lib/price-sync';
 
 // Single product — lets the shared edit window open from screens that only
 // hold an id (dashboard alerts).
@@ -63,6 +64,11 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
       notes: 'עדכון מלאי ידני',
       createdBy: auth.email,
     });
+  }
+
+  // Name/sku/price live on the price-list rows too — keep them identical.
+  if (data && ('שם_מוצר' in patch || 'sku' in patch || 'מחיר' in patch)) {
+    await syncPriceRowsFromProducts(supabase, [params.id], { withPrice: 'מחיר' in patch });
   }
 
   return NextResponse.json({ data });

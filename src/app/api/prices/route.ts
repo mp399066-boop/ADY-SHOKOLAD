@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse, forbiddenResponse } from '@/lib/auth/requireAuthorizedUser';
 import { dbErrorResponse } from '@/lib/api-error';
+import { syncCatalogFromPriceRows } from '@/lib/price-sync';
 
 const VALID_PRICE_TYPES = ['retail', 'retail_quantity', 'business_fixed', 'business_quantity'] as const;
 type PriceType = typeof VALID_PRICE_TYPES[number];
@@ -141,5 +142,6 @@ export async function POST(req: NextRequest) {
     .select('*, מוצרים_למכירה(שם_מוצר, sku)')
     .single();
   if (error) return dbErrorResponse(error, 'prices');
+  await syncCatalogFromPriceRows(supabase, [data.id]);
   return NextResponse.json({ data });
 }

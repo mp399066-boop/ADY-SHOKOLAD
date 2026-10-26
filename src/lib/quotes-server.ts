@@ -3,7 +3,6 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { BUSINESS_CUSTOMER_TYPES } from '@/lib/finance';
 import type { PriceEntry } from '@/lib/order-pricing';
 import type { QuoteLine } from '@/lib/quotes';
-import { withPriceListPackagePrices } from '@/lib/package-prices';
 
 export interface CatalogProduct {
   id: string;
@@ -39,7 +38,6 @@ export async function loadSalesCatalog(supabase: SupabaseClient): Promise<{ data
   ]);
   const error = pRes.error || pkgRes.error || plRes.error;
   if (error) return { data: null, error };
-  const pkgRows = await withPriceListPackagePrices(supabase, (pkgRes.data ?? []) as unknown as { גודל_מארז: unknown; מחיר_מארז: unknown }[]);
 
   type P = { id: string; שם_מוצר: string; sku: string | null; מחיר: unknown; לקוחות_עסקיים_בלבד: boolean | null; קטגוריית_מוצר: string | null; בהזמנה_מראש: boolean | null };
   type Pkg = { id: string; שם_מארז: string; גודל_מארז: unknown; מחיר_מארז: unknown; כמה_סוגים_מותר_לבחור: unknown };
@@ -51,7 +49,7 @@ export async function loadSalesCatalog(supabase: SupabaseClient): Promise<{ data
         id: p.id, name: p.שם_מוצר, sku: p.sku ?? null, basePrice: Number(p.מחיר) || 0,
         businessOnly: p.לקוחות_עסקיים_בלבד === true, category: p.קטגוריית_מוצר, preorder: p.בהזמנה_מראש === true,
       })),
-      packages: (pkgRows as unknown as Pkg[]).map(p => ({
+      packages: ((pkgRes.data ?? []) as unknown as Pkg[]).map(p => ({
         id: p.id, name: p.שם_מארז, size: Number(p.גודל_מארז) || 0, price: Number(p.מחיר_מארז) || 0,
         maxKinds: Number(p.כמה_סוגים_מותר_לבחור) || 0,
       })).filter(p => p.size > 0),
