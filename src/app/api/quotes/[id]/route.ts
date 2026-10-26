@@ -35,7 +35,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
   if (body && typeof body.action === 'string') {
     let patch: Record<string, unknown>;
     if (body.action === 'mark_sent') {
-      if (status !== 'טיוטה' && status !== 'נשלחה') return NextResponse.json({ error: 'אי אפשר לסמן את ההצעה כנשלחה במצב הנוכחי' }, { status: 400 });
+      if (status !== 'טיוטה' && status !== 'נשלחה' && status !== 'בקשת שינוי') return NextResponse.json({ error: 'אי אפשר לסמן את ההצעה כנשלחה במצב הנוכחי' }, { status: 400 });
       patch = { סטטוס: 'נשלחה', תאריך_שליחה: current.תאריך_שליחה ?? new Date().toISOString() };
     } else if (body.action === 'reject') {
       if (status === 'הומרה להזמנה') return NextResponse.json({ error: 'ההצעה כבר הפכה להזמנה' }, { status: 400 });
@@ -85,10 +85,13 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
       תאריך_אספקה_מבוקש: input.תאריך_אספקה_מבוקש,
       הערות_ללקוח: input.הערות_ללקוח,
       הערות_פנימיות: input.הערות_פנימיות,
+      // The owner answered the customer's change request: the updated quote is
+      // back on the same link, ready to approve.
+      ...(status === 'בקשת שינוי' ? { סטטוס: 'נשלחה' } : {}),
       תאריך_עדכון: new Date().toISOString(),
     })
     .eq('id', id)
-    .in('סטטוס', ['טיוטה', 'נשלחה', 'נדחתה']) // guards a race with an approval
+    .eq('סטטוס', status) // guards a race with an approval or a new change request
     .select(QUOTE_SELECT)
     .maybeSingle();
   if (error) return dbErrorResponse(error, 'quotes PATCH');

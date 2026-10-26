@@ -98,11 +98,10 @@ export async function resolveQuoteLines(
 export const SALES_MIGRATION_HINT =
   'הטבלאות של הצעות המחיר ובקשות ההזמנה עדיין לא קיימות. יש להריץ את מיגרציה 066 (supabase/migrations/066_quotes_and_order_requests.sql) ב-Supabase SQL Editor.';
 
+// `*` rather than a column list: the change-request columns (migration 074)
+// show up once the migration ran, and the list keeps working before that.
 export const QUOTE_SELECT = `
-  id, מספר_הצעה, לקוח_id, סטטוס, פריטים, סוג_הנחה, ערך_הנחה, דמי_משלוח,
-  סכום_לפני_הנחה, סכום_הנחה, סך_הכל, תוקף_עד, תאריך_אספקה_מבוקש,
-  הערות_ללקוח, הערות_פנימיות, טוקן, תאריך_שליחה, תאריך_אישור, שם_המאשר,
-  הזמנה_id, תאריך_יצירה, תאריך_עדכון,
+  *,
   לקוחות(id, שם_פרטי, שם_משפחה, טלפון, אימייל, סוג_לקוח, פטור_ממעמ)
 `;
 

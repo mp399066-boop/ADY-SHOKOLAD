@@ -44,7 +44,7 @@ export default function QuotesTab() {
   useEffect(() => { load(); }, [load]);
 
   const shown = useMemo(() => quotes.filter(q =>
-    filter === 'all' ? true : filter === 'open' ? ['טיוטה', 'נשלחה', 'אושרה'].includes(q.סטטוס) : q.סטטוס === filter,
+    filter === 'all' ? true : filter === 'open' ? ['טיוטה', 'נשלחה', 'בקשת שינוי', 'אושרה'].includes(q.סטטוס) : q.סטטוס === filter,
   ), [quotes, filter]);
 
   const replace = (q: Quote) => setQuotes(list => list.map(x => (x.id === q.id ? q : x)));
@@ -138,7 +138,7 @@ export default function QuotesTab() {
 
       {shown.length === 0 ? (
         <div className="rounded-2xl bg-white" style={{ border: `1px solid ${C.border}` }}>
-          <EmptyState title="אין הצעות מחיר כאן" description="הצעה נשלחת ללקוח כקישור. הלקוח מאשר בלחיצה, ואז היא הופכת להזמנה בלחיצה אחת." />
+          <EmptyState title="אין הצעות מחיר כאן" description="הצעה נשלחת ללקוח כקישור. הלקוח מאשר בלחיצה או מבקש שינוי, ואחרי אישור היא הופכת להזמנה בלחיצה אחת." />
         </div>
       ) : (
         <ul className="space-y-2.5">
@@ -148,7 +148,7 @@ export default function QuotesTab() {
             const preVat = quoteIsPreVat(c?.סוג_לקוח, c?.פטור_ממעמ);
             const disabled = busy === q.id;
             return (
-              <li key={q.id} className="rounded-2xl bg-white p-4" style={{ border: `1px solid ${q.סטטוס === 'אושרה' ? '#BFD6B8' : C.border}` }}>
+              <li key={q.id} className="rounded-2xl bg-white p-4" style={{ border: `1px solid ${q.סטטוס === 'אושרה' ? '#BFD6B8' : q.סטטוס === 'בקשת שינוי' ? '#E5C68F' : C.border}` }}>
                 <div className="flex flex-wrap items-start gap-x-3 gap-y-1">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
@@ -164,6 +164,13 @@ export default function QuotesTab() {
                       {q.תוקף_עד ? ` · בתוקף עד ${fmt(q.תוקף_עד)}` : ''}
                       {q.תאריך_אישור ? ` · אושרה ${fmt(q.תאריך_אישור)}${q.שם_המאשר ? ` ע״י ${q.שם_המאשר}` : ''}` : ''}
                     </p>
+                    {q.סטטוס === 'בקשת שינוי' && q.בקשת_שינוי && (
+                      <div className="mt-2 rounded-lg px-3 py-2 text-xs whitespace-pre-line" style={{ backgroundColor: st.bg, color: st.fg }}>
+                        <span className="font-semibold">הלקוח ביקש שינוי{q.תאריך_בקשת_שינוי ? ` (${fmt(q.תאריך_בקשת_שינוי)})` : ''}: </span>
+                        {q.בקשת_שינוי}
+                        <div className="mt-1 opacity-80">לעדכון: ״עריכה״ ושמירה. ההצעה חוזרת ל״נשלחה״ באותו קישור, ואפשר לשלוח ללקוח שוב.</div>
+                      </div>
+                    )}
                   </div>
                   <div className="text-left">
                     <div className="text-lg font-bold tabular-nums" style={{ color: C.brand }}>{formatCurrency(q.סך_הכל)}</div>
@@ -182,7 +189,7 @@ export default function QuotesTab() {
                       <Button size="sm" variant="outline" onClick={() => sendWhatsApp(q)} disabled={disabled}><MessageCircle size={14} />שליחה בוואטסאפ</Button>
                       <Button size="sm" variant="outline" onClick={() => copyLink(q)} disabled={disabled}><Link2 size={14} />העתקת קישור</Button>
                       {quoteEditable(q.סטטוס) && <Button size="sm" variant="ghost" onClick={() => setEditing(q)} disabled={disabled}><Pencil size={14} />עריכה</Button>}
-                      {(q.סטטוס === 'נשלחה' || q.סטטוס === 'טיוטה' || q.סטטוס === 'אושרה') && (
+                      {(q.סטטוס === 'נשלחה' || q.סטטוס === 'טיוטה' || q.סטטוס === 'בקשת שינוי' || q.סטטוס === 'אושרה') && (
                         <Button size="sm" variant="ghost" onClick={() => act(q, 'reject')} disabled={disabled}><XCircle size={14} />נדחתה</Button>
                       )}
                       {(q.סטטוס === 'נדחתה' || q.סטטוס === 'אושרה') && (

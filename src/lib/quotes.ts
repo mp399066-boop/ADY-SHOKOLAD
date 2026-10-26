@@ -9,7 +9,7 @@
 import { z } from 'zod';
 import { round2, BUSINESS_CUSTOMER_TYPES } from '@/lib/finance';
 
-export const QUOTE_STATUSES = ['טיוטה', 'נשלחה', 'אושרה', 'נדחתה', 'הומרה להזמנה'] as const;
+export const QUOTE_STATUSES = ['טיוטה', 'נשלחה', 'בקשת שינוי', 'אושרה', 'נדחתה', 'הומרה להזמנה'] as const;
 export type QuoteStatus = typeof QUOTE_STATUSES[number];
 
 export type QuoteLineKind = 'מוצר' | 'מארז' | 'ידני';
@@ -44,6 +44,9 @@ export interface Quote {
   תאריך_שליחה: string | null;
   תאריך_אישור: string | null;
   שם_המאשר: string | null;
+  /** What the customer asked to change, from the quote link (migration 074). */
+  בקשת_שינוי?: string | null;
+  תאריך_בקשת_שינוי?: string | null;
   הזמנה_id: string | null;
   תאריך_יצירה: string;
   תאריך_עדכון: string;
@@ -109,7 +112,7 @@ export function quoteIsPreVat(customerType: string | null | undefined, vatExempt
 
 /** Can the owner still edit the quote's content? */
 export function quoteEditable(status: QuoteStatus): boolean {
-  return status === 'טיוטה' || status === 'נשלחה' || status === 'נדחתה';
+  return status === 'טיוטה' || status === 'נשלחה' || status === 'בקשת שינוי' || status === 'נדחתה';
 }
 
 /** Can the customer approve it from the link? */
@@ -117,6 +120,18 @@ export function quoteApprovable(q: Pick<Quote, 'סטטוס' | 'תוקף_עד'>, 
   if (q.סטטוס !== 'נשלחה' && q.סטטוס !== 'טיוטה') return false;
   return !q.תוקף_עד || q.תוקף_עד >= today;
 }
+
+/** Can the customer ask for changes from the link? Also after the quote expired —
+ *  that is exactly when they need an updated one. */
+export function quoteChangeRequestable(status: QuoteStatus): boolean {
+  return status === 'טיוטה' || status === 'נשלחה' || status === 'בקשת שינוי';
+}
+
+export const changeRequestSchema = z.object({
+  action: z.literal('request_change'),
+  message: z.string().trim().min(2, 'נא לכתוב מה לשנות').max(2000, 'הבקשה ארוכה מדי'),
+  name: z.string().trim().max(120).optional(),
+});
 
 export function generateQuoteNumber(now = new Date()): string {
   const y = String(now.getFullYear()).slice(-2);
@@ -131,6 +146,7 @@ export const PUBLIC_TOKEN_RE = /^[A-Za-z0-9_-]{24,64}$/;
 export const QUOTE_STATUS_STYLE: Record<QuoteStatus, { bg: string; fg: string }> = {
   'טיוטה': { bg: '#F0EAE0', fg: '#7B604D' },
   'נשלחה': { bg: '#E8EEF5', fg: '#2A4E6B' },
+  'בקשת שינוי': { bg: '#FBEFD9', fg: '#8A5A12' },
   'אושרה': { bg: '#EAF0E7', fg: '#2D6648' },
   'נדחתה': { bg: '#F0EAE8', fg: '#8A3228' },
   'הומרה להזמנה': { bg: '#FBF0E4', fg: '#7A4820' },
