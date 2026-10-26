@@ -1,15 +1,17 @@
 // PUBLIC page — a price quote as the customer sees it, opened from the link
 // the owner sent (/q/<random token>). No login; the token is the only key.
-// Shows this one quote and an "approve" button — nothing else from the CRM.
+// Shows this one quote, an "approve" button and a "request a change" form —
+// nothing else from the CRM.
 export const dynamic = 'force-dynamic';
 
 import type { Metadata } from 'next';
 import { createAdminClient } from '@/lib/supabase/server';
 import { formatCurrency } from '@/lib/utils';
 import { todayJerusalem, VAT_RATE, round2 } from '@/lib/finance';
-import { PUBLIC_TOKEN_RE, quoteApprovable, quoteIsPreVat, lineTotal, type QuoteLine, type QuoteStatus } from '@/lib/quotes';
+import { PUBLIC_TOKEN_RE, quoteApprovable, quoteChangeRequestable, quoteIsPreVat, lineTotal, type QuoteLine, type QuoteStatus } from '@/lib/quotes';
 import { PublicShell, PublicMessage, loadPublicBusiness, PUBLIC_C as C } from '@/components/public/PublicShell';
 import ApproveQuote from './ApproveQuote';
+import RequestChange from './RequestChange';
 
 export const metadata: Metadata = { title: 'הצעת מחיר', robots: { index: false, follow: false } };
 
@@ -110,8 +112,24 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
           <p className="font-semibold">ההצעה אושרה. תודה!</p>
           <p className="text-sm mt-1">ניצור קשר להשלמת פרטי ההזמנה.</p>
         </div>
+      ) : status === 'בקשת שינוי' ? (
+        <>
+          <div className="rounded-2xl p-5 text-center" style={{ backgroundColor: '#FBEFD9', color: '#8A5A12' }}>
+            <p className="font-semibold">קיבלנו את בקשת השינוי. תודה!</p>
+            <p className="text-sm mt-1">נעדכן את ההצעה ונשלח אותה שוב לאישור, באותו קישור.</p>
+          </div>
+          <RequestChange token={token} />
+        </>
       ) : canApprove ? (
-        <ApproveQuote token={token} />
+        <>
+          <ApproveQuote token={token} />
+          <RequestChange token={token} />
+        </>
+      ) : quoteChangeRequestable(status) ? (
+        <>
+          <PublicMessage title="תוקף ההצעה פג" text="אפשר לבקש כאן הצעה מעודכנת, או לפנות אלינו ישירות." />
+          <RequestChange token={token} startOpen />
+        </>
       ) : (
         <PublicMessage
           title={status === 'נדחתה' ? 'ההצעה אינה בתוקף' : 'תוקף ההצעה פג'}
