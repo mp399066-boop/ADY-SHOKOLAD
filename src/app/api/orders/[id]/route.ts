@@ -252,6 +252,45 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
     }
   }
 
+  // ── Create the delivery row when an order is switched to משלוח ───────
+  // Orders that started as איסוף עצמי (e.g. a draft converted from a price
+  // quote) have no משלוחים row, so the courier picker never appeared after
+  // the owner changed them to משלוח in the edit dialog. Single-recipient
+  // only — multi-recipient stops are managed by syncRecipientDeliveries.
+  const saved = data as Record<string, unknown> | null;
+  if (
+    body.סוג_אספקה === 'משלוח'
+    && !isMultiRecipient
+    && saved?.['סטטוס_הזמנה'] !== 'טיוטה'
+    && saved?.['סטטוס_הזמנה'] !== 'בוטלה'
+  ) {
+    const { data: existingDelivery, error: existingErr } = await supabase
+      .from('משלוחים').select('id').eq('הזמנה_id', params.id).limit(1).maybeSingle();
+    if (existingErr) {
+      console.error('[order PATCH] delivery lookup failed (not creating):', existingErr.code, '| order:', params.id);
+    } else if (!existingDelivery) {
+      const { data: created, error: insErr } = await supabase
+        .from('משלוחים')
+        .insert({
+          הזמנה_id: params.id,
+          סטטוס_משלוח: 'ממתין',
+          תאריך_משלוח: saved?.['תאריך_אספקה'] || null,
+          שעת_משלוח: saved?.['שעת_אספקה'] || null,
+          כתובת: saved?.['כתובת_מקבל_ההזמנה'] || null,
+          עיר: saved?.['עיר'] || null,
+          הוראות_משלוח: saved?.['הוראות_משלוח'] || null,
+        })
+        .select('id')
+        .single();
+      if (insErr && insErr.code !== '23505') {
+        // 23505 = UNIQUE(הזמנה_id) — a parallel request already created it.
+        console.error('[order PATCH] delivery insert failed:', insErr.code, '| order:', params.id);
+      } else if (created) {
+        console.log('[order PATCH] delivery created — order:', params.id, '| delivery:', created.id, '| status: ממתין');
+      }
+    }
+  }
+
   // ── Activity log: status transitions ─────────────────────────────────
   // Two separate rows when both fields move in one PATCH (each is a
   // distinct operator decision). Skipped silently when nothing changed.
