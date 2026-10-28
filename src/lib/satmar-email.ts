@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/server';
+import { packageLabel } from '@/lib/packageCapacity';
 
 function buildHtml(order: Record<string, unknown>, customer: Record<string, string> | null, items: Record<string, unknown>[]): string {
   const deliveryRow = order['סוג_אספקה'] === 'משלוח' && order['כתובת_מקבל_ההזמנה']
@@ -14,7 +15,7 @@ function buildHtml(order: Record<string, unknown>, customer: Record<string, stri
     }).filter(Boolean).join(', ');
 
     const name = item['סוג_שורה'] === 'מארז'
-      ? `מארז פטיפורים ${item['גודל_מארז'] || ''}${pfNames ? ` (${pfNames})` : ''}`
+      ? `${packageLabel(item['גודל_מארז'])}${pfNames ? ` (${pfNames})` : ''}`
       : (prod?.['שם_מוצר'] as string || 'פריט');
 
     return `<tr>

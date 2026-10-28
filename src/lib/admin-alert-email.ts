@@ -2,6 +2,7 @@ import { sendEmail } from '@/lib/email-transport';
 import { createAdminClient } from '@/lib/supabase/server';
 import { logActivity, SYSTEM_ACTOR } from '@/lib/activity-log';
 import { appBaseUrl } from '@/lib/app-url';
+import { packageLabel } from '@/lib/packageCapacity';
 
 // Internal "new order received" notification to the business owner.
 // Visual language mirrors the customer-facing email (src/lib/email.ts) —
@@ -412,7 +413,7 @@ export async function sendAdminNewOrderAlert(orderId: string, options: AdminAler
   const alertItems: AlertItem[] = (items as RawItem[] | null ?? []).map(it => {
     const isPackage = it.סוג_שורה === 'מארז';
     const name = isPackage
-      ? `מארז פטיפורים${it.גודל_מארז ? ` · ${it.גודל_מארז} יח׳` : ''}`
+      ? packageLabel(it.גודל_מארז)
       : (it.מוצרים_למכירה?.שם_מוצר ?? 'פריט');
     const petitFours = isPackage
       ? (it.בחירת_פטיפורים_בהזמנה ?? [])

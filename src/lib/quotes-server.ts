@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { BUSINESS_CUSTOMER_TYPES } from '@/lib/finance';
 import type { PriceEntry } from '@/lib/order-pricing';
 import type { QuoteLine } from '@/lib/quotes';
+import { packageLabel } from '@/lib/packageCapacity';
 
 export interface CatalogProduct {
   id: string;
@@ -50,7 +51,7 @@ export async function loadSalesCatalog(supabase: SupabaseClient): Promise<{ data
         businessOnly: p.לקוחות_עסקיים_בלבד === true, category: p.קטגוריית_מוצר, preorder: p.בהזמנה_מראש === true,
       })),
       packages: ((pkgRes.data ?? []) as unknown as Pkg[]).map(p => ({
-        id: p.id, name: p.שם_מארז, size: Number(p.גודל_מארז) || 0, price: Number(p.מחיר_מארז) || 0,
+        id: p.id, name: packageLabel(p.גודל_מארז, p.שם_מארז), size: Number(p.גודל_מארז) || 0, price: Number(p.מחיר_מארז) || 0,
         maxKinds: Number(p.כמה_סוגים_מותר_לבחור) || 0,
       })).filter(p => p.size > 0),
       priceList: ((plRes.data ?? []) as unknown as PL[]).map(r => ({

@@ -5,6 +5,7 @@
 import { sendEmail } from '@/lib/email-transport';
 import { createAdminClient } from '@/lib/supabase/server';
 import { createEmployeeReportActionLinks, type EmployeeReportActionLinks } from '@/lib/employee-report-actions';
+import { packageLabel } from '@/lib/packageCapacity';
 
 export type ReportRange = 'today' | 'tomorrow' | 'week' | 'custom';
 
@@ -206,7 +207,7 @@ function itemLine(item: Record<string, unknown>): string {
   }).filter(Boolean).join(', ');
 
   const name = item['סוג_שורה'] === 'מארז'
-    ? `מארז ${item['גודל_מארז'] || ''} יח׳${pfNames ? ` (${pfNames})` : ''}`
+    ? `${packageLabel(item['גודל_מארז'])}${pfNames ? ` (${pfNames})` : ''}`
     : deriveItemName(item);
 
   // הערות_לשורה for non-WC lines is a real per-line note (the WC fallback
