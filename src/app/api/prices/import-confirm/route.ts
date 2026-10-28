@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse, forbiddenResponse } from '@/lib/auth/requireAuthorizedUser';
 import type { PreviewRow } from '../import-preview/route';
+import { syncCatalogFromPriceRows, syncPriceRowsFromProducts } from '@/lib/price-sync';
 
 function inferProductFields(name: string): {
   סוג_מוצר: 'מוצר רגיל' | 'מארז פטיפורים';
@@ -32,6 +33,8 @@ export async function POST(req: NextRequest) {
   let updated = 0;
   let newProductsCreated = 0;
   const createdProducts = new Map<string, string>(); // name.toLowerCase() → new product id
+  const touchedRows: string[] = [];
+  const touchedProducts = new Set<string>();
 
   for (const row of rows) {
     // Resolve product ID — create product if it doesn't exist yet
@@ -98,12 +101,18 @@ export async function POST(req: NextRequest) {
 
     if (existing?.id) {
       const { error } = await supabase.from('מחירון').update(payload).eq('id', existing.id);
-      if (!error) updated++;
+      if (!error) { updated++; touchedRows.push(existing.id as string); }
     } else {
-      const { error } = await supabase.from('מחירון').insert(payload);
-      if (!error) inserted++;
+      const { data: ins, error } = await supabase.from('מחירון').insert(payload).select('id').single();
+      if (!error) { inserted++; if (ins?.id) touchedRows.push(ins.id as string); }
     }
+    if (resolvedProductId) touchedProducts.add(resolvedProductId);
   }
+
+  // Imported prices flow to the products/packages; product names (not the
+  // spreadsheet's spelling) flow back onto the rows.
+  await syncCatalogFromPriceRows(supabase, touchedRows);
+  await syncPriceRowsFromProducts(supabase, Array.from(touchedProducts), { withPrice: false });
 
   return NextResponse.json({ inserted, updated, total: inserted + updated, newProductsCreated });
 }

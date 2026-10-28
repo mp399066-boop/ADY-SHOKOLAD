@@ -1,6 +1,7 @@
 import { sendEmail } from '@/lib/email-transport';
 import { createAdminClient } from '@/lib/supabase/server';
 import { getOrderItemContentKey } from '@/lib/order-items-key';
+import { packageLabel } from '@/lib/packageCapacity';
 
 // Re-exported so callers that already import from @/lib/email continue to
 // resolve the helper without changing their import path. Canonical definition
@@ -80,7 +81,7 @@ export function buildItemName(
   prod: Record<string, unknown> | null | undefined,
 ): string {
   const rowType = item['סוג_שורה'] as string | undefined;
-  if (rowType === 'מארז') return `מארז ${item['גודל_מארז'] || ''} פטיפורים`.trim();
+  if (rowType === 'מארז') return packageLabel(item['גודל_מארז']);
   if (rowType === 'מוצר_ידני' || rowType === 'תוספת_תשלום') {
     return (item['שם_פריט_מותאם'] as string) || 'פריט';
   }

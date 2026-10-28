@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse, forbiddenResponse } from '@/lib/auth/requireAuthorizedUser';
+import { syncCatalogFromPriceRows, syncPriceRowsFromProducts } from '@/lib/price-sync';
 
 // POST /api/prices/link { rowIds, productId } → re-attaches price-list rows
 // that lost their product (מוצר_id is NULL after the product was deleted —
@@ -66,6 +67,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'קישור המחירים נכשל' }, { status: 500 });
     }
   }
+
+  // A linked row now belongs to the product: take its name/sku, and give it
+  // the row's price if that row is its base price.
+  await syncPriceRowsFromProducts(supabase, [productId], { withPrice: false });
+  await syncCatalogFromPriceRows(supabase, toLink);
 
   return NextResponse.json({ linked: toLink.length, skipped, alreadyLinked: rowIds.length - candidates.length });
 }

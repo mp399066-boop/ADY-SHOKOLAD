@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse, forbiddenResponse } from '@/lib/auth/requireAuthorizedUser';
 import { dbErrorResponse } from '@/lib/api-error';
+import { syncCatalogFromPriceRows } from '@/lib/price-sync';
 
 // Only the price and the active flag are editable here; anything else in the
 // body (product link, tier, ids) is rejected rather than written through.
@@ -33,5 +34,6 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
     .select()
     .single();
   if (error) return dbErrorResponse(error, 'prices/[id]');
+  await syncCatalogFromPriceRows(supabase, [params.id]);
   return NextResponse.json({ data });
 }

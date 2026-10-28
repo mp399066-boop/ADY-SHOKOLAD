@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { missingColumnMessage } from '@/lib/db-error';
 import { serverErrorResponse } from '@/lib/api-error';
+import { syncPriceRowsFromProducts } from '@/lib/price-sync';
 
 export async function POST(req: NextRequest) {
   const auth = await requireManagementUser();
@@ -75,6 +76,7 @@ export async function POST(req: NextRequest) {
           console.warn('[bulk-products] update_price set failed:', error.message);
           return NextResponse.json({ succeeded: 0, failed: ids.length });
         }
+        await syncPriceRowsFromProducts(supabase, ids, { withPrice: true });
         return NextResponse.json({ succeeded: ids.length, failed: 0 });
       }
 
@@ -104,6 +106,7 @@ export async function POST(req: NextRequest) {
         if (error) { console.warn('[bulk-products] update_price row failed:', row.id, error.message); failed++; }
         else succeeded++;
       }
+      await syncPriceRowsFromProducts(supabase, ids, { withPrice: true });
       console.log(`[bulk-products] update_price (${mode}) — succeeded: ${succeeded}, failed: ${failed}`);
       return NextResponse.json({ succeeded, failed });
     }

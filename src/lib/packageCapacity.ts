@@ -72,3 +72,17 @@ export function getCapacityInfo(selected: number, capacity: number): CapacityInf
     blocking: false,
   };
 }
+
+/**
+ * How a package is named to customers and in emails/reports: "מארז 9 פטיפורים".
+ * A package's own name is kept only when it is not the generic one; the size
+ * is then added so the customer always sees how many pieces are inside.
+ */
+export function packageLabel(size: unknown, name?: string | null): string {
+  const n = Number(size) || 0;
+  const own = (name ?? '').trim().replace(/\s+/g, ' ');
+  const generic = !own || own === 'מארז' || own === 'מארז פטיפורים';
+  if (!n) return generic ? 'מארז פטיפורים' : own;
+  if (generic) return `מארז ${n} פטיפורים`;
+  return new RegExp(`(^|\\D)${n}(\\D|$)`).test(own) ? own : `${own} (${n} פטיפורים)`;
+}
