@@ -1402,12 +1402,16 @@ export default function OrderDetailPage() {
                       </InfoField>
                     )}
 
-                    {/* Courier assignment + WhatsApp action — visible only
-                        when a משלוחים row exists (the GET route returns
-                        order.משלוח=null for איסוף עצמי / pre-delivery orders).
-                        Picker writes to משלוחים.courier_id via the dedicated
-                        tiny PATCH /api/orders/[id]/courier endpoint. */}
-                    {order.משלוח && (
+                    {/* Courier assignment + WhatsApp action. Shown on every
+                        approved delivery order — when no משלוחים row exists
+                        yet (e.g. a quote-converted order switched to משלוח),
+                        PATCH /api/orders/[id]/courier creates it on the first
+                        assignment. A draft gets its row only on finalize. */}
+                    {!order.משלוח && order.סטטוס_הזמנה === 'טיוטה' ? (
+                      <InfoField icon="truck" label="שליח">
+                        <span className="text-xs" style={{ color: '#6B4A2D' }}>אפשר לשבץ שליח אחרי אישור הטיוטה</span>
+                      </InfoField>
+                    ) : (
                       <InfoField icon="truck" label="שליח">
                         <div className="flex flex-col gap-2 w-full">
                           <select
