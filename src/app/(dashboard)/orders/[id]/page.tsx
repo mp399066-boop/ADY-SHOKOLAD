@@ -14,6 +14,7 @@ import { getOrderItemContentKey } from '@/lib/order-items-key';
 import { sumPetitFours, getCapacityInfo } from '@/lib/packageCapacity';
 import { formatDate, formatCurrency } from '@/lib/utils';
 import { downloadOrderSummaryPng } from '@/lib/order-summary-png';
+import { invoiceWhatsappLink } from '@/lib/whatsapp';
 import toast from 'react-hot-toast';
 import type { Order, OrderItem, Customer, Product, Package, PetitFourType, Employee, WorkTask } from '@/types/database';
 import { DeliveryTypeCards } from '@/components/orders/DeliveryTypeCards';
@@ -497,6 +498,20 @@ export default function OrderDetailPage() {
     } finally {
       setSendingInvoiceEmail(false);
     }
+  };
+
+  // Send the issued Morning (חשבונית ירוקה) document link to the customer on
+  // WhatsApp — opens wa.me with a ready message; nothing is sent server-side.
+  const sendInvoiceWhatsapp = () => {
+    if (!order) return;
+    const res = invoiceWhatsappLink(
+      (order.חשבוניות ?? []) as InvRow[],
+      order.לקוחות?.טלפון,
+      order.לקוחות?.שם_פרטי ?? '',
+      order.מספר_הזמנה,
+    );
+    if ('error' in res) { toast.error(res.error); return; }
+    window.open(res.url, '_blank', 'noopener');
   };
 
   // Download the issued invoice PDF (the same document the "send" action uses).
@@ -1274,6 +1289,7 @@ export default function OrderDetailPage() {
               canSendInvoice={hasSendableInvoice}
               sendingInvoice={sendingInvoiceEmail}
               onSendInvoice={sendInvoiceToCustomer}
+              onSendInvoiceWhatsapp={sendInvoiceWhatsapp}
               downloadingInvoice={downloadingInvoice}
               onDownloadInvoice={downloadInvoice}
             />

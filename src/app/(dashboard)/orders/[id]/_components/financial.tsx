@@ -8,6 +8,7 @@ import { useConfirm } from '@/components/ui/ConfirmProvider';
 import type { FullOrder } from './types';
 import { PAYMENT_PILL } from './constants';
 import { Icon } from './fields';
+import { IconWhatsApp } from '@/components/icons';
 // ─── FinancialActionsBar ─────────────────────────────────────────────────
 // Horizontal full-width action bar (~110px tall on desktop) — replaces the
 // previous tall card that was tucked into the order-detail aside. Title
@@ -28,6 +29,7 @@ export function FinancialActionsBar({
   canSendInvoice,
   sendingInvoice,
   onSendInvoice,
+  onSendInvoiceWhatsapp,
   downloadingInvoice,
   onDownloadInvoice,
 }: {
@@ -46,6 +48,7 @@ export function FinancialActionsBar({
   canSendInvoice: boolean;
   sendingInvoice: boolean;
   onSendInvoice: () => void;
+  onSendInvoiceWhatsapp: () => void;
   downloadingInvoice: boolean;
   onDownloadInvoice: () => void;
 }) {
@@ -149,7 +152,7 @@ export function FinancialActionsBar({
           Always rendered; active only when a sendable document exists,
           otherwise disabled with an explanatory label (no error-prone click). */}
       <div className="mt-4 pt-4" style={{ borderTop: '1px solid #E8DED2' }}>
-        <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2.5">
+        <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-2.5">
           <button
             onClick={onSendInvoice}
             disabled={!canSendInvoice || busy || sendingInvoice}
@@ -171,6 +174,22 @@ export function FinancialActionsBar({
                   ? 'שולח חשבונית...'
                   : 'שלח חשבונית ללקוח'}
             </span>
+          </button>
+          <button
+            onClick={onSendInvoiceWhatsapp}
+            disabled={!canSendInvoice}
+            title={canSendInvoice ? 'שלח ללקוחה בוואטסאפ את הקישור לחשבונית במורנינג (חשבונית ירוקה)' : 'יש להפיק חשבונית עם קישור לפני שליחה'}
+            className="rounded-xl px-4 py-3 text-[13.5px] font-bold flex items-center justify-center gap-2 transition-colors whitespace-nowrap"
+            style={{
+              backgroundColor: canSendInvoice ? '#25D366' : '#F8F6F2',
+              color:           canSendInvoice ? '#fff' : '#C5A882',
+              border:          canSendInvoice ? undefined : '1px solid #E0D4C2',
+              cursor:          canSendInvoice ? 'pointer' : 'not-allowed',
+              opacity:         canSendInvoice ? 1 : 0.6,
+            }}
+          >
+            <IconWhatsApp className="w-4 h-4" />
+            <span>שלח בוואטסאפ</span>
           </button>
           <button
             onClick={onDownloadInvoice}
