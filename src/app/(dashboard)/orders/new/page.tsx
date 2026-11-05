@@ -17,6 +17,8 @@ import toast from 'react-hot-toast';
 import type { Customer, Product, PetitFourType, Package } from '@/types/database';
 import { DeliveryTypeCards } from '@/components/orders/DeliveryTypeCards';
 import { PayPlusModal } from '@/components/orders/PayPlusModal';
+import { VatPriceInput } from '@/components/orders/VatPriceInput';
+import { vatEntryFactor } from '@/lib/vat-entry';
 import { resolvePriceListEntry, totalQtyForProduct, computeEffectivePriceType, type PriceEntry, type EffectivePriceType } from '@/lib/order-pricing';
 import { useConfirm } from '@/components/ui/ConfirmProvider';
 
@@ -176,6 +178,8 @@ export default function NewOrderPage() {
   const { values: orderSources } = useOptionList('order_sources', orderSource);
   const { config: systemConfig, loading: systemConfigLoading } = useSystemConfig();
   const [orderType, setOrderType] = useState<'רגיל' | 'סאטמר'>('רגיל');
+  // How the user types item prices: null = the customer's default basis.
+  const [enterIncludesVat, setEnterIncludesVat] = useState<boolean | null>(null);
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
   const [packageItems, setPackageItems] = useState<PackageItem[]>([]);
   const [customItems, setCustomItems] = useState<NewCustomItem[]>([]);
@@ -586,6 +590,40 @@ export default function NewOrderPage() {
   const totalAfterCredit = Math.max(0, total - effectiveCreditApplied);
   const vatAmountAfterCredit = isBusiness ? +(totalAfterCredit * VAT_RATE).toFixed(2) : 0;
   const totalWithVatAfterCredit = isBusiness ? +(totalAfterCredit * (1 + VAT_RATE)).toFixed(2) : totalAfterCredit;
+
+  // Price-entry basis. Prices are always STORED in the customer's convention
+  // (business = before VAT, private = including VAT) — the invoice, totals
+  // and finance rely on that. The user may still type on the other basis;
+  // VatPriceInput converts each typed price. Satmar / VAT-exempt orders carry
+  // no VAT at all, so there is nothing to choose there.
+  const vatApplies = !customerVatExempt && orderType !== 'סאטמר';
+  const storedIncludesVat = !isBusiness;
+  const typedIncludesVat = vatApplies ? (enterIncludesVat ?? storedIncludesVat) : storedIncludesVat;
+  const priceFactor = vatApplies ? vatEntryFactor(storedIncludesVat, typedIncludesVat) : 1;
+  const priceLabelSuffix = vatApplies ? (typedIncludesVat ? ' (כולל מע״מ)' : ' (לפני מע״מ)') : '';
+  const storedVatLabel = storedIncludesVat ? 'כולל מע״מ' : 'לפני מע״מ';
+  const vatEntryToggle = selectedCustomer && vatApplies ? (
+    <div className="flex items-center gap-1.5 text-xs flex-shrink-0" role="group" aria-label="המחירים שאני מקלידה">
+      <span style={{ color: '#9B7A5A' }}>המחירים שאני מקלידה:</span>
+      {([false, true] as const).map(inc => {
+        const active = typedIncludesVat === inc;
+        return (
+          <button
+            key={String(inc)}
+            type="button"
+            onClick={() => setEnterIncludesVat(inc)}
+            aria-pressed={active}
+            className="px-2.5 py-1 rounded-full border font-medium transition-colors"
+            style={active
+              ? { backgroundColor: '#8B5E34', borderColor: '#8B5E34', color: '#FFFFFF' }
+              : { backgroundColor: '#FFFFFF', borderColor: '#E8DED2', color: '#6B4A2D' }}
+          >
+            {inc ? 'כולל מע״מ' : 'לפני מע״מ'}
+          </button>
+        );
+      })}
+    </div>
+  ) : null;
 
   // A new line inherits the recipient of the line above it — when you're
   // filling in "what does person #3 get", every row you add belongs to
@@ -1186,21 +1224,18 @@ export default function NewOrderPage() {
                       />
                     </div>
                     <div className="col-span-2">
-                      <Input
-                        label={isBusiness ? 'מחיר (לפני מע״מ)' : 'מחיר'}
-                        type="number"
+                      <VatPriceInput
+                        label={`מחיר${priceLabelSuffix}`}
                         value={item.מחיר_ליחידה}
-                        onChange={e => updateProductItem(idx, 'מחיר_ליחידה', Number(e.target.value))}
+                        factor={priceFactor}
+                        storedLabel={storedVatLabel}
+                        onChange={v => updateProductItem(idx, 'מחיר_ליחידה', v)}
                         min={0}
                         step={0.01}
                         // Highlight the field when there's no price-list entry —
                         // this is exactly where the user must type a manual price.
                         className={item.missingPrice ? 'border-amber-400 focus:border-amber-500 focus:ring-amber-200 bg-amber-50' : undefined}
                       />
-                      {/* Private-customer prices are final, VAT already inside. */}
-                      {!isBusiness && !customerVatExempt && (
-                        <p className="text-[11px] mt-0.5" style={{ color: '#9B7A5A' }}>(מחיר כולל מע״מ)</p>
-                      )}
                     </div>
                     <div className="col-span-3">
                       <Input label="סה״כ" value={`₪${item.סהכ.toFixed(2)}`} readOnly />
@@ -1267,11 +1302,12 @@ export default function NewOrderPage() {
                         onChange={e => updatePackageItem(pkgIdx, 'כמות', Number(e.target.value))}
                         min={1}
                       />
-                      <Input
-                        label="מחיר ליחידה (₪)"
-                        type="number"
+                      <VatPriceInput
+                        label={`מחיר ליחידה (₪)${priceLabelSuffix}`}
                         value={pkg.מחיר_ליחידה}
-                        onChange={e => updatePackageItem(pkgIdx, 'מחיר_ליחידה', Number(e.target.value))}
+                        factor={priceFactor}
+                        storedLabel={storedVatLabel}
+                        onChange={v => updatePackageItem(pkgIdx, 'מחיר_ליחידה', v)}
                         min={0}
                         step={0.01}
                       />
@@ -1426,11 +1462,12 @@ export default function NewOrderPage() {
                           />
                         </div>
                         <div className="col-span-2">
-                          <Input
-                            label={isDiscount ? '−₪ מחיר' : '₪ מחיר'}
-                            type="number"
+                          <VatPriceInput
+                            label={`${isDiscount ? '−₪ מחיר' : '₪ מחיר'}${priceLabelSuffix}`}
                             value={item.מחיר_ליחידה}
-                            onChange={e => updateCustomItem(idx, 'מחיר_ליחידה', Number(e.target.value))}
+                            factor={priceFactor}
+                            storedLabel={storedVatLabel}
+                            onChange={v => updateCustomItem(idx, 'מחיר_ליחידה', v)}
                             min={0}
                             step={0.01}
                           />
@@ -1710,7 +1747,8 @@ export default function NewOrderPage() {
                     </span>
                   )}
                 </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
+                <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
+                  {vatEntryToggle}
                   {/* Same catalog shortcut the flat products section offers —
                       it would otherwise be unreachable in this layout. */}
                   <button
@@ -1899,6 +1937,7 @@ export default function NewOrderPage() {
                   </div>
                 )}
               </div>
+              {vatEntryToggle}
               <button
                 type="button"
                 onClick={() => openNewProductModal(-1)}
