@@ -14,7 +14,6 @@ import { getOrderItemContentKey } from '@/lib/order-items-key';
 import { sumPetitFours, getCapacityInfo } from '@/lib/packageCapacity';
 import { formatDate, formatCurrency } from '@/lib/utils';
 import { downloadOrderSummaryPng } from '@/lib/order-summary-png';
-import { invoiceWhatsappLink } from '@/lib/whatsapp';
 import toast from 'react-hot-toast';
 import type { Order, OrderItem, Customer, Product, Package, PetitFourType, Employee, WorkTask } from '@/types/database';
 import { DeliveryTypeCards } from '@/components/orders/DeliveryTypeCards';
@@ -500,18 +499,22 @@ export default function OrderDetailPage() {
     }
   };
 
-  // Send the issued Morning (חשבונית ירוקה) document link to the customer on
-  // WhatsApp — opens wa.me with a ready message; nothing is sent server-side.
-  const sendInvoiceWhatsapp = () => {
-    if (!order) return;
-    const res = invoiceWhatsappLink(
-      (order.חשבוניות ?? []) as InvRow[],
-      order.לקוחות?.טלפון,
-      order.לקוחות?.שם_פרטי ?? '',
-      order.מספר_הזמנה,
-    );
-    if ('error' in res) { toast.error(res.error); return; }
-    window.open(res.url, '_blank', 'noopener');
+  // Send the customer the issued invoice on WhatsApp. The server builds the
+  // wa.me link; its message holds a signed PDF link (Morning's own viewer link
+  // makes the customer log in). The tab opens before the await so mobile
+  // browsers don't block it as a popup.
+  const sendInvoiceWhatsapp = async () => {
+    const tab = window.open('', '_blank');
+    try {
+      const res = await fetch(`/api/orders/${id}/invoice-whatsapp`, { method: 'POST' });
+      const json = await res.json();
+      if (!res.ok || !json.url) throw new Error(json.error || 'שגיאה ביצירת הקישור');
+      if (tab) tab.location.href = json.url;
+      else window.location.href = json.url;
+    } catch (err: unknown) {
+      tab?.close();
+      toast.error(err instanceof Error ? err.message : 'שגיאה ביצירת הקישור');
+    }
   };
 
   // Download the issued invoice PDF (the same document the "send" action uses).
