@@ -21,6 +21,7 @@ export function fillTemplate(template: string, firstName: string): string {
 }
 
 type ShareableInvoice = {
+  id?: string;
   מספר_חשבונית?: string | null;
   קישור_חשבונית?: string | null;
   סוג_מסמך?: string | null;
@@ -63,6 +64,8 @@ export function invoiceWhatsappLink(
   phone: string | null | undefined,
   firstName: string,
   orderNumber?: string | null,
+  /** Link to put in the message instead of Morning's viewer (which asks the customer to log in). */
+  shareUrl?: (invoice: ShareableInvoice) => string,
 ): { url: string } | { error: string } {
   const docs = invoices
     .map(i => ({ i, url: morningViewUrl(i.קישור_חשבונית ?? '') }))
@@ -73,7 +76,8 @@ export function invoiceWhatsappLink(
   if (docs.length === 0) return { error: 'לא קיים מסמך עם קישור לשליחה. יש להפיק חשבונית תחילה.' };
   if (!waNumber(phone)) return { error: 'לא קיים מספר טלפון תקין ללקוחה. יש לעדכן טלפון בכרטיס הלקוחה.' };
 
-  const { i, url } = docs[0];
+  const { i } = docs[0];
+  const url = shareUrl ? shareUrl(i) : docs[0].url;
   const label = INVOICE_DOC_LABELS[i.סוג_מסמך || ''] || 'חשבונית';
   const num = (i.מספר_חשבונית ?? '').replace(/^manual:/, '').trim();
   const text = [
