@@ -61,8 +61,16 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
 
   // Same guard as create-full: staff set prices, but never negative ones.
   const nonNegative = (v: unknown) => Number.isFinite(Number(v)) && Number(v) >= 0;
-  const badLine = [...(מוצרים ?? []), ...(מארזים ?? []), ...(פריטים_ידניים ?? [])].some(l =>
-    !(Number(l.כמות ?? 1) > 0) || !nonNegative(l.מחיר_ליחידה ?? 0));
+  // Exception: a manual discount row (הנחה / הורדה) arrives as a תוספת_תשלום
+  // line with a negative price — that is how it lowers the total. The order
+  // total itself is still clamped at 0 below.
+  const finitePrice = (v: unknown) => Number.isFinite(Number(v));
+  const badLine =
+    [...(מוצרים ?? []), ...(מארזים ?? [])].some(l =>
+      !(Number(l.כמות ?? 1) > 0) || !nonNegative(l.מחיר_ליחידה ?? 0)) ||
+    (פריטים_ידניים ?? []).some(l =>
+      !(Number(l.כמות ?? 1) > 0) ||
+      !(l.סוג_שורה === 'תוספת_תשלום' ? finitePrice(l.מחיר_ליחידה ?? 0) : nonNegative(l.מחיר_ליחידה ?? 0)));
   if (badLine || !nonNegative(ערך_הנחה) || !nonNegative(דמי_משלוח)) {
     return NextResponse.json({ error: 'כמות, מחיר, הנחה או דמי משלוח לא תקינים' }, { status: 400 });
   }
