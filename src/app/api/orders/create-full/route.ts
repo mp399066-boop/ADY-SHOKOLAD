@@ -86,12 +86,18 @@ export async function POST(req: NextRequest) {
 
   // Prices are entered by staff (manual per-order pricing is allowed), but a
   // negative or non-numeric quantity/price would silently lower the total.
-  const lines = [...מוצרים, ...מארזי_פטיפורים, ...(פריטים_ידניים as Record<string, unknown>[])];
-  const badLine = lines.some((l: Record<string, unknown>) => {
+  // Exception: a manual discount row (הנחה / הורדה) is sent as a תוספת_תשלום
+  // line with a negative price — that is how it lowers the total. The order
+  // total itself is still clamped at 0 below.
+  const isBadLine = (allowNegative: boolean) => (l: Record<string, unknown>) => {
     const qty = l.כמות == null ? 1 : Number(l.כמות);
     const price = l.מחיר_ליחידה == null ? 0 : Number(l.מחיר_ליחידה);
-    return !Number.isFinite(qty) || qty <= 0 || !Number.isFinite(price) || price < 0;
-  });
+    const negativeOk = allowNegative && l.סוג_שורה === 'תוספת_תשלום';
+    return !Number.isFinite(qty) || qty <= 0 || !Number.isFinite(price) || (price < 0 && !negativeOk);
+  };
+  const badLine =
+    [...מוצרים, ...מארזי_פטיפורים].some(isBadLine(false)) ||
+    (פריטים_ידניים as Record<string, unknown>[]).some(isBadLine(true));
   if (badLine) return NextResponse.json({ error: 'כמות או מחיר לא תקינים באחד הפריטים' }, { status: 400 });
 
   // Multi-recipient orders (הזמנה לכמה נמענים): one customer pays, several
