@@ -419,7 +419,7 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
   if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
   // Capture order number before delete for the activity row.
-  const { data: pre } = await supabase.from('הזמנות').select('מספר_הזמנה, סטטוס_הזמנה').eq('id', params.id).maybeSingle();
+  const { data: pre } = await supabase.from('הזמנות').select('מספר_הזמנה').eq('id', params.id).maybeSingle();
 
   // ── INVOICE GUARD ────────────────────────────────────────────────────
   // Never delete an order that already has a financial document issued
@@ -452,27 +452,8 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
     );
   }
 
-  // Give the stock back before the order disappears — same as a cancel, and
-  // idempotent (no-op when nothing is deducted). A completed order's goods
-  // really left the kitchen, so nothing returns for it.
-  let restoredBeforeDelete = false;
-  if ((pre as Record<string, unknown> | null)?.['סטטוס_הזמנה'] !== 'הושלמה בהצלחה') {
-    try {
-      const result = await restoreOrderInventory(supabase, params.id);
-      restoredBeforeDelete = result.restored;
-      console.log('[order DELETE] restore before delete:', JSON.stringify(result));
-    } catch (err) {
-      console.error('[order DELETE] restoreOrderInventory threw (continuing):', err instanceof Error ? err.message : err);
-    }
-  }
-
   const { error } = await supabase.from('הזמנות').delete().eq('id', params.id);
   if (error) {
-    // The order stays — take back out the stock returned just above.
-    if (restoredBeforeDelete) {
-      try { await deductOrderInventory(supabase, params.id); }
-      catch (err) { console.error('[order DELETE] re-deduct after failed delete threw:', err instanceof Error ? err.message : err); }
-    }
     const isFK = error.message.includes('foreign key') || error.message.includes('violates');
     void logActivity({
       actor:        userActor(auth),

@@ -681,15 +681,13 @@ function OrdersContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'delete', ids: Array.from(selected) }),
       });
-      const { succeeded, failed, blocked } = await res.json();
+      const { succeeded, failed } = await res.json();
       if (succeeded > 0) {
         toast.success(`${succeeded} הזמנות נמחקו`);
-        // Reload rather than drop every selected row — some may have been kept.
-        if (failed > 0) fetchOrders(); else setOrders(prev => prev.filter(o => !selected.has(o.id)));
+        setOrders(prev => prev.filter(o => !selected.has(o.id)));
         setCount(prev => prev - succeeded);
       }
-      if (blocked > 0) toast.error(`${blocked} הזמנות לא נמחקו כי כבר הופקה להן חשבונית`);
-      if (failed - (blocked || 0) > 0) toast.error(`${failed - (blocked || 0)} הזמנות לא נמחקו`);
+      if (failed > 0) toast.error(`${failed} הזמנות לא נמחקו`);
       clearSelected();
       setShowBulkConfirm(false);
     } catch { toast.error('שגיאה במחיקה'); }
