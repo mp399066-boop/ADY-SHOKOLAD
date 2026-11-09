@@ -3,13 +3,12 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
+import { fetchAllPages } from '@/lib/supabase/fetch-all';
+import { todayJerusalem } from '@/lib/finance';
+import { balanceStored, vatAddedOnTop, type PaymentLike } from '@/lib/order-balance';
 
 // GET /api/analytics/finance/overview
 // Read-only — returns all KPI periods + charts + lists in one call. Never writes to DB.
-
-function todayJerusalem(): string {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
-}
 
 function addDaysISO(iso: string, n: number): string {
   const [y, m, d] = iso.split('-').map(Number);
@@ -30,34 +29,14 @@ function shortMonthLabel(monthKey: string): string {
 
 type PaidRow = Record<string, unknown>;
 
-// ── Paginated fetch helper ──────────────────────────────────────────────────
-// Supabase / PostgREST caps a single GET at db.max_rows (1000 by default).
-// Previous code used `.limit(2000)` / `.limit(200)` which silently truncated
-// once the business grew past those thresholds:
-//   • paid 365d capped at 2000 → year KPIs, monthly chart, top-customers,
-//     payment-methods all silently undercounted past ~5.5 paid orders/day
-//   • unpaid capped at 200 → the unpaid amount KPI's count was right (via
-//     count:exact) but the sum it displayed was only over the top-200 rows
-// Solution: page through with .range() until a short page comes back. We
-// only request the columns we actually need, so each page is small.
+// Paged reads (a single response stops at 1000 rows) — throws on error so the
+// whole overview fails loudly instead of showing undercounted totals.
 async function fetchAllPaged<T = PaidRow>(
-  build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>,
-  pageSize = 1000,
+  build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string; code?: string } | null }>,
 ): Promise<T[]> {
-  const all: T[] = [];
-  let offset = 0;
-  // Hard ceiling guards against accidental infinite loops if the data set
-  // were to explode. 200k paid rows / year is far past any realistic volume.
-  const maxRows = 200_000;
-  while (offset < maxRows) {
-    const { data, error } = await build(offset, offset + pageSize - 1);
-    if (error) throw error;
-    const rows = (data ?? []) as T[];
-    all.push(...rows);
-    if (rows.length < pageSize) break;
-    offset += pageSize;
-  }
-  return all;
+  const { data, error } = await fetchAllPages<T>(build, 200_000);
+  if (error) throw error;
+  return data;
 }
 
 // Revenue = the full amount charged, delivery fees included. They used to be
@@ -123,7 +102,7 @@ export async function GET() {
   try {
     // Paid + unpaid are fetched via paginated helpers so the KPIs/charts
     // below are computed over the FULL data set, not a truncated slice.
-    const [paid, unpaid] = await Promise.all([
+    const [paid, unpaidRaw] = await Promise.all([
       fetchAllPaged<PaidRow>((from, to) =>
         supabase
           .from('הזמנות')
@@ -133,6 +112,7 @@ export async function GET() {
           .lte('תאריך_אספקה', today)
           .neq('סטטוס_הזמנה', 'בוטלה')
           .order('תאריך_אספקה', { ascending: false })
+          .order('id') // unique tie-break — without it rows repeat/skip between pages
           .range(from, to),
       ),
       fetchAllPaged<PaidRow>((from, to) =>
@@ -141,14 +121,25 @@ export async function GET() {
           // Deliberately does NOT exclude 'הושלמה בהצלחה' — a completed order
           // with a balance still owed is exactly the debt to collect, not
           // something to hide once the job is done.
-          .select('id, מספר_הזמנה, לקוח_id, סך_הכל_לתשלום, דמי_משלוח, סטטוס_הזמנה, תאריך_אספקה, לקוחות(שם_פרטי, שם_משפחה)')
+          .select('id, מספר_הזמנה, לקוח_id, סך_הכל_לתשלום, דמי_משלוח, סטטוס_הזמנה, סוג_הזמנה, תאריך_אספקה, לקוחות(שם_פרטי, שם_משפחה, סוג_לקוח), תשלומים(סכום, סטטוס_תשלום)')
           .in('סטטוס_תשלום', ['ממתין', 'חלקי'])
           .neq('סטטוס_הזמנה', 'בוטלה')
           .neq('סטטוס_הזמנה', 'טיוטה')
           .order('סך_הכל_לתשלום', { ascending: false })
+          .order('id')
           .range(from, to),
       ),
     ]);
+    // Unpaid figures show only what is still owed: a partly paid order counts
+    // its balance, not its full total (owner's request, Nov 2026). Rows whose
+    // balance is fully covered by recorded payments drop out of the list.
+    const unpaid = unpaidRaw
+      .map(r => {
+        const c = r['לקוחות'] as { סוג_לקוח?: string | null } | null;
+        const due = balanceStored(orderAmount(r), r['תשלומים'] as PaymentLike[] | null, vatAddedOnTop(c?.סוג_לקוח, r['סוג_הזמנה'] as string | null));
+        return { ...r, סך_הכל_לתשלום: due };
+      })
+      .filter(r => r.סך_הכל_לתשלום > 0.01);
     // Count derives directly from the paginated array → exact, no separate
     // count:exact query needed and no risk of count/sum disagreement.
     const unpaidCount = unpaid.length;

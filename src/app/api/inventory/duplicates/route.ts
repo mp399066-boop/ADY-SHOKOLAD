@@ -10,6 +10,7 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { findDuplicatePairs, type DedupMaterial } from '@/lib/inventory-dedup';
 import { dbErrorResponse, serverErrorResponse } from '@/lib/api-error';
+import { fetchAllPages } from '@/lib/supabase/fetch-all';
 
 interface MaterialRow {
   id: string;
@@ -72,10 +73,11 @@ export async function POST() {
   const supabase = createAdminClient();
 
   // 1. Load all materials.
-  const { data: mats, error: matErr } = await supabase
+  const { data: mats, error: matErr } = await fetchAllPages<{ id: string; שם_חומר_גלם: string }>((from, to) => supabase
     .from('מלאי_חומרי_גלם')
     .select('id, שם_חומר_גלם')
-    .limit(2000);
+    .order('id')
+    .range(from, to));
   if (matErr) return dbErrorResponse(matErr, 'inventory/duplicates');
 
   const materials: DedupMaterial[] = (mats ?? []).map((m: { id: string; שם_חומר_גלם: string }) => ({

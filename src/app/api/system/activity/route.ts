@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireAdminUser, forbiddenAdminResponse, unauthorizedResponse, requireAuthorizedUser } from '@/lib/auth/requireAuthorizedUser';
 import { dbErrorResponse } from '@/lib/api-error';
+import { orFilterTerm } from '@/lib/utils';
 
 // GET /api/system/activity
 //
@@ -68,8 +69,9 @@ export async function GET(req: NextRequest) {
   if (to)         query = query.lte('created_at',  to);
   if (q) {
     // Free-text across the four fields most likely to carry the operator's
-    // search term. Each individual ilike clause is safe — Supabase escapes %.
-    const safe = q.replace(/[%_]/g, '\\$&').slice(0, 80);
+    // search term. orFilterTerm drops the characters that would end or nest
+    // a condition (a comma used to break the filter) and escapes % / _.
+    const safe = orFilterTerm(q);
     query = query.or(
       `title.ilike.%${safe}%,description.ilike.%${safe}%,entity_label.ilike.%${safe}%,actor_email.ilike.%${safe}%`,
     );

@@ -77,6 +77,6 @@ export type FullOrder = Order & {
   משלוחים?: OrderDeliveryRow[];
   /** The people this order is delivered to; empty on a classic single-stop order. */
   נמענים?: OrderRecipient[];
-  תשלומים: { id: string; סכום: number; אמצעי_תשלום: string; תאריך_תשלום: string }[];
+  תשלומים: { id: string; סכום: number; אמצעי_תשלום: string; תאריך_תשלום: string; סטטוס_תשלום?: string | null }[];
   חשבוניות: { id: string; מספר_חשבונית: string; סכום: number; סטטוס: string; קישור_חשבונית?: string | null; סוג_מסמך?: string | null; תאריך_יצירה?: string | null }[];
 };

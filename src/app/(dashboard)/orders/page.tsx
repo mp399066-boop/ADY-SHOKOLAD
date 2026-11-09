@@ -12,6 +12,8 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { IconSearch, IconExport, IconEye, IconEdit, IconTrash } from '@/components/icons';
 import { ActionBtn } from '@/components/ui/RowActions';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
+import { OrderDeleteModal, type DeleteChoice } from '@/components/orders/OrderDeleteModal';
+import { paidTotal } from '@/lib/order-balance';
 import { BulkActionBar } from '@/components/ui/BulkActionBar';
 import { CustomerEditModal } from '@/components/customers/CustomerEditModal';
 import toast from 'react-hot-toast';
@@ -133,7 +135,8 @@ function OrderExpansionPanel({ fo }: { fo: FullOrderData }) {
   const recPhDiff = recPhone && recPhone !== cust?.טלפון;
 
   const items      = fo.מוצרים_בהזמנה ?? [];
-  const paidAmount = (fo.תשלומים ?? []).reduce((s, p) => s + (p.סכום ?? 0), 0);
+  // Only rows marked שולם — a ממתין row is a payment link not paid yet.
+  const paidAmount = paidTotal(fo.תשלומים);
   const total      = fo.סך_הכל_לתשלום ?? 0;
   const remaining  = Math.max(0, total - paidAmount);
   const addrLine   = [fo.כתובת_מקבל_ההזמנה, fo.עיר].filter(Boolean).join(', ');
@@ -593,6 +596,9 @@ function OrdersContent() {
   const [search, setSearch] = useState('');
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  // Set when the server says an order has an invoice — the delete dialog then
+  // asks for "the invoice was cancelled" before it can go ahead.
+  const [deleteInvoiceCount, setDeleteInvoiceCount] = useState(0);
 
   // Bulk selection
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -658,38 +664,54 @@ function OrdersContent() {
   // Clear selection on filter/search change
   useEffect(() => { clearSelected(); }, [currentFilter, search]);
 
-  const handleDelete = async () => {
+  const deleteQuery = (choice: DeleteChoice) => {
+    const qs = new URLSearchParams();
+    if (choice.restoreCompleted) qs.set('restoreCompleted', '1');
+    if (choice.invoiceCancelled) qs.set('invoiceCancelled', '1');
+    return qs.toString();
+  };
+
+  const closeDelete = () => { setConfirmId(null); setShowBulkConfirm(false); setDeleteInvoiceCount(0); };
+
+  const handleDelete = async (choice: DeleteChoice) => {
     if (!confirmId) return;
     setDeleting(true);
     try {
-      const res = await fetch(`/api/orders/${confirmId}`, { method: 'DELETE' });
+      const res = await fetch(`/api/orders/${confirmId}?${deleteQuery(choice)}`, { method: 'DELETE' });
       const json = await res.json();
+      if (!res.ok && json.code === 'has_invoice') { setDeleteInvoiceCount(1); return; }
       if (!res.ok) { toast.error(json.error || 'שגיאה במחיקה'); return; }
       setOrders(prev => prev.filter(o => o.id !== confirmId));
       setCount(prev => prev - 1);
       toast.success('הזמנה נמחקה');
-      setConfirmId(null);
+      closeDelete();
     } catch { toast.error('שגיאה במחיקה'); }
     finally { setDeleting(false); }
   };
 
-  const handleBulkDelete = async () => {
+  const handleBulkDelete = async (choice: DeleteChoice) => {
     setBulkDeleting(true);
     try {
       const res = await fetch('/api/orders/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'delete', ids: Array.from(selected) }),
+        body: JSON.stringify({ action: 'delete', ids: Array.from(selected), ...choice }),
       });
-      const { succeeded, failed } = await res.json();
+      const { succeeded = 0, failed = 0, blockedIds = [] } = await res.json() as { succeeded?: number; failed?: number; blockedIds?: string[] };
+      if (succeeded > 0 || failed > 0) fetchOrders();
       if (succeeded > 0) {
         toast.success(`${succeeded} הזמנות נמחקו`);
-        setOrders(prev => prev.filter(o => !selected.has(o.id)));
         setCount(prev => prev - succeeded);
       }
       if (failed > 0) toast.error(`${failed} הזמנות לא נמחקו`);
+      if (blockedIds.length > 0) {
+        // Keep only the orders that wait for "invoice cancelled" and ask again.
+        setSelected(new Set(blockedIds));
+        setDeleteInvoiceCount(blockedIds.length);
+        return;
+      }
       clearSelected();
-      setShowBulkConfirm(false);
+      closeDelete();
     } catch { toast.error('שגיאה במחיקה'); }
     finally { setBulkDeleting(false); }
   };
@@ -1148,9 +1170,12 @@ function OrdersContent() {
       />
 
       {/* Single delete */}
-      <ConfirmModal
+      <OrderDeleteModal
         open={!!confirmId}
-        onClose={() => setConfirmId(null)}
+        subject={`ההזמנה ${orders.find(o => o.id === confirmId)?.מספר_הזמנה ?? ''}`.trim()}
+        completedCount={orders.find(o => o.id === confirmId)?.סטטוס_הזמנה === 'הושלמה בהצלחה' ? 1 : 0}
+        invoiceCount={deleteInvoiceCount}
+        onClose={closeDelete}
         onConfirm={handleDelete}
         loading={deleting}
       />
@@ -1167,12 +1192,12 @@ function OrdersContent() {
       />
 
       {/* Bulk delete confirm */}
-      <ConfirmModal
+      <OrderDeleteModal
         open={showBulkConfirm}
-        title={`מחיקת ${selected.size} הזמנות`}
-        description={`האם למחוק ${selected.size} הזמנות? פעולה זו אינה ניתנת לביטול.`}
-        confirmLabel="מחק הכל"
-        onClose={() => setShowBulkConfirm(false)}
+        subject={`${selected.size} הזמנות`}
+        completedCount={orders.filter(o => selected.has(o.id) && o.סטטוס_הזמנה === 'הושלמה בהצלחה').length}
+        invoiceCount={deleteInvoiceCount}
+        onClose={closeDelete}
         onConfirm={handleBulkDelete}
         loading={bulkDeleting}
       />

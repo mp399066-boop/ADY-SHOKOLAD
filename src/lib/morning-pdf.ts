@@ -74,7 +74,11 @@ function assertMorningHost(downloadUrl: string): URL {
   } catch {
     throw new Error('Invalid Morning download URL');
   }
-  if (parsed.protocol !== 'https:' || !parsed.hostname.endsWith('greeninvoice.co.il')) {
+  // Exact domain or a real subdomain — a bare endsWith() would also accept
+  // look-alike hosts such as "evilgreeninvoice.co.il".
+  const host = parsed.hostname.toLowerCase();
+  const isMorningHost = host === 'greeninvoice.co.il' || host.endsWith('.greeninvoice.co.il');
+  if (parsed.protocol !== 'https:' || !isMorningHost) {
     throw new Error(`Refusing non-Morning host: ${parsed.hostname}`);
   }
   return parsed;

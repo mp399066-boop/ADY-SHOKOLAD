@@ -46,6 +46,7 @@
 
 import { createAdminClient } from '@/lib/supabase/server';
 import { recordStockMovement } from '@/lib/inventory-movements';
+import { adjustStock } from '@/lib/stock-adjust';
 import { isServiceEnabled, logServiceRun } from '@/lib/system-services';
 import { logActivity } from '@/lib/activity-log';
 import { summarizeLedger, buildDesiredQuantities, computeReconcileDeltas, type MovementRow } from '@/lib/inventory-ledger';
@@ -167,31 +168,21 @@ export async function deductOrderInventory(
   let productCount = 0;
   for (const item of items ?? []) {
     if (!item.מוצר_id) continue;
-    const { data: product } = await supabase
-      .from('מוצרים_למכירה')
-      .select('שם_מוצר, כמות_במלאי')
-      .eq('id', item.מוצר_id)
-      .single();
-    if (!product) continue;
     const qty = Number(item.כמות) || 0;
     if (qty <= 0) continue;
-    const before = Number(product.כמות_במלאי) || 0;
     // No clamping at 0 (Sep 2026): stock may go negative. Clamping used to
     // silently swallow the shortfall — an order of 5 against a recorded 3
     // deducted only 3 and the missing 2 vanished from the ledger forever,
     // so late stock entry created permanent drift. A negative number is
     // honest: it means "more was promised than was recorded in stock".
-    const after = before - qty;
-    await supabase
-      .from('מוצרים_למכירה')
-      .update({ כמות_במלאי: after })
-      .eq('id', item.מוצר_id);
+    const change = await adjustStock(supabase, 'מוצר', item.מוצר_id, -qty);
+    if (!change) continue;
     await recordStockMovement(supabase, {
       itemKind:    'מוצר',
       itemId:      item.מוצר_id,
-      itemName:    product.שם_מוצר || '',
-      before,
-      after,
+      itemName:    change.name,
+      before:      change.before,
+      after:       change.after,
       sourceKind:  'הזמנה',
       sourceId:    orderId,
       notes:       'הורדה אוטומטית על יצירת הזמנה פעילה',
@@ -233,24 +224,15 @@ export async function deductOrderInventory(
 
       for (const pfId of Object.keys(totalsByPF)) {
         const qtyToDeduct = totalsByPF[pfId];
-        const { data: pf } = await supabase
-          .from('סוגי_פטיפורים')
-          .select('שם_פטיפור, כמות_במלאי')
-          .eq('id', pfId)
-          .single();
-        if (!pf) continue;
-        const before = Number(pf.כמות_במלאי) || 0;
-        const after  = before - qtyToDeduct; // may go negative — honest ledger, see product loop above
-        await supabase
-          .from('סוגי_פטיפורים')
-          .update({ כמות_במלאי: after })
-          .eq('id', pfId);
+        // may go negative — honest ledger, see product loop above
+        const change = await adjustStock(supabase, 'פטיפור', pfId, -qtyToDeduct);
+        if (!change) continue;
         await recordStockMovement(supabase, {
           itemKind:    'פטיפור',
           itemId:      pfId,
-          itemName:    pf.שם_פטיפור || '',
-          before,
-          after,
+          itemName:    change.name,
+          before:      change.before,
+          after:       change.after,
           sourceKind:  'הזמנה',
           sourceId:    orderId,
           notes:       `הורדה ממארז (${qtyToDeduct} יח׳) — יצירת הזמנה פעילה`,
@@ -309,6 +291,7 @@ export async function deductOrderInventory(
 export async function restoreOrderInventory(
   supabase: AnySupabase,
   orderId: string,
+  reason: 'cancelled' | 'deleted' = 'cancelled',
 ): Promise<RestoreResult> {
   const gate = await commonGate(supabase, orderId, 'restoration');
   if (!gate.enabled) return { restored: false, reason: gate.reason || 'flag_off' };
@@ -328,44 +311,25 @@ export async function restoreOrderInventory(
   for (const [itemId, info] of Array.from(ledger.byItem.entries())) {
     if (info.net <= 0) continue; // already balanced for this item
 
-    const table = info.kind === 'מוצר'    ? 'מוצרים_למכירה'
-               : info.kind === 'פטיפור'   ? 'סוגי_פטיפורים'
-               : info.kind === 'חומר_גלם' ? 'מלאי_חומרי_גלם'
-               : null;
-    if (!table) {
+    if (info.kind !== 'מוצר' && info.kind !== 'פטיפור' && info.kind !== 'חומר_גלם') {
       console.warn('[inventory] restore — unknown item kind:', info.kind, '| order:', orderId, '| item:', itemId);
       continue;
     }
-    const nameCol = info.kind === 'מוצר'    ? 'שם_מוצר'
-                  : info.kind === 'פטיפור'   ? 'שם_פטיפור'
-                  : 'שם_חומר_גלם';
-
-    const { data: row } = await supabase
-      .from(table)
-      .select(`${nameCol}, כמות_במלאי`)
-      .eq('id', itemId)
-      .single();
-    if (!row) {
-      console.warn('[inventory] restore — item disappeared:', itemId, '| order:', orderId);
+    const change = await adjustStock(supabase, info.kind, itemId, info.net);
+    if (!change) {
+      console.warn('[inventory] restore — item disappeared or update failed:', itemId, '| order:', orderId);
       continue;
     }
 
-    type ItemRow = { כמות_במלאי?: number | null; [key: string]: unknown };
-    const r       = row as ItemRow;
-    const before  = Number(r.כמות_במלאי) || 0;
-    const after   = before + info.net;
-    const itemNm  = (r[nameCol] as string | null | undefined) || info.name || '';
-
-    await supabase.from(table).update({ כמות_במלאי: after }).eq('id', itemId);
     await recordStockMovement(supabase, {
-      itemKind:     info.kind as 'מוצר' | 'פטיפור' | 'חומר_גלם',
+      itemKind:     info.kind,
       itemId,
-      itemName:     itemNm,
-      before,
-      after,
+      itemName:     change.name || info.name || '',
+      before:       change.before,
+      after:        change.after,
       sourceKind:   'הזמנה',
       sourceId:     orderId,
-      notes:        'החזרת מלאי — הזמנה בוטלה',
+      notes:        reason === 'deleted' ? 'החזרת מלאי — הזמנה נמחקה' : 'החזרת מלאי — הזמנה בוטלה',
       movementKind: 'כניסה',
     });
 
@@ -504,35 +468,17 @@ export async function reconcileOrderInventory(
   let adjusted = 0;
 
   for (const { itemId, kind, delta, ledgerName } of computeReconcileDeltas(desired, ledger.byItem)) {
-    const table   = kind === 'מוצר' ? 'מוצרים_למכירה' : 'סוגי_פטיפורים';
-    const nameCol = kind === 'מוצר' ? 'שם_מוצר' : 'שם_פטיפור';
-
-    const { data: row } = await supabase
-      .from(table)
-      .select(`${nameCol}, כמות_במלאי`)
-      .eq('id', itemId)
-      .single();
-    if (!row) {
-      console.warn('[inventory] reconcile — item not found in catalog, skipping:', itemId, '| order:', orderId);
-      continue;
-    }
-    type ItemRow = { כמות_במלאי?: number | null; [key: string]: unknown };
-    const r      = row as ItemRow;
-    const before = Number(r.כמות_במלאי) || 0;
-    const after  = before - delta; // no clamping — negative stock is honest
-    const name   = (r[nameCol] as string | null | undefined) || ledgerName;
-
-    const { error: updErr } = await supabase.from(table).update({ כמות_במלאי: after }).eq('id', itemId);
-    if (updErr) {
-      console.error('[inventory] reconcile — stock update failed:', updErr.message, '| item:', itemId, '| order:', orderId);
+    const change = await adjustStock(supabase, kind, itemId, -delta); // no clamping — negative stock is honest
+    if (!change) {
+      console.error('[inventory] reconcile — item missing or stock update failed:', itemId, '| order:', orderId);
       continue; // don't record a movement for a change that didn't happen
     }
     await recordStockMovement(supabase, {
       itemKind:     kind,
       itemId,
-      itemName:     name,
-      before,
-      after,
+      itemName:     change.name || ledgerName,
+      before:       change.before,
+      after:        change.after,
       sourceKind:   'הזמנה',
       sourceId:     orderId,
       notes:        `התאמת מלאי — עריכת פריטי הזמנה (${delta > 0 ? 'תוספת' : 'החזרה'} ${Math.abs(delta)})`,

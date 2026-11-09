@@ -3,8 +3,8 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
-import { generateOrderNumber } from '@/lib/utils';
 import { dbErrorResponse, serverErrorResponse } from '@/lib/api-error';
+import { orFilterTerm } from '@/lib/utils';
 
 export async function GET(req: NextRequest) {
   const auth = await requireManagementUser();
@@ -121,8 +121,9 @@ export async function GET(req: NextRequest) {
       else if (filter === 'shipped') query = query.eq('סטטוס_הזמנה', 'נשלחה');
     }
 
-    if (search) {
-      query = query.or(`מספר_הזמנה.ilike.%${search}%`);
+    const term = search ? orFilterTerm(search) : '';
+    if (term) {
+      query = query.ilike('מספר_הזמנה', `%${term}%`);
     }
 
     const { data, error, count } = await query;
@@ -135,43 +136,5 @@ export async function GET(req: NextRequest) {
   }
 }
 
-export async function POST(req: NextRequest) {
-  const auth = await requireManagementUser();
-  if (!auth) return unauthorizedResponse();
-  const supabase = createAdminClient();
-  const body = await req.json();
-
-  const order = {
-    מספר_הזמנה: body.מספר_הזמנה || generateOrderNumber(),
-    לקוח_id: body.לקוח_id,
-    סטטוס_הזמנה: body.סטטוס_הזמנה || 'חדשה',
-    הזמנה_דחופה: body.הזמנה_דחופה || false,
-    תאריך_הזמנה: body.תאריך_הזמנה || new Date().toISOString().split('T')[0],
-    תאריך_אספקה: body.תאריך_אספקה || null,
-    שעת_אספקה: body.שעת_אספקה || null,
-    סוג_אספקה: body.סוג_אספקה || 'איסוף עצמי',
-    שם_מקבל: body.שם_מקבל || null,
-    טלפון_מקבל: body.טלפון_מקבל || null,
-    כתובת_מקבל_ההזמנה: body.כתובת_מקבל_ההזמנה || null,
-    עיר: body.עיר || null,
-    הוראות_משלוח: body.הוראות_משלוח || null,
-    דמי_משלוח: body.דמי_משלוח || 0,
-    אופן_תשלום: body.אופן_תשלום || null,
-    סטטוס_תשלום: body.סטטוס_תשלום || 'ממתין',
-    סכום_לפני_הנחה: body.סכום_לפני_הנחה || 0,
-    סכום_הנחה: body.סכום_הנחה || 0,
-    סך_הכל_לתשלום: body.סך_הכל_לתשלום || 0,
-    מקור_ההזמנה: body.מקור_ההזמנה || null,
-    ברכה_טקסט: body.ברכה_טקסט || null,
-    הערות_להזמנה: body.הערות_להזמנה || null,
-  };
-
-  if (!order.לקוח_id) {
-    return NextResponse.json({ error: 'לקוח הוא שדה חובה' }, { status: 400 });
-  }
-
-  const { data, error } = await supabase.from('הזמנות').insert(order).select().single();
-  if (error) return dbErrorResponse(error, 'orders');
-
-  return NextResponse.json({ data }, { status: 201 });
-}
+// Orders are created only through /api/orders/create-full (and the draft /
+// quote / request converters), which price every line on the server.

@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { dbErrorResponse } from '@/lib/api-error';
+import { parseCatalogPatch, packagePatchSchema } from '@/lib/catalog-patch-schema';
 import { syncPriceRowFromPackage } from '@/lib/price-sync';
 
 export async function GET() {
@@ -19,7 +20,9 @@ export async function POST(req: NextRequest) {
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
-  const body = await req.json();
+  const parsed = parseCatalogPatch(packagePatchSchema, await req.json().catch(() => null));
+  if ('error' in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 });
+  const body = parsed.data;
   if (!body.שם_מארז) return NextResponse.json({ error: 'שם המארז הוא שדה חובה' }, { status: 400 });
   const { data, error } = await supabase
     .from('מארזים')

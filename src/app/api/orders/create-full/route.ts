@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic';
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { generateOrderNumber } from '@/lib/utils';
@@ -152,9 +152,7 @@ export async function POST(req: NextRequest) {
   console.log('[create-full] STEP 3: inserting order into DB', { customerId, total, subtotal });
 
   // 3. Create order — THIS IS THE ONLY INSERT TO הזמנות IN THIS HANDLER
-  const { data: order, error: orderError } = await supabase
-    .from('הזמנות')
-    .insert({
+  const orderRow: Record<string, unknown> = {
       מספר_הזמנה: generateOrderNumber(),
       לקוח_id: customerId,
       סטטוס_הזמנה: הזמנה?.סטטוס_הזמנה || 'חדשה',
@@ -186,9 +184,34 @@ export async function POST(req: NextRequest) {
       // Only set on multi-recipient orders so single-recipient creation keeps
       // working on databases where migration 053 hasn't been applied yet.
       ...(isMultiRecipient ? { מרובה_נמענים: true } : {}),
-    })
+  };
+
+  // Double-submit guard that works across server instances (migration 076):
+  // the client's request id is stored on the order under a UNIQUE index, so a
+  // second copy of the same request can't create a second order — it gets the
+  // first one back. Before the migration is run the column is missing and the
+  // insert simply retries without it (in-memory cache above still applies).
+  const requestKey = typeof clientRequestId === 'string' && /^[A-Za-z0-9_-]{8,100}$/.test(clientRequestId) ? clientRequestId : null;
+  let { data: order, error: orderError } = await supabase
+    .from('הזמנות')
+    .insert(requestKey ? { ...orderRow, client_request_id: requestKey } : orderRow)
     .select()
     .single();
+  if (orderError && requestKey && orderError.code === '23505' && /client_request_id/.test(`${orderError.message} ${orderError.details ?? ''}`)) {
+    const { data: existing } = await supabase.from('הזמנות').select('*, לקוחות(*)').eq('client_request_id', requestKey).maybeSingle();
+    if (existing) {
+      console.log('[create-full] DUPLICATE REQUEST (db) — returning existing order', existing.id);
+      const { data: existingItems } = await supabase
+        .from('מוצרים_בהזמנה')
+        .select('*, מוצרים_למכירה(*), בחירת_פטיפורים_בהזמנה(*, סוגי_פטיפורים(*))')
+        .eq('הזמנה_id', existing.id)
+        .order('סדר_תצוגה', { ascending: true });
+      return NextResponse.json({ data: { ...existing, מוצרים_בהזמנה: existingItems || [] }, deduplicated: true }, { status: 201 });
+    }
+  }
+  if (orderError && requestKey && (orderError.code === 'PGRST204' || orderError.code === '42703')) {
+    ({ data: order, error: orderError } = await supabase.from('הזמנות').insert(orderRow).select().single());
+  }
 
   if (orderError) return dbStepErrorResponse(orderError, 'orders/create-full', 'יצירת הזמנה נכשלה');
 
@@ -533,7 +556,7 @@ export async function POST(req: NextRequest) {
     // Persist the snapshot of items the customer is about to receive so the
     // NEXT "send updated summary" can correctly diff for חדש / removed.
     // Fire-and-forget alongside the email; both must not block the response.
-    void (async () => {
+    after(async () => {
       try {
         console.log('[create-full] calling sendOrderEmail...');
         await sendOrderEmail(emailTo, emailName, emailOrderData, emailContext);
@@ -566,7 +589,7 @@ export async function POST(req: NextRequest) {
       } catch (err) {
         console.error('[create-full] sendOrderEmail failed:', err);
       }
-    })();
+    });
   } else {
     console.log('[create-full] skipping email —', emailTo ? 'internal address' : 'no email');
   }
@@ -632,7 +655,7 @@ export async function POST(req: NextRequest) {
   //     but defensive)
   //   - only deletes drafts with ZERO line items (queried below)
   if (!isDraft && customerId) {
-    void (async () => {
+    after(async () => {
       try {
         const { data: customerDrafts } = await supabase
           .from('הזמנות')
@@ -662,7 +685,7 @@ export async function POST(req: NextRequest) {
       } catch (err) {
         console.warn('[create-full] orphan-draft cleanup unexpected error (continuing):', err instanceof Error ? err.message : err);
       }
-    })();
+    });
   }
 
   const responseBody = { data: { ...fullOrder, מוצרים_בהזמנה: fullItems || [] } };

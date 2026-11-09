@@ -6,7 +6,8 @@ import { AUTO_CREATE_MORNING_DOCUMENTS } from '@/lib/morning';
 import { restoreOrderInventory, deductOrderInventory, DEDUCT_INVENTORY_ON_ORDER_STATUS } from '@/lib/inventory-deduct';
 import { logActivity, userActor } from '@/lib/activity-log';
 import { fetchOrderRecipients } from '@/lib/order-recipients';
-import { dbErrorResponse, dbErrorDetail } from '@/lib/api-error';
+import { dbErrorResponse } from '@/lib/api-error';
+import { deleteOrder, DELETE_ERRORS } from '@/lib/order-delete';
 
 // Order header fields the screens may change through PATCH. Anything else
 // (totals, ids, invoice/Morning fields, archive flag…) is set by the server
@@ -155,11 +156,10 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
 
   console.log('[invoice] PATCH called — order:', params.id, '| body keys:', Object.keys(body).join(','), '| סטטוס_תשלום:', body.סטטוס_תשלום);
 
-  // Fetch current state BEFORE update — needed for inventory check + invoice/satmar trigger
-  const needPrev = body.סטטוס_הזמנה === 'בהכנה'
-    || body.סטטוס_תשלום === 'שולם'
-    || body.סטטוס_הזמנה === 'הושלמה בהצלחה'
-    || body.סטטוס_הזמנה === 'בוטלה';   // restore-on-cancel needs prev order status
+  // Fetch current state BEFORE update — needed for every status change:
+  // restore-on-cancel, re-deduct on un-cancel (בוטלה → any active status,
+  // e.g. חדשה), the invoice/satmar triggers and the activity log's old value.
+  const needPrev = body.סטטוס_הזמנה !== undefined || body.סטטוס_תשלום !== undefined;
   let prevOrderStatus: string | null = null;
   let prevPaymentStatus: string | null = null;
   let orderType = 'רגיל';
@@ -418,71 +418,12 @@ export async function DELETE(req: NextRequest, props: { params: Promise<{ id: st
   const params = await props.params;
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
-  const supabase = createAdminClient();
-  // Capture order number before delete for the activity row.
-  const { data: pre } = await supabase.from('הזמנות').select('מספר_הזמנה').eq('id', params.id).maybeSingle();
-
-  // ── INVOICE GUARD ────────────────────────────────────────────────────
-  // Never delete an order that already has a financial document issued
-  // (tax invoice / receipt / invoice-receipt, including manually-marked
-  // Morning docs). Deleting it would orphan the document and break the
-  // books. The user must cancel/credit the invoice in Morning first.
-  const { count: invoiceCount, error: invErr } = await supabase
-    .from('חשבוניות')
-    .select('id', { count: 'exact', head: true })
-    .eq('הזמנה_id', params.id);
-  if (invErr) {
-    console.error('[order DELETE] invoice-guard query failed:', invErr.message, '| order:', params.id);
-    return NextResponse.json({ error: 'שגיאה בבדיקת חשבוניות' }, { status: 500 });
-  }
-  if ((invoiceCount ?? 0) > 0) {
-    void logActivity({
-      actor:        userActor(auth),
-      module:       'orders',
-      action:       'order_deleted',
-      status:       'skipped',
-      entityType:   'order',
-      entityId:     params.id,
-      entityLabel:  String((pre as Record<string, unknown> | null)?.['מספר_הזמנה'] || '').trim() || null,
-      title:        'מחיקת הזמנה נחסמה — קיימת חשבונית',
-      request:      req,
-    });
-    return NextResponse.json(
-      { error: 'לא ניתן למחוק הזמנה שכבר הופקה לה חשבונית. יש לבטל/לזכות את החשבונית לפני מחיקת ההזמנה.' },
-      { status: 409 },
-    );
-  }
-
-  const { error } = await supabase.from('הזמנות').delete().eq('id', params.id);
-  if (error) {
-    const isFK = error.message.includes('foreign key') || error.message.includes('violates');
-    void logActivity({
-      actor:        userActor(auth),
-      module:       'orders',
-      action:       'order_deleted',
-      status:       'failed',
-      entityType:   'order',
-      entityId:     params.id,
-      entityLabel:  String((pre as Record<string, unknown> | null)?.['מספר_הזמנה'] || '').trim() || null,
-      title:        'מחיקת הזמנה נכשלה',
-      errorMessage: error.message,
-      request:      req,
-    });
-    return NextResponse.json(
-      { error: isFK ? 'לא ניתן למחוק כי קיימות רשומות מקושרות' : dbErrorDetail(error, 'orders/[id]') },
-      { status: isFK ? 409 : 500 },
-    );
-  }
-  void logActivity({
-    actor:        userActor(auth),
-    module:       'orders',
-    action:       'order_deleted',
-    status:       'success',
-    entityType:   'order',
-    entityId:     params.id,
-    entityLabel:  String((pre as Record<string, unknown> | null)?.['מספר_הזמנה'] || '').trim() || null,
-    title:        'הזמנה נמחקה',
-    request:      req,
-  });
-  return NextResponse.json({ success: true });
+  const sp = req.nextUrl.searchParams;
+  const result = await deleteOrder(createAdminClient(), params.id, {
+    restoreCompleted: sp.get('restoreCompleted') === '1',
+    invoiceCancelled: sp.get('invoiceCancelled') === '1',
+  }, auth, req);
+  if (result.ok) return NextResponse.json({ success: true, restored: result.restored });
+  const e = DELETE_ERRORS[result.reason];
+  return NextResponse.json({ error: e.error, code: result.reason }, { status: e.status });
 }
