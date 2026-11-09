@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { restoreOrderInventory } from '@/lib/inventory-deduct';
 import { serverErrorResponse } from '@/lib/api-error';
+import { deleteOrder } from '@/lib/order-delete';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_IDS = 500;
@@ -11,7 +12,8 @@ export async function POST(req: NextRequest) {
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
   try {
-    const { action, ids, value } = (await req.json().catch(() => ({}))) as { action?: unknown; ids?: unknown; value?: unknown };
+    const body = (await req.json().catch(() => ({}))) as { action?: unknown; ids?: unknown; value?: unknown };
+    const { action, ids, value } = body;
     if (!Array.isArray(ids) || ids.length === 0) {
       return NextResponse.json({ error: 'נדרשות רשומות לפעולה' }, { status: 400 });
     }
@@ -25,19 +27,19 @@ export async function POST(req: NextRequest) {
     const supabase = createAdminClient();
 
     if (action === 'delete') {
+      const raw = body as { restoreCompleted?: unknown; invoiceCancelled?: unknown };
+      const opts = { restoreCompleted: raw.restoreCompleted === true, invoiceCancelled: raw.invoiceCancelled === true };
       let succeeded = 0;
       let failed = 0;
+      const blockedIds: string[] = [];
       for (const id of ids as string[]) {
-        const { error } = await supabase.from('הזמנות').delete().eq('id', id);
-        if (error) {
-          console.warn('[bulk-orders] delete failed:', id, error.message);
-          failed++;
-        } else {
-          succeeded++;
-        }
+        const r = await deleteOrder(supabase, id, opts, auth, req);
+        if (r.ok) succeeded++;
+        else if (r.reason === 'has_invoice') blockedIds.push(id);
+        else failed++;
       }
-      console.log(`[bulk-orders] delete — succeeded: ${succeeded}, failed: ${failed}`);
-      return NextResponse.json({ succeeded, failed });
+      console.log(`[bulk-orders] delete — succeeded: ${succeeded}, failed: ${failed}, waiting for invoice mark: ${blockedIds.length}`);
+      return NextResponse.json({ succeeded, failed, blocked: blockedIds.length, blockedIds });
     }
 
     if (action === 'update_status') {

@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { fetchAllPages } from '@/lib/supabase/fetch-all';
 import { todayJerusalem } from '@/lib/finance';
+import { balanceStored, vatAddedOnTop, type PaymentLike } from '@/lib/order-balance';
 
 // GET /api/analytics/finance/overview
 // Read-only — returns all KPI periods + charts + lists in one call. Never writes to DB.
@@ -101,7 +102,7 @@ export async function GET() {
   try {
     // Paid + unpaid are fetched via paginated helpers so the KPIs/charts
     // below are computed over the FULL data set, not a truncated slice.
-    const [paid, unpaid] = await Promise.all([
+    const [paid, unpaidRaw] = await Promise.all([
       fetchAllPaged<PaidRow>((from, to) =>
         supabase
           .from('הזמנות')
@@ -120,7 +121,7 @@ export async function GET() {
           // Deliberately does NOT exclude 'הושלמה בהצלחה' — a completed order
           // with a balance still owed is exactly the debt to collect, not
           // something to hide once the job is done.
-          .select('id, מספר_הזמנה, לקוח_id, סך_הכל_לתשלום, דמי_משלוח, סטטוס_הזמנה, תאריך_אספקה, לקוחות(שם_פרטי, שם_משפחה)')
+          .select('id, מספר_הזמנה, לקוח_id, סך_הכל_לתשלום, דמי_משלוח, סטטוס_הזמנה, סוג_הזמנה, תאריך_אספקה, לקוחות(שם_פרטי, שם_משפחה, סוג_לקוח), תשלומים(סכום, סטטוס_תשלום)')
           .in('סטטוס_תשלום', ['ממתין', 'חלקי'])
           .neq('סטטוס_הזמנה', 'בוטלה')
           .neq('סטטוס_הזמנה', 'טיוטה')
@@ -129,6 +130,16 @@ export async function GET() {
           .range(from, to),
       ),
     ]);
+    // Unpaid figures show only what is still owed: a partly paid order counts
+    // its balance, not its full total (owner's request, Nov 2026). Rows whose
+    // balance is fully covered by recorded payments drop out of the list.
+    const unpaid = unpaidRaw
+      .map(r => {
+        const c = r['לקוחות'] as { סוג_לקוח?: string | null } | null;
+        const due = balanceStored(orderAmount(r), r['תשלומים'] as PaymentLike[] | null, vatAddedOnTop(c?.סוג_לקוח, r['סוג_הזמנה'] as string | null));
+        return { ...r, סך_הכל_לתשלום: due };
+      })
+      .filter(r => r.סך_הכל_לתשלום > 0.01);
     // Count derives directly from the paginated array → exact, no separate
     // count:exact query needed and no risk of count/sum disagreement.
     const unpaidCount = unpaid.length;

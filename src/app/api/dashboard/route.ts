@@ -5,6 +5,14 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { serverErrorResponse } from '@/lib/api-error';
 import { fetchAllPages } from '@/lib/supabase/fetch-all';
+import { balanceStored, vatAddedOnTop, type PaymentLike } from '@/lib/order-balance';
+
+interface UnpaidRow {
+  סך_הכל_לתשלום: number | null;
+  סוג_הזמנה: string | null;
+  לקוחות: { סוג_לקוח: string | null } | null;
+  תשלומים: PaymentLike[] | null;
+}
 
 export async function GET() {
   const auth = await requireManagementUser();
@@ -77,7 +85,7 @@ export async function GET() {
       supabase.from('משלוחים').select('*', { count: 'exact', head: true }).eq('תאריך_משלוח', today),
       // Unpaid amount — same predicate as the count above. Paged: a single
       // response stops at 1000 rows, which would silently undercount the sum.
-      fetchAllPages<{ סך_הכל_לתשלום: number | null }>((from, to) => supabase.from('הזמנות').select('סך_הכל_לתשלום')
+      fetchAllPages<UnpaidRow>((from, to) => supabase.from('הזמנות').select('סך_הכל_לתשלום, סוג_הזמנה, לקוחות(סוג_לקוח), תשלומים(סכום, סטטוס_תשלום)')
         .in('סטטוס_תשלום', ['ממתין', 'חלקי'])
         .neq('סטטוס_הזמנה', 'בוטלה')
         .neq('סטטוס_הזמנה', 'טיוטה')
@@ -138,10 +146,12 @@ export async function GET() {
       }
     }
 
-    const unpaidAmount = (unpaidRows ?? []).reduce(
-      (sum: number, row: any) => sum + (row['סך_הכל_לתשלום'] ?? 0),
+    // Only what is still owed — a partly paid order counts its balance, not
+    // its full total (owner's request, Nov 2026).
+    const unpaidAmount = +((unpaidRows ?? []) as UnpaidRow[]).reduce(
+      (sum, row) => sum + balanceStored(Number(row.סך_הכל_לתשלום) || 0, row.תשלומים, vatAddedOnTop(row.לקוחות?.סוג_לקוח, row.סוג_הזמנה)),
       0,
-    );
+    ).toFixed(2);
 
     const revenueToday = (revenueTodayRows ?? []).reduce(
       (sum: number, row: any) => sum + (row['סך_הכל_לתשלום'] ?? 0),

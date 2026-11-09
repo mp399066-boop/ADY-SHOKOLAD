@@ -8,7 +8,9 @@ import { Button } from '@/components/ui/Button';
 import { StatusBadge, UrgentBadge } from '@/components/ui/StatusBadge';
 import { PageLoading } from '@/components/ui/LoadingSpinner';
 import { Combobox } from '@/components/ui/Combobox';
-import { ConfirmModal } from '@/components/ui/ConfirmModal';
+import { OrderDeleteModal, type DeleteChoice } from '@/components/orders/OrderDeleteModal';
+import { PartialPaymentForm } from '@/components/orders/PartialPaymentForm';
+import { paidTotal } from '@/lib/order-balance';
 import { normalizeSearchText, productSearchText } from '@/lib/normalize';
 import { getOrderItemContentKey } from '@/lib/order-items-key';
 import { sumPetitFours, getCapacityInfo } from '@/lib/packageCapacity';
@@ -565,11 +567,14 @@ export default function OrderDetailPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  const handleDeleteOrder = async () => {
+  const handleDeleteOrder = async (choice: DeleteChoice) => {
     if (!order) return;
     setDeleting(true);
     try {
-      const res = await fetch(`/api/orders/${order.id}`, { method: 'DELETE' });
+      const qs = new URLSearchParams();
+      if (choice.restoreCompleted) qs.set('restoreCompleted', '1');
+      if (choice.invoiceCancelled) qs.set('invoiceCancelled', '1');
+      const res = await fetch(`/api/orders/${order.id}?${qs}`, { method: 'DELETE' });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         toast.error(json.error || 'שגיאה במחיקת ההזמנה');
@@ -695,6 +700,36 @@ export default function OrderDetailPage() {
       setOrder(prev => prev ? { ...prev, סטטוס_תשלום: status as Order['סטטוס_תשלום'] } : prev);
       toast.success('סטטוס תשלום עודכן');
     }
+  };
+
+  // ── Partial payments ("שולם X עד עכשיו") ─────────────────────────────────
+  const [showPartialForm, setShowPartialForm] = useState(false);
+  const [savingPayment, setSavingPayment] = useState(false);
+
+  const recordPartialPayment = async (amount: number, method: string) => {
+    setSavingPayment(true);
+    try {
+      const res = await fetch(`/api/orders/${id}/payments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ סכום: amount, אמצעי_תשלום: method }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) { toast.error(json.error || 'רישום התשלום נכשל'); return; }
+      toast.success(json.fullyPaid ? 'התשלום נרשם — אין יתרה. אפשר לסמן "שולם".' : 'התשלום נרשם');
+      setShowPartialForm(false);
+      loadOrder();
+    } catch { toast.error('שגיאה ברשת'); }
+    finally { setSavingPayment(false); }
+  };
+
+  const removePayment = async (paymentId: string) => {
+    if (!(await confirm('למחוק את התשלום הזה?'))) return;
+    const res = await fetch(`/api/orders/${id}/payments?paymentId=${paymentId}`, { method: 'DELETE' });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) { toast.error(json.error || 'מחיקת התשלום נכשלה'); return; }
+    toast.success('התשלום נמחק');
+    loadOrder();
   };
 
   // ── Open edit modal ──────────────────────────────────────────────────────────
@@ -1112,7 +1147,8 @@ export default function OrderDetailPage() {
     ? (isBusinessForVat ? +(editTotal * (1 + VAT_RATE)).toFixed(2) : editTotal)
     : displayedTotal;
 
-  const _payplusTotalPaid = (order.תשלומים || []).reduce((s, p) => s + (p.סכום || 0), 0);
+  // Only payments marked שולם — a ממתין row is a link that wasn't paid yet.
+  const _payplusTotalPaid = paidTotal(order.תשלומים);
   const payplusBalance = +Math.max(0, liveDisplayTotal - _payplusTotalPaid).toFixed(2);
 
   // Safe, non-secret debug for the static PayPlus link (operators only — this
@@ -1919,7 +1955,7 @@ export default function OrderDetailPage() {
             )}
             {/* Balance due — shown only when payments exist but don't cover the full total */}
             {(() => {
-              const totalPaid = (order.תשלומים || []).reduce((s, p) => s + (p.סכום || 0), 0);
+              const totalPaid = paidTotal(order.תשלומים);
               const balance = +(liveDisplayTotal - totalPaid).toFixed(2);
               if (totalPaid <= 0 || balance <= 0.01) return null;
               return (
@@ -2042,8 +2078,8 @@ export default function OrderDetailPage() {
                 return (
                   <button
                     key={s}
-                    onClick={() => updatePaymentStatus(s)}
-                    disabled={isActive}
+                    onClick={() => (s === 'חלקי' ? setShowPartialForm(true) : updatePaymentStatus(s))}
+                    disabled={isActive && s !== 'חלקי'}
                     className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
                       isActive
                         ? PAYMENT_PILL[s] || 'bg-stone-200 text-stone-800 ring-1 ring-stone-300'
@@ -2055,6 +2091,14 @@ export default function OrderDetailPage() {
                 );
               })}
             </div>
+            {(showPartialForm || order.סטטוס_תשלום === 'חלקי') && (
+              <PartialPaymentForm
+                balance={payplusBalance}
+                busy={savingPayment}
+                onSave={recordPartialPayment}
+                onCancel={order.סטטוס_תשלום === 'חלקי' ? undefined : () => setShowPartialForm(false)}
+              />
+            )}
             {payplusBalance > 0.01 && (
               <div className="mt-2 space-y-2">
                 {/* Static (non-API) PayPlus payment page — temporary flow while
@@ -2176,8 +2220,21 @@ export default function OrderDetailPage() {
                       <div className="font-medium truncate" style={{ color: '#2B1A10' }}>{p.אמצעי_תשלום}</div>
                       <div className="text-[11px]" style={{ color: '#9B7A5A' }}>{formatDate(p.תאריך_תשלום)}</div>
                     </div>
-                    <span className="font-semibold tabular-nums flex-shrink-0" style={{ color: '#8B5E34' }}>
-                      {formatCurrency(p.סכום)}
+                    <span className="flex items-center gap-2 flex-shrink-0">
+                      {p.סטטוס_תשלום !== 'שולם' && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: '#FFF4E0', color: '#8B5E34' }}>{p.סטטוס_תשלום || 'ממתין'}</span>
+                      )}
+                      <span className="font-semibold tabular-nums" style={{ color: '#8B5E34' }}>{formatCurrency(p.סכום)}</span>
+                      {p.סטטוס_תשלום === 'שולם' && (
+                        <button
+                          type="button"
+                          onClick={() => removePayment(p.id)}
+                          className="text-[11px] px-1.5 rounded hover:bg-red-50"
+                          style={{ color: '#B91C1C' }}
+                          aria-label="מחיקת תשלום"
+                          title="מחיקת תשלום שנרשם בטעות"
+                        >✕</button>
+                      )}
                     </span>
                   </li>
                 ))}
@@ -2265,11 +2322,11 @@ export default function OrderDetailPage() {
           ambiguity about which order is being removed. The invoice guard is
           enforced server-side; a 409 surfaces here as a toast.
           ══════════════════════════════════════════════════════════════════════ */}
-      <ConfirmModal
+      <OrderDeleteModal
         open={showDeleteConfirm}
-        title="מחיקת הזמנה"
-        description={`האם למחוק את ההזמנה ${order.מספר_הזמנה}? פעולה זו אינה ניתנת לביטול.`}
-        confirmLabel="מחק הזמנה"
+        subject={`ההזמנה ${order.מספר_הזמנה}`}
+        completedCount={order.סטטוס_הזמנה === 'הושלמה בהצלחה' ? 1 : 0}
+        invoiceCount={(order.חשבוניות?.length ?? 0) > 0 ? 1 : 0}
         loading={deleting}
         onClose={() => setShowDeleteConfirm(false)}
         onConfirm={handleDeleteOrder}
