@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic';
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import {
@@ -323,7 +323,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     const emailContext: EmailContext = { customerId: existingOrder.לקוח_id, orderId };
     // Persist the snapshot of items the customer is about to receive so the
     // NEXT "send updated summary" can correctly diff for חדש / removed.
-    void (async () => {
+    after(async () => {
       try {
         await sendOrderEmail(emailTo, emailName, emailOrderData, emailContext);
         try {
@@ -351,7 +351,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
           console.error('[finalize-draft] snapshot persist failed:', snapErr);
         }
       } catch (err) { console.error('[finalize-draft] sendOrderEmail failed:', err); }
-    })();
+    });
   }
 
   // 7. NOTE: no admin alert from this path. Per owner request (2026-05) the
@@ -400,7 +400,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   // 'חדשה' so it'd no longer match סטטוס_הזמנה='טיוטה' anyway, but
   // defensive). Only touches drafts with zero line items.
   if (existingOrder.לקוח_id) {
-    void (async () => {
+    after(async () => {
       try {
         const { data: customerDrafts } = await supabase
           .from('הזמנות')
@@ -428,7 +428,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
       } catch (err) {
         console.warn('[finalize-draft] orphan-draft cleanup unexpected error (continuing):', err instanceof Error ? err.message : err);
       }
-    })();
+    });
   }
 
   return NextResponse.json({ data: { ...fullOrder, מוצרים_בהזמנה: fullItems || [] } }, { status: 200 });

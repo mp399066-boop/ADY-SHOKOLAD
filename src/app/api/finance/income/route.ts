@@ -10,6 +10,7 @@ import {
 import { manualIncomeToFinanceOrder, type ManualIncome } from '@/lib/finance-manual-income';
 import { MANUAL_INCOME_COLUMNS } from '@/lib/finance-income-schema';
 import { isMissingTable } from '@/lib/finance-expense-schema';
+import { fetchAllPages } from '@/lib/supabase/fetch-all';
 
 // GET /api/finance/income?year=2026&basis=order|delivery
 // Read-only. Returns every countable order of the year (money already
@@ -73,13 +74,14 @@ export async function GET(req: NextRequest) {
     let manualIncomes: ManualIncome[] = [];
     let manualReady = true;
     {
-      const { data, error } = await supabase
+      const { data, error } = await fetchAllPages((from, to) => supabase
         .from('הכנסות_ידניות')
         .select(MANUAL_INCOME_COLUMNS)
         .gte('תאריך', `${year}-01-01`)
         .lte('תאריך', `${year}-12-31`)
         .order('תאריך', { ascending: false })
-        .limit(5000);
+        .order('id')
+        .range(from, to));
       if (error) {
         if (!isMissingTable(error)) throw error;
         manualReady = false;

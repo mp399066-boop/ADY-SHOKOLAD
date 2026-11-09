@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic';
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { generateOrderNumber } from '@/lib/utils';
@@ -533,7 +533,7 @@ export async function POST(req: NextRequest) {
     // Persist the snapshot of items the customer is about to receive so the
     // NEXT "send updated summary" can correctly diff for חדש / removed.
     // Fire-and-forget alongside the email; both must not block the response.
-    void (async () => {
+    after(async () => {
       try {
         console.log('[create-full] calling sendOrderEmail...');
         await sendOrderEmail(emailTo, emailName, emailOrderData, emailContext);
@@ -566,7 +566,7 @@ export async function POST(req: NextRequest) {
       } catch (err) {
         console.error('[create-full] sendOrderEmail failed:', err);
       }
-    })();
+    });
   } else {
     console.log('[create-full] skipping email —', emailTo ? 'internal address' : 'no email');
   }
@@ -632,7 +632,7 @@ export async function POST(req: NextRequest) {
   //     but defensive)
   //   - only deletes drafts with ZERO line items (queried below)
   if (!isDraft && customerId) {
-    void (async () => {
+    after(async () => {
       try {
         const { data: customerDrafts } = await supabase
           .from('הזמנות')
@@ -662,7 +662,7 @@ export async function POST(req: NextRequest) {
       } catch (err) {
         console.warn('[create-full] orphan-draft cleanup unexpected error (continuing):', err instanceof Error ? err.message : err);
       }
-    })();
+    });
   }
 
   const responseBody = { data: { ...fullOrder, מוצרים_בהזמנה: fullItems || [] } };

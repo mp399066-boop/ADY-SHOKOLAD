@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { nameMatches } from '@/lib/inventory-dedup';
+import { fetchAllPages } from '@/lib/supabase/fetch-all';
 
 export async function GET(req: NextRequest) {
   const auth = await requireManagementUser();
@@ -16,10 +17,11 @@ export async function GET(req: NextRequest) {
   const name = (new URL(req.url).searchParams.get('name') ?? '').trim();
   if (!name) return NextResponse.json({ matches: [] });
 
-  const { data: mats } = await supabase
+  const { data: mats } = await fetchAllPages((from, to) => supabase
     .from('מלאי_חומרי_גלם')
     .select('id, שם_חומר_גלם, כמות_במלאי, יחידת_מידה, parent_raw_material_id')
-    .limit(2000);
+    .order('id')
+    .range(from, to));
 
   const { data: aliases } = await supabase
     .from('raw_material_aliases')

@@ -5,16 +5,13 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { dbErrorResponse } from '@/lib/api-error';
 import { fetchAllPages } from '@/lib/supabase/fetch-all';
+import { todayJerusalem } from '@/lib/finance';
 
 // GET /api/analytics/finance?range=today|week|month|30days
 // Read-only — returns aggregated revenue data. Never writes to DB.
 
 type RangeKey = 'today' | 'week' | 'month' | '30days';
 const VALID_RANGES: RangeKey[] = ['today', 'week', 'month', '30days'];
-
-function todayJerusalem(): string {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
-}
 
 function addDaysISO(iso: string, n: number): string {
   const [y, m, d] = iso.split('-').map(Number);

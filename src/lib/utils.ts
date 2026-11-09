@@ -42,11 +42,21 @@ export function getInventoryStatus(
   return 'תקין';
 }
 
+/**
+ * A free-text search term made safe for a PostgREST `.or('col.ilike.%x%,…')`
+ * filter: characters that end or nest a condition (`, ( ) " \`) are dropped
+ * and the LIKE wildcards are escaped, so the text can only ever be matched,
+ * never change the filter.
+ */
+export function orFilterTerm(raw: string, max = 80): string {
+  return raw.replace(/[,()"\\]/g, ' ').trim().slice(0, max).replace(/[%_]/g, '\\$&');
+}
+
 export function generateOrderNumber(): string {
-  const now = new Date();
-  const year = now.getFullYear().toString().slice(-2);
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
+  // Israel's date, not the server's (UTC on Vercel) — an order placed after
+  // midnight Israel time used to carry the previous day in its number.
+  const [y, month, day] = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' }).split('-');
+  const year = y.slice(-2);
   const random = Math.floor(Math.random() * 9000) + 1000;
   return `ORD-${year}${month}${day}-${random}`;
 }

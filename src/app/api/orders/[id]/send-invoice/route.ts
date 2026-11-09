@@ -6,6 +6,7 @@ import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireA
 import { logActivity, userActor } from '@/lib/activity-log';
 import { sendInvoiceEmail, isInternalEmail } from '@/lib/email';
 import { fetchMorningInvoicePdf } from '@/lib/morning-pdf';
+import { INVOICE_DOC_LABELS, rankInvoices, prettyDocNumber } from '@/lib/invoice-docs';
 
 // Manual "שלח חשבונית ללקוח" — emails an ALREADY-issued Morning document to the
 // customer using the stored document link. This does NOT create a new invoice;
@@ -20,28 +21,6 @@ type InvoiceRow = {
   תאריך_יצירה?: string | null;
 };
 
-const DOC_LABELS: Record<string, string> = {
-  invoice_receipt:  'חשבונית מס קבלה',
-  'חשבונית_מס_קבלה': 'חשבונית מס קבלה',
-  tax_invoice:      'חשבונית מס',
-  receipt:          'קבלה',
-};
-
-// Prefer a real invoice document over a plain receipt when more than one
-// document with a link exists for the order.
-function docPriority(t?: string | null): number {
-  if (t === 'invoice_receipt' || t === 'חשבונית_מס_קבלה') return 3;
-  if (t === 'tax_invoice') return 2;
-  if (t === 'receipt') return 1;
-  return 0;
-}
-
-// Strip the internal `manual:` marker from a displayed document number.
-function prettyDocNumber(raw?: string | null): string | null {
-  const t = (raw ?? '').trim();
-  if (!t) return null;
-  return t.startsWith('manual:') ? t.slice('manual:'.length).trim() : t;
-}
 
 export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -70,12 +49,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
       { status: 400 },
     );
   }
-  candidates.sort((a, b) => {
-    const p = docPriority(b.סוג_מסמך) - docPriority(a.סוג_מסמך);
-    if (p !== 0) return p;
-    return String(b.תאריך_יצירה || '').localeCompare(String(a.תאריך_יצירה || ''));
-  });
-  const invoice = candidates[0];
+  const invoice = rankInvoices(candidates)[0];
 
   const to = (customer?.['אימייל'] || '').trim();
   if (!to) {
@@ -94,7 +68,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   const customerName = customer
     ? `${customer['שם_פרטי'] || ''} ${customer['שם_משפחה'] || ''}`.trim()
     : '';
-  const docLabel = DOC_LABELS[invoice.סוג_מסמך || ''] || 'חשבונית';
+  const docLabel = INVOICE_DOC_LABELS[invoice.סוג_מסמך || ''] || 'חשבונית';
   const invoiceNumber = prettyDocNumber(invoice.מספר_חשבונית);
 
   // Fetch the actual PDF from Morning so it can be attached. We intentionally

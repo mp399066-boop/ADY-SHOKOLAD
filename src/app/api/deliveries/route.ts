@@ -6,6 +6,9 @@ import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireA
 import { attachDeliveryRecipients } from '@/lib/order-recipients';
 import { dbErrorResponse } from '@/lib/api-error';
 import { fetchAllPages } from '@/lib/supabase/fetch-all';
+import { deliveryPatchSchema } from '@/lib/catalog-patch-schema';
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface OrderRow {
   id: string;
@@ -184,8 +187,21 @@ export async function POST(req: NextRequest) {
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
-  const body = await req.json();
-  if (!body.הזמנה_id) return NextResponse.json({ error: 'הזמנה היא שדה חובה' }, { status: 400 });
+  const raw = await req.json().catch(() => null);
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return NextResponse.json({ error: 'בקשה לא תקינה' }, { status: 400 });
+  if (typeof raw.הזמנה_id !== 'string' || !UUID_RE.test(raw.הזמנה_id)) return NextResponse.json({ error: 'הזמנה היא שדה חובה' }, { status: 400 });
+  // Editable details only. A new delivery always starts as ממתין — the public
+  // courier token, delivered/WhatsApp timestamps and status are set by the
+  // server flows, never by the client.
+  const { הזמנה_id: _o, נמען_id: _r, ...rest } = raw as Record<string, unknown>;
+  const details = deliveryPatchSchema.omit({ סטטוס_משלוח: true, delivered_at: true, whatsapp_sent_at: true }).safeParse(rest);
+  if (!details.success) return NextResponse.json({ error: details.error.issues[0]?.message ?? 'נתונים לא תקינים' }, { status: 400 });
+  const body: Record<string, unknown> = {
+    ...Object.fromEntries(Object.entries(details.data).map(([k, v]) => [k, v === '' ? null : v])),
+    הזמנה_id: raw.הזמנה_id,
+    סטטוס_משלוח: 'ממתין',
+  };
+  if (typeof raw.נמען_id === 'string' && UUID_RE.test(raw.נמען_id.trim())) body.נמען_id = raw.נמען_id.trim();
 
   // Dedup guard: one active delivery per order *stop*. A multi-recipient
   // order has one row per recipient, so the match is on (order, recipient)
