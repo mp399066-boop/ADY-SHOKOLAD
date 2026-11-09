@@ -4,13 +4,22 @@ import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireA
 import { restoreOrderInventory } from '@/lib/inventory-deduct';
 import { serverErrorResponse } from '@/lib/api-error';
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_IDS = 500;
+
 export async function POST(req: NextRequest) {
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
   try {
-    const { action, ids, value } = await req.json();
+    const { action, ids, value } = (await req.json().catch(() => ({}))) as { action?: unknown; ids?: unknown; value?: unknown };
     if (!Array.isArray(ids) || ids.length === 0) {
       return NextResponse.json({ error: 'נדרשות רשומות לפעולה' }, { status: 400 });
+    }
+    if (ids.length > MAX_IDS || !ids.every(id => typeof id === 'string' && UUID_RE.test(id))) {
+      return NextResponse.json({ error: 'רשימת הזמנות לא תקינה' }, { status: 400 });
+    }
+    if (value !== undefined && typeof value !== 'string') {
+      return NextResponse.json({ error: 'ערך לא תקין' }, { status: 400 });
     }
 
     const supabase = createAdminClient();
@@ -18,7 +27,7 @@ export async function POST(req: NextRequest) {
     if (action === 'delete') {
       let succeeded = 0;
       let failed = 0;
-      for (const id of ids) {
+      for (const id of ids as string[]) {
         const { error } = await supabase.from('הזמנות').delete().eq('id', id);
         if (error) {
           console.warn('[bulk-orders] delete failed:', id, error.message);

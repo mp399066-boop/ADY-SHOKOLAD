@@ -155,11 +155,10 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
 
   console.log('[invoice] PATCH called — order:', params.id, '| body keys:', Object.keys(body).join(','), '| סטטוס_תשלום:', body.סטטוס_תשלום);
 
-  // Fetch current state BEFORE update — needed for inventory check + invoice/satmar trigger
-  const needPrev = body.סטטוס_הזמנה === 'בהכנה'
-    || body.סטטוס_תשלום === 'שולם'
-    || body.סטטוס_הזמנה === 'הושלמה בהצלחה'
-    || body.סטטוס_הזמנה === 'בוטלה';   // restore-on-cancel needs prev order status
+  // Fetch current state BEFORE update — needed for every status change:
+  // restore-on-cancel, re-deduct on un-cancel (בוטלה → any active status,
+  // e.g. חדשה), the invoice/satmar triggers and the activity log's old value.
+  const needPrev = body.סטטוס_הזמנה !== undefined || body.סטטוס_תשלום !== undefined;
   let prevOrderStatus: string | null = null;
   let prevPaymentStatus: string | null = null;
   let orderType = 'רגיל';

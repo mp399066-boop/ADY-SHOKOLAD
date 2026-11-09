@@ -10,6 +10,7 @@ import { isMissingTable, EXPENSES_MIGRATION_HINT } from '@/lib/finance-expense-s
 import {
   fetchMorningExpenses, mapMorningExpense, MorningApiError, MorningConfigError, type MappedExpense,
 } from '@/lib/morning-expenses';
+import { fetchAllPages } from '@/lib/supabase/fetch-all';
 
 // POST /api/finance/expenses/sync-morning
 //   { fromDate, toDate, category, dryRun }
@@ -107,13 +108,14 @@ export async function POST(req: NextRequest) {
   const manualKeys = new Set<string>();
   if (mapped.length) {
     const dates = mapped.map(m => m.תאריך).sort();
-    const { data, error } = await supabase
+    const { data, error } = await fetchAllPages((from, to) => supabase
       .from('הוצאות')
       .select('תאריך, סכום, שם_ספק, מספר_מסמך')
       .is('מזהה_חיצוני', null)
       .gte('תאריך', dates[0])
       .lte('תאריך', dates[dates.length - 1])
-      .limit(10_000);
+      .order('id')
+      .range(from, to));
     if (error) {
       console.error('[sync-morning] manual rows read failed', { code: error.code });
       return NextResponse.json({ error: 'הסנכרון נכשל' }, { status: 500 });

@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { logActivity, userActor } from '@/lib/activity-log';
 import { dbErrorResponse } from '@/lib/api-error';
+import { orFilterTerm } from '@/lib/utils';
 
 export async function GET(req: NextRequest) {
   const auth = await requireManagementUser();
@@ -35,8 +36,9 @@ export async function GET(req: NextRequest) {
     query = query.order('תאריך_יצירה', { ascending: false });
   }
 
-  if (search) {
-    query = query.or(`שם_פרטי.ilike.%${search}%,שם_משפחה.ilike.%${search}%,טלפון.ilike.%${search}%,אימייל.ilike.%${search}%`);
+  const term = search ? orFilterTerm(search) : '';
+  if (term) {
+    query = query.or(`שם_פרטי.ilike.%${term}%,שם_משפחה.ilike.%${term}%,טלפון.ilike.%${term}%,אימייל.ilike.%${term}%`);
   }
   if (type) {
     query = query.eq('סוג_לקוח', type);

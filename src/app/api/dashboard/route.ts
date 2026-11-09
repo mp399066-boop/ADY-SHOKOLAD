@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { serverErrorResponse } from '@/lib/api-error';
+import { fetchAllPages } from '@/lib/supabase/fetch-all';
 
 export async function GET() {
   const auth = await requireManagementUser();
@@ -74,11 +75,14 @@ export async function GET() {
       supabase.from('הזמנות').select('*', { count: 'exact', head: true }).eq('סטטוס_הזמנה', 'נשלחה'),
       supabase.from('מלאי_חומרי_גלם').select('*', { count: 'exact', head: true }).in('סטטוס_מלאי', ['מלאי נמוך', 'קריטי', 'אזל מהמלאי']),
       supabase.from('משלוחים').select('*', { count: 'exact', head: true }).eq('תאריך_משלוח', today),
-      // Unpaid amount — same predicate as the count above.
-      supabase.from('הזמנות').select('סך_הכל_לתשלום')
+      // Unpaid amount — same predicate as the count above. Paged: a single
+      // response stops at 1000 rows, which would silently undercount the sum.
+      fetchAllPages<{ סך_הכל_לתשלום: number | null }>((from, to) => supabase.from('הזמנות').select('סך_הכל_לתשלום')
         .in('סטטוס_תשלום', ['ממתין', 'חלקי'])
         .neq('סטטוס_הזמנה', 'בוטלה')
-        .neq('סטטוס_הזמנה', 'טיוטה'),
+        .neq('סטטוס_הזמנה', 'טיוטה')
+        .order('id')
+        .range(from, to)),
       // deliveries by status — filtered to today only (תאריך_משלוח = today)
       supabase.from('משלוחים').select('*', { count: 'exact', head: true }).eq('תאריך_משלוח', today).eq('סטטוס_משלוח', 'נאסף'),
       supabase.from('משלוחים').select('*', { count: 'exact', head: true }).eq('תאריך_משלוח', today).eq('סטטוס_משלוח', 'נמסר'),
@@ -109,9 +113,8 @@ export async function GET() {
 
     const firstError = e1 || e2 || e3 || e4 || e5 || e6 || e7 || e8 || e9 || e10 || e11 || e12 || e13 || e14;
     if (firstError) {
-      const msg = firstError.message || firstError.details || firstError.hint || 'שגיאה בטעינת הנתונים';
-      console.error('[dashboard] query error:', msg);
-      return NextResponse.json({ error: msg }, { status: 500 });
+      console.error('[dashboard] query error:', firstError.code ?? firstError.message);
+      return NextResponse.json({ error: 'שגיאה בטעינת הנתונים' }, { status: 500 });
     }
 
     // "בהזמנה מראש" products (migration 056) keep no stock on purpose, so their

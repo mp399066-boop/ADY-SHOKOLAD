@@ -3,6 +3,7 @@
 // Each action returns AssistantResponse blocks that the UI renders directly.
 
 import { createAdminClient } from '@/lib/supabase/server';
+import { fetchAllPages } from '@/lib/supabase/fetch-all';
 import { fetchOrdersForReport, resolveRange as resolveReportRange } from '@/lib/orders-report-email';
 import { resolveEntity } from './entity-resolver';
 import { suggestFromCatalog, catalogGrouped } from './question-catalog';
@@ -10,6 +11,22 @@ import type {
   AssistantResponse, Block, ClarifyOption, ListItem, OrderSummary,
   ParsedIntent, Range, Filters, Tone, UnknownHint, ChitchatMood,
 } from './types';
+
+// Rows for a long id list: the list is split (a huge `in (...)` overflows the
+// request URL) and each part is paged (a response stops at 1000 rows).
+async function selectByIds<T>(
+  ids: string[],
+  page: (chunk: string[], from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string; code?: string } | null }>,
+): Promise<{ data: T[]; error: { message: string; code?: string } | null }> {
+  const all: T[] = [];
+  for (let i = 0; i < ids.length; i += 150) {
+    const chunk = ids.slice(i, i + 150);
+    const { data, error } = await fetchAllPages<T>((from, to) => page(chunk, from, to));
+    if (error) return { data: all, error };
+    all.push(...data);
+  }
+  return { data: all, error: null };
+}
 
 const DEFAULT_SUGGESTIONS: ClarifyOption[] = [
   { label: 'כמה הזמנות יש היום?',           text: 'כמה הזמנות יש היום?' },
@@ -437,11 +454,13 @@ async function actionOrderPetitFourSummary(range: Range): Promise<AssistantRespo
     return { kind: 'answer', blocks: [{ type: 'text', text: `אין הזמנות ${rangeLabel(range)}` }] };
   }
 
-  const { data: items, error: itemsErr } = await supabase
+  const { data: items, error: itemsErr } = await selectByIds(orderIds, (chunk, from, to) => supabase
     .from('מוצרים_בהזמנה')
     .select('id')
-    .in('הזמנה_id', orderIds)
-    .eq('סוג_שורה', 'מארז');
+    .in('הזמנה_id', chunk)
+    .eq('סוג_שורה', 'מארז')
+    .order('id')
+    .range(from, to));
   if (itemsErr) throw new Error(itemsErr.message);
 
   const itemIds = ((items || []) as Record<string, unknown>[]).map(i => String(i['id']));
@@ -449,10 +468,12 @@ async function actionOrderPetitFourSummary(range: Range): Promise<AssistantRespo
     return { kind: 'answer', blocks: [{ type: 'text', text: `אין מארזי פטיפורים בהזמנות ${rangeLabel(range)}` }] };
   }
 
-  const { data: selections, error: selErr } = await supabase
+  const { data: selections, error: selErr } = await selectByIds(itemIds, (chunk, from, to) => supabase
     .from('בחירת_פטיפורים_בהזמנה')
     .select('כמות, סוגי_פטיפורים(שם_פטיפור)')
-    .in('שורת_הזמנה_id', itemIds);
+    .in('שורת_הזמנה_id', chunk)
+    .order('id')
+    .range(from, to));
   if (selErr) throw new Error(selErr.message);
 
   const totals = new Map<string, number>();
@@ -501,11 +522,13 @@ async function actionCountOrderItemsByKind(range: Range, kind: 'מארז' | 'מ�
     return { kind: 'answer', blocks: [{ type: 'text', text: `אין הזמנות ${rangeLabel(range)}` }] };
   }
 
-  const { data: items, error: itemsErr } = await supabase
+  const { data: items, error: itemsErr } = await selectByIds(orderIds, (chunk, from, to) => supabase
     .from('מוצרים_בהזמנה')
     .select('כמות')
-    .in('הזמנה_id', orderIds)
-    .eq('סוג_שורה', kind);
+    .in('הזמנה_id', chunk)
+    .eq('סוג_שורה', kind)
+    .order('id')
+    .range(from, to));
   if (itemsErr) throw new Error(itemsErr.message);
 
   const total = ((items || []) as Record<string, unknown>[])
@@ -1146,11 +1169,12 @@ async function actionTopProducts(): Promise<AssistantResponse> {
 
   // Step 2: line items for those orders, only regular products (not packages).
   // Limit defensively — even very busy months should fit well under 2k items.
-  const { data: itemRows, error: itemsErr } = await supabase
+  const { data: itemRows, error: itemsErr } = await selectByIds(orderIds, (chunk, from, to) => supabase
     .from('מוצרים_בהזמנה')
     .select('כמות, סוג_שורה, מוצרים_למכירה(שם_מוצר)')
-    .in('הזמנה_id', orderIds)
-    .limit(2000);
+    .in('הזמנה_id', chunk)
+    .order('id')
+    .range(from, to));
   if (itemsErr) throw new Error(itemsErr.message);
 
   type ItemRow = {
@@ -1209,11 +1233,13 @@ async function actionTopPetitFours(): Promise<AssistantResponse> {
   }
 
   // Find line items in those orders, then their petit-four selections.
-  const { data: itemRows, error: itemsErr } = await supabase
+  const { data: itemRows, error: itemsErr } = await selectByIds(orderIds, (chunk, from, to) => supabase
     .from('מוצרים_בהזמנה')
     .select('id')
-    .in('הזמנה_id', orderIds)
-    .eq('סוג_שורה', 'מארז');
+    .in('הזמנה_id', chunk)
+    .eq('סוג_שורה', 'מארז')
+    .order('id')
+    .range(from, to));
   if (itemsErr) throw new Error(itemsErr.message);
   const itemIds = ((itemRows || []) as Array<{ id: string }>).map(r => r.id);
 
@@ -1221,11 +1247,12 @@ async function actionTopPetitFours(): Promise<AssistantResponse> {
     return { kind: 'answer', blocks: [{ type: 'text', text: 'לא נמכרו מארזי פטיפורים החודש 📭' }] };
   }
 
-  const { data: selRows, error: selErr } = await supabase
+  const { data: selRows, error: selErr } = await selectByIds(itemIds, (chunk, from, to) => supabase
     .from('בחירת_פטיפורים_בהזמנה')
     .select('כמות, סוגי_פטיפורים(שם_פטיפור)')
-    .in('שורת_הזמנה_id', itemIds)
-    .limit(5000);
+    .in('שורת_הזמנה_id', chunk)
+    .order('id')
+    .range(from, to));
   if (selErr) throw new Error(selErr.message);
 
   type SelRow = { כמות: number | null; סוגי_פטיפורים: { שם_פטיפור?: string | null } | null };
@@ -1474,11 +1501,12 @@ async function actionKitchenPrepSummary(range: Range): Promise<AssistantResponse
     return { kind: 'answer', blocks: [{ type: 'text', text: `אין הזמנות לייצור ${rangeDesc} 🌿` }] };
   }
 
-  const { data: itemRows, error: itemsErr } = await supabase
+  const { data: itemRows, error: itemsErr } = await selectByIds(orderIds, (chunk, from, to) => supabase
     .from('מוצרים_בהזמנה')
     .select('כמות, סוג_שורה, גודל_מארז, מוצרים_למכירה(שם_מוצר)')
-    .in('הזמנה_id', orderIds)
-    .limit(2000);
+    .in('הזמנה_id', chunk)
+    .order('id')
+    .range(from, to));
   if (itemsErr) throw new Error(itemsErr.message);
 
   type ItemRow = {

@@ -99,8 +99,48 @@ export const deliveryPatchSchema = z.object({
   whatsapp_sent_at: optIso,
 }).partial();
 
+const count = numeric('מספר לא תקין').pipe(z.number().int('מספר לא תקין').min(0).max(10_000));
+
+export const packagePatchSchema = z.object({
+  שם_מארז:              name('שם מארז'),
+  גודל_מארז:            count,
+  כמה_סוגים_מותר_לבחור: count,
+  מחיר_מארז:            price,
+  פעיל:                 z.boolean(),
+  הערות:                optText(2000),
+  מזהה_לובהבל:          optText(100),
+}).partial();
+
+export const supplierPatchSchema = z.object({
+  שם_ספק:   name('שם ספק'),
+  טלפון:    optText(30),
+  אימייל:   optText(200),
+  איש_קשר:  optText(200),
+  הערות:    optText(2000),
+  פעיל:     z.boolean(),
+}).partial();
+
+export const employeePatchSchema = z.object({
+  שם_עובד:  name('שם עובד'),
+  טלפון:    optText(30),
+  אימייל:   optText(200),
+  תפקיד:    optText(100),
+  פעיל:     z.boolean(),
+}).partial();
+
+export const businessSettingsPatchSchema = z.object({
+  business_name:    optText(200),
+  logo_url:         optText(1000),
+  primary_color:    optText(30),
+  secondary_color:  optText(30),
+  phone:            optText(30),
+  email:            optText(200),
+  address:          optText(500),
+  default_currency: optText(10),
+}).partial();
+
 // NOT NULL text columns — an emptied value is stored as '' rather than null.
-const KEEP_EMPTY_STRING = new Set(['שם_חומר_גלם', 'שם_מוצר', 'שם_פטיפור', 'שם_פרטי', 'שם_משפחה']);
+const KEEP_EMPTY_STRING = new Set(['שם_חומר_גלם', 'שם_מוצר', 'שם_פטיפור', 'שם_פרטי', 'שם_משפחה', 'שם_מארז', 'שם_ספק', 'שם_עובד']);
 
 /**
  * Parses a PATCH body against one of the schemas above. Empty strings in

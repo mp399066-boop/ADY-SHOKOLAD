@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { fetchMorningInvoicePdf } from '@/lib/morning-pdf';
+import { rankInvoices, prettyDocNumber } from '@/lib/invoice-docs';
 
 // Shared core for downloading the PDF of an already-issued Morning document for
 // an order. Picks the best existing document that has a stored link (same
@@ -20,18 +21,6 @@ type InvoiceRow = {
   תאריך_יצירה?: string | null;
 };
 
-function docPriority(t?: string | null): number {
-  if (t === 'invoice_receipt' || t === 'חשבונית_מס_קבלה') return 3;
-  if (t === 'tax_invoice') return 2;
-  if (t === 'receipt') return 1;
-  return 0;
-}
-
-function prettyDocNumber(raw?: string | null): string | null {
-  const t = (raw ?? '').trim();
-  if (!t) return null;
-  return t.startsWith('manual:') ? t.slice('manual:'.length).trim() : t;
-}
 
 export async function buildInvoicePdfResponse(orderId: string): Promise<NextResponse> {
   const auth = await requireManagementUser();
@@ -51,12 +40,7 @@ export async function buildInvoicePdfResponse(orderId: string): Promise<NextResp
   if (candidates.length === 0) {
     return NextResponse.json({ error: 'לא קיימת חשבונית עם קישור להורדה.' }, { status: 400 });
   }
-  candidates.sort((a, b) => {
-    const p = docPriority(b.סוג_מסמך) - docPriority(a.סוג_מסמך);
-    if (p !== 0) return p;
-    return String(b.תאריך_יצירה || '').localeCompare(String(a.תאריך_יצירה || ''));
-  });
-  const invoice = candidates[0];
+  const invoice = rankInvoices(candidates)[0];
   const invoiceNumber = prettyDocNumber(invoice.מספר_חשבונית);
 
   try {

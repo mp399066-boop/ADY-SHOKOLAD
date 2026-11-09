@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { requireManagementUser, unauthorizedResponse } from '@/lib/auth/requireAuthorizedUser';
 import { dbErrorResponse } from '@/lib/api-error';
+import { parseCatalogPatch, businessSettingsPatchSchema } from '@/lib/catalog-patch-schema';
 
 export async function GET() {
   const auth = await requireManagementUser();
@@ -18,7 +19,9 @@ export async function PATCH(req: NextRequest) {
   const auth = await requireManagementUser();
   if (!auth) return unauthorizedResponse();
   const supabase = createAdminClient();
-  const body = await req.json();
+  const parsed = parseCatalogPatch(businessSettingsPatchSchema, await req.json().catch(() => null));
+  if ('error' in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 });
+  const body = parsed.data;
 
   const { data: existing } = await supabase.from('business_settings').select('id').single();
 

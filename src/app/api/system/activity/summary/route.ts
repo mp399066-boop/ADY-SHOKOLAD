@@ -9,6 +9,7 @@ import {
   unauthorizedResponse,
   requireAuthorizedUser,
 } from '@/lib/auth/requireAuthorizedUser';
+import { fetchAllPages } from '@/lib/supabase/fetch-all';
 
 // GET /api/system/activity/summary
 //
@@ -53,11 +54,12 @@ export async function GET(req: NextRequest) {
   // — the page only needs counts, and we never expect the 7-day window to
   // exceed that for a single-tenant CRM. If it ever does, swap this to a
   // server-side rpc.
-  const { data, error } = await supabase
+  const { data, error } = await fetchAllPages((from, to) => supabase
     .from('system_activity_logs')
     .select('module, service_key, status')
     .gte('created_at', since)
-    .limit(5000);
+    .order('id')
+    .range(from, to), 20_000);
 
   if (error) {
     return dbErrorResponse(error, 'system/activity/summary');
